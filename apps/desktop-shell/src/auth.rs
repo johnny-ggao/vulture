@@ -125,7 +125,7 @@ fn auth_status_with_sources(
     env_configured: bool,
     codex_configured: bool,
 ) -> Result<OpenAiAuthStatus> {
-    if secret_store.get(secret_ref)?.is_some() {
+    if matches!(secret_store.get(secret_ref), Ok(Some(_))) {
         return Ok(OpenAiAuthStatus {
             configured: true,
             source: AuthSource::Keychain,
@@ -364,6 +364,22 @@ fn strip_ansi(value: &str) -> String {
 mod tests {
     use super::*;
 
+    struct FailingSecretStore;
+
+    impl SecretStore for FailingSecretStore {
+        fn get(&self, _secret_ref: &str) -> Result<Option<String>> {
+            Err(anyhow!("keychain unavailable"))
+        }
+
+        fn set(&self, _secret_ref: &str, _value: &str) -> Result<()> {
+            Err(anyhow!("keychain unavailable"))
+        }
+
+        fn clear(&self, _secret_ref: &str) -> Result<()> {
+            Err(anyhow!("keychain unavailable"))
+        }
+    }
+
     #[test]
     fn status_reports_keychain_when_secret_exists() {
         let store = MemorySecretStore::default();
@@ -407,6 +423,25 @@ mod tests {
         let status =
             auth_status_with_sources(&store, "vulture:profile:default:openai", false, true)
                 .expect("status should resolve");
+
+        assert_eq!(
+            status,
+            OpenAiAuthStatus {
+                configured: true,
+                source: AuthSource::Codex,
+            }
+        );
+    }
+
+    #[test]
+    fn status_falls_back_to_codex_when_keychain_status_read_fails() {
+        let status = auth_status_with_sources(
+            &FailingSecretStore,
+            "vulture:profile:default:openai",
+            false,
+            true,
+        )
+        .expect("status should fall back to codex");
 
         assert_eq!(
             status,

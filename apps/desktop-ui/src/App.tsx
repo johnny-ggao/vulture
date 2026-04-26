@@ -73,6 +73,7 @@ export function App() {
   const [authStatus, setAuthStatus] = useState<OpenAiAuthStatus | null>(null);
   const [codexLogin, setCodexLogin] = useState<CodexLoginStart | null>(null);
   const [codexLoginStatus, setCodexLoginStatus] = useState("idle");
+  const [authRefreshStatus, setAuthRefreshStatus] = useState("idle");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [workspaceDraft, setWorkspaceDraft] = useState<SaveWorkspaceRequest>({
     id: "vulture",
@@ -243,6 +244,7 @@ export function App() {
   async function startCodexLogin() {
     setError(null);
     setCodexLoginStatus("starting");
+    setAuthRefreshStatus("idle");
 
     try {
       const result = await invoke<CodexLoginStart>("start_codex_login");
@@ -258,14 +260,17 @@ export function App() {
 
   async function refreshAuthStatus() {
     setError(null);
+    setAuthRefreshStatus("refreshing");
 
     try {
       const result = await invoke<OpenAiAuthStatus>("get_openai_auth_status");
       setAuthStatus(result);
+      setAuthRefreshStatus("idle");
       if (result.source === "codex") {
         setCodexLoginStatus("completed");
       }
     } catch (cause) {
+      setAuthRefreshStatus("failed");
       setError(errorMessage(cause));
     }
   }
@@ -482,6 +487,9 @@ export function App() {
           {authStatus?.source === "codex" ? (
             <p className="muted">Run uses Codex CLI OAuth provider when no API key is saved.</p>
           ) : null}
+          {authRefreshStatus === "refreshing" ? (
+            <p className="muted">Refreshing authentication status...</p>
+          ) : null}
           {codexLogin ? (
             <div className="code-box">
               <span>Codex code</span>
@@ -506,8 +514,12 @@ export function App() {
                   ? "Waiting..."
                   : "Login with Codex"}
             </button>
-            <button type="button" onClick={refreshAuthStatus}>
-              Refresh Auth
+            <button
+              type="button"
+              onClick={refreshAuthStatus}
+              disabled={authRefreshStatus === "refreshing"}
+            >
+              {authRefreshStatus === "refreshing" ? "Refreshing..." : "Refresh Auth"}
             </button>
             <button type="button" onClick={saveApiKey} disabled={!apiKeyInput.trim()}>
               Save Key
