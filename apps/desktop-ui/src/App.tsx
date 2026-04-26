@@ -6,7 +6,6 @@ import type {
   CodexLoginRequest,
   CodexLoginStart,
   OpenAiAuthStatus,
-  WorkspaceView,
 } from "./commandCenterTypes";
 
 type RunEvent = {
@@ -33,6 +32,14 @@ const starterPrompts = [
   "帮我分析这个桌面 agent 的运行链路",
 ];
 
+const previewWorkspace = {
+  id: "vulture",
+  name: "Vulture",
+  path: "~/Library/Application Support/Vulture/profiles/default/agents/local-work-agent/workspace",
+  createdAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString(),
+};
+
 const previewAgent: AgentView = {
   id: "local-work-agent",
   name: "Local Work Agent",
@@ -40,15 +47,8 @@ const previewAgent: AgentView = {
   model: "gpt-5.4",
   reasoning: "medium",
   tools: ["shell.exec", "browser.snapshot", "browser.click"],
+  workspace: previewWorkspace,
   instructions: "You are Vulture's local work agent.",
-};
-
-const previewWorkspace: WorkspaceView = {
-  id: "vulture",
-  name: "Vulture",
-  path: "/Users/johnny/Work/vulture",
-  createdAt: new Date(0).toISOString(),
-  updatedAt: new Date(0).toISOString(),
 };
 
 function authLabel(status: OpenAiAuthStatus | null) {
@@ -63,8 +63,6 @@ export function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [agents, setAgents] = useState<AgentView[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
-  const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [authStatus, setAuthStatus] = useState<OpenAiAuthStatus | null>(null);
   const [codexLogin, setCodexLogin] = useState<CodexLoginStart | null>(null);
   const [codexLoginStatus, setCodexLoginStatus] = useState("idle");
@@ -77,41 +75,35 @@ export function App() {
   const isRunning = useRef(false);
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
-  const selectedWorkspace =
-    workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null;
   const codexAuthenticated = authStatus?.source === "codex" || codexLogin?.alreadyAuthenticated;
   const canSend =
-    Boolean(selectedAgent && selectedWorkspace && taskInput.trim() && authStatus?.configured) &&
-    status !== "running";
+    Boolean(selectedAgent && taskInput.trim() && authStatus?.configured) && status !== "running";
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadChatShell() {
       try {
-        const [profileResult, agentList, workspaceList, nextAuthStatus] = await Promise.all([
+        const [profileResult, agentList, nextAuthStatus] = await Promise.all([
           invoke<Profile>("get_profile"),
           invoke<AgentView[]>("list_agents"),
-          invoke<WorkspaceView[]>("list_workspaces"),
           invoke<OpenAiAuthStatus>("get_openai_auth_status"),
         ]);
 
         if (!isMounted) return;
         setProfile(profileResult);
         setAgents(agentList);
-        setWorkspaces(workspaceList);
         setAuthStatus(nextAuthStatus);
-        setSelectedAgentId((current) => current || profileResult.activeAgentId || agentList[0]?.id || "");
-        setSelectedWorkspaceId((current) => current || workspaceList[0]?.id || "");
+        setSelectedAgentId(
+          (current) => current || profileResult.activeAgentId || agentList[0]?.id || "",
+        );
       } catch (cause) {
         if (!isMounted) return;
         if (isTauriUnavailable(cause)) {
           setProfile({ id: "default", name: "Preview", activeAgentId: previewAgent.id });
           setAgents([previewAgent]);
-          setWorkspaces([previewWorkspace]);
           setAuthStatus({ configured: false, source: "missing" });
           setSelectedAgentId(previewAgent.id);
-          setSelectedWorkspaceId(previewWorkspace.id);
           return;
         }
         setError(errorMessage(cause));
@@ -201,7 +193,7 @@ export function App() {
 
   async function sendMessage() {
     const input = taskInput.trim();
-    if (isRunning.current || !input || !selectedAgent || !selectedWorkspace) return;
+    if (isRunning.current || !input || !selectedAgent) return;
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -234,7 +226,6 @@ export function App() {
       const result = await invoke<RunEvent[]>("start_agent_run", {
         request: {
           agentId: selectedAgent.id,
-          workspaceId: selectedWorkspace.id,
           input,
         },
       });
@@ -434,7 +425,8 @@ export function App() {
             <div className="empty-state">
               <div className="hero-mark">V</div>
               <h2>Vulture</h2>
-              <p>选择智能体和项目，然后直接输入任务。</p>
+              <p>选择智能体，然后直接输入任务。</p>
+              <p>每个智能体都有独立工作区，运行时自动使用当前智能体的 workspace。</p>
               <div className="starter-grid">
                 {starterPrompts.map((prompt) => (
                   <button key={prompt} type="button" onClick={() => setTaskInput(prompt)}>
@@ -470,17 +462,6 @@ export function App() {
               <button type="button" aria-label="Attach file">
                 +
               </button>
-              <select
-                value={selectedWorkspaceId}
-                onChange={(event) => setSelectedWorkspaceId(event.target.value)}
-              >
-                <option value="">选择项目</option>
-                {workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))}
-              </select>
               <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>
                 {agents.map((agent) => (
                   <option key={agent.id} value={agent.id}>
@@ -497,7 +478,7 @@ export function App() {
             </div>
           </div>
           <div className="run-meta">
-            <span>{selectedWorkspace?.path ?? "未选择项目"}</span>
+            <span>{selectedAgent?.workspace.path ?? "未选择智能体工作区"}</span>
             <span>状态：{status}</span>
             {events.length ? <span>{events.length} events</span> : null}
           </div>

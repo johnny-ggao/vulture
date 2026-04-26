@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::WorkspaceDefinition;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDefinition {
@@ -11,6 +13,8 @@ pub struct AgentDefinition {
     pub model: String,
     pub reasoning: String,
     pub tools: Vec<String>,
+    #[serde(default)]
+    pub workspace: Option<WorkspaceDefinition>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -33,6 +37,8 @@ pub enum AgentValidationError {
     EmptyInstructions,
     #[error("unsupported agent tool {0}")]
     UnsupportedTool(String),
+    #[error("agent workspace must be an existing directory")]
+    InvalidWorkspace,
 }
 
 pub const SUPPORTED_AGENT_TOOLS: &[&str] = &["shell.exec", "browser.snapshot", "browser.click"];
@@ -50,6 +56,7 @@ impl AgentRecord {
                     .iter()
                     .map(|tool| (*tool).to_string())
                     .collect(),
+                workspace: None,
                 created_at: now,
                 updated_at: now,
             },
@@ -81,6 +88,11 @@ impl AgentRecord {
             if !SUPPORTED_AGENT_TOOLS.contains(&tool.as_str()) {
                 return Err(AgentValidationError::UnsupportedTool(tool.clone()));
             }
+        }
+        if let Some(workspace) = &self.definition.workspace {
+            workspace
+                .validate()
+                .map_err(|_| AgentValidationError::InvalidWorkspace)?;
         }
         Ok(())
     }

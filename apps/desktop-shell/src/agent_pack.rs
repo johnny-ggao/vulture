@@ -154,6 +154,7 @@ mod tests {
     use super::{assemble_agent_instructions, assemble_codex_prompt, is_standby_response};
 
     fn test_agent() -> AgentView {
+        let workspace = test_workspace();
         AgentView {
             id: "local-work-agent".to_string(),
             name: "Local Work Agent".to_string(),
@@ -161,6 +162,7 @@ mod tests {
             model: "gpt-5.4".to_string(),
             reasoning: "medium".to_string(),
             tools: vec!["shell.exec".to_string(), "browser.snapshot".to_string()],
+            workspace,
             instructions: "Inspect the workspace and produce grounded results.".to_string(),
         }
     }

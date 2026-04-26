@@ -24,7 +24,8 @@ const CODEX_CLI_FALLBACK_MODEL: &str = "gpt-5.4";
 #[serde(rename_all = "camelCase")]
 pub struct StartAgentRunRequest {
     pub agent_id: String,
-    pub workspace_id: String,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
     pub input: String,
 }
 
@@ -58,11 +59,14 @@ pub async fn start_agent_run(
 ) -> Result<Vec<Value>> {
     let runtime_auth = state.resolve_agent_runtime_auth()?;
     let agent = state.get_agent(&request.agent_id)?;
-    let workspace = state
-        .list_workspaces()?
-        .into_iter()
-        .find(|workspace| workspace.id == request.workspace_id)
-        .ok_or_else(|| anyhow!("workspace {} not found", request.workspace_id))?;
+    let workspace = match request.workspace_id.as_deref() {
+        Some(workspace_id) => state
+            .list_workspaces()?
+            .into_iter()
+            .find(|workspace| workspace.id == workspace_id)
+            .ok_or_else(|| anyhow!("workspace {workspace_id} not found"))?,
+        None => agent.workspace.clone(),
+    };
 
     match runtime_auth {
         AgentRuntimeAuth::ApiKey(openai_api_key) => {
@@ -396,7 +400,7 @@ mod tests {
 
     use super::{
         build_codex_exec_prompt, build_run_create_request, codex_cli_model, events_from_response,
-        events_from_stdout, first_stdout_line,
+        events_from_stdout, first_stdout_line, StartAgentRunRequest,
     };
 
     #[test]
@@ -434,6 +438,12 @@ mod tests {
 
     #[test]
     fn agent_run_request_contains_agent_and_workspace_snapshots() {
+        let workspace = WorkspaceDefinition::new(
+            "vulture".to_string(),
+            "Vulture".to_string(),
+            "/Users/johnny/Work/vulture".to_string(),
+            Utc::now(),
+        );
         let agent = AgentView {
             id: "coder".to_string(),
             name: "Coder".to_string(),
@@ -441,14 +451,9 @@ mod tests {
             model: "gpt-5.4".to_string(),
             reasoning: "medium".to_string(),
             tools: vec!["shell.exec".to_string(), "browser.snapshot".to_string()],
+            workspace: workspace.clone(),
             instructions: "Write code carefully.".to_string(),
         };
-        let workspace = WorkspaceDefinition::new(
-            "vulture".to_string(),
-            "Vulture".to_string(),
-            "/Users/johnny/Work/vulture".to_string(),
-            Utc::now(),
-        );
 
         let request = build_run_create_request(
             "desktop-agent-run",
@@ -494,6 +499,12 @@ mod tests {
 
     #[test]
     fn codex_exec_prompt_contains_agent_workspace_and_task() {
+        let workspace = WorkspaceDefinition::new(
+            "vulture".to_string(),
+            "Vulture".to_string(),
+            "/Users/johnny/Work/vulture".to_string(),
+            Utc::now(),
+        );
         let agent = AgentView {
             id: "coder".to_string(),
             name: "Coder".to_string(),
@@ -501,14 +512,9 @@ mod tests {
             model: "gpt-5.4".to_string(),
             reasoning: "medium".to_string(),
             tools: vec!["shell.exec".to_string()],
+            workspace: workspace.clone(),
             instructions: "Write code carefully.".to_string(),
         };
-        let workspace = WorkspaceDefinition::new(
-            "vulture".to_string(),
-            "Vulture".to_string(),
-            "/Users/johnny/Work/vulture".to_string(),
-            Utc::now(),
-        );
 
         let prompt = build_codex_exec_prompt("Summarize repo", &agent, &workspace)
             .expect("prompt should build");
@@ -519,6 +525,17 @@ mod tests {
         assert!(prompt.contains("Workspace: Vulture (/Users/johnny/Work/vulture)"));
         assert!(prompt.contains("shell.exec"));
         assert!(prompt.contains("User task:\nSummarize repo"));
+    }
+
+    #[test]
+    fn agent_run_request_can_omit_workspace_id() {
+        let request = StartAgentRunRequest {
+            agent_id: "local-work-agent".to_string(),
+            workspace_id: None,
+            input: "Summarize".to_string(),
+        };
+
+        assert_eq!(request.workspace_id, None);
     }
 
     #[test]

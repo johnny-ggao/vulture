@@ -7,6 +7,7 @@ export type AgentView = {
   model: string;
   reasoning: string;
   tools: AgentToolName[];
+  workspace: WorkspaceView;
   instructions: string;
 };
 

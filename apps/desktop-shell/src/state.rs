@@ -281,6 +281,7 @@ mod tests {
                 model: "gpt-5.4".to_string(),
                 reasoning: "medium".to_string(),
                 tools: vec!["shell.exec".to_string()],
+                workspace: None,
                 instructions: "Write code carefully.".to_string(),
             })
             .expect("agent should save");

@@ -6,7 +6,7 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use serde::Serialize;
-use vulture_core::{AgentDefinition, AgentRecord};
+use vulture_core::{AgentDefinition, AgentRecord, WorkspaceDefinition};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +17,7 @@ pub struct AgentView {
     pub model: String,
     pub reasoning: String,
     pub tools: Vec<String>,
+    pub workspace: WorkspaceDefinition,
     pub instructions: String,
 }
 
@@ -29,6 +30,8 @@ pub struct SaveAgentRequest {
     pub model: String,
     pub reasoning: String,
     pub tools: Vec<String>,
+    #[serde(default)]
+    pub workspace: Option<WorkspaceDefinition>,
     pub instructions: String,
 }
 
@@ -73,10 +76,17 @@ impl AgentStore {
     }
 
     pub fn load(&self, id: &str) -> Result<AgentView> {
+        self.ensure_default_agent()?;
         let dir = self.root.join(id);
-        let definition = self.load_definition(id)?;
+        let mut definition = self.load_definition(id)?;
         let instructions = fs::read_to_string(dir.join("instructions.md"))
             .with_context(|| format!("failed to read instructions for agent {id}"))?;
+        let workspace = self.ensure_agent_workspace(&mut definition)?;
+        let record = AgentRecord {
+            definition: definition.clone(),
+            instructions: instructions.clone(),
+        };
+        self.save_record(&record)?;
 
         Ok(AgentView {
             id: definition.id,
@@ -85,6 +95,7 @@ impl AgentStore {
             model: definition.model,
             reasoning: definition.reasoning,
             tools: definition.tools,
+            workspace,
             instructions,
         })
     }
@@ -103,6 +114,7 @@ impl AgentStore {
                 model: request.model,
                 reasoning: request.reasoning,
                 tools: request.tools,
+                workspace: request.workspace,
                 created_at,
                 updated_at: now,
             },
@@ -134,6 +146,8 @@ impl AgentStore {
     }
 
     fn save_record(&self, record: &AgentRecord) -> Result<()> {
+        let mut record = record.clone();
+        let _workspace = self.ensure_agent_workspace(&mut record.definition)?;
         record.validate()?;
         let dir = self.root.join(&record.definition.id);
         fs::create_dir_all(&dir)?;
@@ -143,6 +157,30 @@ impl AgentStore {
         )?;
         fs::write(dir.join("instructions.md"), &record.instructions)?;
         Ok(())
+    }
+
+    fn ensure_agent_workspace(
+        &self,
+        definition: &mut AgentDefinition,
+    ) -> Result<WorkspaceDefinition> {
+        if let Some(workspace) = &definition.workspace {
+            if Path::new(&workspace.path).is_dir() {
+                return Ok(workspace.clone());
+            }
+        }
+
+        let now = Utc::now();
+        let workspace_path = self.root.join(&definition.id).join("workspace");
+        fs::create_dir_all(&workspace_path)?;
+        let workspace = WorkspaceDefinition::new(
+            format!("{}-workspace", definition.id),
+            format!("{} Workspace", definition.name),
+            workspace_path.to_string_lossy().to_string(),
+            now,
+        );
+        workspace.validate()?;
+        definition.workspace = Some(workspace.clone());
+        Ok(workspace)
     }
 }
 
@@ -188,12 +226,29 @@ mod tests {
                 model: "gpt-5.4".to_string(),
                 reasoning: "medium".to_string(),
                 tools: vec!["shell.exec".to_string()],
+                workspace: None,
                 instructions: "Write code carefully.".to_string(),
             })
             .expect("agent should save");
         let loaded = store.load(&saved.id).expect("agent should load");
 
         assert_eq!(loaded.instructions, "Write code carefully.");
+        fs::remove_dir_all(root).expect("temp root should be removed");
+    }
+
+    #[test]
+    fn loaded_agent_has_private_workspace() {
+        let root = temp_profile_dir();
+        let store = AgentStore::new(&root);
+
+        let agent = store.load("local-work-agent").expect("agent should load");
+
+        assert_eq!(agent.workspace.id, "local-work-agent-workspace");
+        assert!(agent
+            .workspace
+            .path
+            .ends_with("agents/local-work-agent/workspace"));
+        assert!(Path::new(&agent.workspace.path).is_dir());
         fs::remove_dir_all(root).expect("temp root should be removed");
     }
 
