@@ -10,7 +10,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(1);
+    expect(currentSchemaVersion(db)).toBe(2);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -28,7 +28,24 @@ describe("migrate", () => {
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(1);
+    expect(currentSchemaVersion(db)).toBe(2);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("002 adds conversations/messages/runs/run_events tables", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v2-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(2);
+    const tables = db
+      .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as { name: string }[];
+    const names = tables.map((t) => t.name);
+    expect(names).toContain("conversations");
+    expect(names).toContain("messages");
+    expect(names).toContain("runs");
+    expect(names).toContain("run_events");
     db.close();
     rmSync(dir, { recursive: true });
   });
