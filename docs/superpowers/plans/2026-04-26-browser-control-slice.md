@@ -739,7 +739,7 @@ Expected: manifest parse succeeds; commit succeeds.
 - Modify: `apps/agent-sidecar/src/agents.ts`
 - Create: `apps/agent-sidecar/src/browser-tools.test.ts`
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Create `apps/agent-sidecar/src/browser-tools.test.ts`:
 
@@ -777,7 +777,7 @@ describe("browser tools", () => {
 
 Expected: tests fail because `createBrowserTools` and `requestBrowserSnapshot` do not exist yet.
 
-- [ ] **Step 2: Implement browser tools**
+- [x] **Step 2: Implement browser tools**
 
 In `tools.ts`, add:
 
@@ -827,7 +827,7 @@ const browserTools = createBrowserTools(gateway);
 tools: [createShellExecTool(gateway), browserTools.snapshot, browserTools.click],
 ```
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 Run:
 
