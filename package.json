@@ -11,6 +11,7 @@
     "test": "bun test packages/protocol/src apps/agent-sidecar/src",
     "typecheck": "bun --filter '*' typecheck",
     "build": "bun --filter '*' build",
+    "verify:browser": "node -e \"JSON.parse(require('fs').readFileSync('extensions/browser/manifest.json','utf8')); console.log('manifest ok')\" && bun test apps/agent-sidecar/src && bun --filter '*' typecheck && cargo test -p vulture-tool-gateway browser && cargo test -p vulture-desktop-shell browser && cargo clippy --workspace -- -D warnings",
     "verify": "bun test packages/protocol/src apps/agent-sidecar/src && bun --filter '*' typecheck && bun --filter @vulture/desktop-ui build && cargo test && cargo clippy --workspace -- -D warnings && VULTURE_AGENT_MODE=mock VULTURE_MOCK_TOOL_REQUEST=1 bun apps/agent-sidecar/src/smoke.ts"
   },
   "devDependencies": {
