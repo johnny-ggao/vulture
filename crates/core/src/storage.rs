@@ -18,6 +18,7 @@ impl StorageLayout {
         fs::create_dir_all(dir.join("agents"))?;
         fs::create_dir_all(dir.join("conversations"))?;
         fs::create_dir_all(dir.join("permissions"))?;
+        fs::create_dir_all(dir.join("workspaces"))?;
 
         let profile_path = dir.join("profile.json");
         if !profile_path.exists() {
@@ -64,6 +65,7 @@ mod tests {
 
         let contents = fs::read_to_string(&profile_json).expect("profile json should be readable");
         assert_eq!(contents, "{\"existing\":true}");
+        assert!(dir.join("workspaces").is_dir());
 
         fs::remove_dir_all(root).expect("test root should be removable");
     }
