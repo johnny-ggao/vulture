@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
+use std::net::TcpListener;
 
 #[allow(dead_code)]
 pub const TOKEN_BYTES: usize = 32;
@@ -11,6 +12,22 @@ pub fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::thread_rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// Linear scan starting at `start`, trying up to `window` ports.
+/// Returns the first free port. SECURITY: binds 127.0.0.1 only.
+#[allow(dead_code)]
+pub fn pick_free_port(start: u16, window: u16) -> anyhow::Result<u16> {
+    for offset in 0..window {
+        let port = start.saturating_add(offset);
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return Ok(port);
+        }
+    }
+    Err(anyhow::anyhow!(
+        "no free port in 127.0.0.1:{start}-{}",
+        start.saturating_add(window).saturating_sub(1)
+    ))
 }
 
 #[cfg(test)]
@@ -41,5 +58,20 @@ mod tests {
         for _ in 0..1024 {
             assert!(seen.insert(generate_token()), "duplicate token");
         }
+    }
+
+    #[test]
+    fn picks_a_free_port_in_range() {
+        let port = pick_free_port(40000, 100).expect("should find free port");
+        assert!((40000..40100).contains(&port));
+    }
+
+    #[test]
+    fn skips_occupied_ports() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let occupied = listener.local_addr().unwrap().port();
+        let picked = pick_free_port(occupied, 5).expect("falls through occupied");
+        assert_ne!(picked, occupied);
     }
 }
