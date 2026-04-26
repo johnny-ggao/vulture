@@ -44,6 +44,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[allow(dead_code)]
     pub fn new() -> Result<Self> {
         let home = std::env::var_os("HOME").ok_or_else(|| {
             anyhow!("HOME is not set; cannot resolve Vulture application support directory")
