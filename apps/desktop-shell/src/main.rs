@@ -7,6 +7,7 @@ mod runtime;
 mod sidecar;
 mod single_instance;
 mod state;
+mod supervisor;
 mod tool_callback;
 mod workspace_store;
 
