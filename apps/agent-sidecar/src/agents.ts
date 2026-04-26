@@ -1,16 +1,18 @@
 import { Agent, run } from "@openai/agents";
 import { makeEvent, RunCreateParams } from "@vulture/protocol";
-import { createShellExecTool, type ToolGateway } from "./tools";
+import { createBrowserTools, createShellExecTool, type ToolGateway } from "./tools";
 
 export type GatewayFactory = (runId: string) => ToolGateway;
 
 export function createLocalWorkAgent(gateway: ToolGateway) {
+  const browserTools = createBrowserTools(gateway);
+
   return new Agent({
     name: "local-work-agent",
     instructions:
       "You are Vulture's local work agent. Request local actions through tools and never claim a local command ran unless a tool result confirms it.",
     model: "gpt-5.4",
-    tools: [createShellExecTool(gateway)],
+    tools: [createShellExecTool(gateway), browserTools.snapshot, browserTools.click],
   });
 }
 
