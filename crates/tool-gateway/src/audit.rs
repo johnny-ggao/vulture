@@ -32,3 +32,37 @@ impl AuditStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{env, fs};
+
+    use rusqlite::Result;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::*;
+
+    #[test]
+    fn append_persists_event_type_and_payload() -> Result<()> {
+        let path = env::temp_dir().join(format!("vulture-audit-{}.sqlite", Uuid::new_v4()));
+        let store = AuditStore::open(&path)?;
+        let payload = json!({ "tool": "file.read", "ok": true });
+
+        store.append("tool.result", &payload)?;
+
+        let (event_type, persisted_payload): (String, String) = store.conn.query_row(
+            "SELECT event_type, payload FROM audit_events",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        drop(store);
+        let _ = fs::remove_file(path);
+
+        assert_eq!(event_type, "tool.result");
+        assert_eq!(persisted_payload, payload.to_string());
+
+        Ok(())
+    }
+}
