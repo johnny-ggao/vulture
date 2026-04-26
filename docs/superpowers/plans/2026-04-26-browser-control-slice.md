@@ -846,7 +846,7 @@ Expected: commands pass; commit succeeds.
 - Modify: `package.json`
 - Create: `docs/superpowers/reports/2026-04-26-browser-control-slice-verification.md`
 
-- [ ] **Step 1: Add browser verification script**
+- [x] **Step 1: Add browser verification script**
 
 Modify root `package.json` scripts to include:
 
@@ -854,7 +854,7 @@ Modify root `package.json` scripts to include:
 "verify:browser": "node -e \"JSON.parse(require('fs').readFileSync('extensions/browser/manifest.json','utf8')); console.log('manifest ok')\" && bun test apps/agent-sidecar/src && bun --filter '*' typecheck && cargo test -p vulture-tool-gateway browser && cargo test -p vulture-desktop-shell browser && cargo clippy --workspace -- -D warnings"
 ```
 
-- [ ] **Step 2: Run verification**
+- [x] **Step 2: Run verification**
 
 Run:
 
@@ -866,7 +866,7 @@ git status --short
 
 Expected: both verification scripts pass and git status is clean before the final report commit except for intended report/package changes.
 
-- [ ] **Step 3: Create report**
+- [x] **Step 3: Create report**
 
 Create `docs/superpowers/reports/2026-04-26-browser-control-slice-verification.md`:
 
@@ -889,7 +889,7 @@ Automated browser-control slice checks passed.
 This slice verifies policy, relay protocol, pairing state, browser pairing UI, MV3 manifest validity, extension skeleton files, and sidecar browser tool adapters. Manual Chrome unpacked-extension testing and production encrypted relay hardening remain follow-up work.
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
