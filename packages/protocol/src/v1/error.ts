@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const ErrorCodeSchema = z.enum([
   "auth.token_invalid",
+  "auth.origin_invalid",
   "auth.missing_keychain",
   "agent.not_found",
   "agent.invalid",

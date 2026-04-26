@@ -6,7 +6,7 @@ export const originGuard: MiddlewareHandler = async (c, next) => {
   const origin = c.req.header("Origin") ?? null;
   if (!ALLOWED_ORIGINS.has(origin)) {
     return c.json(
-      { code: "auth.token_invalid", message: "origin not allowed" },
+      { code: "auth.origin_invalid", message: "origin not allowed" },
       403,
     );
   }
