@@ -29,7 +29,7 @@ struct PairingToken {
 }
 
 impl BrowserRelayState {
-    pub fn status(&self) -> BrowserRelayStatus {
+    pub fn status(&mut self) -> BrowserRelayStatus {
         BrowserRelayStatus {
             enabled: self.relay_port.is_some(),
             paired: self.paired,
@@ -73,11 +73,15 @@ impl BrowserRelayState {
         true
     }
 
-    fn current_pairing_token(&self) -> Option<String> {
-        self.pairing_token
-            .as_ref()
-            .filter(|token| token.expires_at > Instant::now())
-            .map(|token| token.value.clone())
+    fn current_pairing_token(&mut self) -> Option<String> {
+        let token = self.pairing_token.as_ref()?;
+
+        if token.expires_at <= Instant::now() {
+            self.pairing_token = None;
+            return None;
+        }
+
+        Some(token.value.clone())
     }
 }
 
@@ -118,5 +122,25 @@ mod tests {
             .expect_err("zero relay port should be rejected");
 
         assert!(error.to_string().contains("non-zero"));
+    }
+
+    #[test]
+    fn expired_pairing_token_is_hidden_and_rejected() {
+        let mut state = BrowserRelayState {
+            paired: false,
+            pairing_token: Some(PairingToken {
+                value: "expired-token".to_string(),
+                expires_at: Instant::now() - Duration::from_secs(1),
+            }),
+            relay_port: Some(9444),
+        };
+
+        let status = state.status();
+
+        assert!(status.enabled);
+        assert!(!status.paired);
+        assert_eq!(status.pairing_token, None);
+        assert!(!state.accept_token("expired-token"));
+        assert!(state.pairing_token.is_none());
     }
 }

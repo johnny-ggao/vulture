@@ -29,5 +29,7 @@ pub fn get_browser_status(
 pub fn start_browser_pairing(
     state: State<'_, AppState>,
 ) -> Result<crate::browser::relay::BrowserRelayStatus, String> {
-    state.start_browser_pairing().map_err(|error| error.to_string())
+    state
+        .start_browser_pairing()
+        .map_err(|error| error.to_string())
 }
