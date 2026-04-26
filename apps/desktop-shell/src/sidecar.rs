@@ -9,7 +9,14 @@ use uuid::Uuid;
 use vulture_core::WorkspaceDefinition;
 use vulture_tool_gateway::ToolRequest;
 
-use crate::{agent_store::AgentView, auth::AgentRuntimeAuth, state::AppState};
+use crate::{
+    agent_pack::{
+        assemble_agent_instructions, assemble_codex_prompt, corrective_prompt, is_standby_response,
+    },
+    agent_store::AgentView,
+    auth::AgentRuntimeAuth,
+    state::AppState,
+};
 
 const CODEX_CLI_FALLBACK_MODEL: &str = "gpt-5.4";
 
@@ -140,6 +147,9 @@ fn build_run_create_request(
     agent: &AgentView,
     workspace: &WorkspaceDefinition,
 ) -> Value {
+    let agent_instructions = assemble_agent_instructions(agent, workspace)
+        .unwrap_or_else(|_| agent.instructions.clone());
+
     json!({
         "id": id,
         "method": "run.create",
@@ -151,7 +161,7 @@ fn build_run_create_request(
             "agent": {
                 "id": agent.id,
                 "name": agent.name,
-                "instructions": agent.instructions,
+                "instructions": agent_instructions,
                 "model": agent.model,
                 "tools": agent.tools,
             },
@@ -169,11 +179,46 @@ async fn run_codex_exec(
     workspace: &WorkspaceDefinition,
 ) -> Result<Vec<Value>> {
     let run_id = format!("codex_{}", Uuid::new_v4());
+    let prompt = build_codex_exec_prompt(input, agent, workspace)?;
+    let model = codex_cli_model(&agent.model);
+    let mut final_output = run_codex_exec_prompt(&prompt, model, workspace).await?;
+
+    if is_standby_response(&final_output) {
+        let retry_input = corrective_prompt(input, &final_output);
+        let retry_prompt = build_codex_exec_prompt(&retry_input, agent, workspace)?;
+        final_output = run_codex_exec_prompt(&retry_prompt, model, workspace).await?;
+    }
+
+    Ok(vec![
+        make_desktop_event(
+            &run_id,
+            "run_started",
+            json!({
+                "agentId": agent.id,
+                "provider": "codex",
+                "model": model,
+                "workspaceId": workspace.id,
+            }),
+        ),
+        make_desktop_event(
+            &run_id,
+            "run_completed",
+            json!({
+                "finalOutput": final_output.trim(),
+                "provider": "codex",
+                "model": model,
+            }),
+        ),
+    ])
+}
+
+async fn run_codex_exec_prompt(
+    prompt: &str,
+    model: &str,
+    workspace: &WorkspaceDefinition,
+) -> Result<String> {
     let output_path =
         std::env::temp_dir().join(format!("vulture-codex-output-{}.txt", Uuid::new_v4()));
-    let prompt = build_codex_exec_prompt(input, agent, workspace);
-    let model = codex_cli_model(&agent.model);
-
     let mut child = Command::new("codex")
         .args([
             "exec",
@@ -229,27 +274,7 @@ async fn run_codex_exec(
         .unwrap_or_else(|_| stdout_text.trim().to_string());
     let _ = tokio::fs::remove_file(&output_path).await;
 
-    Ok(vec![
-        make_desktop_event(
-            &run_id,
-            "run_started",
-            json!({
-                "agentId": agent.id,
-                "provider": "codex",
-                "model": model,
-                "workspaceId": workspace.id,
-            }),
-        ),
-        make_desktop_event(
-            &run_id,
-            "run_completed",
-            json!({
-                "finalOutput": final_output.trim(),
-                "provider": "codex",
-                "model": model,
-            }),
-        ),
-    ])
+    Ok(final_output)
 }
 
 fn codex_cli_model(model: &str) -> &str {
@@ -263,16 +288,8 @@ fn build_codex_exec_prompt(
     input: &str,
     agent: &AgentView,
     workspace: &WorkspaceDefinition,
-) -> String {
-    format!(
-        "{}\n\nAgent: {}\nWorkspace: {} ({})\nRequested tools: {}\n\nUser task:\n{}",
-        agent.instructions.trim(),
-        agent.name,
-        workspace.name,
-        workspace.path,
-        agent.tools.join(", "),
-        input.trim()
-    )
+) -> Result<String> {
+    assemble_codex_prompt(input, agent, workspace)
 }
 
 fn make_desktop_event(run_id: &str, event_type: &str, payload: Value) -> Value {
@@ -445,10 +462,14 @@ mod tests {
         assert_eq!(request["params"]["profileId"], "default");
         assert_eq!(request["params"]["workspaceId"], "vulture");
         assert_eq!(request["params"]["agentId"], "coder");
-        assert_eq!(
-            request["params"]["agent"]["instructions"],
-            "Write code carefully."
-        );
+        assert!(request["params"]["agent"]["instructions"]
+            .as_str()
+            .expect("instructions should be string")
+            .contains("## SOUL.md"));
+        assert!(request["params"]["agent"]["instructions"]
+            .as_str()
+            .expect("instructions should be string")
+            .contains("Write code carefully."));
         assert_eq!(
             request["params"]["agent"]["tools"],
             json!(["shell.exec", "browser.snapshot"])
@@ -489,12 +510,14 @@ mod tests {
             Utc::now(),
         );
 
-        let prompt = build_codex_exec_prompt("Summarize repo", &agent, &workspace);
+        let prompt = build_codex_exec_prompt("Summarize repo", &agent, &workspace)
+            .expect("prompt should build");
 
         assert!(prompt.contains("Write code carefully."));
-        assert!(prompt.contains("Agent: Coder"));
+        assert!(prompt.contains("## SOUL.md"));
+        assert!(prompt.contains("- name: Coder"));
         assert!(prompt.contains("Workspace: Vulture (/Users/johnny/Work/vulture)"));
-        assert!(prompt.contains("Requested tools: shell.exec"));
+        assert!(prompt.contains("shell.exec"));
         assert!(prompt.contains("User task:\nSummarize repo"));
     }
 

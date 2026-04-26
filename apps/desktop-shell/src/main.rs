@@ -1,3 +1,4 @@
+mod agent_pack;
 mod agent_store;
 mod auth;
 mod browser;
