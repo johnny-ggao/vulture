@@ -6,7 +6,7 @@ type FooId = BrandedId<"Foo">;
 describe("brandId", () => {
   test("returns the same string value", () => {
     const id = brandId<FooId>("abc");
-    expect(id).toBe("abc");
+    expect(id as string).toBe("abc");
   });
 
   test("rejects empty string", () => {

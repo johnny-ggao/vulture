@@ -9,7 +9,7 @@ describe("v1 protocol primitives", () => {
 
   test("brandIso8601 accepts well-formed RFC 3339 timestamp", () => {
     const t: Iso8601 = brandIso8601("2026-04-26T12:34:56.789Z");
-    expect(t).toBe("2026-04-26T12:34:56.789Z");
+    expect(t as string).toBe("2026-04-26T12:34:56.789Z");
   });
 
   test("brandIso8601 rejects non-RFC-3339 strings", () => {
