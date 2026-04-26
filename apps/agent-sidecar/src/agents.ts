@@ -1,25 +1,63 @@
 import { Agent, run } from "@openai/agents";
-import { makeEvent, RunCreateParams } from "@vulture/protocol";
+import { AgentRunConfig, makeEvent, RunCreateParams } from "@vulture/protocol";
 import { createBrowserTools, createShellExecTool, type ToolGateway } from "./tools";
 
 export type GatewayFactory = (runId: string) => ToolGateway;
+export type RunModel = (
+  agent: Agent,
+  input: string,
+) => Promise<{ finalOutput?: unknown }>;
 
-export function createLocalWorkAgent(gateway: ToolGateway) {
+export type RunAgentOptions = {
+  runModel?: RunModel;
+};
+
+export function createAgentFromConfig(config: unknown, gateway: ToolGateway) {
+  const parsed = AgentRunConfig.parse(config);
   const browserTools = createBrowserTools(gateway);
+  const tools = [];
+
+  if (parsed.tools.includes("shell.exec")) {
+    tools.push(createShellExecTool(gateway));
+  }
+  if (parsed.tools.includes("browser.snapshot")) {
+    tools.push(browserTools.snapshot);
+  }
+  if (parsed.tools.includes("browser.click")) {
+    tools.push(browserTools.click);
+  }
 
   return new Agent({
-    name: "local-work-agent",
-    instructions:
-      "You are Vulture's local work agent. Request local actions through tools and never claim a local command ran unless a tool result confirms it.",
-    model: "gpt-5.4",
-    tools: [createShellExecTool(gateway), browserTools.snapshot, browserTools.click],
+    name: parsed.id,
+    instructions: parsed.instructions,
+    model: parsed.model,
+    tools,
   });
 }
 
-export async function runAgent(params: unknown, createGateway: GatewayFactory) {
+export function createLocalWorkAgent(gateway: ToolGateway) {
+  return createAgentFromConfig(
+    {
+      id: "local-work-agent",
+      name: "Local Work Agent",
+      instructions:
+        "You are Vulture's local work agent. Request local actions through tools and never claim a local command ran unless a tool result confirms it.",
+      model: "gpt-5.4",
+      tools: ["shell.exec", "browser.snapshot", "browser.click"],
+    },
+    gateway,
+  );
+}
+
+export async function runAgent(
+  params: unknown,
+  createGateway: GatewayFactory,
+  options: RunAgentOptions = {},
+) {
   const parsed = RunCreateParams.parse(params);
   const runId = `run_${Date.now()}`;
   const gateway = createGateway(runId);
+  const runModel = options.runModel ?? ((agent, input) => run(agent, input));
 
   if (process.env.VULTURE_AGENT_MODE === "mock") {
     if (process.env.VULTURE_MOCK_TOOL_REQUEST === "1") {
@@ -37,8 +75,10 @@ export async function runAgent(params: unknown, createGateway: GatewayFactory) {
     ];
   }
 
-  const agent = createLocalWorkAgent(gateway);
-  const result = await run(agent, parsed.input);
+  const agent = parsed.agent
+    ? createAgentFromConfig(parsed.agent, gateway)
+    : createLocalWorkAgent(gateway);
+  const result = await runModel(agent, parsed.input);
 
   return [
     makeEvent(runId, "run_started", { agentId: parsed.agentId }),
