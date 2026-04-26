@@ -11,6 +11,8 @@ use vulture_tool_gateway::ToolRequest;
 
 use crate::{agent_store::AgentView, auth::AgentRuntimeAuth, state::AppState};
 
+const CODEX_CLI_FALLBACK_MODEL: &str = "gpt-5.4";
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartAgentRunRequest {
@@ -170,6 +172,7 @@ async fn run_codex_exec(
     let output_path =
         std::env::temp_dir().join(format!("vulture-codex-output-{}.txt", Uuid::new_v4()));
     let prompt = build_codex_exec_prompt(input, agent, workspace);
+    let model = codex_cli_model(&agent.model);
 
     let mut child = Command::new("codex")
         .args([
@@ -182,6 +185,8 @@ async fn run_codex_exec(
             workspace.path.as_str(),
             "--skip-git-repo-check",
             "--ephemeral",
+            "--model",
+            model,
             "--output-last-message",
         ])
         .arg(&output_path)
@@ -231,6 +236,7 @@ async fn run_codex_exec(
             json!({
                 "agentId": agent.id,
                 "provider": "codex",
+                "model": model,
                 "workspaceId": workspace.id,
             }),
         ),
@@ -240,9 +246,17 @@ async fn run_codex_exec(
             json!({
                 "finalOutput": final_output.trim(),
                 "provider": "codex",
+                "model": model,
             }),
         ),
     ])
+}
+
+fn codex_cli_model(model: &str) -> &str {
+    match model.trim() {
+        "" | "gpt-5.5" => CODEX_CLI_FALLBACK_MODEL,
+        value => value,
+    }
 }
 
 fn build_codex_exec_prompt(
@@ -364,7 +378,7 @@ mod tests {
     use crate::state::AppState;
 
     use super::{
-        build_codex_exec_prompt, build_run_create_request, events_from_response,
+        build_codex_exec_prompt, build_run_create_request, codex_cli_model, events_from_response,
         events_from_stdout, first_stdout_line,
     };
 
@@ -482,6 +496,13 @@ mod tests {
         assert!(prompt.contains("Workspace: Vulture (/Users/johnny/Work/vulture)"));
         assert!(prompt.contains("Requested tools: shell.exec"));
         assert!(prompt.contains("User task:\nSummarize repo"));
+    }
+
+    #[test]
+    fn codex_cli_model_uses_cli_compatible_fallback_for_newer_models() {
+        assert_eq!(codex_cli_model("gpt-5.5"), "gpt-5.4");
+        assert_eq!(codex_cli_model(" gpt-5.4 "), "gpt-5.4");
+        assert_eq!(codex_cli_model(""), "gpt-5.4");
     }
 
     #[test]
