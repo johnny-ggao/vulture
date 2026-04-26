@@ -238,6 +238,16 @@ impl AppState {
     pub fn supervisor_status(&self) -> SupervisorStatus {
         self.supervisor_status.read().expect("sup lock poisoned").clone()
     }
+
+    pub fn profile_dir(&self) -> PathBuf {
+        self.profile_dir.clone()
+    }
+
+    pub fn request_supervisor_restart(&self) {
+        // Phase 1 placeholder. The actual restart loop (Task 23) wires a watch/notify
+        // channel; for now this is a no-op so the Tauri command compiles and the UI
+        // wiring can be tested.
+    }
 }
 
 #[cfg(test)]

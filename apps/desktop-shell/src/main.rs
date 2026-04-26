@@ -34,7 +34,13 @@ fn main() {
             commands::clear_openai_api_key,
             commands::start_codex_login,
             commands::get_browser_status,
-            commands::start_browser_pairing
+            commands::start_browser_pairing,
+            // Phase 1 additions:
+            commands::get_runtime_info,
+            commands::open_log_dir,
+            commands::open_profile_dir,
+            commands::get_supervisor_status,
+            commands::restart_gateway
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Vulture desktop shell");
