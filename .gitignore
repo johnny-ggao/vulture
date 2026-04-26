@@ -9,3 +9,7 @@ dist/
 .env
 .env.*
 !.env.example
+.omx/
+.superpowers/
+*.pkg
+apps/desktop-shell/gen/
