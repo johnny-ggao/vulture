@@ -239,6 +239,13 @@ impl AppState {
         self.runtime_descriptor.read().expect("rt lock poisoned").clone()
     }
 
+    pub fn gateway_client(&self) -> anyhow::Result<crate::gateway_client::GatewayClient> {
+        let rt = self
+            .runtime_descriptor()
+            .ok_or_else(|| anyhow::anyhow!("runtime descriptor not initialized"))?;
+        crate::gateway_client::GatewayClient::from_runtime(&rt)
+    }
+
     pub fn supervisor_status(&self) -> SupervisorStatus {
         self.supervisor_status.read().expect("sup lock poisoned").clone()
     }

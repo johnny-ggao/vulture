@@ -13,10 +13,28 @@ use crate::{
     agent_pack::{
         assemble_agent_instructions, assemble_codex_prompt, corrective_prompt, is_standby_response,
     },
-    agent_store::AgentView,
     auth::AgentRuntimeAuth,
     state::AppState,
 };
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentBridge {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub model: String,
+    pub reasoning: String,
+    pub tools: Vec<String>,
+    pub workspace: vulture_core::WorkspaceDefinition,
+    pub instructions: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceListBridge {
+    pub items: Vec<vulture_core::WorkspaceDefinition>,
+}
 
 const CODEX_CLI_FALLBACK_MODEL: &str = "gpt-5.4";
 
@@ -58,13 +76,18 @@ pub async fn start_agent_run(
     state: &AppState,
 ) -> Result<Vec<Value>> {
     let runtime_auth = state.resolve_agent_runtime_auth()?;
-    let agent = state.get_agent(&request.agent_id)?;
+    let client = state.gateway_client()?;
+    let agent: AgentBridge = client
+        .get(&format!("/v1/agents/{}", request.agent_id))
+        .await?;
     let workspace = match request.workspace_id.as_deref() {
-        Some(workspace_id) => state
-            .list_workspaces()?
-            .into_iter()
-            .find(|workspace| workspace.id == workspace_id)
-            .ok_or_else(|| anyhow!("workspace {workspace_id} not found"))?,
+        Some(workspace_id) => {
+            let list: WorkspaceListBridge = client.get("/v1/workspaces").await?;
+            list.items
+                .into_iter()
+                .find(|w| w.id == workspace_id)
+                .ok_or_else(|| anyhow!("workspace {workspace_id} not found"))?
+        }
         None => agent.workspace.clone(),
     };
 
@@ -148,7 +171,7 @@ fn build_run_create_request(
     id: &str,
     profile_id: &str,
     input: &str,
-    agent: &AgentView,
+    agent: &AgentBridge,
     workspace: &WorkspaceDefinition,
 ) -> Value {
     let agent_instructions = assemble_agent_instructions(agent, workspace)
@@ -179,7 +202,7 @@ fn build_run_create_request(
 
 async fn run_codex_exec(
     input: &str,
-    agent: &AgentView,
+    agent: &AgentBridge,
     workspace: &WorkspaceDefinition,
 ) -> Result<Vec<Value>> {
     let run_id = format!("codex_{}", Uuid::new_v4());
@@ -290,7 +313,7 @@ fn codex_cli_model(model: &str) -> &str {
 
 fn build_codex_exec_prompt(
     input: &str,
-    agent: &AgentView,
+    agent: &AgentBridge,
     workspace: &WorkspaceDefinition,
 ) -> Result<String> {
     assemble_codex_prompt(input, agent, workspace)
@@ -391,12 +414,11 @@ mod tests {
     use serde_json::json;
     use vulture_core::WorkspaceDefinition;
 
-    use crate::agent_store::AgentView;
     use crate::state::AppState;
 
     use super::{
         build_codex_exec_prompt, build_run_create_request, codex_cli_model, events_from_response,
-        events_from_stdout, first_stdout_line, StartAgentRunRequest,
+        events_from_stdout, first_stdout_line, AgentBridge, StartAgentRunRequest,
     };
 
     #[test]
@@ -440,7 +462,7 @@ mod tests {
             "/Users/johnny/Work/vulture".to_string(),
             Utc::now(),
         );
-        let agent = AgentView {
+        let agent = AgentBridge {
             id: "coder".to_string(),
             name: "Coder".to_string(),
             description: "Writes code".to_string(),
@@ -497,7 +519,7 @@ mod tests {
             "/Users/johnny/Work/vulture".to_string(),
             Utc::now(),
         );
-        let agent = AgentView {
+        let agent = AgentBridge {
             id: "coder".to_string(),
             name: "Coder".to_string(),
             description: "Writes code".to_string(),

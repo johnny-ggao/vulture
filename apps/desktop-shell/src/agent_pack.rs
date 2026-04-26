@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result};
 use vulture_core::WorkspaceDefinition;
 
-use crate::agent_store::AgentView;
+use crate::sidecar::AgentBridge;
 
 const SOUL: &str = include_str!("../agent-packs/local-work/SOUL.md");
 const IDENTITY: &str = include_str!("../agent-packs/local-work/IDENTITY.md");
@@ -13,7 +13,7 @@ const USER: &str = include_str!("../agent-packs/local-work/USER.md");
 
 pub fn assemble_codex_prompt(
     input: &str,
-    agent: &AgentView,
+    agent: &AgentBridge,
     workspace: &WorkspaceDefinition,
 ) -> Result<String> {
     let instructions = assemble_agent_instructions(agent, workspace)?;
@@ -35,7 +35,7 @@ User task:
 }
 
 pub fn assemble_agent_instructions(
-    agent: &AgentView,
+    agent: &AgentBridge,
     workspace: &WorkspaceDefinition,
 ) -> Result<String> {
     let workspace_agents = load_workspace_agents(Path::new(&workspace.path))?;
@@ -149,13 +149,13 @@ mod tests {
     use chrono::Utc;
     use vulture_core::WorkspaceDefinition;
 
-    use crate::agent_store::AgentView;
+    use crate::sidecar::AgentBridge;
 
     use super::{assemble_agent_instructions, assemble_codex_prompt, is_standby_response};
 
-    fn test_agent() -> AgentView {
+    fn test_agent() -> AgentBridge {
         let workspace = test_workspace();
-        AgentView {
+        AgentBridge {
             id: "local-work-agent".to_string(),
             name: "Local Work Agent".to_string(),
             description: "General local work assistant".to_string(),
