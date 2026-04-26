@@ -1,0 +1,36 @@
+import { Agent, run } from "@openai/agents";
+import { makeEvent, RunCreateParams } from "@vulture/protocol";
+import { createShellExecTool, type ToolGateway } from "./tools";
+
+export function createLocalWorkAgent(gateway: ToolGateway) {
+  return new Agent({
+    name: "local-work-agent",
+    instructions:
+      "You are Vulture's local work agent. Request local actions through tools and never claim a local command ran unless a tool result confirms it.",
+    model: "gpt-5.4",
+    tools: [createShellExecTool(gateway)],
+  });
+}
+
+export async function runAgent(params: unknown, gateway: ToolGateway) {
+  const parsed = RunCreateParams.parse(params);
+  const runId = `run_${Date.now()}`;
+
+  if (process.env.VULTURE_AGENT_MODE === "mock") {
+    return [
+      makeEvent(runId, "run_started", { agentId: parsed.agentId }),
+      makeEvent(runId, "model_delta", { text: `Mock response for: ${parsed.input}` }),
+      makeEvent(runId, "run_completed", { finalOutput: "Mock run completed" }),
+    ];
+  }
+
+  const agent = createLocalWorkAgent(gateway);
+  const result = await run(agent, parsed.input);
+
+  return [
+    makeEvent(runId, "run_started", { agentId: parsed.agentId }),
+    makeEvent(runId, "run_completed", {
+      finalOutput: result.finalOutput ? String(result.finalOutput) : "",
+    }),
+  ];
+}
