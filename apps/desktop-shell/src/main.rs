@@ -27,6 +27,7 @@ fn main() {
             commands::get_openai_auth_status,
             commands::set_openai_api_key,
             commands::clear_openai_api_key,
+            commands::start_codex_login,
             commands::get_browser_status,
             commands::start_browser_pairing
         ])

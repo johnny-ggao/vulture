@@ -5,6 +5,7 @@ import type { BrowserRelayStatus } from "./browserTypes";
 import type {
   AgentToolName,
   AgentView,
+  CodexLoginStart,
   OpenAiAuthStatus,
   SaveWorkspaceRequest,
   WorkspaceView,
@@ -70,6 +71,8 @@ export function App() {
   const [workspaces, setWorkspaces] = useState<WorkspaceView[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
   const [authStatus, setAuthStatus] = useState<OpenAiAuthStatus | null>(null);
+  const [codexLogin, setCodexLogin] = useState<CodexLoginStart | null>(null);
+  const [codexLoginStatus, setCodexLoginStatus] = useState("idle");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [workspaceDraft, setWorkspaceDraft] = useState<SaveWorkspaceRequest>({
     id: "vulture",
@@ -125,6 +128,31 @@ export function App() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (codexLoginStatus !== "waiting") return;
+
+    let checks = 0;
+    const interval = window.setInterval(async () => {
+      checks += 1;
+      try {
+        const nextAuthStatus = await invoke<OpenAiAuthStatus>("get_openai_auth_status");
+        setAuthStatus(nextAuthStatus);
+        if (nextAuthStatus.source === "codex") {
+          setCodexLoginStatus("completed");
+          window.clearInterval(interval);
+        }
+      } catch {
+        // Keep polling; the explicit error path is handled by the button action.
+      }
+      if (checks >= 80) {
+        setCodexLoginStatus("idle");
+        window.clearInterval(interval);
+      }
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [codexLoginStatus]);
 
   function replaceAgent(nextAgent: AgentView) {
     setAgents((current) => {
@@ -207,6 +235,36 @@ export function App() {
     try {
       const result = await invoke<OpenAiAuthStatus>("clear_openai_api_key");
       setAuthStatus(result);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
+  async function startCodexLogin() {
+    setError(null);
+    setCodexLoginStatus("starting");
+
+    try {
+      const result = await invoke<CodexLoginStart>("start_codex_login");
+      setCodexLogin(result);
+      setCodexLoginStatus("waiting");
+      const nextAuthStatus = await invoke<OpenAiAuthStatus>("get_openai_auth_status");
+      setAuthStatus(nextAuthStatus);
+    } catch (cause) {
+      setCodexLoginStatus("failed");
+      setError(errorMessage(cause));
+    }
+  }
+
+  async function refreshAuthStatus() {
+    setError(null);
+
+    try {
+      const result = await invoke<OpenAiAuthStatus>("get_openai_auth_status");
+      setAuthStatus(result);
+      if (result.source === "codex") {
+        setCodexLoginStatus("completed");
+      }
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -424,6 +482,12 @@ export function App() {
           {authStatus?.source === "codex" ? (
             <p className="muted">Run uses Codex CLI OAuth provider when no API key is saved.</p>
           ) : null}
+          {codexLogin ? (
+            <div className="code-box">
+              <span>Codex code</span>
+              <strong>{codexLogin.userCode}</strong>
+            </div>
+          ) : null}
           <input
             type="password"
             value={apiKeyInput}
@@ -431,6 +495,20 @@ export function App() {
             onChange={(event) => setApiKeyInput(event.target.value)}
           />
           <div className="button-row">
+            <button
+              type="button"
+              onClick={startCodexLogin}
+              disabled={codexLoginStatus === "starting" || codexLoginStatus === "waiting"}
+            >
+              {codexLoginStatus === "starting"
+                ? "Opening..."
+                : codexLoginStatus === "waiting"
+                  ? "Waiting..."
+                  : "Login with Codex"}
+            </button>
+            <button type="button" onClick={refreshAuthStatus}>
+              Refresh Auth
+            </button>
             <button type="button" onClick={saveApiKey} disabled={!apiKeyInput.trim()}>
               Save Key
             </button>

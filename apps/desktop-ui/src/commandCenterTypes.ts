@@ -23,6 +23,11 @@ export type OpenAiAuthStatus = {
   source: "keychain" | "environment" | "codex" | "missing";
 };
 
+export type CodexLoginStart = {
+  verificationUrl: string;
+  userCode: string;
+};
+
 export type SaveAgentRequest = AgentView;
 
 export type SaveWorkspaceRequest = {

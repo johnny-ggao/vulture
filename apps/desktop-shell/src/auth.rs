@@ -1,11 +1,16 @@
 #[cfg(test)]
 use std::sync::Mutex;
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command as StdCommand, time::Duration};
 
 use anyhow::{anyhow, Context, Result};
 use keyring::{Entry, Error as KeyringError};
 use serde::Serialize;
 use serde_json::Value;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
+    time::timeout,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +38,13 @@ pub enum AgentRuntimeAuth {
 #[serde(rename_all = "camelCase")]
 pub struct SetOpenAiApiKeyRequest {
     pub api_key: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLoginStart {
+    pub verification_url: String,
+    pub user_code: String,
 }
 
 pub trait SecretStore: Send + Sync {
@@ -189,7 +201,7 @@ pub fn codex_chatgpt_login_available() -> bool {
 }
 
 fn codex_login_status_reports_chatgpt() -> Result<bool> {
-    let output = Command::new("codex")
+    let output = StdCommand::new("codex")
         .args(["login", "status"])
         .output()
         .context("failed to run codex login status")?;
@@ -234,6 +246,118 @@ fn codex_auth_path() -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .ok_or_else(|| anyhow!("HOME is not set; cannot locate Codex auth"))?;
     Ok(PathBuf::from(home).join(".codex").join("auth.json"))
+}
+
+pub async fn start_codex_login() -> Result<CodexLoginStart> {
+    let mut child = Command::new("codex")
+        .args(["login", "--device-auth"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("failed to start Codex login. Ensure `codex` is installed and on PATH")?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .context("Codex login stdout was not available")?;
+    let mut lines = BufReader::new(stdout).lines();
+
+    let login = timeout(Duration::from_secs(8), async {
+        let mut verification_url = None;
+        let mut user_code = None;
+
+        while let Some(line) = lines
+            .next_line()
+            .await
+            .context("failed to read Codex login output")?
+        {
+            let line = strip_ansi(&line);
+            if verification_url.is_none() {
+                verification_url = find_verification_url(&line);
+            }
+            if user_code.is_none() {
+                user_code = find_user_code(&line);
+            }
+            if let (Some(verification_url), Some(user_code)) = (&verification_url, &user_code) {
+                return Ok(CodexLoginStart {
+                    verification_url: verification_url.clone(),
+                    user_code: user_code.clone(),
+                });
+            }
+        }
+
+        Err(anyhow!("Codex login did not provide a device code"))
+    })
+    .await
+    .map_err(|_| anyhow!("Timed out waiting for Codex device login code"))??;
+
+    open_url(&login.verification_url)?;
+    wait_for_codex_login_in_background(child, lines);
+
+    Ok(login)
+}
+
+fn wait_for_codex_login_in_background(
+    mut child: tokio::process::Child,
+    mut lines: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+) {
+    tokio::spawn(async move {
+        while let Ok(Some(_line)) = lines.next_line().await {}
+        let _ = child.wait().await;
+    });
+}
+
+fn open_url(url: &str) -> Result<()> {
+    let status = StdCommand::new("open")
+        .arg(url)
+        .status()
+        .context("failed to open Codex login URL")?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("failed to open Codex login URL"))
+    }
+}
+
+fn find_verification_url(line: &str) -> Option<String> {
+    line.split_whitespace()
+        .find(|part| part.starts_with("https://auth.openai.com/codex/device"))
+        .map(|part| part.trim_end_matches('.').to_string())
+}
+
+fn find_user_code(line: &str) -> Option<String> {
+    let candidate = line.trim();
+    if candidate.len() >= 8
+        && candidate.len() <= 16
+        && candidate.contains('-')
+        && candidate
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Some(candidate.to_string());
+    }
+
+    None
+}
+
+fn strip_ansi(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
+            let _ = chars.next();
+            for next in chars.by_ref() {
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        output.push(ch);
+    }
+
+    output
 }
 
 #[cfg(test)]
@@ -301,5 +425,20 @@ mod tests {
             .expect_err("missing key should fail");
 
         assert_eq!(error.to_string(), "OpenAI API key required.");
+    }
+
+    #[test]
+    fn parses_codex_device_login_output() {
+        let url_line = "   \u{1b}[94mhttps://auth.openai.com/codex/device\u{1b}[0m";
+        let code_line = "   \u{1b}[94m3GAR-Y26LD\u{1b}[0m";
+
+        assert_eq!(
+            find_verification_url(&strip_ansi(url_line)),
+            Some("https://auth.openai.com/codex/device".to_string())
+        );
+        assert_eq!(
+            find_user_code(&strip_ansi(code_line)),
+            Some("3GAR-Y26LD".to_string())
+        );
     }
 }

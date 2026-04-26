@@ -191,6 +191,26 @@ header {
   overflow-wrap: anywhere;
 }
 
+.code-box {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d9e0e5;
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 10px;
+}
+
+.code-box span {
+  color: #687782;
+  font-size: 12px;
+}
+
+.code-box strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
 pre {
   overflow: auto;
   margin: 8px 0 0;

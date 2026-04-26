@@ -3,7 +3,7 @@ use tauri::State;
 
 use crate::{
     agent_store::{AgentView, SaveAgentRequest},
-    auth::{OpenAiAuthStatus, SetOpenAiApiKeyRequest},
+    auth::{self, CodexLoginStart, OpenAiAuthStatus, SetOpenAiApiKeyRequest},
     sidecar,
     state::{AppState, ProfileView},
     workspace_store::SaveWorkspaceRequest,
@@ -102,6 +102,13 @@ pub fn set_openai_api_key(
 pub fn clear_openai_api_key(state: State<'_, AppState>) -> Result<OpenAiAuthStatus, String> {
     state
         .clear_openai_api_key()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn start_codex_login() -> Result<CodexLoginStart, String> {
+    auth::start_codex_login()
+        .await
         .map_err(|error| error.to_string())
 }
 
