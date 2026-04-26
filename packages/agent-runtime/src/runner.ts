@@ -1,0 +1,130 @@
+import type { RunEvent } from "@vulture/protocol/src/v1/run";
+import type { AppError } from "@vulture/protocol/src/v1/error";
+import { nowIso8601 } from "@vulture/protocol/src/v1/index";
+import {
+  runStarted,
+  textDelta,
+  toolPlanned,
+  toolStarted,
+  toolCompleted,
+  toolFailed,
+  runCompleted,
+  runFailed,
+} from "./events";
+
+export type LlmYield =
+  | { kind: "text.delta"; text: string }
+  | { kind: "tool.plan"; callId: string; tool: string; input: unknown }
+  | { kind: "await.tool"; callId: string }
+  | { kind: "final"; text: string };
+
+export type LlmCallable = (input: {
+  systemPrompt: string;
+  userInput: string;
+  model: string;
+}) => AsyncGenerator<LlmYield, void, unknown>;
+
+export type ToolCallable = (call: {
+  callId: string;
+  tool: string;
+  input: unknown;
+  runId: string;
+}) => Promise<unknown>;
+
+export interface RunConversationArgs {
+  runId: string;
+  agentId: string;
+  model: string;
+  systemPrompt: string;
+  userInput: string;
+  llm: LlmCallable;
+  tools: ToolCallable;
+  onEvent: (e: RunEvent) => void;
+}
+
+export interface RunConversationResult {
+  status: "succeeded" | "failed";
+  finalText: string;
+  error?: AppError;
+}
+
+export async function runConversation(
+  args: RunConversationArgs,
+): Promise<RunConversationResult> {
+  let nextSeq = 0;
+  const base = () => ({ runId: args.runId, seq: nextSeq++, createdAt: nowIso8601() });
+  const emit = (e: RunEvent) => args.onEvent(e);
+  emit(runStarted(base(), { agentId: args.agentId, model: args.model }));
+
+  // Track callId -> { tool, input } so await.tool can look up details
+  const pendingTools = new Map<string, { tool: string; input: unknown }>();
+
+  let assembled = "";
+  try {
+    const gen = args.llm({
+      systemPrompt: args.systemPrompt,
+      userInput: args.userInput,
+      model: args.model,
+    });
+
+    let next: IteratorResult<LlmYield, void> | null = await gen.next();
+    while (next && !next.done) {
+      const y = next.value;
+      switch (y.kind) {
+        case "text.delta":
+          assembled += y.text;
+          emit(textDelta(base(), { text: y.text }));
+          next = await gen.next();
+          break;
+        case "tool.plan":
+          pendingTools.set(y.callId, { tool: y.tool, input: y.input });
+          emit(toolPlanned(base(), { callId: y.callId, tool: y.tool, input: y.input }));
+          next = await gen.next();
+          break;
+        case "await.tool": {
+          emit(toolStarted(base(), { callId: y.callId }));
+          const planned = pendingTools.get(y.callId);
+          let result: unknown;
+          try {
+            result = await args.tools({
+              callId: y.callId,
+              tool: planned?.tool ?? "(unknown)",
+              input: planned?.input ?? undefined,
+              runId: args.runId,
+            });
+            emit(toolCompleted(base(), { callId: y.callId, output: result }));
+          } catch (err) {
+            const error: AppError = {
+              code: "tool.execution_failed",
+              message: err instanceof Error ? err.message : String(err),
+            };
+            emit(toolFailed(base(), { callId: y.callId, error }));
+            throw err;
+          }
+          pendingTools.delete(y.callId);
+          next = await gen.next(result);
+          break;
+        }
+        case "final":
+          assembled = y.text;
+          next = null;
+          break;
+      }
+    }
+
+    emit(
+      runCompleted(base(), {
+        resultMessageId: "pending",
+        finalText: assembled,
+      }),
+    );
+    return { status: "succeeded", finalText: assembled };
+  } catch (err) {
+    const error: AppError = {
+      code: "internal",
+      message: err instanceof Error ? err.message : String(err),
+    };
+    emit(runFailed(base(), { error }));
+    return { status: "failed", finalText: assembled, error };
+  }
+}
