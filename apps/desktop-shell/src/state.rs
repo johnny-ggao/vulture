@@ -13,14 +13,12 @@ use vulture_core::{AppPaths, Profile, RuntimeDescriptor, StorageLayout};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
 use crate::{
-    agent_store::{AgentStore, AgentView, SaveAgentRequest},
     auth::{
         auth_status, resolve_agent_runtime_auth, resolve_openai_api_key, AgentRuntimeAuth,
         KeychainSecretStore, OpenAiAuthStatus, SecretStore, SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
     supervisor::SupervisorStatus,
-    workspace_store::{SaveWorkspaceRequest, WorkspaceStore},
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -118,37 +116,6 @@ impl AppState {
         &self.profile
     }
 
-    pub fn list_agents(&self) -> Result<Vec<AgentView>> {
-        self.agent_store().list()
-    }
-
-    pub fn get_agent(&self, id: &str) -> Result<AgentView> {
-        self.agent_store().load(id)
-    }
-
-    pub fn save_agent(&self, request: SaveAgentRequest) -> Result<AgentView> {
-        self.agent_store().save(request)
-    }
-
-    pub fn delete_agent(&self, id: &str) -> Result<()> {
-        self.agent_store().delete(id)
-    }
-
-    pub fn list_workspaces(&self) -> Result<Vec<vulture_core::WorkspaceDefinition>> {
-        self.workspace_store().list()
-    }
-
-    pub fn save_workspace(
-        &self,
-        request: SaveWorkspaceRequest,
-    ) -> Result<vulture_core::WorkspaceDefinition> {
-        self.workspace_store().save(request)
-    }
-
-    pub fn delete_workspace(&self, id: &str) -> Result<()> {
-        self.workspace_store().delete(id)
-    }
-
     pub fn openai_auth_status(&self) -> Result<OpenAiAuthStatus> {
         auth_status(self.secret_store.as_ref(), &self.openai_secret_ref)
     }
@@ -221,13 +188,6 @@ impl AppState {
             .map_err(|_| anyhow!("browser relay lock poisoned"))
     }
 
-    fn agent_store(&self) -> AgentStore {
-        AgentStore::new(&self.profile_dir)
-    }
-
-    fn workspace_store(&self) -> WorkspaceStore {
-        WorkspaceStore::new(&self.profile_dir)
-    }
 }
 
 impl AppState {
@@ -329,50 +289,9 @@ mod tests {
         fs::remove_dir_all(root).expect("test root should be removable");
     }
 
-    #[test]
-    fn persists_agents_and_workspaces_under_profile_dir() {
-        let root = temp_root();
-        let workspace_path = root.join("workspace");
-        fs::create_dir_all(&workspace_path).expect("workspace path should be created");
-        let state =
-            AppState::new_for_root_with_secret_store(&root, Box::new(MemorySecretStore::default()))
-                .expect("app state should initialize");
-
-        let agent = state
-            .save_agent(SaveAgentRequest {
-                id: "coder".to_string(),
-                name: "Coder".to_string(),
-                description: "Writes code".to_string(),
-                model: "gpt-5.4".to_string(),
-                reasoning: "medium".to_string(),
-                tools: vec!["shell.exec".to_string()],
-                workspace: None,
-                instructions: "Write code carefully.".to_string(),
-            })
-            .expect("agent should save");
-        let workspace = state
-            .save_workspace(SaveWorkspaceRequest {
-                id: "local".to_string(),
-                name: "Local".to_string(),
-                path: workspace_path.to_string_lossy().to_string(),
-            })
-            .expect("workspace should save");
-
-        assert_eq!(
-            state.get_agent(&agent.id).expect("agent should load").id,
-            "coder"
-        );
-        assert_eq!(workspace.id, "local");
-        assert_eq!(
-            state
-                .list_workspaces()
-                .expect("workspaces should list")
-                .len(),
-            1
-        );
-
-        fs::remove_dir_all(root).expect("test root should be removable");
-    }
+    // NOTE: persists_agents_and_workspaces_under_profile_dir was removed —
+    // agent + workspace storage moved to the gateway in Phase 2 and is now
+    // exercised by gateway/src/domain/{agent,workspace}Store.test.ts.
 
     #[test]
     fn stores_openai_api_key_in_secret_store() {

@@ -1,5 +1,4 @@
 mod agent_pack;
-mod agent_store;
 mod auth;
 mod browser;
 mod commands;
@@ -10,7 +9,6 @@ mod single_instance;
 mod state;
 mod supervisor;
 mod tool_callback;
-mod workspace_store;
 
 use std::{path::PathBuf, time::Duration};
 
@@ -101,23 +99,18 @@ async fn main() -> Result<()> {
     let app = tauri::Builder::default()
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
+            // Run path (Phase 3 will delete sidecar.rs and these too):
             commands::start_mock_run,
             commands::start_agent_run,
-            commands::get_profile,
-            commands::list_agents,
-            commands::get_agent,
-            commands::save_agent,
-            commands::delete_agent,
-            commands::list_workspaces,
-            commands::save_workspace,
-            commands::delete_workspace,
+            // Auth (system-level, stays in shell):
             commands::get_openai_auth_status,
             commands::set_openai_api_key,
             commands::clear_openai_api_key,
             commands::start_codex_login,
+            // Browser pairing (system-level):
             commands::get_browser_status,
             commands::start_browser_pairing,
-            // Phase 1 additions:
+            // Runtime + supervisor introspection:
             commands::get_runtime_info,
             commands::open_log_dir,
             commands::open_profile_dir,
