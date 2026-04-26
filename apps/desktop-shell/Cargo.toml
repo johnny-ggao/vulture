@@ -16,3 +16,6 @@ tokio.workspace = true
 uuid.workspace = true
 vulture-core = { path = "../../crates/core" }
 vulture-tool-gateway = { path = "../../crates/tool-gateway" }
+
+[dev-dependencies]
+rusqlite.workspace = true

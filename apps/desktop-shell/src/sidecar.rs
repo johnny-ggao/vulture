@@ -150,6 +150,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    use rusqlite::Connection;
     use serde_json::json;
 
     use crate::state::AppState;
@@ -238,6 +239,65 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0]["type"], "run_completed");
         assert!(audit_path.is_file());
+
+        fs::remove_dir_all(root).expect("test root should be removable");
+    }
+
+    #[test]
+    fn audits_browser_tool_requests_through_policy() {
+        let root = temp_root();
+        let state = AppState::new_for_root(&root).expect("app state should initialize");
+        let audit_path = root.join("profiles/default/permissions/audit.sqlite");
+        let stdout = [
+            json!({
+                "method": "tool.request",
+                "params": {
+                    "runId": "run_browser",
+                    "tool": "browser.snapshot",
+                    "input": { "tabId": 1 }
+                }
+            })
+            .to_string(),
+            json!({
+                "id": "desktop-mock-run",
+                "result": {
+                    "events": [
+                        {
+                            "runId": "run_browser",
+                            "type": "run_completed",
+                            "payload": { "finalOutput": "done" },
+                            "createdAt": "2026-04-26T00:00:00.000Z"
+                        }
+                    ]
+                }
+            })
+            .to_string(),
+        ]
+        .join("\n");
+
+        let events = events_from_stdout(&stdout, &state).expect("events should be returned");
+        drop(state);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["runId"], "run_browser");
+
+        let conn = Connection::open(&audit_path).expect("audit db should open");
+        let policy_payload: String = conn
+            .query_row(
+                "SELECT payload FROM audit_events WHERE event_type = 'tool.policy_decision' ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("policy decision event should be persisted");
+        let policy_payload: serde_json::Value =
+            serde_json::from_str(&policy_payload).expect("policy payload should parse");
+
+        assert_eq!(policy_payload["runId"], "run_browser");
+        assert_eq!(policy_payload["tool"], "browser.snapshot");
+        assert_eq!(
+            policy_payload["decision"],
+            json!({ "Ask": { "reason": "browser.snapshot requires browser approval" } })
+        );
 
         fs::remove_dir_all(root).expect("test root should be removable");
     }

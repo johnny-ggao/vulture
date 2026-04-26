@@ -50,7 +50,16 @@ export const ToolName = z.enum([
   "file.write",
   "shell.exec",
   "terminal.pty",
-  "browser.control",
+  "browser.open",
+  "browser.attach",
+  "browser.snapshot",
+  "browser.click",
+  "browser.input",
+  "browser.scroll",
+  "browser.keypress",
+  "browser.extract",
+  "browser.close_agent_tabs",
+  "browser.forward_cdp_limited",
   "mcp.invoke",
 ]);
 

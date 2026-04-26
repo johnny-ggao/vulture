@@ -32,6 +32,28 @@ describe("protocol schemas", () => {
     expect(parsed.tool).toBe("shell.exec");
   });
 
+  test("validates specific browser tool requests", () => {
+    for (const tool of ["browser.snapshot", "browser.click"] as const) {
+      const parsed = ToolRequestParams.parse({
+        runId: "run_1",
+        tool,
+        input: { tabId: 1 },
+      });
+
+      expect(parsed.tool).toBe(tool);
+    }
+  });
+
+  test("rejects raw browser control alias", () => {
+    expect(() =>
+      ToolRequestParams.parse({
+        runId: "run_1",
+        tool: "browser.control",
+        input: {},
+      }),
+    ).toThrow();
+  });
+
   test("rejects git tool requests without a suffix", () => {
     expect(() =>
       ToolRequestParams.parse({
