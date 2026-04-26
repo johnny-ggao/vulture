@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Vulture",
+  "version": "0.1.0",
+  "identifier": "dev.vulture.desktop",
+  "build": {
+    "beforeDevCommand": "bun --filter @vulture/desktop-ui dev",
+    "beforeBuildCommand": "bun --filter @vulture/desktop-ui build",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../desktop-ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Vulture",
+        "width": 1200,
+        "height": 780
+      }
+    ]
+  }
+}
