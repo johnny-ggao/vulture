@@ -1,8 +1,10 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard, RwLock},
+    sync::{Arc, Mutex, MutexGuard, RwLock},
 };
+
+use tokio::sync::Notify;
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
@@ -41,6 +43,7 @@ pub struct AppState {
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
     #[allow(dead_code)]
     supervisor_status: RwLock<SupervisorStatus>,
+    restart_signal: Arc<Notify>,
 }
 
 impl AppState {
@@ -100,6 +103,7 @@ impl AppState {
                 state: crate::supervisor::SupervisorState::Starting,
                 gateway_log: None,
             }),
+            restart_signal: Arc::new(Notify::new()),
         })
     }
 
@@ -245,9 +249,11 @@ impl AppState {
     }
 
     pub fn request_supervisor_restart(&self) {
-        // Phase 1 placeholder. The actual restart loop (Task 23) wires a watch/notify
-        // channel; for now this is a no-op so the Tauri command compiles and the UI
-        // wiring can be tested.
+        self.restart_signal.notify_one();
+    }
+
+    pub fn restart_signal(&self) -> Arc<Notify> {
+        self.restart_signal.clone()
     }
 }
 

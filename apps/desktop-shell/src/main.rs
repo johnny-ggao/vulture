@@ -62,8 +62,7 @@ async fn main() -> Result<()> {
         .context("failed to initialize Vulture desktop state")?;
     app_state.set_runtime_descriptor(descriptor.clone());
 
-    // 6. Spawn Bun gateway as a background task.
-    //    Phase 1: no restart loop. Task 23 wires that.
+    // 6. Spawn Bun gateway as a background task with restart loop.
     let spawn_spec = supervisor::SpawnSpec {
         bun_bin: PathBuf::from("bun"),
         gateway_entry: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -80,18 +79,41 @@ async fn main() -> Result<()> {
         shell_pid: std::process::id(),
         profile_dir: root.join("profiles").join("default"),
     };
+    let restart_signal = app_state.restart_signal();
     let _supervisor_handle = tokio::spawn(async move {
-        match supervisor::spawn_gateway(&spawn_spec).await {
-            Ok(running) => {
-                eprintln!(
-                    "[supervisor] gateway running on port {}",
-                    running.reported_port
-                );
-                let _ = running.child.wait_with_output().await;
-                eprintln!("[supervisor] gateway exited");
+        let mut tracker = supervisor::RestartTracker::new();
+        loop {
+            match supervisor::spawn_gateway(&spawn_spec).await {
+                Ok(running) => {
+                    eprintln!(
+                        "[supervisor] gateway READY on {}",
+                        running.reported_port
+                    );
+                    tracker = supervisor::RestartTracker::new();
+                    let exit_status = running.child.wait_with_output().await;
+                    eprintln!("[supervisor] gateway exited: {:?}", exit_status);
+                }
+                Err(err) => {
+                    eprintln!("[supervisor] spawn failed: {err:#}");
+                }
             }
-            Err(e) => {
-                eprintln!("[supervisor] failed to spawn gateway: {e:#}");
+
+            tracker.record_failure(std::time::Instant::now());
+            if tracker.should_give_up() {
+                eprintln!(
+                    "[supervisor] FAULTED after {} attempts",
+                    tracker.attempts()
+                );
+                break;
+            }
+            let backoff = tracker
+                .next_backoff()
+                .expect("not give-up implies Some backoff");
+            tokio::select! {
+                _ = tokio::time::sleep(backoff) => {}
+                _ = restart_signal.notified() => {
+                    tracker = supervisor::RestartTracker::new();
+                }
             }
         }
     });
