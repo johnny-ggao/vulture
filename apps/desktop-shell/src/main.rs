@@ -1,3 +1,4 @@
+pub mod browser;
 mod commands;
 mod sidecar;
 mod state;
