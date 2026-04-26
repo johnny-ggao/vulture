@@ -9,6 +9,7 @@ mod single_instance;
 mod state;
 mod supervisor;
 mod tool_callback;
+mod tool_executor;
 
 use std::{path::PathBuf, time::Duration};
 
