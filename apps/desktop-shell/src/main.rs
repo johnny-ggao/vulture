@@ -15,6 +15,7 @@ fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::start_mock_run,
+            commands::start_agent_run,
             commands::get_profile,
             commands::list_agents,
             commands::get_agent,

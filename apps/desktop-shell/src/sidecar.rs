@@ -1,31 +1,23 @@
 use std::{path::PathBuf, process::Stdio};
 
 use anyhow::{anyhow, bail, Context, Result};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::{io::AsyncWriteExt, process::Command};
+use vulture_core::WorkspaceDefinition;
 use vulture_tool_gateway::ToolRequest;
 
-use crate::state::AppState;
+use crate::{agent_store::AgentView, state::AppState};
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartAgentRunRequest {
+    pub agent_id: String,
+    pub workspace_id: String,
+    pub input: String,
+}
 
 pub async fn start_mock_run(input: String, state: &AppState) -> Result<Vec<Value>> {
-    let repo_root = repo_root();
-    let sidecar_path = repo_root.join("apps/agent-sidecar/src/main.ts");
-
-    let mut child = Command::new("bun")
-        .arg(&sidecar_path)
-        .current_dir(&repo_root)
-        .env("VULTURE_AGENT_MODE", "mock")
-        .env("VULTURE_MOCK_TOOL_REQUEST", "1")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .with_context(|| format!("failed to start sidecar at {}", sidecar_path.display()))?;
-
-    let mut stdin = child
-        .stdin
-        .take()
-        .context("sidecar stdin was not available")?;
     let request = json!({
         "id": "desktop-mock-run",
         "method": "run.create",
@@ -37,6 +29,73 @@ pub async fn start_mock_run(input: String, state: &AppState) -> Result<Vec<Value
         }
     });
 
+    run_sidecar(
+        request,
+        None,
+        &[
+            ("VULTURE_AGENT_MODE", "mock"),
+            ("VULTURE_MOCK_TOOL_REQUEST", "1"),
+        ],
+        state,
+    )
+    .await
+}
+
+pub async fn start_agent_run(
+    request: StartAgentRunRequest,
+    state: &AppState,
+) -> Result<Vec<Value>> {
+    let openai_api_key = state.resolve_openai_api_key()?;
+    let agent = state.get_agent(&request.agent_id)?;
+    let workspace = state
+        .list_workspaces()?
+        .into_iter()
+        .find(|workspace| workspace.id == request.workspace_id)
+        .ok_or_else(|| anyhow!("workspace {} not found", request.workspace_id))?;
+    let run_request = build_run_create_request(
+        "desktop-agent-run",
+        state.profile().id.as_str(),
+        request.input.as_str(),
+        &agent,
+        &workspace,
+    );
+
+    run_sidecar(run_request, Some(openai_api_key), &[], state).await
+}
+
+async fn run_sidecar(
+    request: Value,
+    openai_api_key: Option<String>,
+    env: &[(&str, &str)],
+    state: &AppState,
+) -> Result<Vec<Value>> {
+    let repo_root = repo_root();
+    let sidecar_path = repo_root.join("apps/agent-sidecar/src/main.ts");
+
+    let mut command = Command::new("bun");
+    command
+        .arg(&sidecar_path)
+        .current_dir(&repo_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    if let Some(api_key) = openai_api_key {
+        command.env("OPENAI_API_KEY", api_key);
+    }
+
+    for (key, value) in env {
+        command.env(key, value);
+    }
+
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed to start sidecar at {}", sidecar_path.display()))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("sidecar stdin was not available")?;
     stdin
         .write_all(format!("{request}\n").as_bytes())
         .await
@@ -63,6 +122,36 @@ pub async fn start_mock_run(input: String, state: &AppState) -> Result<Vec<Value
     }
 
     events_from_stdout(&stdout_text, state)
+}
+
+fn build_run_create_request(
+    id: &str,
+    profile_id: &str,
+    input: &str,
+    agent: &AgentView,
+    workspace: &WorkspaceDefinition,
+) -> Value {
+    json!({
+        "id": id,
+        "method": "run.create",
+        "params": {
+            "profileId": profile_id,
+            "workspaceId": workspace.id,
+            "agentId": agent.id,
+            "input": input,
+            "agent": {
+                "id": agent.id,
+                "name": agent.name,
+                "instructions": agent.instructions,
+                "model": agent.model,
+                "tools": agent.tools,
+            },
+            "workspace": {
+                "id": workspace.id,
+                "path": workspace.path,
+            }
+        }
+    })
 }
 
 fn repo_root() -> PathBuf {
@@ -150,12 +239,19 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    use chrono::Utc;
     use rusqlite::Connection;
     use serde_json::json;
+    use vulture_core::WorkspaceDefinition;
 
+    use crate::agent_store::AgentView;
+    use crate::auth::MemorySecretStore;
     use crate::state::AppState;
 
-    use super::{events_from_response, events_from_stdout, first_stdout_line};
+    use super::{
+        build_run_create_request, events_from_response, events_from_stdout, first_stdout_line,
+        start_agent_run, StartAgentRunRequest,
+    };
 
     #[test]
     fn extracts_events_from_success_response() {
@@ -188,6 +284,72 @@ mod tests {
             line,
             Some("{\"id\":\"desktop-mock-run\",\"result\":{\"events\":[]}}")
         );
+    }
+
+    #[test]
+    fn agent_run_request_contains_agent_and_workspace_snapshots() {
+        let agent = AgentView {
+            id: "coder".to_string(),
+            name: "Coder".to_string(),
+            description: "Writes code".to_string(),
+            model: "gpt-5.4".to_string(),
+            reasoning: "medium".to_string(),
+            tools: vec!["shell.exec".to_string(), "browser.snapshot".to_string()],
+            instructions: "Write code carefully.".to_string(),
+        };
+        let workspace = WorkspaceDefinition::new(
+            "vulture".to_string(),
+            "Vulture".to_string(),
+            "/Users/johnny/Work/vulture".to_string(),
+            Utc::now(),
+        );
+
+        let request = build_run_create_request(
+            "desktop-agent-run",
+            "default",
+            "summarize the repo",
+            &agent,
+            &workspace,
+        );
+
+        assert_eq!(request["method"], "run.create");
+        assert_eq!(request["params"]["profileId"], "default");
+        assert_eq!(request["params"]["workspaceId"], "vulture");
+        assert_eq!(request["params"]["agentId"], "coder");
+        assert_eq!(
+            request["params"]["agent"]["instructions"],
+            "Write code carefully."
+        );
+        assert_eq!(
+            request["params"]["agent"]["tools"],
+            json!(["shell.exec", "browser.snapshot"])
+        );
+        assert_eq!(
+            request["params"]["workspace"],
+            json!({ "id": "vulture", "path": "/Users/johnny/Work/vulture" })
+        );
+    }
+
+    #[tokio::test]
+    async fn real_agent_run_requires_openai_api_key_before_launching_sidecar() {
+        let root = temp_root();
+        let state =
+            AppState::new_for_root_with_secret_store(&root, Box::new(MemorySecretStore::default()))
+                .expect("app state should initialize");
+
+        let error = start_agent_run(
+            StartAgentRunRequest {
+                agent_id: "local-work-agent".to_string(),
+                workspace_id: "local".to_string(),
+                input: "hello".to_string(),
+            },
+            &state,
+        )
+        .await
+        .expect_err("missing api key should fail");
+
+        assert_eq!(error.to_string(), "OpenAI API key required.");
+        fs::remove_dir_all(root).expect("test root should be removable");
     }
 
     fn temp_root() -> PathBuf {

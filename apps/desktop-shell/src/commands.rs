@@ -20,6 +20,16 @@ pub async fn start_mock_run(
 }
 
 #[tauri::command]
+pub async fn start_agent_run(
+    state: State<'_, AppState>,
+    request: sidecar::StartAgentRunRequest,
+) -> Result<Vec<Value>, String> {
+    sidecar::start_agent_run(request, state.inner())
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn get_profile(state: State<'_, AppState>) -> ProfileView {
     state.profile().clone()
 }
