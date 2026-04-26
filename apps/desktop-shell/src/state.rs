@@ -39,11 +39,17 @@ pub struct AppState {
     policy_engine: PolicyEngine,
     audit_store: Mutex<AuditStore>,
     browser_relay: Mutex<BrowserRelayState>,
-    #[allow(dead_code)]
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
-    #[allow(dead_code)]
-    supervisor_status: RwLock<SupervisorStatus>,
+    /// Shared with the supervisor task so the loop can publish state transitions
+    /// (Starting → Running → Restarting → Faulted) that the UI reads via the
+    /// `get_supervisor_status` Tauri command.
+    supervisor_status: Arc<RwLock<SupervisorStatus>>,
+    /// Notified by the `restart_gateway` command to wake the supervisor loop
+    /// from its backoff sleep.
     restart_signal: Arc<Notify>,
+    /// Notified on Tauri exit so the supervisor loop can SIGTERM the gateway
+    /// and unwind cleanly before the process exits.
+    shutdown_signal: Arc<Notify>,
 }
 
 impl AppState {
@@ -99,11 +105,12 @@ impl AppState {
             audit_store: Mutex::new(audit_store),
             browser_relay: Mutex::new(BrowserRelayState::default()),
             runtime_descriptor: RwLock::new(None),
-            supervisor_status: RwLock::new(SupervisorStatus {
+            supervisor_status: Arc::new(RwLock::new(SupervisorStatus {
                 state: crate::supervisor::SupervisorState::Starting,
                 gateway_log: None,
-            }),
+            })),
             restart_signal: Arc::new(Notify::new()),
+            shutdown_signal: Arc::new(Notify::new()),
         })
     }
 
@@ -224,24 +231,22 @@ impl AppState {
 }
 
 impl AppState {
-    #[allow(dead_code)]
     pub fn set_runtime_descriptor(&self, descriptor: RuntimeDescriptor) {
         *self.runtime_descriptor.write().expect("rt lock poisoned") = Some(descriptor);
     }
 
-    #[allow(dead_code)]
     pub fn runtime_descriptor(&self) -> Option<RuntimeDescriptor> {
         self.runtime_descriptor.read().expect("rt lock poisoned").clone()
     }
 
-    #[allow(dead_code)]
-    pub fn set_supervisor_status(&self, status: SupervisorStatus) {
-        *self.supervisor_status.write().expect("sup lock poisoned") = status;
-    }
-
-    #[allow(dead_code)]
     pub fn supervisor_status(&self) -> SupervisorStatus {
         self.supervisor_status.read().expect("sup lock poisoned").clone()
+    }
+
+    /// Hand the supervisor task a write handle to the status so it can publish
+    /// state transitions without going through `&AppState`.
+    pub fn supervisor_status_handle(&self) -> Arc<RwLock<SupervisorStatus>> {
+        self.supervisor_status.clone()
     }
 
     pub fn profile_dir(&self) -> PathBuf {
@@ -254,6 +259,10 @@ impl AppState {
 
     pub fn restart_signal(&self) -> Arc<Notify> {
         self.restart_signal.clone()
+    }
+
+    pub fn shutdown_signal(&self) -> Arc<Notify> {
+        self.shutdown_signal.clone()
     }
 }
 

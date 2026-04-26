@@ -1,23 +1,33 @@
-use std::time::{Duration, Instant};
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    time::{Duration, Instant},
+};
 
+use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::{Child, Command},
+    time::{timeout, Duration as TokioDuration},
+};
 
-#[allow(dead_code)]
 pub const RESTART_BACKOFF_MS: &[u64] = &[200, 1_000, 5_000, 30_000];
-#[allow(dead_code)]
 pub const MAX_RESTART_ATTEMPTS: u32 = 4;
-#[allow(dead_code)]
 pub const HEALTHY_RESET_AFTER: Duration = Duration::from_secs(600);
+const READY_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum SupervisorState {
     Starting,
-    Running { since_ms: u128, pid: u32 },
+    Running {
+        since: String,
+        pid: u32,
+    },
     Restarting {
         attempt: u32,
-        next_retry_ms: u128,
+        next_retry_at: String,
         last_error: String,
     },
     Faulted {
@@ -28,7 +38,6 @@ pub enum SupervisorState {
     Stopping,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SupervisorStatus {
@@ -36,17 +45,15 @@ pub struct SupervisorStatus {
     pub gateway_log: Option<String>,
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RestartTracker {
     attempts: u32,
     last_restart_at: Option<Instant>,
 }
 
-#[allow(dead_code)]
 impl RestartTracker {
     pub fn new() -> Self {
-        Self { attempts: 0, last_restart_at: None }
+        Self::default()
     }
 
     pub fn attempts(&self) -> u32 {
@@ -77,25 +84,6 @@ impl RestartTracker {
     }
 }
 
-impl Default for RestartTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-use std::{
-    path::PathBuf,
-    process::Stdio,
-};
-
-use anyhow::{anyhow, Context, Result};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::{Child, Command},
-    time::{timeout, Duration as TokioDuration},
-};
-
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct SpawnSpec {
     pub bun_bin: PathBuf,
@@ -108,17 +96,12 @@ pub struct SpawnSpec {
     pub profile_dir: PathBuf,
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct RunningGateway {
     pub child: Child,
     pub reported_port: u16,
 }
 
-#[allow(dead_code)]
-const READY_TIMEOUT: TokioDuration = TokioDuration::from_secs(5);
-
-#[allow(dead_code)]
 pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
     let mut cmd = Command::new(&spec.bun_bin);
     cmd.arg(&spec.gateway_entry)
@@ -164,20 +147,18 @@ pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
     })
 }
 
-#[allow(dead_code)]
-pub async fn shutdown_gateway(mut running: RunningGateway) -> Result<()> {
-    if let Some(pid) = running.child.id() {
-        // SIGTERM: graceful shutdown on Unix
+/// Send SIGTERM to the gateway PID and wait up to 5s for graceful exit;
+/// SIGKILL fallback. The caller already holds the [`Child`] handle and is
+/// responsible for awaiting it after this returns. This helper just sends
+/// the signals — it does not consume the child.
+pub async fn signal_gateway_shutdown(child: &mut Child) {
+    if let Some(pid) = child.id() {
+        // SIGTERM: graceful shutdown on Unix.
         unsafe { libc::kill(pid as i32, libc::SIGTERM) };
     }
-    let waited = timeout(TokioDuration::from_secs(5), running.child.wait()).await;
-    match waited {
-        Ok(Ok(_)) => Ok(()),
-        Ok(Err(e)) => Err(e.into()),
-        Err(_) => {
-            running.child.kill().await.ok();
-            Ok(())
-        }
+    if timeout(TokioDuration::from_secs(5), child.wait()).await.is_err() {
+        // Graceful window elapsed — SIGKILL.
+        let _ = child.kill().await;
     }
 }
 
@@ -236,9 +217,9 @@ mod tests {
             profile_dir: dir.clone(),
         };
 
-        let running = spawn_gateway(&spec).await.expect("spawn ready");
+        let mut running = spawn_gateway(&spec).await.expect("spawn ready");
         assert_eq!(running.reported_port, 12345);
-        shutdown_gateway(running).await.unwrap();
+        signal_gateway_shutdown(&mut running.child).await;
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -273,10 +254,7 @@ mod tests {
         let p = std::env::temp_dir().join(format!(
             "vulture-supervisor-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&p).unwrap();
         p
