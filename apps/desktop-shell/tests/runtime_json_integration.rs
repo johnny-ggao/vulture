@@ -8,10 +8,7 @@ fn write_then_read_round_trip_preserves_mode_0600() {
     let dir = std::env::temp_dir().join(format!(
         "vulture-it-{}-{}",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
+        uuid::Uuid::new_v4()
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("runtime.json");

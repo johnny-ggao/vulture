@@ -384,11 +384,7 @@ fn first_stdout_line(stdout: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::{fs, path::PathBuf};
 
     use chrono::Utc;
     use rusqlite::Connection;
@@ -486,14 +482,10 @@ mod tests {
     }
 
     fn temp_root() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
-            .as_nanos();
-
         std::env::temp_dir().join(format!(
-            "vulture-desktop-sidecar-test-{}-{nonce}",
-            std::process::id()
+            "vulture-desktop-sidecar-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
         ))
     }
 

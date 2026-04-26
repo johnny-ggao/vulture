@@ -75,18 +75,15 @@ impl WorkspaceStore {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     use super::*;
 
     fn temp_profile_dir() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
-            .as_nanos();
         std::env::temp_dir().join(format!(
-            "vulture-workspace-store-test-{}-{nonce}",
-            std::process::id()
+            "vulture-workspace-store-test-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
         ))
     }
 
