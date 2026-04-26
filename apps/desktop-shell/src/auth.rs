@@ -29,6 +29,7 @@ pub enum AuthSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum AgentRuntimeAuth {
     ApiKey(String),
     Codex,
@@ -188,6 +189,7 @@ fn resolve_openai_api_key_with_env(
     Err(anyhow!("OpenAI API key required."))
 }
 
+#[allow(dead_code)]
 pub fn resolve_agent_runtime_auth(
     secret_store: &dyn SecretStore,
     secret_ref: &str,

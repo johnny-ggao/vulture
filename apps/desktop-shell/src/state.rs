@@ -30,11 +30,14 @@ pub struct ProfileView {
 }
 
 pub struct AppState {
+    #[allow(dead_code)]
     profile: ProfileView,
     profile_dir: PathBuf,
     openai_secret_ref: String,
     secret_store: Box<dyn SecretStore>,
+    #[allow(dead_code)]
     policy_engine: PolicyEngine,
+    #[allow(dead_code)]
     audit_store: Mutex<AuditStore>,
     browser_relay: Mutex<BrowserRelayState>,
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
@@ -112,6 +115,7 @@ impl AppState {
         })
     }
 
+    #[allow(dead_code)]
     pub fn profile(&self) -> &ProfileView {
         &self.profile
     }
@@ -140,10 +144,12 @@ impl AppState {
         resolve_openai_api_key(self.secret_store.as_ref(), &self.openai_secret_ref)
     }
 
+    #[allow(dead_code)]
     pub fn resolve_agent_runtime_auth(&self) -> Result<AgentRuntimeAuth> {
         resolve_agent_runtime_auth(self.secret_store.as_ref(), &self.openai_secret_ref)
     }
 
+    #[allow(dead_code)]
     pub fn decide_tool_request(&self, request: &ToolRequest) -> Result<PolicyDecision> {
         self.audit_store()?.append(
             "tool.requested",
@@ -176,6 +182,7 @@ impl AppState {
         self.browser_relay()?.enable_pairing(38421)
     }
 
+    #[allow(dead_code)]
     fn audit_store(&self) -> Result<MutexGuard<'_, AuditStore>> {
         self.audit_store
             .lock()
@@ -199,6 +206,7 @@ impl AppState {
         self.runtime_descriptor.read().expect("rt lock poisoned").clone()
     }
 
+    #[allow(dead_code)]
     pub fn gateway_client(&self) -> anyhow::Result<crate::gateway_client::GatewayClient> {
         let rt = self
             .runtime_descriptor()

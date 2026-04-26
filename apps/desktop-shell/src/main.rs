@@ -1,10 +1,8 @@
-mod agent_pack;
 mod auth;
 mod browser;
 mod commands;
 mod gateway_client;
 mod runtime;
-mod sidecar;
 mod single_instance;
 mod state;
 mod supervisor;
@@ -100,9 +98,6 @@ async fn main() -> Result<()> {
     let app = tauri::Builder::default()
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
-            // Run path (Phase 3 will delete sidecar.rs and these too):
-            commands::start_mock_run,
-            commands::start_agent_run,
             // Auth (system-level, stays in shell):
             commands::get_openai_auth_status,
             commands::set_openai_api_key,

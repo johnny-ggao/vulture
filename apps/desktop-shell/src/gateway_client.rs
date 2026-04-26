@@ -2,9 +2,9 @@ use anyhow::{anyhow, Context, Result};
 use serde::de::DeserializeOwned;
 use vulture_core::RuntimeDescriptor;
 
-/// Thin HTTP client for the local Bun gateway. Phase 2 only needs read paths
-/// from the legacy sidecar; full coverage comes when sidecar is deleted in
-/// Phase 3.
+/// Thin HTTP client for the local Bun gateway. Phase 3b will wire this into
+/// the UI run path; until then the struct is intentionally unused.
+#[allow(dead_code)]
 pub struct GatewayClient {
     base: String,
     token: String,
@@ -12,6 +12,7 @@ pub struct GatewayClient {
 }
 
 impl GatewayClient {
+    #[allow(dead_code)]
     pub fn from_runtime(rt: &RuntimeDescriptor) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
@@ -24,6 +25,7 @@ impl GatewayClient {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let url = format!("{}{}", self.base, path);
         let resp = self

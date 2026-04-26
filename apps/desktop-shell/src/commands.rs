@@ -1,32 +1,10 @@
-use serde_json::Value;
 use tauri::State;
 use vulture_core::RuntimeDescriptor;
 
 use crate::{
     auth::{self, CodexLoginRequest, CodexLoginStart, OpenAiAuthStatus, SetOpenAiApiKeyRequest},
-    sidecar,
     state::AppState,
 };
-
-#[tauri::command]
-pub async fn start_mock_run(
-    state: State<'_, AppState>,
-    input: String,
-) -> Result<Vec<Value>, String> {
-    sidecar::start_mock_run(input, state.inner())
-        .await
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-pub async fn start_agent_run(
-    state: State<'_, AppState>,
-    request: sidecar::StartAgentRunRequest,
-) -> Result<Vec<Value>, String> {
-    sidecar::start_agent_run(request, state.inner())
-        .await
-        .map_err(|error| error.to_string())
-}
 
 #[tauri::command]
 pub fn get_openai_auth_status(state: State<'_, AppState>) -> Result<OpenAiAuthStatus, String> {
