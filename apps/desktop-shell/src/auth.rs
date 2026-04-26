@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf, process::Command as StdCommand, time::Duration};
 
 use anyhow::{anyhow, Context, Result};
 use keyring::{Entry, Error as KeyringError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -46,6 +46,13 @@ pub struct CodexLoginStart {
     pub verification_url: String,
     pub user_code: String,
     pub already_authenticated: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexLoginRequest {
+    #[serde(default)]
+    pub force_reauth: bool,
 }
 
 pub trait SecretStore: Send + Sync {
@@ -249,13 +256,18 @@ fn codex_auth_path() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".codex").join("auth.json"))
 }
 
-pub async fn start_codex_login() -> Result<CodexLoginStart> {
-    if codex_chatgpt_login_available() {
+pub async fn start_codex_login(request: CodexLoginRequest) -> Result<CodexLoginStart> {
+    let login_available = codex_chatgpt_login_available();
+    if should_reuse_existing_codex_login(request.force_reauth, login_available) {
         return Ok(CodexLoginStart {
             verification_url: String::new(),
             user_code: String::new(),
             already_authenticated: true,
         });
+    }
+
+    if request.force_reauth && login_available {
+        logout_codex()?;
     }
 
     let mut child = Command::new("codex")
@@ -305,6 +317,23 @@ pub async fn start_codex_login() -> Result<CodexLoginStart> {
     wait_for_codex_login_in_background(child, lines);
 
     Ok(login)
+}
+
+fn should_reuse_existing_codex_login(force_reauth: bool, login_available: bool) -> bool {
+    login_available && !force_reauth
+}
+
+fn logout_codex() -> Result<()> {
+    let status = StdCommand::new("codex")
+        .arg("logout")
+        .status()
+        .context("failed to start Codex logout. Ensure `codex` is installed and on PATH")?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("Codex logout failed"))
+    }
 }
 
 fn wait_for_codex_login_in_background(
@@ -497,5 +526,12 @@ mod tests {
         let serialized = serde_json::to_value(start).expect("login start should serialize");
 
         assert_eq!(serialized["alreadyAuthenticated"], true);
+    }
+
+    #[test]
+    fn forced_codex_login_does_not_reuse_existing_login() {
+        assert!(should_reuse_existing_codex_login(false, true));
+        assert!(!should_reuse_existing_codex_login(true, true));
+        assert!(!should_reuse_existing_codex_login(false, false));
     }
 }

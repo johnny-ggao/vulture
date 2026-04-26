@@ -29,6 +29,10 @@ export type CodexLoginStart = {
   alreadyAuthenticated: boolean;
 };
 
+export type CodexLoginRequest = {
+  forceReauth: boolean;
+};
+
 export type SaveAgentRequest = AgentView;
 
 export type SaveWorkspaceRequest = {

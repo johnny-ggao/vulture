@@ -5,6 +5,7 @@ import type { BrowserRelayStatus } from "./browserTypes";
 import type {
   AgentToolName,
   AgentView,
+  CodexLoginRequest,
   CodexLoginStart,
   OpenAiAuthStatus,
   SaveWorkspaceRequest,
@@ -93,6 +94,7 @@ export function App() {
   const canRun =
     Boolean(selectedAgent && selectedWorkspace && taskInput.trim() && authStatus?.configured) &&
     status !== "running";
+  const codexAuthenticated = authStatus?.source === "codex" || codexLogin?.alreadyAuthenticated;
 
   useEffect(() => {
     let isMounted = true;
@@ -241,13 +243,14 @@ export function App() {
     }
   }
 
-  async function startCodexLogin() {
+  async function startCodexLogin(forceReauth = false) {
     setError(null);
     setCodexLoginStatus("starting");
     setAuthRefreshStatus("idle");
 
     try {
-      const result = await invoke<CodexLoginStart>("start_codex_login");
+      const request: CodexLoginRequest = { forceReauth };
+      const result = await invoke<CodexLoginStart>("start_codex_login", { request });
       setCodexLogin(result);
       setCodexLoginStatus(result.alreadyAuthenticated ? "completed" : "waiting");
       const nextAuthStatus = await invoke<OpenAiAuthStatus>("get_openai_auth_status");
@@ -508,14 +511,16 @@ export function App() {
           <div className="button-row">
             <button
               type="button"
-              onClick={startCodexLogin}
+              onClick={() => startCodexLogin(Boolean(codexAuthenticated))}
               disabled={codexLoginStatus === "starting" || codexLoginStatus === "waiting"}
             >
               {codexLoginStatus === "starting"
                 ? "Opening..."
                 : codexLoginStatus === "waiting"
                   ? "Waiting..."
-                  : "Login with Codex"}
+                  : codexAuthenticated
+                    ? "Re-authorize Codex"
+                    : "Login with Codex"}
             </button>
             <button
               type="button"
