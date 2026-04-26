@@ -12,7 +12,9 @@ fn main() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::start_mock_run,
-            commands::get_profile
+            commands::get_profile,
+            commands::get_browser_status,
+            commands::start_browser_pairing
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Vulture desktop shell");

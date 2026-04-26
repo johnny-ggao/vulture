@@ -17,3 +17,20 @@ pub async fn start_mock_run(
 pub fn get_profile(state: State<'_, AppState>) -> crate::state::ProfileView {
     state.profile().clone()
 }
+
+#[tauri::command]
+pub fn get_browser_status(
+    state: State<'_, AppState>,
+) -> Result<crate::browser::relay::BrowserRelayStatus, String> {
+    state.browser_status().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn start_browser_pairing(
+    state: State<'_, AppState>,
+    relay_port: u16,
+) -> Result<crate::browser::relay::BrowserRelayStatus, String> {
+    state
+        .start_browser_pairing(relay_port)
+        .map_err(|error| error.to_string())
+}

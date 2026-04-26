@@ -10,6 +10,8 @@ use serde_json::json;
 use vulture_core::{AppPaths, Profile, StorageLayout};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
+use crate::browser::relay::{BrowserRelayState, BrowserRelayStatus};
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileView {
@@ -22,6 +24,7 @@ pub struct AppState {
     profile: ProfileView,
     policy_engine: PolicyEngine,
     audit_store: Mutex<AuditStore>,
+    browser_relay: Mutex<BrowserRelayState>,
 }
 
 impl AppState {
@@ -63,6 +66,7 @@ impl AppState {
             },
             policy_engine: PolicyEngine::default(),
             audit_store: Mutex::new(audit_store),
+            browser_relay: Mutex::new(BrowserRelayState::default()),
         })
     }
 
@@ -94,10 +98,24 @@ impl AppState {
         Ok(decision)
     }
 
+    pub fn browser_status(&self) -> Result<BrowserRelayStatus> {
+        Ok(self.browser_relay()?.status())
+    }
+
+    pub fn start_browser_pairing(&self, relay_port: u16) -> Result<BrowserRelayStatus> {
+        self.browser_relay()?.enable_pairing(relay_port)
+    }
+
     fn audit_store(&self) -> Result<MutexGuard<'_, AuditStore>> {
         self.audit_store
             .lock()
             .map_err(|_| anyhow!("audit store lock poisoned"))
+    }
+
+    fn browser_relay(&self) -> Result<MutexGuard<'_, BrowserRelayState>> {
+        self.browser_relay
+            .lock()
+            .map_err(|_| anyhow!("browser relay lock poisoned"))
     }
 }
 
