@@ -7,6 +7,7 @@ import type {
   CodexLoginStart,
   OpenAiAuthStatus,
 } from "./commandCenterTypes";
+import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 
 type RunEvent = {
   type: string;
@@ -73,6 +74,8 @@ export function App() {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const isRunning = useRef(false);
+
+  const runtime = useRuntimeDescriptor();
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const codexAuthenticated = authStatus?.source === "codex" || codexLogin?.alreadyAuthenticated;
@@ -371,6 +374,16 @@ export function App() {
       </aside>
 
       <main className="chat-main">
+        {runtime.data && (
+          <div className="runtime-debug" style={{ fontSize: 11, opacity: 0.6, padding: "2px 8px" }}>
+            gateway:{runtime.data.gateway.port} shell:{runtime.data.shell.port} api:{runtime.data.apiVersion}
+          </div>
+        )}
+        {runtime.error && (
+          <div className="runtime-debug error" style={{ color: "red", fontSize: 11, padding: "2px 8px" }}>
+            runtime error: {runtime.error}
+          </div>
+        )}
         <header className="chat-header">
           <div>
             <p className="eyebrow">Agent Chat</p>
