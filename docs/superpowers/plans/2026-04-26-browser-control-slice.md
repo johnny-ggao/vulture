@@ -285,7 +285,7 @@ Expected: commit succeeds.
 - Modify: `apps/desktop-shell/src/commands.rs`
 - Modify: `apps/desktop-shell/src/main.rs`
 
-- [ ] **Step 1: Add relay state tests**
+- [x] **Step 1: Add relay state tests**
 
 Create `apps/desktop-shell/src/browser/relay.rs`:
 
@@ -390,7 +390,7 @@ pub mod protocol;
 pub mod relay;
 ```
 
-- [ ] **Step 2: Add state and Tauri commands**
+- [x] **Step 2: Add state and Tauri commands**
 
 Add a `browser_relay: Mutex<BrowserRelayState>` field to `AppState`, initialize it in `new_for_root`, and add:
 
@@ -435,7 +435,7 @@ commands::get_browser_status,
 commands::start_browser_pairing
 ```
 
-- [ ] **Step 3: Verify and commit**
+- [x] **Step 3: Verify and commit**
 
 Run:
 
