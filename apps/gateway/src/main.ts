@@ -1,15 +1,17 @@
 import { parseGatewayEnv } from "./env";
+import { buildServer } from "./server";
 
 async function main() {
   const cfg = parseGatewayEnv(
     process.env as Record<string, string | undefined>,
   );
+  const app = buildServer(cfg);
 
   // SECURITY: bind 127.0.0.1 only.
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: cfg.port,
-    fetch: () => new Response("ok"),
+    fetch: app.fetch,
   });
 
   // READY handshake: Tauri parent reads stdout for this exact format.
