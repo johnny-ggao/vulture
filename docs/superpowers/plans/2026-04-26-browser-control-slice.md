@@ -455,7 +455,7 @@ Expected: tests/check pass; commit succeeds.
 - Modify: `apps/desktop-ui/src/App.tsx`
 - Modify: `apps/desktop-ui/src/styles.css`
 
-- [ ] **Step 1: Add browser UI types**
+- [x] **Step 1: Add browser UI types**
 
 Create `apps/desktop-ui/src/browserTypes.ts`:
 
@@ -468,7 +468,7 @@ export type BrowserRelayStatus = {
 };
 ```
 
-- [ ] **Step 2: Add browser panel to App**
+- [x] **Step 2: Add browser panel to App**
 
 In `App.tsx`, import the type:
 
@@ -522,7 +522,7 @@ Replace the approvals panel contents with:
 </aside>
 ```
 
-- [ ] **Step 3: Add styles**
+- [x] **Step 3: Add styles**
 
 Add to `styles.css`:
 
@@ -539,7 +539,7 @@ Add to `styles.css`:
 }
 ```
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
