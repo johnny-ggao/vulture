@@ -1,7 +1,10 @@
+mod agent_store;
+mod auth;
 mod browser;
 mod commands;
 mod sidecar;
 mod state;
+mod workspace_store;
 
 use state::AppState;
 
@@ -13,6 +16,16 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::start_mock_run,
             commands::get_profile,
+            commands::list_agents,
+            commands::get_agent,
+            commands::save_agent,
+            commands::delete_agent,
+            commands::list_workspaces,
+            commands::save_workspace,
+            commands::delete_workspace,
+            commands::get_openai_auth_status,
+            commands::set_openai_api_key,
+            commands::clear_openai_api_key,
             commands::get_browser_status,
             commands::start_browser_pairing
         ])
