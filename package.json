@@ -1,0 +1,18 @@
+{
+  "name": "vulture",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun --filter @vulture/desktop-ui dev",
+    "test": "bun test packages/protocol/src apps/agent-sidecar/src",
+    "typecheck": "bun --filter '*' typecheck",
+    "build": "bun --filter '*' build"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}
