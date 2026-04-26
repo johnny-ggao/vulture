@@ -11,7 +11,6 @@ struct HealthResponse {
     role: &'static str,
 }
 
-#[allow(dead_code)]
 pub fn router() -> Router {
     Router::new().route(
         "/healthz",
@@ -24,8 +23,10 @@ pub fn router() -> Router {
     )
 }
 
-#[allow(dead_code)]
 pub struct ToolCallbackHandle {
+    /// Port the OS actually bound — useful for tests using port 0.
+    /// Production callers always know the port (they passed it in).
+    #[allow(dead_code)]
     pub bound_port: u16,
     shutdown: Option<oneshot::Sender<()>>,
     join: Option<JoinHandle<()>>,
@@ -43,7 +44,6 @@ impl ToolCallbackHandle {
     }
 }
 
-#[allow(dead_code)]
 pub async fn serve(port: u16) -> Result<ToolCallbackHandle> {
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
     let listener = TcpListener::bind(addr)

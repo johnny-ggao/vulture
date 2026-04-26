@@ -9,12 +9,13 @@ use std::{
 };
 use vulture_core::RuntimeDescriptor;
 
-#[allow(dead_code)]
 pub const TOKEN_BYTES: usize = 32;
-#[allow(dead_code)]
-pub const TOKEN_B64_LEN: usize = 43; // 32 bytes URL-safe base64, no padding
 
-#[allow(dead_code)]
+/// 32 bytes URL-safe base64 → 43 chars (no padding). Asserted by tests + the
+/// shared `RuntimeDescriptor` schema.
+#[allow(dead_code)] // referenced from tests and as documentation of the contract
+pub const TOKEN_B64_LEN: usize = 43;
+
 pub fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::thread_rng().fill_bytes(&mut bytes);
@@ -23,7 +24,6 @@ pub fn generate_token() -> String {
 
 /// Linear scan starting at `start`, trying up to `window` ports.
 /// Returns the first free port. SECURITY: binds 127.0.0.1 only.
-#[allow(dead_code)]
 pub fn pick_free_port(start: u16, window: u16) -> anyhow::Result<u16> {
     for offset in 0..window {
         let port = start.saturating_add(offset);
@@ -37,7 +37,6 @@ pub fn pick_free_port(start: u16, window: u16) -> anyhow::Result<u16> {
     ))
 }
 
-#[allow(dead_code)]
 pub fn write_runtime_json(
     path: impl AsRef<Path>,
     descriptor: &RuntimeDescriptor,
@@ -64,13 +63,14 @@ pub fn write_runtime_json(
     Ok(())
 }
 
+/// Mirrors `write_runtime_json` for callers that want to inspect a previously
+/// written descriptor. Used by integration tests + Phase 2 CLI.
 #[allow(dead_code)]
 pub fn read_runtime_json(path: impl AsRef<Path>) -> anyhow::Result<RuntimeDescriptor> {
     let raw = fs::read_to_string(path.as_ref())?;
     Ok(serde_json::from_str(&raw)?)
 }
 
-#[allow(dead_code)]
 pub fn remove_runtime_json(path: impl AsRef<Path>) {
     let _ = fs::remove_file(path);
 }
@@ -126,10 +126,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "vulture-runtime-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("runtime.json");
@@ -161,10 +158,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "vulture-runtime-atomic-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("runtime.json");

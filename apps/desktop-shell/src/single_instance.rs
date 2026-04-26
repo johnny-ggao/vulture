@@ -11,13 +11,12 @@ use fs2::FileExt;
 #[derive(Debug)]
 pub struct InstanceLock {
     _file: File,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // retained for diagnostic logs / future "where is the lock?" UX
     path: PathBuf,
 }
 
 impl InstanceLock {
     /// Try to acquire. Returns Err if already locked by another live process.
-    #[allow(dead_code)]
     pub fn acquire(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent() {
@@ -43,7 +42,7 @@ impl InstanceLock {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // public diagnostic helper
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -52,16 +51,15 @@ impl InstanceLock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     fn temp_lock_path() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+        // Per-test UUID avoids the parallel-test collision that would happen
+        // if two tests sampled `SystemTime::now()` in the same nanosecond.
         std::env::temp_dir().join(format!(
-            "vulture-instance-lock-{}-{nonce}",
-            std::process::id()
+            "vulture-instance-lock-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
         ))
     }
 
