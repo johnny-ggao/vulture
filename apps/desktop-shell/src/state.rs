@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     sync::{Mutex, MutexGuard},
 };
@@ -43,9 +44,16 @@ impl AppState {
         let profile_dir = layout
             .ensure_profile(&profile)
             .context("failed to initialize default profile storage")?;
+        let profile_path = profile_dir.join("profile.json");
+        let profile: Profile =
+            serde_json::from_str(&fs::read_to_string(&profile_path).with_context(|| {
+                format!("failed to read profile at {}", profile_path.display())
+            })?)
+            .with_context(|| format!("failed to parse profile at {}", profile_path.display()))?;
         let audit_path = profile_dir.join("permissions").join("audit.sqlite");
-        let audit_store = AuditStore::open(&audit_path)
-            .with_context(|| format!("failed to open audit database at {}", audit_path.display()))?;
+        let audit_store = AuditStore::open(&audit_path).with_context(|| {
+            format!("failed to open audit database at {}", audit_path.display())
+        })?;
 
         Ok(Self {
             profile: ProfileView {
@@ -128,6 +136,32 @@ mod tests {
         assert!(root
             .join("profiles/default/permissions/audit.sqlite")
             .is_file());
+
+        fs::remove_dir_all(root).expect("test root should be removable");
+    }
+
+    #[test]
+    fn new_for_root_loads_existing_profile_json() {
+        let root = temp_root();
+        let profile_dir = root.join("profiles/default");
+        fs::create_dir_all(&profile_dir).expect("profile dir should be created");
+        let profile = Profile {
+            id: vulture_core::ProfileId("default".to_string()),
+            name: "Persisted Profile".to_string(),
+            openai_secret_ref: "vulture:profile:default:openai".to_string(),
+            active_agent_id: "persisted-agent".to_string(),
+        };
+        fs::write(
+            profile_dir.join("profile.json"),
+            serde_json::to_string_pretty(&profile).expect("profile should serialize"),
+        )
+        .expect("profile json should be seeded");
+
+        let state = AppState::new_for_root(&root).expect("app state should initialize");
+
+        assert_eq!(state.profile().id, "default");
+        assert_eq!(state.profile().name, "Persisted Profile");
+        assert_eq!(state.profile().active_agent_id, "persisted-agent");
 
         fs::remove_dir_all(root).expect("test root should be removable");
     }
