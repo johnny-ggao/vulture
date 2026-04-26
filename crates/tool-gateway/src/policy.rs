@@ -29,6 +29,9 @@ impl PolicyEngine {
             tool if tool.starts_with("git.") => PolicyDecision::Ask {
                 reason: format!("{tool} requires approval"),
             },
+            tool if is_browser_tool(tool) => PolicyDecision::Ask {
+                reason: format!("{tool} requires browser approval"),
+            },
             other => PolicyDecision::Deny {
                 reason: format!("unknown tool {other}"),
             },
@@ -75,6 +78,22 @@ fn is_inside_root(path: &Path, root: &[OsString]) -> bool {
     };
 
     path_components.starts_with(root)
+}
+
+fn is_browser_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        "browser.open"
+            | "browser.attach"
+            | "browser.snapshot"
+            | "browser.click"
+            | "browser.input"
+            | "browser.scroll"
+            | "browser.keypress"
+            | "browser.extract"
+            | "browser.close_agent_tabs"
+            | "browser.forward_cdp_limited"
+    )
 }
 
 fn normalize_absolute(path: &Path) -> Option<Vec<OsString>> {
@@ -193,6 +212,55 @@ mod tests {
             engine.decide(&request),
             PolicyDecision::Ask {
                 reason: "shell.exec requires approval".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn asks_for_browser_attach_and_actions() {
+        let engine = PolicyEngine::default();
+        let tools = [
+            "browser.open",
+            "browser.attach",
+            "browser.snapshot",
+            "browser.click",
+            "browser.input",
+            "browser.scroll",
+            "browser.keypress",
+            "browser.extract",
+            "browser.close_agent_tabs",
+            "browser.forward_cdp_limited",
+        ];
+
+        for tool in tools {
+            let request = ToolRequest {
+                run_id: "run_1".to_string(),
+                tool: tool.to_string(),
+                input: json!({}),
+            };
+
+            assert_eq!(
+                engine.decide(&request),
+                PolicyDecision::Ask {
+                    reason: format!("{tool} requires browser approval")
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn denies_raw_browser_control_alias() {
+        let engine = PolicyEngine::default();
+        let request = ToolRequest {
+            run_id: "run_1".to_string(),
+            tool: "browser.control".to_string(),
+            input: json!({}),
+        };
+
+        assert_eq!(
+            engine.decide(&request),
+            PolicyDecision::Deny {
+                reason: "unknown tool browser.control".to_string()
             }
         );
     }
