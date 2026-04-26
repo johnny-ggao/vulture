@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun --filter @vulture/desktop-ui dev",
     "beforeBuildCommand": "bun --filter @vulture/desktop-ui build",
-    "devUrl": "http://127.0.0.1:5173",
+    "devUrl": "http://127.0.0.1:5174",
     "frontendDist": "../desktop-ui/dist"
   },
   "app": {
