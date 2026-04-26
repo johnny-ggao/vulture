@@ -38,11 +38,28 @@ export const JsonRpcError = z.object({
   }),
 });
 
+export const AgentToolName = z.enum(["shell.exec", "browser.snapshot", "browser.click"]);
+
+export const AgentRunConfig = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  instructions: z.string().min(1),
+  model: z.string().min(1),
+  tools: z.array(AgentToolName).default([]),
+});
+
+export const WorkspaceRunConfig = z.object({
+  id: z.string().min(1),
+  path: z.string().min(1),
+});
+
 export const RunCreateParams = z.object({
   profileId: z.string().min(1),
   workspaceId: z.string().min(1),
   agentId: z.string().min(1),
   input: z.string().min(1),
+  agent: AgentRunConfig.optional(),
+  workspace: WorkspaceRunConfig.optional(),
 });
 
 export const ToolName = z.enum([

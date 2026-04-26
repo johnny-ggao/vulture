@@ -18,6 +18,51 @@ describe("protocol schemas", () => {
     expect(parsed.agentId).toBe("local-work-agent");
   });
 
+  test("validates run.create with agent and workspace snapshots", () => {
+    const parsed = RunCreateParams.parse({
+      profileId: "default",
+      workspaceId: "vulture",
+      agentId: "local-work-agent",
+      input: "summarize this repo",
+      agent: {
+        id: "local-work-agent",
+        name: "Local Work Agent",
+        instructions: "You are a local work agent.",
+        model: "gpt-5.4",
+        tools: ["shell.exec", "browser.snapshot", "browser.click"],
+      },
+      workspace: {
+        id: "vulture",
+        path: "/Users/johnny/Work/vulture",
+      },
+    });
+
+    expect(parsed.agent?.tools).toEqual(["shell.exec", "browser.snapshot", "browser.click"]);
+    expect(parsed.workspace?.path).toBe("/Users/johnny/Work/vulture");
+  });
+
+  test("rejects unsupported agent snapshot tools", () => {
+    expect(() =>
+      RunCreateParams.parse({
+        profileId: "default",
+        workspaceId: "vulture",
+        agentId: "local-work-agent",
+        input: "hello",
+        agent: {
+          id: "local-work-agent",
+          name: "Local Work Agent",
+          instructions: "You are a local work agent.",
+          model: "gpt-5.4",
+          tools: ["file.write"],
+        },
+        workspace: {
+          id: "vulture",
+          path: "/Users/johnny/Work/vulture",
+        },
+      }),
+    ).toThrow();
+  });
+
   test("validates shell tool requests as argv", () => {
     const parsed = ToolRequestParams.parse({
       runId: "run_1",
