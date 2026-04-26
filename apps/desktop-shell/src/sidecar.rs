@@ -91,14 +91,19 @@ fn events_from_stdout(stdout: &str, state: &AppState) -> Result<Vec<Value>> {
     let mut final_events = None;
 
     for line in stdout.lines().filter(|line| !line.trim().is_empty()) {
-        let response: Value = serde_json::from_str(line).context("sidecar returned invalid JSON")?;
+        let response: Value =
+            serde_json::from_str(line).context("sidecar returned invalid JSON")?;
 
         if response.get("method").and_then(Value::as_str) == Some("tool.request") {
             handle_tool_request(&response, state)?;
             continue;
         }
 
-        if response.get("result").and_then(|result| result.get("events")).is_some() {
+        if response
+            .get("result")
+            .and_then(|result| result.get("events"))
+            .is_some()
+        {
             final_events = Some(events_from_response(line)?);
         }
     }
