@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AgentView,
@@ -8,6 +8,9 @@ import type {
   OpenAiAuthStatus,
 } from "./commandCenterTypes";
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
+import { createApiClient } from "./api/client";
+import { agentsApi } from "./api/agents";
+import { profileApi } from "./api/profile";
 
 type RunEvent = {
   type: string;
@@ -76,6 +79,10 @@ export function App() {
   const isRunning = useRef(false);
 
   const runtime = useRuntimeDescriptor();
+  const apiClient = useMemo(
+    () => (runtime.data ? createApiClient(runtime.data) : null),
+    [runtime.data],
+  );
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const codexAuthenticated = authStatus?.source === "codex" || codexLogin?.alreadyAuthenticated;
@@ -83,22 +90,28 @@ export function App() {
     Boolean(selectedAgent && taskInput.trim() && authStatus?.configured) && status !== "running";
 
   useEffect(() => {
+    if (!apiClient) return;
     let isMounted = true;
 
     async function loadChatShell() {
       try {
         const [profileResult, agentList, nextAuthStatus] = await Promise.all([
-          invoke<Profile>("get_profile"),
-          invoke<AgentView[]>("list_agents"),
+          profileApi.get(apiClient!),
+          agentsApi.list(apiClient!),
           invoke<OpenAiAuthStatus>("get_openai_auth_status"),
         ]);
 
         if (!isMounted) return;
-        setProfile(profileResult);
+        setProfile({
+          id: profileResult.id,
+          name: profileResult.name,
+          activeAgentId: profileResult.activeAgentId ?? "",
+        });
         setAgents(agentList);
         setAuthStatus(nextAuthStatus);
         setSelectedAgentId(
-          (current) => current || profileResult.activeAgentId || agentList[0]?.id || "",
+          (current) =>
+            current || profileResult.activeAgentId || agentList[0]?.id || "",
         );
       } catch (cause) {
         if (!isMounted) return;
@@ -118,7 +131,7 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [apiClient]);
 
   useEffect(() => {
     if (codexLoginStatus !== "waiting") return;
