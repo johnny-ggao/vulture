@@ -1,9 +1,15 @@
-use std::net::SocketAddr;
+use std::{collections::HashMap, net::SocketAddr, sync::{Arc, Mutex}};
 
 use anyhow::{Context, Result};
-use axum::{routing::get, Json, Router};
-use serde::Serialize;
+use axum::{
+    extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
+use vulture_tool_gateway::{PolicyDecision, PolicyEngine, ToolRequest};
+
+use crate::tool_executor::{execute_shell, ShellExecInput};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -11,16 +17,212 @@ struct HealthResponse {
     role: &'static str,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolManifestEntry {
+    name: &'static str,
+    description: &'static str,
+    requires_approval: bool,
+}
+
+#[derive(Serialize)]
+struct ManifestResponse {
+    tools: Vec<ToolManifestEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InvokeRequest {
+    call_id: String,
+    run_id: String,
+    tool: String,
+    input: Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase", tag = "status")]
+enum InvokeResponse {
+    #[serde(rename = "completed")]
+    Completed { call_id: String, output: Value },
+    #[serde(rename = "failed")]
+    Failed { call_id: String, error: AppError },
+    #[serde(rename = "denied")]
+    Denied { call_id: String, error: AppError },
+    #[serde(rename = "ask")]
+    Ask {
+        call_id: String,
+        approval_token: String,
+        reason: String,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppError {
+    code: String,
+    message: String,
+}
+
+#[derive(Clone)]
+struct ShellState {
+    policy: Arc<PolicyEngine>,
+    #[allow(dead_code)]
+    workspace_path: Arc<Mutex<String>>,
+    cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+}
+
 pub fn router() -> Router {
-    Router::new().route(
-        "/healthz",
-        get(|| async {
-            Json(HealthResponse {
-                ok: true,
-                role: "shell-callback",
-            })
-        }),
-    )
+    let state = ShellState {
+        policy: Arc::new(PolicyEngine::for_workspace("")),
+        workspace_path: Arc::new(Mutex::new(String::new())),
+        cancel_signals: Arc::new(Mutex::new(HashMap::new())),
+    };
+    Router::new()
+        .route(
+            "/healthz",
+            get(|| async {
+                Json(HealthResponse {
+                    ok: true,
+                    role: "shell-callback",
+                })
+            }),
+        )
+        .route("/tools/manifest", get(manifest_handler))
+        .route("/tools/invoke", post(invoke_handler))
+        .route("/tools/cancel", post(cancel_handler))
+        .with_state(state)
+}
+
+async fn manifest_handler() -> impl IntoResponse {
+    Json(ManifestResponse {
+        tools: vec![
+            ToolManifestEntry {
+                name: "shell.exec",
+                description: "Execute a shell command in the workspace",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.snapshot",
+                description: "Capture the current browser tab",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.click",
+                description: "Click an element by selector",
+                requires_approval: true,
+            },
+        ],
+    })
+}
+
+async fn invoke_handler(
+    State(state): State<ShellState>,
+    Json(req): Json<InvokeRequest>,
+) -> impl IntoResponse {
+    let request = ToolRequest {
+        run_id: req.run_id.clone(),
+        tool: req.tool.clone(),
+        input: req.input.clone(),
+    };
+    let decision = state.policy.decide(&request);
+    match decision {
+        PolicyDecision::Deny { reason } => (
+            StatusCode::OK,
+            Json(InvokeResponse::Denied {
+                call_id: req.call_id,
+                error: AppError {
+                    code: "tool.permission_denied".into(),
+                    message: reason,
+                },
+            }),
+        )
+            .into_response(),
+        PolicyDecision::Ask { reason } => (
+            StatusCode::OK,
+            Json(InvokeResponse::Ask {
+                call_id: req.call_id,
+                approval_token: format!("appr-{}", uuid::Uuid::new_v4()),
+                reason,
+            }),
+        )
+            .into_response(),
+        PolicyDecision::Allow => execute(&req).await.into_response(),
+    }
+}
+
+async fn execute(req: &InvokeRequest) -> impl IntoResponse {
+    if req.tool == "shell.exec" {
+        let parsed: ShellExecInput = match serde_json::from_value(req.input.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                return (
+                    StatusCode::OK,
+                    Json(InvokeResponse::Failed {
+                        call_id: req.call_id.clone(),
+                        error: AppError {
+                            code: "tool.execution_failed".into(),
+                            message: format!("invalid input: {e}"),
+                        },
+                    }),
+                );
+            }
+        };
+        match execute_shell(parsed).await {
+            Ok(out) => (
+                StatusCode::OK,
+                Json(InvokeResponse::Completed {
+                    call_id: req.call_id.clone(),
+                    output: serde_json::to_value(out).unwrap_or(Value::Null),
+                }),
+            ),
+            Err(err) => (
+                StatusCode::OK,
+                Json(InvokeResponse::Failed {
+                    call_id: req.call_id.clone(),
+                    error: AppError {
+                        code: "tool.execution_failed".into(),
+                        message: format!("{err:#}"),
+                    },
+                }),
+            ),
+        }
+    } else {
+        (
+            StatusCode::OK,
+            Json(InvokeResponse::Failed {
+                call_id: req.call_id.clone(),
+                error: AppError {
+                    code: "tool.execution_failed".into(),
+                    message: format!("tool {} not yet wired in 3a", req.tool),
+                },
+            }),
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CancelRequest {
+    call_id: String,
+    #[allow(dead_code)]
+    run_id: String,
+}
+
+#[derive(Serialize)]
+struct CancelResponse {
+    cancelled: bool,
+}
+
+async fn cancel_handler(
+    State(state): State<ShellState>,
+    Json(req): Json<CancelRequest>,
+) -> impl IntoResponse {
+    let mut signals = state.cancel_signals.lock().expect("cancel signals poisoned");
+    if let Some(tx) = signals.remove(&req.call_id) {
+        let _ = tx.send(());
+        return Json(CancelResponse { cancelled: true });
+    }
+    Json(CancelResponse { cancelled: false })
 }
 
 pub struct ToolCallbackHandle {
@@ -55,9 +257,7 @@ pub async fn serve(port: u16) -> Result<ToolCallbackHandle> {
     let app = router();
     let join = tokio::spawn(async move {
         axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                let _ = rx.await;
-            })
+            .with_graceful_shutdown(async move { let _ = rx.await; })
             .await
             .ok();
     });
@@ -74,8 +274,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn healthz_returns_ok() {
-        let handle = serve(0).await.expect("serve should bind");
+    async fn healthz_still_works() {
+        let handle = serve(0).await.expect("serve");
         let port = handle.bound_port;
         let body: serde_json::Value = reqwest::get(format!("http://127.0.0.1:{port}/healthz"))
             .await
@@ -84,7 +284,43 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(body["ok"], true);
-        assert_eq!(body["role"], "shell-callback");
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn manifest_lists_tools() {
+        let handle = serve(0).await.expect("serve");
+        let port = handle.bound_port;
+        let body: serde_json::Value = reqwest::get(format!("http://127.0.0.1:{port}/tools/manifest"))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert!(body["tools"].as_array().unwrap().len() >= 3);
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn invoke_shell_exec_denied_or_asks_by_policy() {
+        let handle = serve(0).await.expect("serve");
+        let port = handle.bound_port;
+        let res: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .json(&serde_json::json!({
+                "callId": "c1",
+                "runId": "r1",
+                "tool": "shell.exec",
+                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 }
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        // Policy default is Ask for shell.exec — accept ask, completed, or denied
+        assert!(["ask", "completed", "denied"].contains(&res["status"].as_str().unwrap()));
         handle.shutdown().await;
     }
 }

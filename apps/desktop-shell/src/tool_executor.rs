@@ -1,6 +1,3 @@
-// used by tool_callback (Task 17); allow until that module lands
-#![allow(dead_code)]
-
 use std::process::Stdio;
 use std::time::Duration;
 
