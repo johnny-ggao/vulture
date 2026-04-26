@@ -563,7 +563,7 @@ Expected: commands pass; commit succeeds.
 - Create: `extensions/browser/src/relay-client.js`
 - Create: `extensions/browser/README.md`
 
-- [ ] **Step 1: Create manifest**
+- [x] **Step 1: Create manifest**
 
 Create `extensions/browser/manifest.json`:
 
@@ -591,7 +591,7 @@ Create `extensions/browser/manifest.json`:
 }
 ```
 
-- [ ] **Step 2: Create relay client**
+- [x] **Step 2: Create relay client**
 
 Create `extensions/browser/src/relay-client.js`:
 
@@ -627,7 +627,7 @@ export async function listTabs() {
 }
 ```
 
-- [ ] **Step 3: Create background and popup**
+- [x] **Step 3: Create background and popup**
 
 Create `extensions/browser/src/background.js`:
 
@@ -720,7 +720,7 @@ Load this folder as an unpacked Chrome extension for local development.
 The current slice provides the MV3 skeleton, tab listing, page snapshot content script, and pairing-token storage. The production relay connection and encrypted frame transport are implemented in later hardening tasks.
 ```
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
