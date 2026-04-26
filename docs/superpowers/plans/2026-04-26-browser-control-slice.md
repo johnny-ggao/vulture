@@ -67,7 +67,7 @@ docs/superpowers/reports/2026-04-26-browser-control-slice-verification.md
 **Files:**
 - Modify: `crates/tool-gateway/src/policy.rs`
 
-- [ ] **Step 1: Add failing tests for browser tools**
+- [x] **Step 1: Add failing tests for browser tools**
 
 Add these tests inside `crates/tool-gateway/src/policy.rs`:
 
@@ -121,7 +121,7 @@ fn denies_raw_browser_control_alias() {
 }
 ```
 
-- [ ] **Step 2: Run failing test**
+- [x] **Step 2: Run failing test**
 
 Run:
 
@@ -131,7 +131,7 @@ cargo test -p vulture-tool-gateway browser
 
 Expected: `asks_for_browser_attach_and_actions` fails because `browser.*` is currently denied as unknown.
 
-- [ ] **Step 3: Implement policy branch**
+- [x] **Step 3: Implement policy branch**
 
 In `PolicyEngine::decide`, add the browser branch before the unknown branch:
 
@@ -161,7 +161,7 @@ fn is_browser_tool(tool: &str) -> bool {
 }
 ```
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run:
 
@@ -181,7 +181,7 @@ Expected: tests and clippy pass; commit succeeds.
 - Create: `apps/desktop-shell/src/browser/protocol.rs`
 - Modify: `apps/desktop-shell/src/main.rs`
 
-- [ ] **Step 1: Write protocol tests**
+- [x] **Step 1: Write protocol tests**
 
 Create `apps/desktop-shell/src/browser/mod.rs`:
 
@@ -255,7 +255,7 @@ Modify `apps/desktop-shell/src/main.rs` to include:
 mod browser;
 ```
 
-- [ ] **Step 2: Run protocol tests**
+- [x] **Step 2: Run protocol tests**
 
 Run:
 
@@ -265,7 +265,7 @@ cargo test -p vulture-desktop-shell browser::protocol
 
 Expected: tests pass after the module is wired.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run:
 
