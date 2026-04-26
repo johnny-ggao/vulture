@@ -13,8 +13,8 @@ use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest
 use crate::{
     agent_store::{AgentStore, AgentView, SaveAgentRequest},
     auth::{
-        auth_status, resolve_openai_api_key, KeychainSecretStore, OpenAiAuthStatus, SecretStore,
-        SetOpenAiApiKeyRequest,
+        auth_status, resolve_agent_runtime_auth, resolve_openai_api_key, AgentRuntimeAuth,
+        KeychainSecretStore, OpenAiAuthStatus, SecretStore, SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
     workspace_store::{SaveWorkspaceRequest, WorkspaceStore},
@@ -151,6 +151,10 @@ impl AppState {
         resolve_openai_api_key(self.secret_store.as_ref(), &self.openai_secret_ref)
     }
 
+    pub fn resolve_agent_runtime_auth(&self) -> Result<AgentRuntimeAuth> {
+        resolve_agent_runtime_auth(self.secret_store.as_ref(), &self.openai_secret_ref)
+    }
+
     pub fn decide_tool_request(&self, request: &ToolRequest) -> Result<PolicyDecision> {
         self.audit_store()?.append(
             "tool.requested",
@@ -206,26 +210,15 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::{fs, path::PathBuf};
+    use uuid::Uuid;
 
     use crate::auth::{AuthSource, MemorySecretStore};
 
     use super::*;
 
     fn temp_root() -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
-            .as_nanos();
-
-        std::env::temp_dir().join(format!(
-            "vulture-desktop-state-test-{}-{nonce}",
-            std::process::id()
-        ))
+        std::env::temp_dir().join(format!("vulture-desktop-state-test-{}", Uuid::new_v4()))
     }
 
     #[test]
@@ -331,7 +324,10 @@ mod tests {
             })
             .expect("api key should save");
 
-        assert_eq!(missing.source, AuthSource::Missing);
+        assert!(matches!(
+            missing.source,
+            AuthSource::Missing | AuthSource::Codex
+        ));
         assert_eq!(configured.source, AuthSource::Keychain);
         assert_eq!(
             state

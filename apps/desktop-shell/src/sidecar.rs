@@ -1,13 +1,15 @@
 use std::{path::PathBuf, process::Stdio};
 
 use anyhow::{anyhow, bail, Context, Result};
+use chrono::{SecondsFormat, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::{io::AsyncWriteExt, process::Command};
+use uuid::Uuid;
 use vulture_core::WorkspaceDefinition;
 use vulture_tool_gateway::ToolRequest;
 
-use crate::{agent_store::AgentView, state::AppState};
+use crate::{agent_store::AgentView, auth::AgentRuntimeAuth, state::AppState};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,22 +47,27 @@ pub async fn start_agent_run(
     request: StartAgentRunRequest,
     state: &AppState,
 ) -> Result<Vec<Value>> {
-    let openai_api_key = state.resolve_openai_api_key()?;
+    let runtime_auth = state.resolve_agent_runtime_auth()?;
     let agent = state.get_agent(&request.agent_id)?;
     let workspace = state
         .list_workspaces()?
         .into_iter()
         .find(|workspace| workspace.id == request.workspace_id)
         .ok_or_else(|| anyhow!("workspace {} not found", request.workspace_id))?;
-    let run_request = build_run_create_request(
-        "desktop-agent-run",
-        state.profile().id.as_str(),
-        request.input.as_str(),
-        &agent,
-        &workspace,
-    );
 
-    run_sidecar(run_request, Some(openai_api_key), &[], state).await
+    match runtime_auth {
+        AgentRuntimeAuth::ApiKey(openai_api_key) => {
+            let run_request = build_run_create_request(
+                "desktop-agent-run",
+                state.profile().id.as_str(),
+                request.input.as_str(),
+                &agent,
+                &workspace,
+            );
+            run_sidecar(run_request, Some(openai_api_key), &[], state).await
+        }
+        AgentRuntimeAuth::Codex => run_codex_exec(request.input.as_str(), &agent, &workspace).await,
+    }
 }
 
 async fn run_sidecar(
@@ -151,6 +158,115 @@ fn build_run_create_request(
                 "path": workspace.path,
             }
         }
+    })
+}
+
+async fn run_codex_exec(
+    input: &str,
+    agent: &AgentView,
+    workspace: &WorkspaceDefinition,
+) -> Result<Vec<Value>> {
+    let run_id = format!("codex_{}", Uuid::new_v4());
+    let output_path =
+        std::env::temp_dir().join(format!("vulture-codex-output-{}.txt", Uuid::new_v4()));
+    let prompt = build_codex_exec_prompt(input, agent, workspace);
+
+    let mut child = Command::new("codex")
+        .args([
+            "exec",
+            "--color",
+            "never",
+            "--sandbox",
+            "workspace-write",
+            "--cd",
+            workspace.path.as_str(),
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--output-last-message",
+        ])
+        .arg(&output_path)
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context(
+            "failed to start Codex CLI. Run `codex login` first and ensure `codex` is on PATH",
+        )?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("Codex CLI stdin was not available")?;
+    stdin
+        .write_all(prompt.as_bytes())
+        .await
+        .context("failed to write prompt to Codex CLI")?;
+    stdin
+        .shutdown()
+        .await
+        .context("failed to close Codex CLI stdin")?;
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .context("failed to wait for Codex CLI")?;
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    let stderr_text = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() {
+        bail!("Codex CLI exited with {}: {stderr_text}", output.status);
+    }
+
+    let final_output = tokio::fs::read_to_string(&output_path)
+        .await
+        .unwrap_or_else(|_| stdout_text.trim().to_string());
+    let _ = tokio::fs::remove_file(&output_path).await;
+
+    Ok(vec![
+        make_desktop_event(
+            &run_id,
+            "run_started",
+            json!({
+                "agentId": agent.id,
+                "provider": "codex",
+                "workspaceId": workspace.id,
+            }),
+        ),
+        make_desktop_event(
+            &run_id,
+            "run_completed",
+            json!({
+                "finalOutput": final_output.trim(),
+                "provider": "codex",
+            }),
+        ),
+    ])
+}
+
+fn build_codex_exec_prompt(
+    input: &str,
+    agent: &AgentView,
+    workspace: &WorkspaceDefinition,
+) -> String {
+    format!(
+        "{}\n\nAgent: {}\nWorkspace: {} ({})\nRequested tools: {}\n\nUser task:\n{}",
+        agent.instructions.trim(),
+        agent.name,
+        workspace.name,
+        workspace.path,
+        agent.tools.join(", "),
+        input.trim()
+    )
+}
+
+fn make_desktop_event(run_id: &str, event_type: &str, payload: Value) -> Value {
+    json!({
+        "runId": run_id,
+        "type": event_type,
+        "payload": payload,
+        "createdAt": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
     })
 }
 
@@ -245,12 +361,11 @@ mod tests {
     use vulture_core::WorkspaceDefinition;
 
     use crate::agent_store::AgentView;
-    use crate::auth::MemorySecretStore;
     use crate::state::AppState;
 
     use super::{
-        build_run_create_request, events_from_response, events_from_stdout, first_stdout_line,
-        start_agent_run, StartAgentRunRequest,
+        build_codex_exec_prompt, build_run_create_request, events_from_response,
+        events_from_stdout, first_stdout_line,
     };
 
     #[test]
@@ -330,28 +445,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn real_agent_run_requires_openai_api_key_before_launching_sidecar() {
-        let root = temp_root();
-        let state =
-            AppState::new_for_root_with_secret_store(&root, Box::new(MemorySecretStore::default()))
-                .expect("app state should initialize");
-
-        let error = start_agent_run(
-            StartAgentRunRequest {
-                agent_id: "local-work-agent".to_string(),
-                workspace_id: "local".to_string(),
-                input: "hello".to_string(),
-            },
-            &state,
-        )
-        .await
-        .expect_err("missing api key should fail");
-
-        assert_eq!(error.to_string(), "OpenAI API key required.");
-        fs::remove_dir_all(root).expect("test root should be removable");
-    }
-
     fn temp_root() -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -362,6 +455,33 @@ mod tests {
             "vulture-desktop-sidecar-test-{}-{nonce}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn codex_exec_prompt_contains_agent_workspace_and_task() {
+        let agent = AgentView {
+            id: "coder".to_string(),
+            name: "Coder".to_string(),
+            description: "Writes code".to_string(),
+            model: "gpt-5.4".to_string(),
+            reasoning: "medium".to_string(),
+            tools: vec!["shell.exec".to_string()],
+            instructions: "Write code carefully.".to_string(),
+        };
+        let workspace = WorkspaceDefinition::new(
+            "vulture".to_string(),
+            "Vulture".to_string(),
+            "/Users/johnny/Work/vulture".to_string(),
+            Utc::now(),
+        );
+
+        let prompt = build_codex_exec_prompt("Summarize repo", &agent, &workspace);
+
+        assert!(prompt.contains("Write code carefully."));
+        assert!(prompt.contains("Agent: Coder"));
+        assert!(prompt.contains("Workspace: Vulture (/Users/johnny/Work/vulture)"));
+        assert!(prompt.contains("Requested tools: shell.exec"));
+        assert!(prompt.contains("User task:\nSummarize repo"));
     }
 
     #[test]

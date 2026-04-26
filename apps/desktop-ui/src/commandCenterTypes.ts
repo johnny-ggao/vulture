@@ -20,7 +20,7 @@ export type WorkspaceView = {
 
 export type OpenAiAuthStatus = {
   configured: boolean;
-  source: "keychain" | "environment" | "missing";
+  source: "keychain" | "environment" | "codex" | "missing";
 };
 
 export type SaveAgentRequest = AgentView;

@@ -24,6 +24,13 @@ type Profile = {
 
 const agentTools: AgentToolName[] = ["shell.exec", "browser.snapshot", "browser.click"];
 
+function authLabel(status: OpenAiAuthStatus | null) {
+  if (!status?.configured) return "API key or Codex login missing";
+  if (status.source === "codex") return "Configured via Codex ChatGPT login";
+  if (status.source === "environment") return "Configured via OPENAI_API_KEY";
+  return "Configured via Keychain API key";
+}
+
 const agentTemplates: Record<"local" | "coder" | "browser", AgentView> = {
   local: {
     id: "local-work-agent",
@@ -413,9 +420,10 @@ export function App() {
       <aside className="inspector">
         <section className="stack">
           <h2>OpenAI</h2>
-          <p className="status">
-            {authStatus?.configured ? `Configured via ${authStatus.source}` : "API key missing"}
-          </p>
+          <p className="status">{authLabel(authStatus)}</p>
+          {authStatus?.source === "codex" ? (
+            <p className="muted">Run uses Codex CLI OAuth provider when no API key is saved.</p>
+          ) : null}
           <input
             type="password"
             value={apiKeyInput}
