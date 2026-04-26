@@ -26,6 +26,7 @@ export type OpenAiAuthStatus = {
 export type CodexLoginStart = {
   verificationUrl: string;
   userCode: string;
+  alreadyAuthenticated: boolean;
 };
 
 export type SaveAgentRequest = AgentView;

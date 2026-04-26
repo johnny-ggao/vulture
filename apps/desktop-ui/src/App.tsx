@@ -249,7 +249,7 @@ export function App() {
     try {
       const result = await invoke<CodexLoginStart>("start_codex_login");
       setCodexLogin(result);
-      setCodexLoginStatus("waiting");
+      setCodexLoginStatus(result.alreadyAuthenticated ? "completed" : "waiting");
       const nextAuthStatus = await invoke<OpenAiAuthStatus>("get_openai_auth_status");
       setAuthStatus(nextAuthStatus);
     } catch (cause) {
@@ -490,11 +490,14 @@ export function App() {
           {authRefreshStatus === "refreshing" ? (
             <p className="muted">Refreshing authentication status...</p>
           ) : null}
-          {codexLogin ? (
+          {codexLogin && !codexLogin.alreadyAuthenticated ? (
             <div className="code-box">
               <span>Codex code</span>
               <strong>{codexLogin.userCode}</strong>
             </div>
+          ) : null}
+          {codexLogin?.alreadyAuthenticated ? (
+            <p className="muted">Codex is already authenticated.</p>
           ) : null}
           <input
             type="password"

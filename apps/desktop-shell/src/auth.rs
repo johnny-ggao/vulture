@@ -45,6 +45,7 @@ pub struct SetOpenAiApiKeyRequest {
 pub struct CodexLoginStart {
     pub verification_url: String,
     pub user_code: String,
+    pub already_authenticated: bool,
 }
 
 pub trait SecretStore: Send + Sync {
@@ -249,6 +250,14 @@ fn codex_auth_path() -> Result<PathBuf> {
 }
 
 pub async fn start_codex_login() -> Result<CodexLoginStart> {
+    if codex_chatgpt_login_available() {
+        return Ok(CodexLoginStart {
+            verification_url: String::new(),
+            user_code: String::new(),
+            already_authenticated: true,
+        });
+    }
+
     let mut child = Command::new("codex")
         .args(["login", "--device-auth"])
         .stdout(std::process::Stdio::piped())
@@ -282,6 +291,7 @@ pub async fn start_codex_login() -> Result<CodexLoginStart> {
                 return Ok(CodexLoginStart {
                     verification_url: verification_url.clone(),
                     user_code: user_code.clone(),
+                    already_authenticated: false,
                 });
             }
         }
@@ -475,5 +485,17 @@ mod tests {
             find_user_code(&strip_ansi(code_line)),
             Some("3GAR-Y26LD".to_string())
         );
+    }
+
+    #[test]
+    fn login_start_serializes_already_authenticated_flag() {
+        let start = CodexLoginStart {
+            verification_url: String::new(),
+            user_code: String::new(),
+            already_authenticated: true,
+        };
+        let serialized = serde_json::to_value(start).expect("login start should serialize");
+
+        assert_eq!(serialized["alreadyAuthenticated"], true);
     }
 }
