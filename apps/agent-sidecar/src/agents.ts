@@ -2,6 +2,8 @@ import { Agent, run } from "@openai/agents";
 import { makeEvent, RunCreateParams } from "@vulture/protocol";
 import { createShellExecTool, type ToolGateway } from "./tools";
 
+export type GatewayFactory = (runId: string) => ToolGateway;
+
 export function createLocalWorkAgent(gateway: ToolGateway) {
   return new Agent({
     name: "local-work-agent",
@@ -12,9 +14,10 @@ export function createLocalWorkAgent(gateway: ToolGateway) {
   });
 }
 
-export async function runAgent(params: unknown, gateway: ToolGateway) {
+export async function runAgent(params: unknown, createGateway: GatewayFactory) {
   const parsed = RunCreateParams.parse(params);
   const runId = `run_${Date.now()}`;
+  const gateway = createGateway(runId);
 
   if (process.env.VULTURE_AGENT_MODE === "mock") {
     return [
