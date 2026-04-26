@@ -1,5 +1,6 @@
 import { parseGatewayEnv } from "./env";
 import { buildServer } from "./server";
+import { startWatchdog } from "./runtime/watchdog";
 
 async function main() {
   const cfg = parseGatewayEnv(
@@ -13,6 +14,8 @@ async function main() {
     port: cfg.port,
     fetch: app.fetch,
   });
+
+  startWatchdog({ pid: cfg.shellPid });
 
   // READY handshake: Tauri parent reads stdout for this exact format.
   console.log(`READY ${server.port}`);
