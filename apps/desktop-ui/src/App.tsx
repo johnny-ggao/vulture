@@ -1,14 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
-import type { BrowserRelayStatus } from "./browserTypes";
 import type {
-  AgentToolName,
   AgentView,
   CodexLoginRequest,
   CodexLoginStart,
   OpenAiAuthStatus,
-  SaveWorkspaceRequest,
   WorkspaceView,
 } from "./commandCenterTypes";
 
@@ -24,45 +21,42 @@ type Profile = {
   activeAgentId: string;
 };
 
-const agentTools: AgentToolName[] = ["shell.exec", "browser.snapshot", "browser.click"];
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+};
+
+const starterPrompts = [
+  "总结这个 workspace 的结构和下一步建议",
+  "检查当前项目最需要优先完善的功能",
+  "帮我分析这个桌面 agent 的运行链路",
+];
+
+const previewAgent: AgentView = {
+  id: "local-work-agent",
+  name: "Local Work Agent",
+  description: "General local work assistant",
+  model: "gpt-5.4",
+  reasoning: "medium",
+  tools: ["shell.exec", "browser.snapshot", "browser.click"],
+  instructions: "You are Vulture's local work agent.",
+};
+
+const previewWorkspace: WorkspaceView = {
+  id: "vulture",
+  name: "Vulture",
+  path: "/Users/johnny/Work/vulture",
+  createdAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString(),
+};
 
 function authLabel(status: OpenAiAuthStatus | null) {
-  if (!status?.configured) return "API key or Codex login missing";
-  if (status.source === "codex") return "Configured via Codex ChatGPT login";
-  if (status.source === "environment") return "Configured via OPENAI_API_KEY";
-  return "Configured via Keychain API key";
+  if (!status?.configured) return "未认证";
+  if (status.source === "codex") return "Codex OAuth";
+  if (status.source === "environment") return "OPENAI_API_KEY";
+  return "Keychain API key";
 }
-
-const agentTemplates: Record<"local" | "coder" | "browser", AgentView> = {
-  local: {
-    id: "local-work-agent",
-    name: "Local Work Agent",
-    description: "General local work assistant",
-    model: "gpt-5.4",
-    reasoning: "medium",
-    tools: ["shell.exec", "browser.snapshot", "browser.click"],
-    instructions:
-      "You are Vulture's local work agent. Request local actions through tools and never claim a local command ran unless a tool result confirms it.",
-  },
-  coder: {
-    id: "coder",
-    name: "Coder",
-    description: "Focused coding assistant",
-    model: "gpt-5.4",
-    reasoning: "medium",
-    tools: ["shell.exec"],
-    instructions: "You are a careful coding agent. Explain changes briefly and verify them.",
-  },
-  browser: {
-    id: "browser-researcher",
-    name: "Browser Researcher",
-    description: "Research assistant using browser tools",
-    model: "gpt-5.4",
-    reasoning: "medium",
-    tools: ["browser.snapshot", "browser.click"],
-    instructions: "You inspect browser context and summarize findings clearly.",
-  },
-};
 
 export function App() {
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -76,14 +70,8 @@ export function App() {
   const [codexLoginStatus, setCodexLoginStatus] = useState("idle");
   const [authRefreshStatus, setAuthRefreshStatus] = useState("idle");
   const [apiKeyInput, setApiKeyInput] = useState("");
-  const [workspaceDraft, setWorkspaceDraft] = useState<SaveWorkspaceRequest>({
-    id: "vulture",
-    name: "Vulture",
-    path: "/Users/johnny/Work/vulture",
-  });
-  const [taskInput, setTaskInput] = useState("Summarize this workspace");
-  const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
-  const [browserError, setBrowserError] = useState<string | null>(null);
+  const [taskInput, setTaskInput] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const isRunning = useRef(false);
@@ -91,41 +79,46 @@ export function App() {
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const selectedWorkspace =
     workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null;
-  const canRun =
+  const codexAuthenticated = authStatus?.source === "codex" || codexLogin?.alreadyAuthenticated;
+  const canSend =
     Boolean(selectedAgent && selectedWorkspace && taskInput.trim() && authStatus?.configured) &&
     status !== "running";
-  const codexAuthenticated = authStatus?.source === "codex" || codexLogin?.alreadyAuthenticated;
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadCommandCenter() {
+    async function loadChatShell() {
       try {
-        const [profileResult, agentList, workspaceList, nextAuthStatus, nextBrowserStatus] =
-          await Promise.all([
-            invoke<Profile>("get_profile"),
-            invoke<AgentView[]>("list_agents"),
-            invoke<WorkspaceView[]>("list_workspaces"),
-            invoke<OpenAiAuthStatus>("get_openai_auth_status"),
-            invoke<BrowserRelayStatus>("get_browser_status"),
-          ]);
+        const [profileResult, agentList, workspaceList, nextAuthStatus] = await Promise.all([
+          invoke<Profile>("get_profile"),
+          invoke<AgentView[]>("list_agents"),
+          invoke<WorkspaceView[]>("list_workspaces"),
+          invoke<OpenAiAuthStatus>("get_openai_auth_status"),
+        ]);
 
         if (!isMounted) return;
         setProfile(profileResult);
         setAgents(agentList);
         setWorkspaces(workspaceList);
         setAuthStatus(nextAuthStatus);
-        setBrowserStatus(nextBrowserStatus);
-        setSelectedAgentId((current) => current || agentList[0]?.id || "");
+        setSelectedAgentId((current) => current || profileResult.activeAgentId || agentList[0]?.id || "");
         setSelectedWorkspaceId((current) => current || workspaceList[0]?.id || "");
       } catch (cause) {
-        if (isMounted) {
-          setError(errorMessage(cause));
+        if (!isMounted) return;
+        if (isTauriUnavailable(cause)) {
+          setProfile({ id: "default", name: "Preview", activeAgentId: previewAgent.id });
+          setAgents([previewAgent]);
+          setWorkspaces([previewWorkspace]);
+          setAuthStatus({ configured: false, source: "missing" });
+          setSelectedAgentId(previewAgent.id);
+          setSelectedWorkspaceId(previewWorkspace.id);
+          return;
         }
+        setError(errorMessage(cause));
       }
     }
 
-    loadCommandCenter();
+    loadChatShell();
 
     return () => {
       isMounted = false;
@@ -146,7 +139,7 @@ export function App() {
           window.clearInterval(interval);
         }
       } catch {
-        // Keep polling; the explicit error path is handled by the button action.
+        // Keep polling while the browser auth flow is in progress.
       }
       if (checks >= 80) {
         setCodexLoginStatus("idle");
@@ -156,92 +149,6 @@ export function App() {
 
     return () => window.clearInterval(interval);
   }, [codexLoginStatus]);
-
-  function replaceAgent(nextAgent: AgentView) {
-    setAgents((current) => {
-      const rest = current.filter((agent) => agent.id !== nextAgent.id);
-      return [...rest, nextAgent].sort((left, right) => left.name.localeCompare(right.name));
-    });
-  }
-
-  function updateSelectedAgent(patch: Partial<AgentView>) {
-    if (!selectedAgent) return;
-    const nextAgent = { ...selectedAgent, ...patch };
-    setAgents((current) => {
-      const rest = current.filter(
-        (agent) => agent.id !== selectedAgent.id && agent.id !== nextAgent.id,
-      );
-      return [...rest, nextAgent].sort((left, right) => left.name.localeCompare(right.name));
-    });
-    if (patch.id) {
-      setSelectedAgentId(patch.id);
-    }
-  }
-
-  function toggleTool(tool: AgentToolName) {
-    if (!selectedAgent) return;
-    const tools = selectedAgent.tools.includes(tool)
-      ? selectedAgent.tools.filter((item) => item !== tool)
-      : [...selectedAgent.tools, tool];
-    updateSelectedAgent({ tools });
-  }
-
-  async function saveSelectedAgent(nextAgent = selectedAgent) {
-    if (!nextAgent) return;
-    setError(null);
-
-    try {
-      const saved = await invoke<AgentView>("save_agent", { request: nextAgent });
-      replaceAgent(saved);
-      setSelectedAgentId(saved.id);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }
-
-  async function createAgentFromTemplate(template: keyof typeof agentTemplates) {
-    await saveSelectedAgent(agentTemplates[template]);
-  }
-
-  async function saveWorkspace() {
-    setError(null);
-
-    try {
-      const saved = await invoke<WorkspaceView>("save_workspace", { request: workspaceDraft });
-      setWorkspaces((current) => {
-        const rest = current.filter((workspace) => workspace.id !== saved.id);
-        return [...rest, saved].sort((left, right) => left.name.localeCompare(right.name));
-      });
-      setSelectedWorkspaceId(saved.id);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }
-
-  async function saveApiKey() {
-    setError(null);
-
-    try {
-      const result = await invoke<OpenAiAuthStatus>("set_openai_api_key", {
-        request: { apiKey: apiKeyInput },
-      });
-      setAuthStatus(result);
-      setApiKeyInput("");
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }
-
-  async function clearApiKey() {
-    setError(null);
-
-    try {
-      const result = await invoke<OpenAiAuthStatus>("clear_openai_api_key");
-      setAuthStatus(result);
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }
 
   async function startCodexLogin(forceReauth = false) {
     setError(null);
@@ -278,237 +185,210 @@ export function App() {
     }
   }
 
-  async function startRealRun() {
-    if (isRunning.current || !selectedAgent || !selectedWorkspace) return;
+  async function saveApiKey() {
+    setError(null);
 
-    isRunning.current = true;
+    try {
+      const result = await invoke<OpenAiAuthStatus>("set_openai_api_key", {
+        request: { apiKey: apiKeyInput },
+      });
+      setAuthStatus(result);
+      setApiKeyInput("");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
+  async function sendMessage() {
+    const input = taskInput.trim();
+    if (isRunning.current || !input || !selectedAgent || !selectedWorkspace) return;
+
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: input,
+    };
+    setMessages((current) => [...current, userMessage]);
+    setTaskInput("");
     setStatus("running");
     setError(null);
     setEvents([]);
+    isRunning.current = true;
+
+    if (!isTauriRuntime()) {
+      setStatus("failed");
+      setError("请在 Tauri 桌面窗口中运行真实任务。");
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: "当前只是浏览器预览。真实 agent 运行需要通过 Tauri 桌面窗口启动。",
+        },
+      ]);
+      isRunning.current = false;
+      return;
+    }
 
     try {
       const result = await invoke<RunEvent[]>("start_agent_run", {
         request: {
           agentId: selectedAgent.id,
           workspaceId: selectedWorkspace.id,
-          input: taskInput,
+          input,
         },
       });
       setEvents(result);
       setStatus("completed");
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: assistantTextFromEvents(result),
+        },
+      ]);
     } catch (cause) {
+      const message = errorMessage(cause);
       setStatus("failed");
-      setError(errorMessage(cause));
+      setError(message);
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          content: message,
+        },
+      ]);
     } finally {
       isRunning.current = false;
     }
   }
 
-  async function startMockRun() {
+  async function sendMockMessage() {
+    const input = taskInput.trim() || "Summarize this workspace";
     if (isRunning.current) return;
 
-    isRunning.current = true;
+    setMessages((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role: "user", content: input },
+    ]);
+    setTaskInput("");
     setStatus("running");
     setError(null);
     setEvents([]);
+    isRunning.current = true;
+
+    if (!isTauriRuntime()) {
+      setStatus("completed");
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `Mock response for: ${input}`,
+        },
+      ]);
+      isRunning.current = false;
+      return;
+    }
 
     try {
-      const result = await invoke<RunEvent[]>("start_mock_run", {
-        input: taskInput || "Summarize this workspace",
-      });
+      const result = await invoke<RunEvent[]>("start_mock_run", { input });
       setEvents(result);
       setStatus("completed");
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: assistantTextFromEvents(result),
+        },
+      ]);
     } catch (cause) {
+      const message = errorMessage(cause);
       setStatus("failed");
-      setError(errorMessage(cause));
+      setError(message);
     } finally {
       isRunning.current = false;
-    }
-  }
-
-  async function startPairing() {
-    setBrowserError(null);
-
-    try {
-      const result = await invoke<BrowserRelayStatus>("start_browser_pairing");
-      setBrowserStatus(result);
-    } catch (cause) {
-      setBrowserError(errorMessage(cause));
     }
   }
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <h1>Vulture</h1>
-        <p className="muted">{profile?.name ?? "Default"} profile</p>
+    <div className="app-shell">
+      <aside className="chat-sidebar">
+        <div className="window-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="brand">
+          <div className="brand-mark">V</div>
+          <strong>Vulture Work</strong>
+        </div>
 
-        <section className="stack">
-          <h2>Agents</h2>
-          <div className="button-row">
-            <button type="button" onClick={() => createAgentFromTemplate("local")}>
-              Local
-            </button>
-            <button type="button" onClick={() => createAgentFromTemplate("coder")}>
-              Coder
-            </button>
-            <button type="button" onClick={() => createAgentFromTemplate("browser")}>
-              Browser
-            </button>
+        <button
+          type="button"
+          className="nav-item active"
+          onClick={() => {
+            setMessages([]);
+            setTaskInput("");
+            setEvents([]);
+            setStatus("idle");
+            setError(null);
+          }}
+        >
+          <span>+</span>
+          新消息
+        </button>
+
+        <nav className="nav-list" aria-label="Workspace navigation">
+          <button type="button" className="nav-item">
+            智能体
+          </button>
+          <button type="button" className="nav-item">
+            能力
+          </button>
+          <button type="button" className="nav-item">
+            应用授权
+          </button>
+        </nav>
+
+        <section className="conversation-list">
+          <p>会话</p>
+          <button type="button" className="conversation active">
+            <span className="mini-mark">V</span>
+            当前会话
+          </button>
+          {messages
+            .filter((message) => message.role === "user")
+            .slice(-6)
+            .map((message) => (
+              <button key={message.id} type="button" className="conversation">
+                {message.content}
+              </button>
+            ))}
+        </section>
+
+        <footer className="sidebar-footer">
+          <div className="avatar">J</div>
+          <div>
+            <strong>Johnny Wei</strong>
+            <p>{profile?.name ?? "Default"} profile</p>
           </div>
-          <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        </section>
-
-        <section className="stack">
-          <h2>Workspaces</h2>
-          <select
-            value={selectedWorkspaceId}
-            onChange={(event) => setSelectedWorkspaceId(event.target.value)}
-          >
-            <option value="">No workspace</option>
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </option>
-            ))}
-          </select>
-          {selectedWorkspace ? <p className="path">{selectedWorkspace.path}</p> : null}
-        </section>
+        </footer>
       </aside>
 
-      <main className="workspace">
-        <header>
+      <main className="chat-main">
+        <header className="chat-header">
           <div>
-            <p className="eyebrow">Command Center</p>
-            <h2>{selectedAgent?.name ?? "Create an agent"}</h2>
+            <p className="eyebrow">Agent Chat</p>
+            <h1>{selectedAgent?.name ?? "Vulture"}</h1>
           </div>
-          <div className="button-row">
-            <button type="button" onClick={() => saveSelectedAgent()} disabled={!selectedAgent}>
-              Save Agent
-            </button>
-            <button type="button" onClick={startRealRun} disabled={!canRun}>
-              Run
-            </button>
-            <button type="button" onClick={startMockRun} disabled={status === "running"}>
-              Mock
-            </button>
-          </div>
-        </header>
-
-        {selectedAgent ? (
-          <section className="panel editor">
-            <label>
-              Agent ID
-              <input
-                value={selectedAgent.id}
-                onChange={(event) => updateSelectedAgent({ id: event.target.value })}
-              />
-            </label>
-            <label>
-              Name
-              <input
-                value={selectedAgent.name}
-                onChange={(event) => updateSelectedAgent({ name: event.target.value })}
-              />
-            </label>
-            <label>
-              Model
-              <input
-                value={selectedAgent.model}
-                onChange={(event) => updateSelectedAgent({ model: event.target.value })}
-              />
-            </label>
-            <label>
-              Reasoning
-              <select
-                value={selectedAgent.reasoning}
-                onChange={(event) => updateSelectedAgent({ reasoning: event.target.value })}
-              >
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-                <option value="xhigh">xhigh</option>
-              </select>
-            </label>
-            <label className="wide">
-              Description
-              <input
-                value={selectedAgent.description}
-                onChange={(event) => updateSelectedAgent({ description: event.target.value })}
-              />
-            </label>
-            <div className="wide tool-list">
-              {agentTools.map((tool) => (
-                <label key={tool} className="check">
-                  <input
-                    type="checkbox"
-                    checked={selectedAgent.tools.includes(tool)}
-                    onChange={() => toggleTool(tool)}
-                  />
-                  {tool}
-                </label>
-              ))}
-            </div>
-            <label className="wide">
-              Instructions
-              <textarea
-                value={selectedAgent.instructions}
-                onChange={(event) => updateSelectedAgent({ instructions: event.target.value })}
-              />
-            </label>
-          </section>
-        ) : null}
-
-        <section className="panel run-panel">
-          <label>
-            Task
-            <textarea value={taskInput} onChange={(event) => setTaskInput(event.target.value)} />
-          </label>
-          <p className="status">Run state: {status}</p>
-          {error ? <p className="error">{error}</p> : null}
-          <div className="timeline">
-            {events.map((event, index) => (
-              <article key={`${event.type}-${index}`} className="event">
-                <strong>{event.type}</strong>
-                <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-              </article>
-            ))}
-          </div>
-        </section>
-      </main>
-
-      <aside className="inspector">
-        <section className="stack">
-          <h2>OpenAI</h2>
-          <p className="status">{authLabel(authStatus)}</p>
-          {authStatus?.source === "codex" ? (
-            <p className="muted">Run uses Codex CLI OAuth provider when no API key is saved.</p>
-          ) : null}
-          {authRefreshStatus === "refreshing" ? (
-            <p className="muted">Refreshing authentication status...</p>
-          ) : null}
-          {codexLogin && !codexLogin.alreadyAuthenticated ? (
-            <div className="code-box">
-              <span>Codex code</span>
-              <strong>{codexLogin.userCode}</strong>
-            </div>
-          ) : null}
-          {codexLogin?.alreadyAuthenticated ? (
-            <p className="muted">Codex is already authenticated.</p>
-          ) : null}
-          <input
-            type="password"
-            value={apiKeyInput}
-            placeholder="sk-..."
-            onChange={(event) => setApiKeyInput(event.target.value)}
-          />
-          <div className="button-row">
+          <div className="auth-actions">
+            <span className={`auth-pill ${authStatus?.configured ? "ready" : ""}`}>
+              {authLabel(authStatus)}
+            </span>
             <button
               type="button"
               onClick={() => startCodexLogin(Boolean(codexAuthenticated))}
@@ -519,7 +399,7 @@ export function App() {
                 : codexLoginStatus === "waiting"
                   ? "Waiting..."
                   : codexAuthenticated
-                    ? "Re-authorize Codex"
+                    ? "Re-authorize"
                     : "Login with Codex"}
             </button>
             <button
@@ -527,60 +407,137 @@ export function App() {
               onClick={refreshAuthStatus}
               disabled={authRefreshStatus === "refreshing"}
             >
-              {authRefreshStatus === "refreshing" ? "Refreshing..." : "Refresh Auth"}
+              Refresh
             </button>
+          </div>
+        </header>
+
+        <section className={`chat-stage ${messages.length ? "has-messages" : ""}`}>
+          {messages.length ? (
+            <div className="message-list">
+              {messages.map((message) => (
+                <article key={message.id} className={`message ${message.role}`}>
+                  <div className="message-avatar">{message.role === "user" ? "J" : "V"}</div>
+                  <div className="message-bubble">
+                    <pre>{message.content}</pre>
+                  </div>
+                </article>
+              ))}
+              {status === "running" ? (
+                <article className="message assistant">
+                  <div className="message-avatar">V</div>
+                  <div className="message-bubble muted-bubble">正在处理...</div>
+                </article>
+              ) : null}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="hero-mark">V</div>
+              <h2>Vulture</h2>
+              <p>选择智能体和项目，然后直接输入任务。</p>
+              <div className="starter-grid">
+                {starterPrompts.map((prompt) => (
+                  <button key={prompt} type="button" onClick={() => setTaskInput(prompt)}>
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="composer-wrap">
+          {error ? <p className="error">{error}</p> : null}
+          {codexLogin && !codexLogin.alreadyAuthenticated ? (
+            <div className="code-box">
+              <span>Codex code</span>
+              <strong>{codexLogin.userCode}</strong>
+            </div>
+          ) : null}
+          <div className="composer">
+            <textarea
+              value={taskInput}
+              placeholder="输入问题...（@ 引用文件）"
+              onChange={(event) => setTaskInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+            />
+            <div className="composer-controls">
+              <button type="button" aria-label="Attach file">
+                +
+              </button>
+              <select
+                value={selectedWorkspaceId}
+                onChange={(event) => setSelectedWorkspaceId(event.target.value)}
+              >
+                <option value="">选择项目</option>
+                {workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+              <select value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={sendMockMessage} disabled={status === "running"}>
+                Mock
+              </button>
+              <button type="button" className="send-button" onClick={sendMessage} disabled={!canSend}>
+                ↑
+              </button>
+            </div>
+          </div>
+          <div className="run-meta">
+            <span>{selectedWorkspace?.path ?? "未选择项目"}</span>
+            <span>状态：{status}</span>
+            {events.length ? <span>{events.length} events</span> : null}
+          </div>
+          <div className="api-key-row">
+            <input
+              type="password"
+              value={apiKeyInput}
+              placeholder="可选：输入 OpenAI API key"
+              onChange={(event) => setApiKeyInput(event.target.value)}
+            />
             <button type="button" onClick={saveApiKey} disabled={!apiKeyInput.trim()}>
               Save Key
             </button>
-            <button type="button" onClick={clearApiKey}>
-              Clear
-            </button>
           </div>
         </section>
-
-        <section className="stack">
-          <h2>Workspace</h2>
-          <input
-            value={workspaceDraft.id}
-            onChange={(event) => setWorkspaceDraft({ ...workspaceDraft, id: event.target.value })}
-            placeholder="id"
-          />
-          <input
-            value={workspaceDraft.name}
-            onChange={(event) => setWorkspaceDraft({ ...workspaceDraft, name: event.target.value })}
-            placeholder="name"
-          />
-          <input
-            value={workspaceDraft.path}
-            onChange={(event) => setWorkspaceDraft({ ...workspaceDraft, path: event.target.value })}
-            placeholder="/absolute/path"
-          />
-          <button type="button" onClick={saveWorkspace}>
-            Save Workspace
-          </button>
-        </section>
-
-        <section className="stack">
-          <h2>Browser</h2>
-          <p className="status">
-            {browserStatus?.paired
-              ? "paired"
-              : browserStatus?.enabled
-                ? "pairing"
-                : "disabled"}
-          </p>
-          {browserStatus?.relayPort ? <p>Relay: 127.0.0.1:{browserStatus.relayPort}</p> : null}
-          {browserStatus?.pairingToken ? (
-            <code className="token">{browserStatus.pairingToken}</code>
-          ) : null}
-          {browserError ? <p className="error">{browserError}</p> : null}
-          <button type="button" onClick={startPairing}>
-            Pair Extension
-          </button>
-        </section>
-      </aside>
+      </main>
     </div>
   );
+}
+
+function assistantTextFromEvents(events: RunEvent[]) {
+  const completed = [...events].reverse().find((event) => event.type === "run_completed");
+  const finalOutput = completed?.payload.finalOutput;
+  if (typeof finalOutput === "string" && finalOutput.trim()) {
+    return finalOutput.trim();
+  }
+
+  if (!events.length) return "任务完成，但没有返回内容。";
+
+  return events
+    .map((event) => `${event.type}\n${JSON.stringify(event.payload, null, 2)}`)
+    .join("\n\n");
+}
+
+function isTauriRuntime() {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+function isTauriUnavailable(cause: unknown) {
+  return errorMessage(cause).includes("invoke");
 }
 
 function errorMessage(cause: unknown) {
