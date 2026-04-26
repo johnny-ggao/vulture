@@ -2,14 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
-  AgentView,
   CodexLoginRequest,
   CodexLoginStart,
   OpenAiAuthStatus,
 } from "./commandCenterTypes";
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
-import { agentsApi } from "./api/agents";
+import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
 
 type RunEvent = {
@@ -44,7 +43,7 @@ const previewWorkspace = {
   updatedAt: new Date(0).toISOString(),
 };
 
-const previewAgent: AgentView = {
+const previewAgent: Agent = {
   id: "local-work-agent",
   name: "Local Work Agent",
   description: "General local work assistant",
@@ -53,6 +52,8 @@ const previewAgent: AgentView = {
   tools: ["shell.exec", "browser.snapshot", "browser.click"],
   workspace: previewWorkspace,
   instructions: "You are Vulture's local work agent.",
+  createdAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString(),
 };
 
 function authLabel(status: OpenAiAuthStatus | null) {
@@ -65,7 +66,7 @@ function authLabel(status: OpenAiAuthStatus | null) {
 export function App() {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [agents, setAgents] = useState<AgentView[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [authStatus, setAuthStatus] = useState<OpenAiAuthStatus | null>(null);
   const [codexLogin, setCodexLogin] = useState<CodexLoginStart | null>(null);

@@ -1,23 +1,5 @@
-export type AgentToolName = "shell.exec" | "browser.snapshot" | "browser.click";
-
-export type AgentView = {
-  id: string;
-  name: string;
-  description: string;
-  model: string;
-  reasoning: string;
-  tools: AgentToolName[];
-  workspace: WorkspaceView;
-  instructions: string;
-};
-
-export type WorkspaceView = {
-  id: string;
-  name: string;
-  path: string;
-  createdAt: string;
-  updatedAt: string;
-};
+// System-level Tauri command types only — agent/workspace/profile types
+// live in apps/desktop-ui/src/api/* now (mirroring the gateway HTTP contract).
 
 export type OpenAiAuthStatus = {
   configured: boolean;
@@ -32,12 +14,4 @@ export type CodexLoginStart = {
 
 export type CodexLoginRequest = {
   forceReauth: boolean;
-};
-
-export type SaveAgentRequest = AgentView;
-
-export type SaveWorkspaceRequest = {
-  id: string;
-  name: string;
-  path: string;
 };
