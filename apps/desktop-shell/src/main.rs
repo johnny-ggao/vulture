@@ -3,6 +3,7 @@ mod agent_store;
 mod auth;
 mod browser;
 mod commands;
+mod runtime;
 mod sidecar;
 mod single_instance;
 mod state;
