@@ -50,14 +50,17 @@ mod tests {
         let payload = json!({ "tool": "file.read", "ok": true });
 
         store.append("tool.result", &payload)?;
+        drop(store);
 
-        let (event_type, persisted_payload): (String, String) = store.conn.query_row(
+        let reopened_store = AuditStore::open(&path)?;
+
+        let (event_type, persisted_payload): (String, String) = reopened_store.conn.query_row(
             "SELECT event_type, payload FROM audit_events",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
-        drop(store);
+        drop(reopened_store);
         let _ = fs::remove_file(path);
 
         assert_eq!(event_type, "tool.result");
