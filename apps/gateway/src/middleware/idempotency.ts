@@ -41,7 +41,10 @@ export function idempotencyCache(): MiddlewareHandler {
     if (!key) return next();
     const now = Date.now();
 
-    const hit = cache.get(key);
+    // Include path in cache key to avoid cross-route collisions
+    const cacheKey = `${c.req.path}:${key}`;
+
+    const hit = cache.get(cacheKey);
     if (hit && hit.expiresAt > now) {
       return new Response(hit.body, { status: hit.status, headers: hit.headers });
     }
@@ -53,7 +56,7 @@ export function idempotencyCache(): MiddlewareHandler {
       const body = await res.clone().text();
       const headers: Record<string, string> = {};
       res.headers.forEach((v, k) => (headers[k] = v));
-      cache.set(key, { status: res.status, body, headers, expiresAt: now + TTL_MS });
+      cache.set(cacheKey, { status: res.status, body, headers, expiresAt: now + TTL_MS });
       evict(now);
     }
   };
