@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { runAgent } from "./agents";
+import { createLocalWorkAgent, runAgent } from "./agents";
 
 const validRunParams = {
   profileId: "default",
@@ -35,6 +35,20 @@ describe("agent mock mode", () => {
         tool: "shell.exec",
         input: { cwd: "/tmp", argv: ["pwd"], timeoutMs: 120000 },
       },
+    ]);
+  });
+});
+
+describe("local work agent", () => {
+  test("registers shell and browser tools", () => {
+    const agent = createLocalWorkAgent({
+      request: async () => ({ ok: true }),
+    });
+
+    expect(agent.tools.map((tool) => tool.name)).toEqual([
+      "shell_exec",
+      "browser_snapshot",
+      "browser_click",
     ]);
   });
 });

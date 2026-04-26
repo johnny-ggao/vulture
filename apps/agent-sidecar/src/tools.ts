@@ -5,23 +5,23 @@ export type ToolGateway = {
   request(toolName: string, input: Record<string, unknown>): Promise<unknown>;
 };
 
-export const browserTabInput = z.object({ tabId: z.number().int().positive() });
-export const browserClickInput = browserTabInput.extend({
+const browserTabInput = z.object({ tabId: z.number().int().positive() });
+const browserClickInput = browserTabInput.extend({
   selector: z.string().min(1),
 });
 
 export async function requestBrowserSnapshot(
   gateway: ToolGateway,
-  input: z.infer<typeof browserTabInput>,
+  input: unknown,
 ) {
-  return gateway.request("browser.snapshot", input);
+  return gateway.request("browser.snapshot", browserTabInput.parse(input));
 }
 
 export async function requestBrowserClick(
   gateway: ToolGateway,
-  input: z.infer<typeof browserClickInput>,
+  input: unknown,
 ) {
-  return gateway.request("browser.click", input);
+  return gateway.request("browser.click", browserClickInput.parse(input));
 }
 
 export function createShellExecTool(gateway: ToolGateway) {

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createBrowserTools, requestBrowserSnapshot, type ToolGateway } from "./tools";
+import {
+  createBrowserTools,
+  requestBrowserClick,
+  requestBrowserSnapshot,
+  type ToolGateway,
+} from "./tools";
 
 describe("browser tool adapters", () => {
   test("requestBrowserSnapshot forwards to the gateway", async () => {
@@ -25,5 +30,25 @@ describe("browser tool adapters", () => {
 
     expect(browserTools.snapshot.name).toBe("browser_snapshot");
     expect(browserTools.click.name).toBe("browser_click");
+  });
+
+  test("requestBrowserClick validates input and forwards to the gateway", async () => {
+    const requests: unknown[] = [];
+    const result = { clicked: true };
+    const gateway: ToolGateway = {
+      request: async (toolName, input) => {
+        requests.push({ toolName, input });
+        return result;
+      },
+    };
+
+    await expect(requestBrowserClick(gateway, { tabId: 1, selector: "#save" })).resolves.toBe(
+      result,
+    );
+    await expect(requestBrowserClick(gateway, { tabId: -1, selector: "" })).rejects.toThrow();
+
+    expect(requests).toEqual([
+      { toolName: "browser.click", input: { tabId: 1, selector: "#save" } },
+    ]);
   });
 });
