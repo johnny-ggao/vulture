@@ -1,0 +1,91 @@
+import { z } from "zod";
+
+export const JsonValue: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValue),
+    z.record(z.string(), JsonValue),
+  ]),
+);
+
+export const JsonRpcId = z.union([z.string(), z.number()]);
+
+export const JsonRpcRequest = z.object({
+  id: JsonRpcId.optional(),
+  method: z.string().min(1),
+  params: z.record(z.string(), JsonValue).optional(),
+});
+
+export const JsonRpcSuccess = z.object({
+  id: JsonRpcId,
+  result: JsonValue,
+});
+
+export const JsonRpcError = z.object({
+  id: JsonRpcId.optional(),
+  error: z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+    recoverable: z.boolean().default(false),
+    details: z.record(z.string(), JsonValue).optional(),
+  }),
+});
+
+export const RunCreateParams = z.object({
+  profileId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  agentId: z.string().min(1),
+  input: z.string().min(1),
+});
+
+export const ToolName = z.enum([
+  "file.read",
+  "file.write",
+  "shell.exec",
+  "terminal.pty",
+  "browser.control",
+  "mcp.invoke",
+]);
+
+export const ToolRequestParams = z.object({
+  runId: z.string().min(1),
+  tool: ToolName.or(z.string().regex(/^git\./)),
+  input: z.record(z.string(), JsonValue),
+});
+
+export const RunEventType = z.enum([
+  "run_started",
+  "model_delta",
+  "tool_requested",
+  "tool_result",
+  "approval_required",
+  "run_completed",
+  "run_failed",
+]);
+
+export type RunEventTypeName = z.infer<typeof RunEventType>;
+
+export type RunEvent<
+  TPayload extends Record<string, unknown> = Record<string, unknown>,
+> = {
+  runId: string;
+  type: RunEventTypeName;
+  payload: TPayload;
+  createdAt: string;
+};
+
+export function makeEvent<TPayload extends Record<string, unknown>>(
+  runId: string,
+  type: RunEventTypeName,
+  payload: TPayload,
+): RunEvent<TPayload> {
+  return {
+    runId,
+    type,
+    payload,
+    createdAt: new Date().toISOString(),
+  };
+}
