@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+export type JsonPrimitive = string | number | boolean | null;
+export type Json = JsonPrimitive | Json[] | { [key: string]: Json };
+export type JsonObject = { [key: string]: Json };
+
 export const JsonValue: z.ZodType<unknown> = z.lazy(() =>
   z.union([
     z.string(),
@@ -52,7 +56,7 @@ export const ToolName = z.enum([
 
 export const ToolRequestParams = z.object({
   runId: z.string().min(1),
-  tool: ToolName.or(z.string().regex(/^git\./)),
+  tool: ToolName.or(z.string().regex(/^git\.[A-Za-z0-9._-]+$/)),
   input: z.record(z.string(), JsonValue),
 });
 
@@ -68,16 +72,14 @@ export const RunEventType = z.enum([
 
 export type RunEventTypeName = z.infer<typeof RunEventType>;
 
-export type RunEvent<
-  TPayload extends Record<string, unknown> = Record<string, unknown>,
-> = {
+export type RunEvent<TPayload extends JsonObject = JsonObject> = {
   runId: string;
   type: RunEventTypeName;
   payload: TPayload;
   createdAt: string;
 };
 
-export function makeEvent<TPayload extends Record<string, unknown>>(
+export function makeEvent<TPayload extends JsonObject>(
   runId: string,
   type: RunEventTypeName,
   payload: TPayload,

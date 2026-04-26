@@ -32,6 +32,16 @@ describe("protocol schemas", () => {
     expect(parsed.tool).toBe("shell.exec");
   });
 
+  test("rejects git tool requests without a suffix", () => {
+    expect(() =>
+      ToolRequestParams.parse({
+        runId: "run_1",
+        tool: "git.",
+        input: {},
+      }),
+    ).toThrow();
+  });
+
   test("rejects rpc requests without a method", () => {
     expect(() => JsonRpcRequest.parse({ id: "1", params: {} })).toThrow();
   });
