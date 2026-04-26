@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type RunEvent = {
   type: string;
@@ -10,14 +10,29 @@ type RunEvent = {
 export function App() {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [status, setStatus] = useState("idle");
+  const [error, setError] = useState<string | null>(null);
+  const isRunning = useRef(false);
 
   async function startMockRun() {
+    if (isRunning.current) return;
+
+    isRunning.current = true;
     setStatus("running");
-    const result = await invoke<RunEvent[]>("start_mock_run", {
-      input: "Summarize this workspace",
-    });
-    setEvents(result);
-    setStatus("completed");
+    setError(null);
+
+    let nextStatus = "completed";
+    try {
+      const result = await invoke<RunEvent[]>("start_mock_run", {
+        input: "Summarize this workspace",
+      });
+      setEvents(result);
+    } catch (cause) {
+      nextStatus = "failed";
+      setError(errorMessage(cause));
+    } finally {
+      isRunning.current = false;
+      setStatus(nextStatus);
+    }
   }
 
   return (
@@ -33,12 +48,13 @@ export function App() {
             <p className="eyebrow">Workspace</p>
             <h2>Local Agent Workbench</h2>
           </div>
-          <button type="button" onClick={startMockRun}>
+          <button type="button" onClick={startMockRun} disabled={status === "running"}>
             Run Agent
           </button>
         </header>
         <section className="timeline">
           <p className="status">Run state: {status}</p>
+          {error ? <p className="error">{error}</p> : null}
           {events.map((event, index) => (
             <article key={`${event.type}-${index}`} className="event">
               <strong>{event.type}</strong>
@@ -53,4 +69,8 @@ export function App() {
       </aside>
     </div>
   );
+}
+
+function errorMessage(cause: unknown) {
+  return cause instanceof Error ? cause.message : String(cause);
 }

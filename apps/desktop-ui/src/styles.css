@@ -9,6 +9,7 @@ button { border: 1px solid #c9d3dc; border-radius: 6px; background: #ffffff; col
 header { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #d8e0e7; padding-bottom: 18px; }
 h1, h2, p { margin: 0; }
 .eyebrow, .status { color: #65727d; font-size: 13px; }
+.error { color: #a13b2b; font-size: 13px; }
 .timeline { display: grid; gap: 12px; padding-top: 18px; }
 .event { border: 1px solid #d8e0e7; border-radius: 8px; background: #ffffff; padding: 14px; }
 pre { overflow: auto; margin: 10px 0 0; font-size: 12px; }

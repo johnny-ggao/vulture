@@ -2,10 +2,7 @@ use std::{path::PathBuf, process::Stdio};
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::{json, Value};
-use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::Command,
-};
+use tokio::{io::AsyncWriteExt, process::Command};
 
 pub async fn start_mock_run(input: String) -> Result<Vec<Value>> {
     let repo_root = repo_root();
@@ -25,15 +22,6 @@ pub async fn start_mock_run(input: String) -> Result<Vec<Value>> {
         .stdin
         .take()
         .context("sidecar stdin was not available")?;
-    let stdout = child
-        .stdout
-        .take()
-        .context("sidecar stdout was not available")?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .context("sidecar stderr was not available")?;
-
     let request = json!({
         "id": "desktop-mock-run",
         "method": "run.create",
@@ -53,30 +41,24 @@ pub async fn start_mock_run(input: String) -> Result<Vec<Value>> {
         .shutdown()
         .await
         .context("failed to close sidecar stdin")?;
+    drop(stdin);
 
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    let bytes_read = reader
-        .read_line(&mut line)
+    let output = child
+        .wait_with_output()
         .await
-        .context("failed to read sidecar response")?;
+        .context("failed to wait for sidecar")?;
+    let stdout_text = String::from_utf8_lossy(&output.stdout);
+    let stderr_text = String::from_utf8_lossy(&output.stderr);
 
-    let status = child.wait().await.context("failed to wait for sidecar")?;
-    let mut stderr_text = String::new();
-    stderr
-        .read_to_string(&mut stderr_text)
-        .await
-        .context("failed to read sidecar stderr")?;
-
-    if bytes_read == 0 {
+    let Some(line) = first_stdout_line(&stdout_text) else {
         bail!("sidecar exited without a response: {stderr_text}");
+    };
+
+    if !output.status.success() {
+        bail!("sidecar exited with {}: {stderr_text}", output.status);
     }
 
-    if !status.success() {
-        bail!("sidecar exited with {status}: {stderr_text}");
-    }
-
-    events_from_response(&line)
+    events_from_response(line)
 }
 
 fn repo_root() -> PathBuf {
@@ -101,11 +83,15 @@ fn events_from_response(line: &str) -> Result<Vec<Value>> {
         .ok_or_else(|| anyhow!("sidecar response missing result.events array"))
 }
 
+fn first_stdout_line(stdout: &str) -> Option<&str> {
+    stdout.lines().find(|line| !line.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::events_from_response;
+    use super::{events_from_response, first_stdout_line};
 
     #[test]
     fn extracts_events_from_success_response() {
@@ -127,5 +113,16 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0]["type"], "run_started");
+    }
+
+    #[test]
+    fn selects_first_non_empty_stdout_line() {
+        let line =
+            first_stdout_line("\n{\"id\":\"desktop-mock-run\",\"result\":{\"events\":[]}}\n");
+
+        assert_eq!(
+            line,
+            Some("{\"id\":\"desktop-mock-run\",\"result\":{\"events\":[]}}")
+        );
     }
 }
