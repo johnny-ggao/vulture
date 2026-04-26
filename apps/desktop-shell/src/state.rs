@@ -1,13 +1,13 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Mutex, MutexGuard},
+    sync::{Mutex, MutexGuard, RwLock},
 };
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use serde_json::json;
-use vulture_core::{AppPaths, Profile, StorageLayout};
+use vulture_core::{AppPaths, Profile, RuntimeDescriptor, StorageLayout};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
 use crate::{
@@ -17,6 +17,7 @@ use crate::{
         KeychainSecretStore, OpenAiAuthStatus, SecretStore, SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
+    supervisor::SupervisorStatus,
     workspace_store::{SaveWorkspaceRequest, WorkspaceStore},
 };
 
@@ -36,6 +37,10 @@ pub struct AppState {
     policy_engine: PolicyEngine,
     audit_store: Mutex<AuditStore>,
     browser_relay: Mutex<BrowserRelayState>,
+    #[allow(dead_code)]
+    runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
+    #[allow(dead_code)]
+    supervisor_status: RwLock<SupervisorStatus>,
 }
 
 impl AppState {
@@ -89,6 +94,11 @@ impl AppState {
             policy_engine: PolicyEngine::default(),
             audit_store: Mutex::new(audit_store),
             browser_relay: Mutex::new(BrowserRelayState::default()),
+            runtime_descriptor: RwLock::new(None),
+            supervisor_status: RwLock::new(SupervisorStatus {
+                state: crate::supervisor::SupervisorState::Starting,
+                gateway_log: None,
+            }),
         })
     }
 
@@ -205,6 +215,28 @@ impl AppState {
 
     fn workspace_store(&self) -> WorkspaceStore {
         WorkspaceStore::new(&self.profile_dir)
+    }
+}
+
+impl AppState {
+    #[allow(dead_code)]
+    pub fn set_runtime_descriptor(&self, descriptor: RuntimeDescriptor) {
+        *self.runtime_descriptor.write().expect("rt lock poisoned") = Some(descriptor);
+    }
+
+    #[allow(dead_code)]
+    pub fn runtime_descriptor(&self) -> Option<RuntimeDescriptor> {
+        self.runtime_descriptor.read().expect("rt lock poisoned").clone()
+    }
+
+    #[allow(dead_code)]
+    pub fn set_supervisor_status(&self, status: SupervisorStatus) {
+        *self.supervisor_status.write().expect("sup lock poisoned") = status;
+    }
+
+    #[allow(dead_code)]
+    pub fn supervisor_status(&self) -> SupervisorStatus {
+        self.supervisor_status.read().expect("sup lock poisoned").clone()
     }
 }
 
