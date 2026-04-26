@@ -102,8 +102,8 @@ impl AppState {
         Ok(self.browser_relay()?.status())
     }
 
-    pub fn start_browser_pairing(&self, relay_port: u16) -> Result<BrowserRelayStatus> {
-        self.browser_relay()?.enable_pairing(relay_port)
+    pub fn start_browser_pairing(&self) -> Result<BrowserRelayStatus> {
+        self.browser_relay()?.enable_pairing(38421)
     }
 
     fn audit_store(&self) -> Result<MutexGuard<'_, AuditStore>> {

@@ -28,9 +28,6 @@ pub fn get_browser_status(
 #[tauri::command]
 pub fn start_browser_pairing(
     state: State<'_, AppState>,
-    relay_port: u16,
 ) -> Result<crate::browser::relay::BrowserRelayStatus, String> {
-    state
-        .start_browser_pairing(relay_port)
-        .map_err(|error| error.to_string())
+    state.start_browser_pairing().map_err(|error| error.to_string())
 }
