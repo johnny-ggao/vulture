@@ -4,6 +4,7 @@ mod auth;
 mod browser;
 mod commands;
 mod sidecar;
+mod single_instance;
 mod state;
 mod workspace_store;
 
