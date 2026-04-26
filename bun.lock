@@ -42,7 +42,9 @@
       "name": "@vulture/gateway",
       "version": "0.1.0",
       "dependencies": {
+        "@vulture/agent-runtime": "workspace:*",
         "@vulture/common": "workspace:*",
+        "@vulture/llm": "workspace:*",
         "@vulture/protocol": "workspace:*",
         "hono": "^4.6.0",
       },

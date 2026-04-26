@@ -12,6 +12,8 @@
   "dependencies": {
     "@vulture/protocol": "workspace:*",
     "@vulture/common": "workspace:*",
+    "@vulture/agent-runtime": "workspace:*",
+    "@vulture/llm": "workspace:*",
     "hono": "^4.6.0"
   },
   "devDependencies": {
