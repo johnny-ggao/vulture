@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
+import type { BrowserRelayStatus } from "./browserTypes";
+
 type RunEvent = {
   type: string;
   payload: Record<string, unknown>;
@@ -16,6 +18,8 @@ type Profile = {
 export function App() {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
+  const [browserError, setBrowserError] = useState<string | null>(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const isRunning = useRef(false);
@@ -35,10 +39,33 @@ export function App() {
         }
       });
 
+    invoke<BrowserRelayStatus>("get_browser_status")
+      .then((result) => {
+        if (isMounted) {
+          setBrowserStatus(result);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setBrowserStatus(null);
+        }
+      });
+
     return () => {
       isMounted = false;
     };
   }, []);
+
+  async function startPairing() {
+    setBrowserError(null);
+
+    try {
+      const result = await invoke<BrowserRelayStatus>("start_browser_pairing");
+      setBrowserStatus(result);
+    } catch (cause) {
+      setBrowserError(errorMessage(cause));
+    }
+  }
 
   async function startMockRun() {
     if (isRunning.current) return;
@@ -91,8 +118,19 @@ export function App() {
         </section>
       </main>
       <aside className="inspector">
-        <h2>Approvals</h2>
-        <p>No pending approvals.</p>
+        <h2>Browser</h2>
+        <p>
+          Status:{" "}
+          {browserStatus?.paired ? "paired" : browserStatus?.enabled ? "pairing" : "disabled"}
+        </p>
+        {browserStatus?.relayPort ? <p>Relay: 127.0.0.1:{browserStatus.relayPort}</p> : null}
+        {browserStatus?.pairingToken ? (
+          <code className="token">{browserStatus.pairingToken}</code>
+        ) : null}
+        {browserError ? <p className="error">{browserError}</p> : null}
+        <button type="button" onClick={startPairing}>
+          Pair Extension
+        </button>
       </aside>
     </div>
   );
