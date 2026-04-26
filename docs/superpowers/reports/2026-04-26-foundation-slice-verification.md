@@ -7,13 +7,24 @@ Date: 2026-04-26
 - `bun run verify`
 - `bun --filter @vulture/desktop-ui build`
 - `cargo check -p vulture-desktop-shell`
-- `printf '%s\n' '{"id":"report-mock-run","method":"run.create","params":{"profileId":"default","workspaceId":"local","agentId":"local-work-agent","input":"verification smoke"}}' | VULTURE_AGENT_MODE=mock bun apps/agent-sidecar/src/main.ts`
+- `VULTURE_AGENT_MODE=mock VULTURE_MOCK_TOOL_REQUEST=1 bun apps/agent-sidecar/src/smoke.ts`
 
 ## Result
 
 All automated checks passed.
 
-The sidecar mock smoke command returned `run_started`, `model_delta`, and `run_completed` events.
+The root `verify` script now gates:
+
+- JS protocol and sidecar tests.
+- Workspace typecheck.
+- Desktop UI production build.
+- Cargo tests.
+- Workspace clippy with `-D warnings`.
+- Sidecar mock smoke with `VULTURE_MOCK_TOOL_REQUEST=1`.
+
+The sidecar mock smoke command returned `run_started`, `model_delta`, and `run_completed` events and reported one emitted tool request.
+
+Desktop-shell tests cover local default profile storage bootstrap, profile-scoped `permissions/audit.sqlite` creation, parsing sidecar `tool.request` stdout lines before the final result, routing the request through policy, and exercising the `tool.requested` plus `tool.policy_decision` audit append path.
 
 ## Manual Check
 

@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type RunEvent = {
   type: string;
@@ -7,11 +7,38 @@ type RunEvent = {
   createdAt?: string;
 };
 
+type Profile = {
+  id: string;
+  name: string;
+  activeAgentId: string;
+};
+
 export function App() {
   const [events, setEvents] = useState<RunEvent[]>([]);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState<string | null>(null);
   const isRunning = useRef(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    invoke<Profile>("get_profile")
+      .then((result) => {
+        if (isMounted) {
+          setProfile(result);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setProfile(null);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function startMockRun() {
     if (isRunning.current) return;
@@ -39,8 +66,8 @@ export function App() {
     <div className="shell">
       <aside className="sidebar">
         <h1>Vulture</h1>
-        <button type="button">Default Profile</button>
-        <button type="button">Local Work Agent</button>
+        <button type="button">{profile?.name ?? "Default Profile"}</button>
+        <button type="button">{profile?.activeAgentId ?? "Local Work Agent"}</button>
       </aside>
       <main className="workspace">
         <header>

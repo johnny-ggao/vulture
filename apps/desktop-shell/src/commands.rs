@@ -8,9 +8,12 @@ pub async fn start_mock_run(
     state: State<'_, AppState>,
     input: String,
 ) -> Result<Vec<Value>, String> {
-    let _policy_engine = state.policy_engine();
-
-    sidecar::start_mock_run(input)
+    sidecar::start_mock_run(input, state.inner())
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_profile(state: State<'_, AppState>) -> crate::state::ProfileView {
+    state.profile().clone()
 }

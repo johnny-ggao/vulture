@@ -20,6 +20,14 @@ export async function runAgent(params: unknown, createGateway: GatewayFactory) {
   const gateway = createGateway(runId);
 
   if (process.env.VULTURE_AGENT_MODE === "mock") {
+    if (process.env.VULTURE_MOCK_TOOL_REQUEST === "1") {
+      await gateway.request("shell.exec", {
+        cwd: "/tmp",
+        argv: ["pwd"],
+        timeoutMs: 120000,
+      });
+    }
+
     return [
       makeEvent(runId, "run_started", { agentId: parsed.agentId }),
       makeEvent(runId, "model_delta", { text: `Mock response for: ${parsed.input}` }),
