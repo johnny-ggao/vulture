@@ -29,6 +29,7 @@ export type ToolCallable = (call: {
   tool: string;
   input: unknown;
   runId: string;
+  workspacePath: string;
 }) => Promise<unknown>;
 
 export interface RunConversationArgs {
@@ -37,6 +38,7 @@ export interface RunConversationArgs {
   model: string;
   systemPrompt: string;
   userInput: string;
+  workspacePath: string;
   llm: LlmCallable;
   tools: ToolCallable;
   onEvent: (e: RunEvent) => void;
@@ -86,22 +88,26 @@ export async function runConversation(
           const planned = pendingTools.get(y.callId);
           let result: unknown;
           try {
-            result = await args.tools({
-              callId: y.callId,
-              tool: planned?.tool ?? "(unknown)",
-              input: planned?.input ?? undefined,
-              runId: args.runId,
-            });
-            emit(toolCompleted(base(), { callId: y.callId, output: result }));
-          } catch (err) {
-            const error: AppError = {
-              code: "tool.execution_failed",
-              message: err instanceof Error ? err.message : String(err),
-            };
-            emit(toolFailed(base(), { callId: y.callId, error }));
-            throw err;
+            try {
+              result = await args.tools({
+                callId: y.callId,
+                tool: planned?.tool ?? "(unknown)",
+                input: planned?.input ?? undefined,
+                runId: args.runId,
+                workspacePath: args.workspacePath,
+              });
+              emit(toolCompleted(base(), { callId: y.callId, output: result }));
+            } catch (err) {
+              const error: AppError = {
+                code: "tool.execution_failed",
+                message: err instanceof Error ? err.message : String(err),
+              };
+              emit(toolFailed(base(), { callId: y.callId, error }));
+              throw err;
+            }
+          } finally {
+            pendingTools.delete(y.callId);
           }
-          pendingTools.delete(y.callId);
           next = await gen.next(result);
           break;
         }

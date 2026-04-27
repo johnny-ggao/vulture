@@ -48,6 +48,7 @@ struct InvokeRequest {
     run_id: String,
     tool: String,
     input: Value,
+    workspace_path: String,
 }
 
 #[derive(Serialize)]
@@ -76,11 +77,8 @@ struct AppError {
 
 #[derive(Clone)]
 struct ShellState {
-    policy: Arc<PolicyEngine>,
     token: Arc<String>,
     audit_store: Arc<Mutex<AuditStore>>,
-    #[allow(dead_code)]
-    workspace_path: Arc<Mutex<String>>,
     cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
 }
 
@@ -170,7 +168,8 @@ async fn invoke_handler(
         tool: req.tool.clone(),
         input: req.input.clone(),
     };
-    let decision = state.policy.decide(&request);
+    let policy = PolicyEngine::for_workspace(&req.workspace_path);
+    let decision = policy.decide(&request);
 
     // Audit: tool.requested
     if let Ok(store) = state.audit_store.lock() {
@@ -350,8 +349,6 @@ impl ToolCallbackHandle {
 ///   `Authorization: Bearer <token>`. `/healthz` is intentionally exempt.
 /// - `audit_db_path`: Path to the SQLite audit database.  Two handles to the
 ///   same file are safe because WAL mode is enabled in `AuditStore::open`.
-///
-/// FU-3 follow-up: thread real workspace path through descriptor.
 pub async fn serve(
     port: u16,
     token: String,
@@ -361,11 +358,8 @@ pub async fn serve(
         .with_context(|| format!("open audit db at {}", audit_db_path.display()))?;
 
     let state = ShellState {
-        // FU-3 follow-up: thread real workspace path through descriptor.
-        policy: Arc::new(PolicyEngine::for_workspace("")),
         token: Arc::new(token),
         audit_store: Arc::new(Mutex::new(audit_store)),
-        workspace_path: Arc::new(Mutex::new(String::new())),
         cancel_signals: Arc::new(Mutex::new(HashMap::new())),
     };
 
@@ -451,7 +445,8 @@ mod tests {
                 "callId": "c1",
                 "runId": "r1",
                 "tool": "shell.exec",
-                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 }
+                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 },
+                "workspacePath": ""
             }))
             .send()
             .await
@@ -461,6 +456,59 @@ mod tests {
             .unwrap();
         // Policy default is Ask for shell.exec — accept ask, completed, or denied
         assert!(["ask", "completed", "denied"].contains(&res["status"].as_str().unwrap()));
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn invoke_with_workspace_path_uses_workspace_policy() {
+        let (handle, port) = start_server().await;
+        // file.read for a path inside /tmp — with workspacePath="/tmp" policy should Allow.
+        // file.read for a path outside /tmp — with workspacePath="/tmp" policy should Ask.
+        let res_inside: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .header("Authorization", format!("Bearer {TEST_TOKEN}"))
+            .json(&serde_json::json!({
+                "callId": "c-ws-1",
+                "runId": "r-ws-1",
+                "tool": "file.read",
+                "input": { "path": "/tmp/some-file.txt" },
+                "workspacePath": "/tmp"
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        // file.read inside /tmp with workspacePath="/tmp" — policy should Allow → completed or failed (no ask/denied)
+        assert!(
+            ["completed", "failed"].contains(&res_inside["status"].as_str().unwrap()),
+            "expected completed or failed for in-workspace file.read, got: {res_inside}"
+        );
+
+        let res_outside: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .header("Authorization", format!("Bearer {TEST_TOKEN}"))
+            .json(&serde_json::json!({
+                "callId": "c-ws-2",
+                "runId": "r-ws-2",
+                "tool": "file.read",
+                "input": { "path": "/etc/passwd" },
+                "workspacePath": "/tmp"
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        // file.read outside /tmp with workspacePath="/tmp" — policy should Ask
+        assert_eq!(
+            res_outside["status"].as_str().unwrap(),
+            "ask",
+            "expected ask for out-of-workspace file.read, got: {res_outside}"
+        );
+
         handle.shutdown().await;
     }
 
@@ -475,7 +523,8 @@ mod tests {
                 "callId": "c2",
                 "runId": "r2",
                 "tool": "shell.exec",
-                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 }
+                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 },
+                "workspacePath": ""
             }))
             .send()
             .await
@@ -493,7 +542,8 @@ mod tests {
                 "callId": "c3",
                 "runId": "r3",
                 "tool": "shell.exec",
-                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 }
+                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 },
+                "workspacePath": ""
             }))
             .send()
             .await

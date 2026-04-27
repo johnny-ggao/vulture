@@ -19,6 +19,7 @@ export interface RunsDeps {
   tools: ToolCallable;
   systemPromptForAgent(a: { id: string }): string;
   modelForAgent(a: { id: string }): string;
+  workspacePathForAgent(a: { id: string }): string;
 }
 
 export function runsRouter(deps: RunsDeps): Hono {
@@ -55,6 +56,7 @@ export function runsRouter(deps: RunsDeps): Hono {
         agentId: conv.agentId,
         model: deps.modelForAgent({ id: conv.agentId }),
         systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
+        workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
         conversationId: cid,
         userInput: parsed.data.input,
       }).catch((err) => {

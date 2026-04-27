@@ -110,6 +110,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         });
       },
       modelForAgent: ({ id }) => selectModel(agentStore.get(id)?.model ?? ""),
+      workspacePathForAgent: ({ id }) => agentStore.get(id)?.workspace.path ?? "",
     }),
   );
 
@@ -140,6 +141,7 @@ function makeShellCallbackTools(callbackUrl: string, token: string): ToolCallabl
         runId: call.runId,
         tool: call.tool,
         input: call.input,
+        workspacePath: call.workspacePath,
       }),
     });
     if (!res.ok) {

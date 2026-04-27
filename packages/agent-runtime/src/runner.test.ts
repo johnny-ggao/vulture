@@ -19,6 +19,7 @@ describe("runConversation", () => {
       model: "gpt-5.4",
       systemPrompt: "ignored",
       userInput: "hi",
+      workspacePath: "",
       llm,
       tools,
       onEvent: (e) => events.push({ type: e.type }),
@@ -40,8 +41,10 @@ describe("runConversation", () => {
       yield { kind: "text.delta", text: `tool returned: ${JSON.stringify(result)}` };
       yield { kind: "final", text: "Done." };
     });
-    const tools: ToolCallable = mock(async ({ tool, input }) => {
+    let capturedWorkspacePath = "";
+    const tools: ToolCallable = mock(async ({ tool, input, workspacePath }) => {
       toolCalls += 1;
+      capturedWorkspacePath = workspacePath;
       return { stdout: "(mock output)", tool, echoedInput: input };
     });
 
@@ -51,6 +54,7 @@ describe("runConversation", () => {
       model: "gpt-5.4",
       systemPrompt: "ignored",
       userInput: "ls",
+      workspacePath: "/tmp/test-workspace",
       llm,
       tools,
       onEvent: () => undefined,
@@ -58,5 +62,6 @@ describe("runConversation", () => {
 
     expect(result.status).toBe("succeeded");
     expect(toolCalls).toBe(1);
+    expect(capturedWorkspacePath).toBe("/tmp/test-workspace");
   });
 });

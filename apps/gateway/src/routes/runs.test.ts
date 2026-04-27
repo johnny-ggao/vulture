@@ -34,6 +34,7 @@ function fresh() {
     tools: async () => "noop",
     systemPromptForAgent: () => "system",
     modelForAgent: () => "gpt-5.4",
+    workspacePathForAgent: () => "",
   });
   return { app, c, runs, msgs, cleanup: () => { db.close(); rmSync(dir, { recursive: true }); } };
 }

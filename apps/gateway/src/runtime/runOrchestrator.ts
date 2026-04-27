@@ -19,6 +19,7 @@ export interface OrchestrateArgs {
   systemPrompt: string;
   conversationId: string;
   userInput: string;
+  workspacePath: string;
 }
 
 export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateArgs): Promise<void> {
@@ -29,6 +30,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
     model: args.model,
     systemPrompt: args.systemPrompt,
     userInput: args.userInput,
+    workspacePath: args.workspacePath,
     llm: deps.llm,
     tools: deps.tools,
     onEvent: (e: RunEvent) => deps.runs.appendEvent(args.runId, stripBase(e)),
