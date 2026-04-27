@@ -10,6 +10,7 @@ import {
 } from "../middleware/idempotency";
 import { orchestrateRun } from "../runtime/runOrchestrator";
 import type { LlmCallable, ToolCallable } from "@vulture/agent-runtime";
+import type { ApprovalQueue } from "../runtime/approvalQueue";
 
 export interface RunsDeps {
   conversations: ConversationStore;
@@ -17,6 +18,8 @@ export interface RunsDeps {
   runs: RunStore;
   llm: LlmCallable;
   tools: ToolCallable;
+  approvalQueue: ApprovalQueue;
+  cancelSignals: Map<string, AbortController>;
   systemPromptForAgent(a: { id: string }): string;
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
@@ -51,15 +54,25 @@ export function runsRouter(deps: RunsDeps): Hono {
       });
 
       // Fire-and-forget orchestrator; SSE consumers see appended events.
-      orchestrateRun(deps, {
-        runId: run.id,
-        agentId: conv.agentId,
-        model: deps.modelForAgent({ id: conv.agentId }),
-        systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
-        workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
-        conversationId: cid,
-        userInput: parsed.data.input,
-      }).catch((err) => {
+      orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm: deps.llm,
+          tools: deps.tools,
+          cancelSignals: deps.cancelSignals,
+        },
+        {
+          runId: run.id,
+          agentId: conv.agentId,
+          model: deps.modelForAgent({ id: conv.agentId }),
+          systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
+          workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
+          conversationId: cid,
+          userInput: parsed.data.input,
+        },
+      ).catch((err) => {
         deps.runs.markFailed(run.id, {
           code: "internal",
           message: err instanceof Error ? err.message : String(err),

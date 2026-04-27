@@ -9,6 +9,7 @@ import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { runsRouter } from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
+import { ApprovalQueue } from "../runtime/approvalQueue";
 
 const TOKEN = "x".repeat(43);
 const auth = { Authorization: `Bearer ${TOKEN}` };
@@ -32,6 +33,8 @@ function fresh() {
     runs,
     llm: fakeLlm,
     tools: async () => "noop",
+    approvalQueue: new ApprovalQueue(),
+    cancelSignals: new Map<string, AbortController>(),
     systemPromptForAgent: () => "system",
     modelForAgent: () => "gpt-5.4",
     workspacePathForAgent: () => "",
@@ -93,6 +96,8 @@ describe("/v1/runs", () => {
         toolCalled += 1;
         return { stdout: "hi" };
       },
+      approvalQueue: new ApprovalQueue(),
+      cancelSignals: new Map<string, AbortController>(),
       systemPromptForAgent: () => "system",
       modelForAgent: () => "gpt-5.4",
       workspacePathForAgent: () => "",
@@ -149,5 +154,99 @@ describe("/v1/runs", () => {
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("run.already_completed");
     cleanup();
+  });
+
+  test("tool callback ask path: emits tool.ask, awaits approval, retries with token", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-runs-ask-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    const convs = new ConversationStore(db);
+    const msgs = new MessageStore(db);
+    const runs = new RunStore(db);
+    const c = convs.create({ agentId: "local-work-agent" });
+
+    const approvalQueue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+
+    // Simulate the shell HTTP server: first call emits tool.ask + awaits queue;
+    // second call (with the same callId) returns the tool result.
+    let invokeCount = 0;
+    const tokenSeen: string[] = [];
+    const fakeShellTools = async (call: {
+      callId: string;
+      tool: string;
+      input: unknown;
+      runId: string;
+      workspacePath: string;
+    }): Promise<unknown> => {
+      invokeCount += 1;
+      if (invokeCount === 1) {
+        runs.appendEvent(call.runId, {
+          type: "tool.ask",
+          callId: call.callId,
+          tool: call.tool,
+          reason: "test-ask",
+          approvalToken: "test-tok",
+        });
+        const ac = cancelSignals.get(call.runId) ?? new AbortController();
+        const decision = await approvalQueue.wait(call.callId, ac.signal);
+        if (decision === "deny") {
+          const e = new Error("denied") as Error & { code: string };
+          e.code = "tool.permission_denied";
+          throw e;
+        }
+        tokenSeen.push("test-tok");
+      }
+      return { stdout: "ok" };
+    };
+
+    const toolLlm: LlmCallable = async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      yield { kind: "tool.plan", callId: "c1", tool: "shell.exec", input: { argv: ["x"] } };
+      yield { kind: "await.tool", callId: "c1" };
+      yield { kind: "final", text: "done" };
+    };
+
+    const app = runsRouter({
+      conversations: convs,
+      messages: msgs,
+      runs,
+      llm: toolLlm,
+      tools: fakeShellTools,
+      approvalQueue,
+      cancelSignals,
+      systemPromptForAgent: () => "system",
+      modelForAgent: () => "gpt-5.4",
+      workspacePathForAgent: () => "",
+    });
+
+    const rRes = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ak1" },
+      body: JSON.stringify({ input: "test" }),
+    });
+    const { run } = (await rRes.json()) as { run: { id: string } };
+
+    // wait briefly for tool.ask to be emitted
+    await new Promise((r) => setTimeout(r, 100));
+    const askEvents = runs.listEventsAfter(run.id, -1).filter((e) => e.type === "tool.ask");
+    expect(askEvents.length).toBe(1);
+
+    // approve the call
+    approvalQueue.resolve("c1", "allow");
+
+    // poll for terminal
+    let final: { status: string } = { status: "running" };
+    for (let i = 0; i < 50; i += 1) {
+      await new Promise((r) => setTimeout(r, 50));
+      const get = await app.request(`/v1/runs/${run.id}`, { headers: auth });
+      final = (await get.json()) as { status: string };
+      if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
+    }
+    expect(final.status).toBe("succeeded");
+    expect(invokeCount).toBe(1);
+    expect(tokenSeen).toEqual(["test-tok"]);
+
+    db.close();
+    rmSync(dir, { recursive: true });
   });
 });

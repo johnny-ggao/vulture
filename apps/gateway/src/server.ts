@@ -12,6 +12,7 @@ import { AgentStore } from "./domain/agentStore";
 import { ConversationStore } from "./domain/conversationStore";
 import { MessageStore } from "./domain/messageStore";
 import { RunStore } from "./domain/runStore";
+import type { PartialRunEvent } from "./domain/runStore";
 import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
@@ -25,6 +26,7 @@ import {
   type ToolCallable,
 } from "@vulture/agent-runtime";
 import { selectModel } from "@vulture/llm";
+import { ApprovalQueue } from "./runtime/approvalQueue";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -56,8 +58,17 @@ export function buildServer(cfg: GatewayConfig): Hono {
   // Task 18; this path resolves to the new location.
   const packDir = join(import.meta.dir, "..", "agent-packs");
 
+  const approvalQueue = new ApprovalQueue();
+  const cancelSignals = new Map<string, AbortController>();
+
   const llm: LlmCallable = makeStubLlm();
-  const tools: ToolCallable = makeShellCallbackTools(cfg.shellCallbackUrl, cfg.token);
+  const tools: ToolCallable = makeShellCallbackTools({
+    callbackUrl: cfg.shellCallbackUrl,
+    token: cfg.token,
+    appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
+    approvalQueue,
+    cancelSignals,
+  });
 
   const app = new Hono();
   app.use("*", errorBoundary);
@@ -89,6 +100,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
       runs: runStore,
       llm,
       tools,
+      approvalQueue,
+      cancelSignals,
       systemPromptForAgent: ({ id }) => {
         const agent = agentStore.get(id);
         if (!agent) return "";
@@ -128,50 +141,83 @@ function makeStubLlm(): LlmCallable {
   };
 }
 
-function makeShellCallbackTools(callbackUrl: string, token: string): ToolCallable {
+interface ShellCallbackToolsOpts {
+  callbackUrl: string;
+  token: string;
+  appendEvent: (runId: string, partial: PartialRunEvent) => void;
+  approvalQueue: ApprovalQueue;
+  cancelSignals: Map<string, AbortController>;
+}
+
+function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallable {
   return async (call) => {
-    const res = await fetch(`${callbackUrl}/tools/invoke`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "X-Caller-Pid": String(process.pid),
-      },
-      body: JSON.stringify({
+    let approvalToken: string | undefined;
+    while (true) {
+      const res = await fetch(`${opts.callbackUrl}/tools/invoke`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${opts.token}`,
+          "Content-Type": "application/json",
+          "X-Caller-Pid": String(process.pid),
+        },
+        body: JSON.stringify({
+          callId: call.callId,
+          runId: call.runId,
+          tool: call.tool,
+          input: call.input,
+          workspacePath: call.workspacePath,
+          approvalToken,
+        }),
+      });
+      if (!res.ok) {
+        throw new ToolCallError(
+          "tool.execution_failed",
+          `tool callback HTTP ${res.status}`,
+        );
+      }
+      const body = (await res.json()) as
+        | { status: "completed"; callId: string; output: unknown }
+        | { status: "failed"; callId: string; error: { code: string; message: string } }
+        | { status: "denied"; callId: string; error: { code: string; message: string } }
+        | { status: "ask"; callId: string; approvalToken: string; reason: string };
+
+      if (body.status === "completed") return body.output;
+      if (body.status === "denied") {
+        throw new ToolCallError(
+          body.error.code ?? "tool.permission_denied",
+          body.error.message,
+        );
+      }
+      if (body.status === "failed") {
+        throw new ToolCallError(
+          body.error.code ?? "tool.execution_failed",
+          body.error.message,
+        );
+      }
+      // status === "ask"
+      opts.appendEvent(call.runId, {
+        type: "tool.ask",
         callId: call.callId,
-        runId: call.runId,
         tool: call.tool,
-        input: call.input,
-        workspacePath: call.workspacePath,
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`tool callback failed: HTTP ${res.status}`);
+        reason: body.reason,
+        approvalToken: body.approvalToken,
+      });
+      const ac = opts.cancelSignals.get(call.runId);
+      if (!ac) {
+        throw new ToolCallError(
+          "tool.execution_failed",
+          `no AbortController registered for run ${call.runId}`,
+        );
+      }
+      const decision = await opts.approvalQueue.wait(call.callId, ac.signal);
+      if (decision === "deny") {
+        throw new ToolCallError(
+          "tool.permission_denied",
+          `user denied ${call.tool}`,
+        );
+      }
+      approvalToken = body.approvalToken;
+      // loop continues — second invocation carries token; Rust skips policy
     }
-    const body = (await res.json()) as {
-      status: "completed" | "failed" | "denied" | "ask";
-      output?: unknown;
-      error?: { code?: string; message?: string };
-      approvalToken?: string;
-      reason?: string;
-    };
-    if (body.status === "completed") return body.output;
-    if (body.status === "denied") {
-      throw new ToolCallError(
-        body.error?.code ?? "tool.permission_denied",
-        body.error?.message ?? "tool permission denied",
-      );
-    }
-    if (body.status === "ask") {
-      throw new ToolCallError(
-        "tool.execution_failed",
-        `approval required for ${call.tool} but UI approval flow is not yet wired (Phase 3b)`,
-      );
-    }
-    // status === "failed"
-    throw new ToolCallError(
-      body.error?.code ?? "tool.execution_failed",
-      body.error?.message ?? `tool returned status ${body.status}`,
-    );
   };
 }

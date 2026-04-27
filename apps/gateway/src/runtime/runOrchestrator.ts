@@ -10,6 +10,7 @@ export interface OrchestratorDeps {
   conversations: ConversationStore;
   llm: LlmCallable;
   tools: ToolCallable;
+  cancelSignals: Map<string, AbortController>;
 }
 
 export interface OrchestrateArgs {
@@ -23,30 +24,36 @@ export interface OrchestrateArgs {
 }
 
 export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateArgs): Promise<void> {
-  deps.runs.markRunning(args.runId);
-  const result = await runConversation({
-    runId: args.runId,
-    agentId: args.agentId,
-    model: args.model,
-    systemPrompt: args.systemPrompt,
-    userInput: args.userInput,
-    workspacePath: args.workspacePath,
-    llm: deps.llm,
-    tools: deps.tools,
-    onEvent: (e: RunEvent) => deps.runs.appendEvent(args.runId, stripBase(e)),
-  });
-
-  if (result.status === "succeeded") {
-    const assistantMsg = deps.messages.append({
-      conversationId: args.conversationId,
-      role: "assistant",
-      content: result.finalText,
+  const ac = new AbortController();
+  deps.cancelSignals.set(args.runId, ac);
+  try {
+    deps.runs.markRunning(args.runId);
+    const result = await runConversation({
       runId: args.runId,
+      agentId: args.agentId,
+      model: args.model,
+      systemPrompt: args.systemPrompt,
+      userInput: args.userInput,
+      workspacePath: args.workspacePath,
+      llm: deps.llm,
+      tools: deps.tools,
+      onEvent: (e: RunEvent) => deps.runs.appendEvent(args.runId, stripBase(e)),
     });
-    deps.runs.markSucceeded(args.runId, assistantMsg.id);
-    deps.conversations.touch(args.conversationId);
-  } else {
-    deps.runs.markFailed(args.runId, result.error!);
+
+    if (result.status === "succeeded") {
+      const assistantMsg = deps.messages.append({
+        conversationId: args.conversationId,
+        role: "assistant",
+        content: result.finalText,
+        runId: args.runId,
+      });
+      deps.runs.markSucceeded(args.runId, assistantMsg.id);
+      deps.conversations.touch(args.conversationId);
+    } else {
+      deps.runs.markFailed(args.runId, result.error!);
+    }
+  } finally {
+    deps.cancelSignals.delete(args.runId);
   }
 }
 
