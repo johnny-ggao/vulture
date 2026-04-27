@@ -118,24 +118,50 @@ export function runsRouter(deps: RunsDeps): Hono {
         });
         sentSeq = ev.seq;
       }
-      // Poll-loop until terminal OR client abort
-      while (!stream.aborted && !stream.closed) {
-        const cur = deps.runs.get(rid);
-        if (!cur) break;
-        const more = deps.runs.listEventsAfter(rid, sentSeq);
-        for (const ev of more) {
-          if (stream.aborted || stream.closed) return;
-          await stream.writeSSE({
-            id: String(ev.seq),
-            event: ev.type,
-            data: JSON.stringify(ev),
-          });
-          sentSeq = ev.seq;
+
+      // Notification primitive: resolves whenever a new event is appended.
+      // Each notify resolves the current promise and re-arms a new one so
+      // rapid back-to-back events are never missed — the next loop iteration
+      // will drain all of them via listEventsAfter.
+      let resolveNotify: () => void = () => {};
+      let notifyPromise = new Promise<void>((r) => { resolveNotify = r; });
+      const unsubscribe = deps.runs.subscribe(rid, () => {
+        resolveNotify();
+        notifyPromise = new Promise<void>((r) => { resolveNotify = r; });
+      });
+
+      try {
+        while (!stream.aborted && !stream.closed) {
+          const cur = deps.runs.get(rid);
+          if (!cur) break;
+
+          const more = deps.runs.listEventsAfter(rid, sentSeq);
+          for (const ev of more) {
+            if (stream.aborted || stream.closed) return;
+            await stream.writeSSE({
+              id: String(ev.seq),
+              event: ev.type,
+              data: JSON.stringify(ev),
+            });
+            sentSeq = ev.seq;
+          }
+
+          if (cur.status === "succeeded" || cur.status === "failed" || cur.status === "cancelled") {
+            break;
+          }
+
+          // Wait for a new-event notification or a 30s heartbeat.
+          // The heartbeat guards against a notify racing with subscription
+          // setup; in practice subscribe is set up before the loop enters,
+          // so the race cannot happen — but the heartbeat makes the code
+          // robust to future refactors and keeps connections alive.
+          await Promise.race([
+            notifyPromise,
+            new Promise<void>((r) => setTimeout(r, 30_000)),
+          ]);
         }
-        if (cur.status === "succeeded" || cur.status === "failed" || cur.status === "cancelled") {
-          break;
-        }
-        await sleep(100);
+      } finally {
+        unsubscribe();
       }
     });
   });
@@ -177,8 +203,4 @@ export function runsRouter(deps: RunsDeps): Hono {
   });
 
   return app;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

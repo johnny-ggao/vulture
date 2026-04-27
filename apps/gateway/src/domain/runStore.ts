@@ -19,6 +19,8 @@ type OmitDistributive<T, K extends keyof any> = T extends unknown
   ? Omit<T, K>
   : never;
 
+type EventListener = () => void;
+
 export type PartialRunEvent = OmitDistributive<RunEvent, "runId" | "seq" | "createdAt">;
 
 interface RunRow {
@@ -58,7 +60,28 @@ export interface CreateRunInput {
 }
 
 export class RunStore {
+  private readonly listeners = new Map<string, Set<EventListener>>();
+
   constructor(private readonly db: DB) {}
+
+  subscribe(runId: string, listener: EventListener): () => void {
+    let set = this.listeners.get(runId);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(runId, set);
+    }
+    set.add(listener);
+    return () => {
+      set!.delete(listener);
+      if (set!.size === 0) this.listeners.delete(runId);
+    };
+  }
+
+  private notify(runId: string): void {
+    const set = this.listeners.get(runId);
+    if (!set) return;
+    for (const listener of [...set]) listener();
+  }
 
   create(input: CreateRunInput): Run {
     const id = genId();
@@ -129,6 +152,7 @@ export class RunStore {
         "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
       )
       .run(runId, seq, event.type, JSON.stringify(event), now);
+    this.notify(runId);
     return event;
   }
 

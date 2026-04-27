@@ -25,6 +25,14 @@ function fresh() {
   return { db, runs, c, userMsg, cleanup: () => { db.close(); rmSync(dir, { recursive: true }); } };
 }
 
+function freshRun(runs: RunStore, c: { id: string; agentId: string }, userMsg: { id: string }) {
+  return runs.create({
+    conversationId: c.id,
+    agentId: c.agentId,
+    triggeredByMessageId: userMsg.id,
+  });
+}
+
 describe("RunStore", () => {
   test("create + get + transition to succeeded", () => {
     const { runs, c, userMsg, cleanup } = fresh();
@@ -88,6 +96,40 @@ describe("RunStore", () => {
     const after = runs.listEventsAfter(r.id, 0);
     expect(after.length).toBe(1);
     expect(after[0].type).toBe("text.delta");
+    cleanup();
+  });
+
+  test("subscribe receives notification on appendEvent + unsubscribe stops it", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const run = freshRun(runs, c, userMsg);
+
+    let calls = 0;
+    const unsubscribe = runs.subscribe(run.id, () => { calls += 1; });
+    runs.appendEvent(run.id, { type: "text.delta", text: "hi" });
+    expect(calls).toBe(1);
+    runs.appendEvent(run.id, { type: "text.delta", text: "x" });
+    expect(calls).toBe(2);
+    unsubscribe();
+    runs.appendEvent(run.id, { type: "text.delta", text: "y" });
+    expect(calls).toBe(2);
+
+    cleanup();
+  });
+
+  test("subscribe is per-run; events for other runs don't notify", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r1 = freshRun(runs, c, userMsg);
+    const r2 = freshRun(runs, c, userMsg);
+
+    let r1calls = 0;
+    let r2calls = 0;
+    runs.subscribe(r1.id, () => { r1calls += 1; });
+    runs.subscribe(r2.id, () => { r2calls += 1; });
+    runs.appendEvent(r1.id, { type: "text.delta", text: "1" });
+    runs.appendEvent(r2.id, { type: "text.delta", text: "2" });
+    expect(r1calls).toBe(1);
+    expect(r2calls).toBe(1);
+
     cleanup();
   });
 });
