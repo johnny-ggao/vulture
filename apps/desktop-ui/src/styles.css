@@ -158,7 +158,6 @@ pre {
   z-index: var(--z-titlebar);
   user-select: none;
   -webkit-user-select: none;
-  pointer-events: none;
 }
 
 .titlebar-sidebar-chrome {
@@ -166,14 +165,9 @@ pre {
   align-items: center;
   gap: 16px;
   padding: 0 0 0 10px;
-  pointer-events: auto;
-  -webkit-app-region: drag;
 }
 
-.titlebar-content-chrome {
-  pointer-events: auto;
-  -webkit-app-region: drag;
-}
+.titlebar-content-chrome { /* drag region — full content-column width */ }
 
 .tb-controls { display: inline-flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
 
