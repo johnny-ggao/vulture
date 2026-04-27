@@ -16,6 +16,7 @@
     "verify": "bun test packages/protocol/src && bun --filter '*' typecheck && bun --filter @vulture/desktop-ui build && cargo test && cargo clippy --workspace -- -D warnings"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^15.0.0",
     "typescript": "^5.8.0"
   }
 }
