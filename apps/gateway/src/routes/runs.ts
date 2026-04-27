@@ -5,6 +5,7 @@ import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { PostMessageRequestSchema } from "@vulture/protocol/src/v1/conversation";
 import { ApprovalRequestSchema } from "@vulture/protocol/src/v1/approval";
+import type { RunStatus } from "@vulture/protocol/src/v1/run";
 import {
   requireIdempotencyKey,
   idempotencyCache,
@@ -24,6 +25,102 @@ export interface RunsDeps {
   systemPromptForAgent(a: { id: string }): string;
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
+}
+
+interface RunEventStream {
+  aborted: boolean;
+  closed: boolean;
+  writeSSE(message: { id?: string; event?: string; data: string }): Promise<unknown>;
+}
+
+export interface RunEventStreamOptions {
+  heartbeatMs?: number;
+}
+
+const DEFAULT_HEARTBEAT_MS = 15_000;
+const RUN_STATUS_FILTERS = new Set<string>([
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "active",
+]);
+type RunStatusFilter = RunStatus | "active";
+
+export async function writeRunEventStream(
+  deps: Pick<RunsDeps, "runs">,
+  rid: string,
+  lastSeq: number,
+  stream: RunEventStream,
+  opts: RunEventStreamOptions = {},
+): Promise<void> {
+  const heartbeatMs = opts.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+  let sentSeq = lastSeq;
+
+  const writePing = async () => {
+    if (stream.aborted || stream.closed) return;
+    await stream.writeSSE({ event: "ping", data: "{}" });
+  };
+
+  // Replay any events already buffered before subscription.
+  const missed = deps.runs.listEventsAfter(rid, sentSeq);
+  for (const ev of missed) {
+    if (stream.aborted || stream.closed) return;
+    await stream.writeSSE({
+      id: String(ev.seq),
+      event: ev.type,
+      data: JSON.stringify(ev),
+    });
+    sentSeq = ev.seq;
+  }
+
+  // If the reconnect is already caught up, flush a lightweight frame so
+  // browser fetch/read loops can observe that the SSE connection recovered.
+  if (missed.length === 0) {
+    await writePing();
+  }
+
+  // Notification primitive: resolves whenever a new event is appended.
+  // Each notify resolves the current promise and re-arms a new one so
+  // rapid back-to-back events are never missed — the next loop iteration
+  // will drain all of them via listEventsAfter.
+  let resolveNotify: () => void = () => {};
+  let notifyPromise = new Promise<void>((r) => { resolveNotify = r; });
+  const unsubscribe = deps.runs.subscribe(rid, () => {
+    resolveNotify();
+    notifyPromise = new Promise<void>((r) => { resolveNotify = r; });
+  });
+
+  try {
+    while (!stream.aborted && !stream.closed) {
+      const cur = deps.runs.get(rid);
+      if (!cur) break;
+
+      const more = deps.runs.listEventsAfter(rid, sentSeq);
+      for (const ev of more) {
+        if (stream.aborted || stream.closed) return;
+        await stream.writeSSE({
+          id: String(ev.seq),
+          event: ev.type,
+          data: JSON.stringify(ev),
+        });
+        sentSeq = ev.seq;
+      }
+
+      if (cur.status === "succeeded" || cur.status === "failed" || cur.status === "cancelled") {
+        break;
+      }
+
+      const waitResult = await Promise.race([
+        notifyPromise.then(() => "notify" as const),
+        new Promise<"heartbeat">((r) => setTimeout(() => r("heartbeat"), heartbeatMs)),
+      ]);
+      if (waitResult === "heartbeat") await writePing();
+    }
+  } finally {
+    unsubscribe();
+  }
 }
 
 export function runsRouter(deps: RunsDeps): Hono {
@@ -98,6 +195,22 @@ export function runsRouter(deps: RunsDeps): Hono {
     return c.json(run);
   });
 
+  app.get("/v1/conversations/:cid/runs", (c) => {
+    const cid = c.req.param("cid");
+    const conv = deps.conversations.get(cid);
+    if (!conv) return c.json({ code: "conversation.not_found", message: cid }, 404);
+    const status = c.req.query("status");
+    if (status && !RUN_STATUS_FILTERS.has(status)) {
+      return c.json({ code: "internal", message: `invalid run status filter: ${status}` }, 400);
+    }
+    return c.json({
+      items: deps.runs.listForConversation(
+        cid,
+        status ? { status: status as RunStatusFilter } : {},
+      ),
+    });
+  });
+
   app.get("/v1/runs/:rid/events", (c) => {
     const rid = c.req.param("rid");
     const run = deps.runs.get(rid);
@@ -106,63 +219,7 @@ export function runsRouter(deps: RunsDeps): Hono {
     const lastSeq = lastSeqHeader ? Number.parseInt(lastSeqHeader, 10) : -1;
 
     return streamSSE(c, async (stream) => {
-      let sentSeq = lastSeq;
-      // Replay any events already buffered before subscription
-      const missed = deps.runs.listEventsAfter(rid, sentSeq);
-      for (const ev of missed) {
-        if (stream.aborted || stream.closed) return;
-        await stream.writeSSE({
-          id: String(ev.seq),
-          event: ev.type,
-          data: JSON.stringify(ev),
-        });
-        sentSeq = ev.seq;
-      }
-
-      // Notification primitive: resolves whenever a new event is appended.
-      // Each notify resolves the current promise and re-arms a new one so
-      // rapid back-to-back events are never missed — the next loop iteration
-      // will drain all of them via listEventsAfter.
-      let resolveNotify: () => void = () => {};
-      let notifyPromise = new Promise<void>((r) => { resolveNotify = r; });
-      const unsubscribe = deps.runs.subscribe(rid, () => {
-        resolveNotify();
-        notifyPromise = new Promise<void>((r) => { resolveNotify = r; });
-      });
-
-      try {
-        while (!stream.aborted && !stream.closed) {
-          const cur = deps.runs.get(rid);
-          if (!cur) break;
-
-          const more = deps.runs.listEventsAfter(rid, sentSeq);
-          for (const ev of more) {
-            if (stream.aborted || stream.closed) return;
-            await stream.writeSSE({
-              id: String(ev.seq),
-              event: ev.type,
-              data: JSON.stringify(ev),
-            });
-            sentSeq = ev.seq;
-          }
-
-          if (cur.status === "succeeded" || cur.status === "failed" || cur.status === "cancelled") {
-            break;
-          }
-
-          // Wait for a new-event notification or a 30s heartbeat.
-          // The heartbeat guards against a notify racing with subscription
-          // setup; in practice subscribe is set up before the loop enters,
-          // so the race cannot happen — but the heartbeat makes the code
-          // robust to future refactors and keeps connections alive.
-          await Promise.race([
-            notifyPromise,
-            new Promise<void>((r) => setTimeout(r, 30_000)),
-          ]);
-        }
-      } finally {
-        unsubscribe();
-      }
+      await writeRunEventStream({ runs: deps.runs }, rid, lastSeq, stream);
     });
   });
 

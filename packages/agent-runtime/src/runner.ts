@@ -53,6 +53,7 @@ export interface RunConversationArgs {
   llm: LlmCallable;
   tools: ToolCallable;
   onEvent: (e: RunEvent) => void;
+  idleTimeoutMs?: number;
 }
 
 export interface RunConversationResult {
@@ -73,8 +74,10 @@ export async function runConversation(
   const pendingTools = new Map<string, { tool: string; input: unknown }>();
 
   let assembled = "";
+  let gen: AsyncGenerator<LlmYield, void, unknown> | undefined;
+  const idleTimeoutMs = args.idleTimeoutMs ?? 180_000;
   try {
-    const gen = args.llm({
+    gen = args.llm({
       systemPrompt: args.systemPrompt,
       userInput: args.userInput,
       model: args.model,
@@ -82,19 +85,22 @@ export async function runConversation(
       workspacePath: args.workspacePath,
     });
 
-    let next: IteratorResult<LlmYield, void> | null = await gen.next();
+    let next: IteratorResult<LlmYield, void> | null = await withIdleTimeout(
+      () => gen!.next(),
+      idleTimeoutMs,
+    );
     while (next && !next.done) {
       const y = next.value;
       switch (y.kind) {
         case "text.delta":
           assembled += y.text;
           emit(textDelta(base(), { text: y.text }));
-          next = await gen.next();
+          next = await withIdleTimeout(() => gen!.next(), idleTimeoutMs);
           break;
         case "tool.plan":
           pendingTools.set(y.callId, { tool: y.tool, input: y.input });
           emit(toolPlanned(base(), { callId: y.callId, tool: y.tool, input: y.input }));
-          next = await gen.next();
+          next = await withIdleTimeout(() => gen!.next(), idleTimeoutMs);
           break;
         case "await.tool": {
           emit(toolStarted(base(), { callId: y.callId }));
@@ -125,11 +131,13 @@ export async function runConversation(
           } finally {
             pendingTools.delete(y.callId);
           }
-          next = await gen.next(result);
+          next = await withIdleTimeout(() => gen!.next(result), idleTimeoutMs);
           break;
         }
         case "final":
-          assembled = y.text;
+          if (y.text.length > 0) {
+            assembled = y.text;
+          }
           next = null;
           break;
       }
@@ -143,11 +151,28 @@ export async function runConversation(
     );
     return { status: "succeeded", finalText: assembled };
   } catch (err) {
+    void gen?.return?.().catch(() => undefined);
     const error: AppError = {
       code: "internal",
       message: err instanceof Error ? err.message : String(err),
     };
     emit(runFailed(base(), { error }));
     return { status: "failed", finalText: assembled, error };
+  }
+}
+
+async function withIdleTimeout<T>(op: () => Promise<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      op(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`LLM stream idle timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }

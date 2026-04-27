@@ -92,6 +92,41 @@ describe("sseStream", () => {
     expect(captured?.get("Authorization")).toBe("Bearer t");
   });
 
+  test("calls onOpen after a successful response even when no frames arrive", async () => {
+    let opened = false;
+    const fetchMock = (async () => makeStreamResponse([])) as typeof fetch;
+    const iter = sseStream({
+      url: "/x",
+      token: "t",
+      signal: new AbortController().signal,
+      fetch: fetchMock,
+      onOpen: () => {
+        opened = true;
+      },
+    });
+
+    await iter.next();
+
+    expect(opened).toBe(true);
+  });
+
+  test("does not call onOpen for non-2xx responses", async () => {
+    let opened = false;
+    const fetchMock = (async () => new Response("nope", { status: 401 })) as typeof fetch;
+    const iter = sseStream({
+      url: "/x",
+      token: "t",
+      signal: new AbortController().signal,
+      fetch: fetchMock,
+      onOpen: () => {
+        opened = true;
+      },
+    });
+
+    await expect(iter.next()).rejects.toThrow(/401/);
+    expect(opened).toBe(false);
+  });
+
   test("throws on non-2xx response", async () => {
     const fetchMock = (async () =>
       new Response("nope", { status: 401 })) as typeof fetch;

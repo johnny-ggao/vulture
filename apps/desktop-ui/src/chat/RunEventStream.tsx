@@ -58,6 +58,7 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
       }
       case "tool.started": {
         const callId = String(e.callId);
+        removeApprovalBlock(blocks, approvalIndex, callId);
         const idx = toolIndex.get(callId);
         if (idx !== undefined && blocks[idx].kind === "tool") {
           const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
@@ -67,17 +68,17 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
       }
       case "tool.completed": {
         const callId = String(e.callId);
+        removeApprovalBlock(blocks, approvalIndex, callId);
         const idx = toolIndex.get(callId);
         if (idx !== undefined && blocks[idx].kind === "tool") {
           const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
           blocks[idx] = { ...block, status: "completed", output: e.output };
         }
-        // Approval block (if any) is satisfied; we keep it inline for context
-        // — downstream renderer decides whether to fade/hide it.
         break;
       }
       case "tool.failed": {
         const callId = String(e.callId);
+        removeApprovalBlock(blocks, approvalIndex, callId);
         const idx = toolIndex.get(callId);
         if (idx !== undefined && blocks[idx].kind === "tool") {
           const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
@@ -115,7 +116,18 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
     }
   }
 
-  return blocks;
+  return blocks.filter((block): block is RunBlock => block !== undefined);
+}
+
+function removeApprovalBlock(
+  blocks: Array<RunBlock | undefined>,
+  approvalIndex: Map<string, number>,
+  callId: string,
+): void {
+  const idx = approvalIndex.get(callId);
+  if (idx === undefined) return;
+  blocks[idx] = undefined;
+  approvalIndex.delete(callId);
 }
 
 export interface RunEventStreamProps {

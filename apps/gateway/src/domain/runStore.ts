@@ -103,6 +103,28 @@ export class RunStore {
     return row ? rowToRun(row) : null;
   }
 
+  listForConversation(
+    conversationId: string,
+    filter: { status?: RunStatus | "active" } = {},
+  ): Run[] {
+    const rows = filter.status === "active"
+      ? this.db
+        .query(
+          "SELECT * FROM runs WHERE conversation_id = ? AND status IN ('queued', 'running') ORDER BY started_at DESC, rowid DESC",
+        )
+        .all(conversationId)
+      : filter.status
+      ? this.db
+        .query(
+          "SELECT * FROM runs WHERE conversation_id = ? AND status = ? ORDER BY started_at DESC, rowid DESC",
+        )
+        .all(conversationId, filter.status)
+      : this.db
+        .query("SELECT * FROM runs WHERE conversation_id = ? ORDER BY started_at DESC, rowid DESC")
+        .all(conversationId);
+    return (rows as RunRow[]).map(rowToRun);
+  }
+
   markRunning(id: string): void {
     this.db.query("UPDATE runs SET status = 'running' WHERE id = ?").run(id);
   }

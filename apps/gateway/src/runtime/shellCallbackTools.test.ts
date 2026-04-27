@@ -92,6 +92,56 @@ describe("makeShellCallbackTools", () => {
     ]);
   });
 
+  test("ask response accepts Rust snake_case approval_token", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-1", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const { fetchFn, calls } = fakeFetchSequence([
+      {
+        status: 200,
+        body: {
+          status: "ask",
+          call_id: "c1",
+          approval_token: "tok-rust",
+          reason: "outside workspace",
+        },
+      },
+      {
+        status: 200,
+        body: { status: "completed", call_id: "c1", output: { stdout: "hi" } },
+      },
+    ]);
+
+    const tools = makeShellCallbackTools({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      fetch: fetchFn,
+    });
+
+    const promise = tools({
+      callId: "c1",
+      runId: "r-1",
+      tool: "shell.exec",
+      input: { argv: ["x"] },
+      workspacePath: "",
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(events[1].partial).toMatchObject({
+      type: "tool.ask",
+      approvalToken: "tok-rust",
+    });
+    expect(queue.resolve("c1", "allow")).toBe(true);
+
+    await promise;
+    expect(calls[1].body.approvalToken).toBe("tok-rust");
+  });
+
   test("ask → deny throws ToolCallError(tool.permission_denied)", async () => {
     const queue = new ApprovalQueue();
     const cancelSignals = new Map<string, AbortController>();

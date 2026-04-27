@@ -20,6 +20,13 @@ const completed = (callId: string, seq: number): AnyRunEvent => ({
   callId,
   output: {},
 });
+const started = (callId: string, seq: number): AnyRunEvent => ({
+  type: "tool.started",
+  runId: "r",
+  seq,
+  createdAt: "2026-04-27T00:00:00.000Z",
+  callId,
+});
 const failed = (callId: string, seq: number): AnyRunEvent => ({
   type: "tool.failed",
   runId: "r",
@@ -38,6 +45,11 @@ describe("extractPendingApprovals", () => {
   test("ask superseded by completed/failed is dropped", () => {
     const events = [ask("a", 1), completed("a", 5), ask("b", 2)];
     expect(extractPendingApprovals(events).map((p) => p.callId)).toEqual(["b"]);
+  });
+
+  test("ask superseded by tool.started is dropped", () => {
+    const events = [ask("a", 1), started("a", 5)];
+    expect(extractPendingApprovals(events)).toEqual([]);
   });
 
   test("ask superseded by tool.failed is dropped", () => {

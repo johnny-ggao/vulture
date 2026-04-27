@@ -25,7 +25,7 @@ export function extractPendingApprovals(events: readonly AnyRunEvent[]): Pending
     } else if (e.type === "run.cancelled") {
       pending.clear();
     } else if (
-      (e.type === "tool.completed" || e.type === "tool.failed") &&
+      (e.type === "tool.started" || e.type === "tool.completed" || e.type === "tool.failed") &&
       e.callId !== undefined
     ) {
       pending.delete(String(e.callId));

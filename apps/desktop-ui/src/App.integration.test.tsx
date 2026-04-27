@@ -54,7 +54,12 @@ const { render, screen, fireEvent, waitFor } = await import(
   "@testing-library/react/pure"
 );
 
-function setup() {
+function setup(
+  opts: {
+    onRequest?: (path: string, init?: RequestInit) => void;
+    onResponse?: (path: string, init: RequestInit | undefined) => void;
+  } = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-app-int-"));
   const cfg = {
     port: 4099,
@@ -79,7 +84,10 @@ function setup() {
           ? input.toString()
           : input.url;
     const path = url.replace(/^https?:\/\/[^/]+/, "");
-    return app.request(path, init as RequestInit);
+    opts.onRequest?.(path, init);
+    const res = await app.request(path, init as RequestInit);
+    opts.onResponse?.(path, init);
+    return res;
   }) as typeof fetch;
 
   return {
@@ -131,6 +139,55 @@ describe("App integration", () => {
       { timeout: 10_000 },
     );
 
+    cleanup();
+  }, 15_000);
+
+  test("new conversation send does not issue active-run restore before run creation", async () => {
+    let runCreateCompleted = false;
+    let activeRunRestoreRequestsBeforeRunCreate = 0;
+    const { cleanup } = setup({
+      onRequest: (path, init) => {
+        if (
+          init?.method === "GET" &&
+          /^\/v1\/conversations\/[^/]+\/runs\?status=active$/.test(path)
+        ) {
+          if (!runCreateCompleted) activeRunRestoreRequestsBeforeRunCreate += 1;
+        }
+      },
+      onResponse: (path, init) => {
+        if (
+          init?.method === "POST" &&
+          /^\/v1\/conversations\/[^/]+\/runs$/.test(path)
+        ) {
+          runCreateCompleted = true;
+        }
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    const textarea = (await waitFor(
+      () => screen.getByPlaceholderText(/输入问题/),
+    )) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("hello")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(activeRunRestoreRequestsBeforeRunCreate).toBe(0);
     cleanup();
   }, 15_000);
 });

@@ -7,7 +7,7 @@ import { applyMigrations } from "../persistence/migrate";
 import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
-import { runsRouter } from "./runs";
+import { runsRouter, writeRunEventStream } from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { ApprovalQueue } from "../runtime/approvalQueue";
 
@@ -43,6 +43,32 @@ function fresh() {
 }
 
 describe("/v1/runs", () => {
+  test("writeRunEventStream writes ping when reconnect has no missed events", async () => {
+    const { c, runs, msgs, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.appendEvent(run.id, { type: "run.started", agentId: c.agentId, model: "gpt-5.4" });
+
+    const writes: Array<{ event?: string; data: string }> = [];
+    const stream = {
+      aborted: false,
+      closed: false,
+      async writeSSE(message: { event?: string; data: string }) {
+        writes.push(message);
+        if (message.event === "ping") this.closed = true;
+      },
+    };
+
+    await writeRunEventStream({ runs }, run.id, 0, stream, { heartbeatMs: 10 });
+
+    expect(writes).toContainEqual({ event: "ping", data: "{}" });
+    cleanup();
+  });
+
   test("POST /v1/conversations/:cid/runs returns 202 + run + message + eventStreamUrl", async () => {
     const { app, c, cleanup } = fresh();
     const res = await app.request(`/v1/conversations/${c.id}/runs`, {
@@ -55,6 +81,31 @@ describe("/v1/runs", () => {
     expect(body.run.id).toMatch(/^r-/);
     expect(body.message.role).toBe("user");
     expect(body.eventStreamUrl).toMatch(/\/v1\/runs\/.+\/events/);
+    cleanup();
+  });
+
+  test("GET /v1/conversations/:cid/runs?status=active returns queued/running runs", async () => {
+    const { app, c, runs, msgs, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRunning(run.id);
+    const queued = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs?status=active`, {
+      headers: auth,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<{ id: string; status: string }> };
+    expect(body.items.map((item) => item.id)).toEqual([queued.id, run.id]);
     cleanup();
   });
 

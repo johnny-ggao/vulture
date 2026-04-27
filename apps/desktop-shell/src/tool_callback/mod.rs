@@ -575,6 +575,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn invoke_shell_exec_asking_for_etc_hosts_returns_ask() {
+        let dir = std::env::temp_dir().join(format!("tcb-workspace-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (handle, port) = start_server().await;
+
+        let res: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .header("Authorization", format!("Bearer {TEST_TOKEN}"))
+            .json(&serde_json::json!({
+                "callId": "c-etc-hosts",
+                "runId": "r-etc-hosts",
+                "tool": "shell.exec",
+                "input": { "cwd": dir.to_string_lossy(), "argv": ["cat", "/etc/hosts"], "timeoutMs": 5000 },
+                "workspacePath": dir.to_string_lossy()
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        assert_eq!(res["status"].as_str().unwrap(), "ask");
+        assert_eq!(
+            res["reason"].as_str().unwrap(),
+            "shell.exec references path outside workspace"
+        );
+
+        handle.shutdown().await;
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
     async fn invoke_with_approval_token_skips_policy_and_executes() {
         let dir = std::env::temp_dir().join(format!("tcb-token-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();

@@ -57,6 +57,18 @@ describe("runsApi", () => {
     expect(await runsApi.get(client, "r-1")).toEqual(sampleRun);
   });
 
+  test("listForConversation fetches filtered runs", async () => {
+    const client = fakeClient({
+      get: async <T>(path: string) => {
+        expect(path).toBe("/v1/conversations/c-1/runs?status=active");
+        return { items: [sampleRun] } as T;
+      },
+    });
+    expect(await runsApi.listForConversation(client, "c-1", { status: "active" })).toEqual([
+      sampleRun,
+    ]);
+  });
+
   test("cancel posts to cancel path", async () => {
     const client = fakeClient({
       post: async <T>(path: string, body: unknown) => {

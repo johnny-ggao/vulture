@@ -63,6 +63,52 @@ describe("reduceRunEvents", () => {
     expect(blocks[0].kind).toBe("approval");
   });
 
+  test("tool.started removes the matching approval block", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "tool.planned", seq: 0, callId: "c1", tool: "shell.exec", input: {} }),
+      ev({
+        type: "tool.ask",
+        seq: 1,
+        callId: "c1",
+        tool: "shell.exec",
+        reason: "outside workspace",
+        approvalToken: "tok",
+      }),
+      ev({ type: "tool.started", seq: 2, callId: "c1" }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks.map((b) => b.kind)).toEqual(["tool"]);
+    if (blocks[0].kind === "tool") expect(blocks[0].status).toBe("running");
+  });
+
+  test("tool.ask after tool.started renders as a new pending approval", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "tool.planned", seq: 0, callId: "c1", tool: "shell.exec", input: {} }),
+      ev({
+        type: "tool.ask",
+        seq: 1,
+        callId: "c1",
+        tool: "shell.exec",
+        reason: "outside workspace",
+        approvalToken: "tok-1",
+      }),
+      ev({ type: "tool.started", seq: 2, callId: "c1" }),
+      ev({
+        type: "tool.ask",
+        seq: 3,
+        callId: "c1",
+        tool: "shell.exec",
+        reason: "still needs approval",
+        approvalToken: "tok-2",
+      }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks.map((b) => b.kind)).toEqual(["tool", "approval"]);
+    if (blocks[1].kind === "approval") {
+      expect(blocks[1].approvalToken).toBe("tok-2");
+    }
+  });
+
   test("text -> tool -> text -> final yields text+tool+text in order", () => {
     const events: AnyRunEvent[] = [
       ev({ type: "text.delta", seq: 0, text: "before " }),

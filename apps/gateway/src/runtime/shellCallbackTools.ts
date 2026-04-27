@@ -75,7 +75,14 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           | { status: "completed"; callId: string; output: unknown }
           | { status: "failed"; callId: string; error: { code: string; message: string } }
           | { status: "denied"; callId: string; error: { code: string; message: string } }
-          | { status: "ask"; callId: string; approvalToken: string; reason: string };
+          | {
+              status: "ask";
+              callId?: string;
+              call_id?: string;
+              approvalToken?: string;
+              approval_token?: string;
+              reason: string;
+            };
 
         if (body.status === "completed") {
           markStarted();
@@ -112,12 +119,25 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           throw new ToolCallError(err.code, err.message);
         }
         // status === "ask"
+        const nextApprovalToken = body.approvalToken ?? body.approval_token;
+        if (!nextApprovalToken) {
+          const err: AppError = {
+            code: "tool.execution_failed",
+            message: "tool callback ask response missing approval token",
+          };
+          opts.appendEvent(call.runId, {
+            type: "tool.failed",
+            callId: call.callId,
+            error: err,
+          });
+          throw new ToolCallError(err.code, err.message);
+        }
         opts.appendEvent(call.runId, {
           type: "tool.ask",
           callId: call.callId,
           tool: call.tool,
           reason: body.reason,
-          approvalToken: body.approvalToken,
+          approvalToken: nextApprovalToken,
         });
         const ac = opts.cancelSignals.get(call.runId);
         if (!ac) {
@@ -141,7 +161,7 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
             `user denied ${call.tool}`,
           );
         }
-        approvalToken = body.approvalToken;
+        approvalToken = nextApprovalToken;
         markStarted();
         // loop continues — second POST carries token; Rust skips policy
       }

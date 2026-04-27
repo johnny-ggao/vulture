@@ -81,6 +81,35 @@ describe("RunStore", () => {
     cleanup();
   });
 
+  test("listForConversation returns newest active run first", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const old = freshRun(runs, c, userMsg);
+    runs.markRunning(old.id);
+    const done = freshRun(runs, c, userMsg);
+    runs.markSucceeded(done.id, "m-result");
+    const active = freshRun(runs, c, userMsg);
+    runs.markRunning(active.id);
+
+    const items = runs.listForConversation(c.id, { status: "running" });
+
+    expect(items.map((r) => r.id)).toEqual([active.id, old.id]);
+    cleanup();
+  });
+
+  test("listForConversation status=active includes queued and running", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const queued = freshRun(runs, c, userMsg);
+    const running = freshRun(runs, c, userMsg);
+    runs.markRunning(running.id);
+    const failed = freshRun(runs, c, userMsg);
+    runs.markFailed(failed.id, { code: "internal", message: "boom" });
+
+    const items = runs.listForConversation(c.id, { status: "active" });
+
+    expect(items.map((r) => r.id)).toEqual([running.id, queued.id]);
+    cleanup();
+  });
+
   test("appendEvent + listEventsAfter (in-memory + persisted)", () => {
     const { runs, c, userMsg, cleanup } = fresh();
     const r = runs.create({

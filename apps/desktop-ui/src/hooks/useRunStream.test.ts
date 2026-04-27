@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runStreamReducer, type RunStreamState } from "./useRunStream";
+import { parseRunEventFrame, runStreamReducer, type RunStreamState } from "./useRunStream";
 
 type Event =
   | { type: "run.started"; runId: string; seq: number; createdAt: string; agentId: string; model: string }
@@ -85,5 +85,22 @@ describe("runStreamReducer", () => {
       { type: "frame", event: ev as never },
     );
     expect(s.status).toBe("succeeded");
+  });
+});
+
+describe("parseRunEventFrame", () => {
+  test("ignores SSE ping frames", () => {
+    expect(parseRunEventFrame({ id: "", event: "ping", data: "{}" })).toBeNull();
+  });
+
+  test("parses run event data", () => {
+    const event = {
+      type: "text.delta",
+      runId: "r",
+      seq: 1,
+      createdAt: "2026-04-27T00:00:00.000Z",
+      text: "hello",
+    };
+    expect(parseRunEventFrame({ id: "1", event: "text.delta", data: JSON.stringify(event) })).toEqual(event);
   });
 });

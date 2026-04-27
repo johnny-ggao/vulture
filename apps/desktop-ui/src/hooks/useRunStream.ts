@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef } from "react";
 import type { ApiClient } from "../api/client";
-import { sseStream } from "../api/sse";
+import { sseStream, type SseFrame } from "../api/sse";
 
 // Permissive event shape — components type-narrow at the rendering boundary.
 export type AnyRunEvent = {
@@ -46,6 +46,11 @@ const TERMINAL: RunStreamStatus[] = ["succeeded", "failed", "cancelled"];
 
 function isTerminal(s: RunStreamStatus): boolean {
   return TERMINAL.includes(s);
+}
+
+export function parseRunEventFrame(frame: SseFrame): AnyRunEvent | null {
+  if (frame.event === "ping" || frame.data.trim().length === 0) return null;
+  return JSON.parse(frame.data) as AnyRunEvent;
 }
 
 export function runStreamReducer(state: RunStreamState, action: RunStreamAction): RunStreamState {
@@ -115,10 +120,13 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
               stateRef.current.lastSeq >= 0 ? String(stateRef.current.lastSeq) : undefined,
             signal: ac.signal,
             fetch: opts.fetch,
+            onOpen: () => {
+              dispatch({ type: "connect.success" });
+              retry = 0;
+            },
           })) {
-            if (retry === 0) dispatch({ type: "connect.success" });
-            retry = 0;
-            const parsed = JSON.parse(frame.data) as AnyRunEvent;
+            const parsed = parseRunEventFrame(frame);
+            if (!parsed) continue;
             dispatch({ type: "frame", event: parsed });
             if (
               parsed.type === "run.completed" ||

@@ -10,6 +10,7 @@ export interface SseStreamOptions {
   lastEventId?: string;
   signal: AbortSignal;
   fetch?: typeof fetch;
+  onOpen?: () => void;
 }
 
 export class SseError extends Error {
@@ -49,6 +50,7 @@ export async function* sseStream(opts: SseStreamOptions): AsyncGenerator<SseFram
   const res = await f(opts.url, { headers, signal: opts.signal });
   if (!res.ok) throw new SseError(`SSE HTTP ${res.status}`, res.status);
   if (!res.body) return;
+  opts.onOpen?.();
 
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";

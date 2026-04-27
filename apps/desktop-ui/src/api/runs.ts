@@ -34,6 +34,17 @@ export const runsApi = {
 
   get: (client: ApiClient, runId: string) => client.get<RunDto>(`/v1/runs/${runId}`),
 
+  listForConversation: async (
+    client: ApiClient,
+    conversationId: string,
+    filter: { status?: RunStatus | "active" } = {},
+  ) => {
+    const query = filter.status ? `?status=${encodeURIComponent(filter.status)}` : "";
+    return (
+      await client.get<{ items: RunDto[] }>(`/v1/conversations/${conversationId}/runs${query}`)
+    ).items;
+  },
+
   cancel: (client: ApiClient, runId: string) =>
     client.post<RunDto>(`/v1/runs/${runId}/cancel`, {}),
 

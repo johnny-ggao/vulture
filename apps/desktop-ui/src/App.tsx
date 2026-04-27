@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AuthStatusView, ChatGPTLoginStart } from "./commandCenterTypes";
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
@@ -46,6 +46,7 @@ export function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const sendingRunRef = useRef(false);
 
   const conversations = useConversations(apiClient);
   const messages = useMessages(apiClient, activeConversationId);
@@ -81,11 +82,37 @@ export function App() {
   // When a run reaches a terminal status, refetch the conversation so the
   // assistant message persisted by the gateway appears in the chronological
   // message list (instead of only living in the transient runEvents).
+  // Refetch is held in a ref so the effect only re-runs on status changes,
+  // not on every render (messages object identity is unstable).
+  const refetchMessagesRef = useRef(messages.refetch);
+  refetchMessagesRef.current = messages.refetch;
   useEffect(() => {
     if (runStream.status === "succeeded" || runStream.status === "failed") {
-      void messages.refetch();
+      void refetchMessagesRef.current();
     }
-  }, [runStream.status, messages]);
+  }, [runStream.status]);
+
+  // Switching away aborts only the local SSE reader. When switching back,
+  // reattach to any queued/running run for that conversation so the in-flight
+  // reply keeps streaming instead of disappearing from the UI.
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) return;
+    if (sendingRunRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const activeRuns = await runsApi.listForConversation(apiClient, activeConversationId, {
+          status: "active",
+        });
+        if (!cancelled) setActiveRunId(activeRuns[0]?.id ?? null);
+      } catch {
+        if (!cancelled) setActiveRunId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
 
   // Bootstrap profile + agents once when apiClient becomes available.
   useEffect(() => {
@@ -152,18 +179,23 @@ export function App() {
 
   async function handleSend(input: string) {
     if (!apiClient || !selectedAgentId) return;
-    let cid = activeConversationId;
-    if (!cid) {
-      const created = await conversations.create({
-        agentId: selectedAgentId,
-        title: input.slice(0, 40),
-      });
-      cid = created.id;
-      setActiveConversationId(cid);
+    sendingRunRef.current = true;
+    try {
+      let cid = activeConversationId;
+      if (!cid) {
+        const created = await conversations.create({
+          agentId: selectedAgentId,
+          title: input.slice(0, 40),
+        });
+        cid = created.id;
+        setActiveConversationId(cid);
+      }
+      const result = await runsApi.create(apiClient, cid, { input });
+      setActiveRunId(result.run.id);
+      messages.append(result.message);
+    } finally {
+      sendingRunRef.current = false;
     }
-    const result = await runsApi.create(apiClient, cid, { input });
-    setActiveRunId(result.run.id);
-    messages.append(result.message);
   }
 
   async function handleCancel() {

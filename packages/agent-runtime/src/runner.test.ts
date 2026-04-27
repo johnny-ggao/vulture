@@ -93,4 +93,53 @@ describe("runConversation", () => {
     expect(toolCalls).toBe(1);
     expect(capturedWorkspacePath).toBe("/tmp/test-workspace");
   });
+
+  test("preserves streamed text when final event is empty", async () => {
+    const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      yield { kind: "text.delta", text: "Here is the result." };
+      yield { kind: "final", text: "" };
+    });
+    const tools: ToolCallable = mock(async () => {
+      throw new Error("should not be called in this test");
+    });
+
+    const result = await runConversation({
+      runId: "r-empty-final",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      systemPrompt: "ignored",
+      userInput: "hi",
+      workspacePath: "",
+      llm,
+      tools,
+      onEvent: () => undefined,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.finalText).toBe("Here is the result.");
+  });
+
+  test("fails when the LLM stream is idle past the timeout", async () => {
+    const events: Array<{ type: string; error?: { message: string } }> = [];
+    const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      await new Promise(() => {});
+    });
+
+    const result = await runConversation({
+      runId: "r-idle",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      systemPrompt: "ignored",
+      userInput: "hi",
+      workspacePath: "",
+      llm,
+      tools: async () => ({}),
+      onEvent: (e) => events.push(e as { type: string; error?: { message: string } }),
+      idleTimeoutMs: 5,
+    });
+
+    expect(result.status).toBe("failed");
+    const failed = events.find((e) => e.type === "run.failed");
+    expect(failed?.error?.message).toContain("LLM stream idle timeout");
+  });
 });
