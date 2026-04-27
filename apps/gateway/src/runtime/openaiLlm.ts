@@ -2,7 +2,6 @@ import { Agent, Runner, tool } from "@openai/agents";
 import type { Tool } from "@openai/agents";
 import { z } from "zod";
 import type { LlmCallable, LlmYield, ToolCallable } from "@vulture/agent-runtime";
-import { selectModel } from "@vulture/llm";
 
 /**
  * Internal event shape representing one normalized step from the @openai/agents
@@ -44,7 +43,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
     const stream = factory({
       systemPrompt: input.systemPrompt,
       userInput: input.userInput,
-      model: selectModel(input.model),
+      model: input.model,
       apiKey: opts.apiKey,
       toolNames: opts.toolNames,
       toolCallable: opts.toolCallable,

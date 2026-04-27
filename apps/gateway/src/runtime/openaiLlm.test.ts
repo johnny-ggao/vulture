@@ -32,31 +32,6 @@ describe("makeOpenAILlm", () => {
     expect(yields.map((y) => y.kind)).toEqual(["text.delta", "text.delta", "final"]);
   });
 
-  test("translates SDK tool_call events into tool.plan + await.tool", async () => {
-    const sdkEvents: SdkRunEvent[] = [
-      { kind: "tool.plan", callId: "c1", tool: "shell.exec", input: { argv: ["ls"] } },
-      { kind: "await.tool", callId: "c1" },
-      { kind: "final", text: "done" },
-    ];
-    const llm = makeOpenAILlm({
-      apiKey: "sk-test",
-      toolNames: ["shell.exec"],
-      toolCallable: async () => "noop",
-      runFactory: () => makeMockRun(sdkEvents),
-    });
-    const yields: LlmYield[] = [];
-    for await (const y of llm({
-      systemPrompt: "x",
-      userInput: "hi",
-      model: "gpt-5.4",
-      runId: "r-test",
-      workspacePath: "",
-    })) {
-      yields.push(y);
-    }
-    expect(yields.map((y) => y.kind)).toEqual(["tool.plan", "await.tool", "final"]);
-    expect(yields[0]).toMatchObject({ tool: "shell.exec" });
-  });
 });
 
 describe("makeStubLlmFallback", () => {

@@ -36,7 +36,7 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const last = blocks[blocks.length - 1];
         const piece = String(e.text ?? "");
         if (last && last.kind === "text") {
-          last.content += piece;
+          blocks[blocks.length - 1] = { ...last, content: last.content + piece };
         } else {
           blocks.push({ kind: "text", content: piece, firstSeq: e.seq });
         }
@@ -60,7 +60,8 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const callId = String(e.callId);
         const idx = toolIndex.get(callId);
         if (idx !== undefined && blocks[idx].kind === "tool") {
-          (blocks[idx] as Extract<RunBlock, { kind: "tool" }>).status = "running";
+          const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
+          blocks[idx] = { ...block, status: "running" };
         }
         break;
       }
@@ -69,8 +70,7 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const idx = toolIndex.get(callId);
         if (idx !== undefined && blocks[idx].kind === "tool") {
           const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
-          block.status = "completed";
-          block.output = e.output;
+          blocks[idx] = { ...block, status: "completed", output: e.output };
         }
         // Approval block (if any) is satisfied; we keep it inline for context
         // — downstream renderer decides whether to fade/hide it.
@@ -81,8 +81,7 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const idx = toolIndex.get(callId);
         if (idx !== undefined && blocks[idx].kind === "tool") {
           const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
-          block.status = "failed";
-          block.error = e.error as { code: string; message: string };
+          blocks[idx] = { ...block, status: "failed", error: e.error as { code: string; message: string } };
         } else {
           // No prior tool.planned (e.g. ask → deny path with no plan event):
           // synthesize a minimal failed block so the user still sees the error.

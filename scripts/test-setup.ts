@@ -19,13 +19,14 @@ if (!(globalThis as { document?: unknown }).document) {
 }
 
 // Auto-cleanup after each test so multiple component tests in the same process
-// don't accumulate rendered DOM in document.body. testing-library's built-in
-// auto-cleanup expects Jest/Vitest globals; bun:test needs explicit wiring.
-// We do a manual document.body reset rather than importing
-// @testing-library/react's `cleanup` here, because the preload script runs
-// from the repo root and can't resolve the workspace-scoped dep.
-afterEach(() => {
-  if (typeof document !== "undefined" && document.body) {
-    document.body.innerHTML = "";
-  }
+// don't accumulate rendered DOM. We use @testing-library/react's cleanup()
+// which properly unmounts React component trees and detaches event listeners.
+// We import from the `pure` entry point to avoid the auto-setup side-effects
+// in the main index.js (it calls beforeAll() at module load time, which bun:test
+// rejects outside of describe()). The dynamic import ensures the module is
+// loaded after happy-dom has registered `document`, so @testing-library/dom's
+// `screen` singleton is initialised with a live document.body.
+afterEach(async () => {
+  const { cleanup } = await import("@testing-library/react/pure");
+  cleanup();
 });
