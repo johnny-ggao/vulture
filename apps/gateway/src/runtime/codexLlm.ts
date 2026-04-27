@@ -98,8 +98,11 @@ export function makeCodexResponsesFetch(baseFetch?: typeof fetch): typeof fetch 
   const f = baseFetch ?? fetch;
   return (async (input, init) => {
     const upstream = await f(input, init);
-    const ct = upstream.headers.get("content-type") ?? "";
-    if (!ct.includes("text/event-stream") || !upstream.body) {
+    // Codex backend doesn't set Content-Type on SSE responses, so we can't
+    // gate on header. Apply transformer to any 2xx body — non-streaming
+    // bodies pass through unchanged because they don't contain
+    // `output_item.done` / `response.completed` events.
+    if (!upstream.ok || !upstream.body) {
       return upstream;
     }
     const transformed = upstream.body.pipeThrough(makeCodexSseTransformer());

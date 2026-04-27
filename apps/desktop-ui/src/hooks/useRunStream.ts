@@ -43,8 +43,10 @@ function isTerminal(s: RunStreamStatus): boolean {
 export function runStreamReducer(state: RunStreamState, action: RunStreamAction): RunStreamState {
   switch (action.type) {
     case "connect.start":
+      if (isTerminal(state.status)) return state;
       return { ...state, status: "connecting", error: null };
     case "connect.success":
+      if (isTerminal(state.status)) return state;
       return { ...state, status: "streaming", error: null };
     case "frame": {
       if (isTerminal(state.status)) return state;
@@ -85,8 +87,12 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
     const ac = new AbortController();
     let retry = 0;
 
+    // Locally tracked terminal flag — synchronous, doesn't rely on React
+    // committing the reducer state into stateRef before the loop checks again.
+    let sawTerminal = false;
+
     async function loop() {
-      while (!ac.signal.aborted && !isTerminal(stateRef.current.status)) {
+      while (!ac.signal.aborted && !sawTerminal && !isTerminal(stateRef.current.status)) {
         dispatch({ type: "connect.start" });
         try {
           const url = `${opts.client!.base}/v1/runs/${opts.runId}/events`;
@@ -102,12 +108,18 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
             retry = 0;
             const parsed = JSON.parse(frame.data) as AnyRunEvent;
             dispatch({ type: "frame", event: parsed });
-            if (isTerminal(stateRef.current.status)) return;
+            if (
+              parsed.type === "run.completed" ||
+              parsed.type === "run.failed" ||
+              parsed.type === "run.cancelled"
+            ) {
+              sawTerminal = true;
+              return;
+            }
           }
+          if (sawTerminal || isTerminal(stateRef.current.status)) return;
           // stream ended cleanly without terminal event
-          if (!isTerminal(stateRef.current.status)) {
-            dispatch({ type: "error", error: "stream ended unexpectedly" });
-          }
+          dispatch({ type: "error", error: "stream ended unexpectedly" });
         } catch (cause) {
           if (ac.signal.aborted) return;
           dispatch({
