@@ -1,0 +1,76 @@
+import { describe, expect, test } from "bun:test";
+import { reduceRunEvents } from "./RunEventStream";
+import type { AnyRunEvent } from "../hooks/useRunStream";
+
+const ev = (overrides: Partial<AnyRunEvent>): AnyRunEvent => ({
+  type: "text.delta",
+  runId: "r",
+  seq: 0,
+  createdAt: "2026-04-27T00:00:00.000Z",
+  ...overrides,
+});
+
+describe("reduceRunEvents", () => {
+  test("text.delta concatenated into one assistant text block until tool/final", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "run.started", seq: 0, agentId: "a", model: "gpt-5.4" }),
+      ev({ type: "text.delta", seq: 1, text: "Hello, " }),
+      ev({ type: "text.delta", seq: 2, text: "world." }),
+      ev({ type: "run.completed", seq: 3, resultMessageId: "m-x", finalText: "Hello, world." }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].kind).toBe("text");
+    if (blocks[0].kind === "text") expect(blocks[0].content).toBe("Hello, world.");
+  });
+
+  test("tool.planned -> tool block with running status when not yet completed", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "tool.planned", seq: 0, callId: "c1", tool: "shell.exec", input: { argv: ["ls"] } }),
+      ev({ type: "tool.started", seq: 1, callId: "c1" }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].kind).toBe("tool");
+    if (blocks[0].kind === "tool") expect(blocks[0].status).toBe("running");
+  });
+
+  test("tool.completed flips status to completed with output", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "tool.planned", seq: 0, callId: "c1", tool: "shell.exec", input: {} }),
+      ev({ type: "tool.completed", seq: 1, callId: "c1", output: { stdout: "ok" } }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks[0].kind).toBe("tool");
+    if (blocks[0].kind === "tool") {
+      expect(blocks[0].status).toBe("completed");
+      expect(blocks[0].output).toEqual({ stdout: "ok" });
+    }
+  });
+
+  test("tool.ask becomes an approval block", () => {
+    const events: AnyRunEvent[] = [
+      ev({
+        type: "tool.ask",
+        seq: 0,
+        callId: "c1",
+        tool: "shell.exec",
+        reason: "outside workspace",
+        approvalToken: "tok",
+      }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks[0].kind).toBe("approval");
+  });
+
+  test("text -> tool -> text -> final yields text+tool+text in order", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "text.delta", seq: 0, text: "before " }),
+      ev({ type: "tool.planned", seq: 1, callId: "c1", tool: "shell.exec", input: {} }),
+      ev({ type: "tool.completed", seq: 2, callId: "c1", output: {} }),
+      ev({ type: "text.delta", seq: 3, text: "after" }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks.map((b) => b.kind)).toEqual(["text", "tool", "text"]);
+  });
+});
