@@ -9,6 +9,9 @@ if (!(globalThis as { document?: unknown }).document) {
   const nativeHeaders = globalThis.Headers;
   const nativeResponse = globalThis.Response;
   const nativeFetch = globalThis.fetch;
+  const nativeReadableStream = globalThis.ReadableStream;
+  const nativeWritableStream = globalThis.WritableStream;
+  const nativeTransformStream = globalThis.TransformStream;
 
   GlobalRegistrator.register();
 
@@ -16,6 +19,9 @@ if (!(globalThis as { document?: unknown }).document) {
   globalThis.Headers = nativeHeaders;
   globalThis.Response = nativeResponse;
   globalThis.fetch = nativeFetch;
+  globalThis.ReadableStream = nativeReadableStream;
+  globalThis.WritableStream = nativeWritableStream;
+  globalThis.TransformStream = nativeTransformStream;
 }
 
 // Auto-cleanup after each test so multiple component tests in the same process

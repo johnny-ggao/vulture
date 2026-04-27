@@ -139,7 +139,7 @@ function makeCodexSseTransformer(): TransformStream<Uint8Array, Uint8Array> {
     },
     flush(controller) {
       if (buffer.length > 0) {
-        controller.enqueue(encoder.encode(buffer));
+        controller.enqueue(encoder.encode(transformBlock(buffer, items)));
       }
     },
   });

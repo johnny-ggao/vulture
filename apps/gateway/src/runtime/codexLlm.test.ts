@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchCodexToken, type CodexShellResponse } from "./codexLlm";
+import { fetchCodexToken, makeCodexResponsesFetch, type CodexShellResponse } from "./codexLlm";
 
 function fakeShellFetch(seq: Array<{ status: number; body: unknown }>): {
   fetchFn: typeof fetch;
@@ -22,6 +22,25 @@ const validToken: CodexShellResponse = {
   expiresAt: Date.now() + 3_600_000,
   email: "user@example.com",
 };
+
+function completedOutputFromSse(text: string): unknown[] {
+  const completedBlock = text
+    .split("\n\n")
+    .find((block) => block.includes("response.completed"));
+  expect(completedBlock).toBeDefined();
+  const data = completedBlock
+    ?.split("\n")
+    .find((line) => line.startsWith("data: "))
+    ?.slice("data: ".length);
+  expect(data).toBeDefined();
+  const parsed = JSON.parse(data ?? "{}") as { response?: { output?: unknown[] } };
+  return parsed.response?.output ?? [];
+}
+
+function fakeSseFetch(body: string): typeof fetch {
+  return (async (_input: string | URL | Request, _init?: RequestInit) =>
+    new Response(body, { status: 200 })) as typeof fetch;
+}
 
 describe("fetchCodexToken", () => {
   test("returns token on 200", async () => {
@@ -66,5 +85,75 @@ describe("fetchCodexToken", () => {
     await expect(
       fetchCodexToken({ shellUrl: "http://shell:4199", bearer: "tok", fetch: fetchFn }),
     ).rejects.toMatchObject({ code: "auth.codex_expired" });
+  });
+});
+
+describe("makeCodexResponsesFetch", () => {
+  test("injects buffered output items into empty response.completed output", async () => {
+    const item = {
+      id: "msg-1",
+      type: "message",
+      content: [{ type: "output_text", text: "hello" }],
+    };
+    const body = [
+      `event: response.output_item.done`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", item })}`,
+      "",
+      `event: response.completed`,
+      `data: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}`,
+      "",
+      "",
+    ].join("\n");
+    const wrapped = makeCodexResponsesFetch(fakeSseFetch(body));
+
+    const text = await (await wrapped("https://chatgpt.com/backend-api/codex/responses")).text();
+
+    expect(text).toContain(`"output":[${JSON.stringify(item)}]`);
+  });
+
+  test("injects output when terminal response.completed has no trailing delimiter", async () => {
+    const item = {
+      id: "msg-1",
+      type: "message",
+      content: [{ type: "output_text", text: "hello" }],
+    };
+    const body = [
+      `event: response.output_item.done`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", item })}`,
+      "",
+      `event: response.completed`,
+      `data: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}`,
+    ].join("\n");
+    const wrapped = makeCodexResponsesFetch(fakeSseFetch(body));
+
+    const text = await (await wrapped("https://chatgpt.com/backend-api/codex/responses")).text();
+
+    expect(text).toContain(`"output":[${JSON.stringify(item)}]`);
+  });
+
+  test("skips reasoning items when injecting completed output", async () => {
+    const messageItem = {
+      id: "msg-1",
+      type: "message",
+      content: [{ type: "output_text", text: "hello" }],
+    };
+    const reasoningItem = { id: "rs-1", type: "reasoning", encrypted_content: "opaque" };
+    const body = [
+      `event: response.output_item.done`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", item: reasoningItem })}`,
+      "",
+      `event: response.output_item.done`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", item: messageItem })}`,
+      "",
+      `event: response.completed`,
+      `data: ${JSON.stringify({ type: "response.completed", response: { output: [] } })}`,
+      "",
+      "",
+    ].join("\n");
+    const wrapped = makeCodexResponsesFetch(fakeSseFetch(body));
+
+    const text = await (await wrapped("https://chatgpt.com/backend-api/codex/responses")).text();
+
+    expect(completedOutputFromSse(text)).toEqual([messageItem]);
   });
 });
