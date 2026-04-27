@@ -99,7 +99,7 @@ export function makeCodexResponsesFetch(baseFetch?: typeof fetch): typeof fetch 
   return (async (input, init) => {
     const upstream = await f(input, init);
     // Codex backend doesn't set Content-Type on SSE responses, so we can't
-    // gate on header. Apply transformer to any 2xx body — non-streaming
+    // gate on header. Apply transformer to any successful body — non-SSE
     // bodies pass through unchanged because they don't contain
     // `output_item.done` / `response.completed` events.
     if (!upstream.ok || !upstream.body) {
@@ -159,9 +159,15 @@ function transformBlock(block: string, items: CodexResponseItem[]): string {
   } catch {
     return block;
   }
-  // Buffer every output_item.done item.
+  // Buffer items from output_item.done. Skip reasoning items: their
+  // encrypted_content is not echoed by chatgpt.com/backend-api/codex, so
+  // the SDK cannot replay them on the next turn (backend returns 404
+  // because store=false). Dropping them here means the SDK won't include
+  // them in the next turn's input, which keeps multi-turn flows working.
   if (parsed.type === "response.output_item.done" && parsed.item) {
-    items.push(parsed.item);
+    if (parsed.item.type !== "reasoning") {
+      items.push(parsed.item);
+    }
     return block;
   }
   // On the terminal completed event, inject buffered items if backend's
