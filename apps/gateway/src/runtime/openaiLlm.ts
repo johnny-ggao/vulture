@@ -85,6 +85,10 @@ async function* defaultRunFactory(
     instructions: input.systemPrompt,
     model: input.model,
     tools,
+    // chatgpt.com/backend-api/codex rejects `store: true` with 400. Setting
+    // store=false on the API-key path is also fine (we don't use OpenAI's
+    // server-side conversation retrieval; gateway persists everything).
+    modelSettings: { store: false },
   });
 
   const runner = new Runner();
