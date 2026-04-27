@@ -4,6 +4,7 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { PostMessageRequestSchema } from "@vulture/protocol/src/v1/conversation";
+import { ApprovalRequestSchema } from "@vulture/protocol/src/v1/approval";
 import {
   requireIdempotencyKey,
   idempotencyCache,
@@ -152,11 +153,23 @@ export function runsRouter(deps: RunsDeps): Hono {
   });
 
   app.post("/v1/runs/:rid/approvals", async (c) => {
-    // Phase 3a stub: accepts approval token + decision, persists nothing yet.
-    // Wired into the runner in 3b when UI shows tool.ask events.
     const rid = c.req.param("rid");
     const run = deps.runs.get(rid);
     if (!run) return c.json({ code: "run.not_found", message: rid }, 404);
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = ApprovalRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ code: "internal", message: parsed.error.message }, 400);
+    }
+
+    const ok = deps.approvalQueue.resolve(parsed.data.callId, parsed.data.decision);
+    if (!ok) {
+      return c.json(
+        { code: "internal", message: `no pending approval for callId ${parsed.data.callId}` },
+        404,
+      );
+    }
     return c.body(null, 202);
   });
 

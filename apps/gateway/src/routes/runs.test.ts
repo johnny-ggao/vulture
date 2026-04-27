@@ -253,4 +253,64 @@ describe("/v1/runs", () => {
     db.close();
     rmSync(dir, { recursive: true });
   });
+
+  test("POST /v1/runs/:rid/approvals resolves the queue", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-runs-approve-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    const convs = new ConversationStore(db);
+    const msgs = new MessageStore(db);
+    const runs = new RunStore(db);
+    const c = convs.create({ agentId: "local-work-agent" });
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    const approvalQueue = new ApprovalQueue();
+    const ac = new AbortController();
+    const waitPromise = approvalQueue.wait("c1", ac.signal);
+
+    const app = runsRouter({
+      conversations: convs,
+      messages: msgs,
+      runs,
+      llm: fakeLlm,
+      tools: async () => "noop",
+      approvalQueue,
+      cancelSignals: new Map(),
+      systemPromptForAgent: () => "",
+      modelForAgent: () => "gpt-5.4",
+      workspacePathForAgent: () => "",
+    });
+
+    const res = await app.request(`/v1/runs/${run.id}/approvals`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ callId: "c1", decision: "allow" }),
+    });
+    expect(res.status).toBe(202);
+    expect(await waitPromise).toBe("allow");
+
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("POST /v1/runs/:rid/approvals with no pending callId returns 404", async () => {
+    const { app, c, runs, msgs, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    const res = await app.request(`/v1/runs/${run.id}/approvals`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ callId: "missing", decision: "allow" }),
+    });
+    expect(res.status).toBe(404);
+    cleanup();
+  });
 });
