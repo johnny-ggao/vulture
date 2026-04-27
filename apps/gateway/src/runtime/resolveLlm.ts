@@ -35,8 +35,18 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
       codexState = "available";
     } catch (cause) {
       const err = cause as CodexShellError;
-      if (err.code === "auth.codex_expired") codexState = "expired";
-      else codexState = "not_signed_in";
+      switch (err.code) {
+        case "auth.codex_expired":
+          codexState = "expired";
+          break;
+        case "auth.codex_not_signed_in":
+        case "internal":
+        default:
+          // Treat shell faults the same as "not signed in" — falls through to
+          // API key (or stub) so a transient shell error doesn't block the run.
+          codexState = "not_signed_in";
+          break;
+      }
     }
 
     if (codexState === "available") {
@@ -66,7 +76,9 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
     const apiKey = env.OPENAI_API_KEY;
     if (apiKey) {
       // Reset SDK default client so a prior codex run doesn't leak baseURL
-      // (chatgpt.com) into this api.openai.com call.
+      // (chatgpt.com) into this api.openai.com call. `setOpenAIAPI("responses")`
+      // matches the API surface that openaiLlm.ts's defaultRunFactory expects
+      // (output_text_delta events come from the Responses streaming protocol).
       setDefaultOpenAIClient(new OpenAI({ apiKey }));
       setOpenAIAPI("responses");
       const inner = makeOpenAILlm({
