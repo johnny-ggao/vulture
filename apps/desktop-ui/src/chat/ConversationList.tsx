@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ConversationDto } from "../api/conversations";
 
 export interface ConversationListProps {
@@ -5,6 +6,7 @@ export interface ConversationListProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  footerSlot?: ReactNode;
 }
 
 export function ConversationList(props: ConversationListProps) {
@@ -42,6 +44,10 @@ export function ConversationList(props: ConversationListProps) {
           ))
         )}
       </section>
+
+      {props.footerSlot ? (
+        <div className="chat-sidebar-footer">{props.footerSlot}</div>
+      ) : null}
     </aside>
   );
 }

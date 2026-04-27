@@ -58,4 +58,17 @@ describe("ConversationList", () => {
     );
     expect(screen.getByText(/没有会话/)).toBeDefined();
   });
+
+  test("renders footer slot when provided", () => {
+    render(
+      <ConversationList
+        items={[]}
+        activeId={null}
+        onSelect={() => {}}
+        onNew={() => {}}
+        footerSlot={<div data-testid="auth-slot">auth here</div>}
+      />,
+    );
+    expect(screen.getByTestId("auth-slot")).toBeDefined();
+  });
 });
