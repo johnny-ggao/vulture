@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Snapshot of the credentials persisted at <profile_dir>/codex_auth.json.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -142,7 +145,6 @@ fn home_dir() -> Result<PathBuf> {
 
 /// Parse `exp` claim from JWT (no signature verification). Returns ms epoch.
 fn expires_at_from_jwt(jwt: &str) -> Option<u64> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() < 2 {
         return None;
@@ -151,6 +153,31 @@ fn expires_at_from_jwt(jwt: &str) -> Option<u64> {
     let value: serde_json::Value = serde_json::from_slice(&payload).ok()?;
     let exp = value.get("exp")?.as_u64()?;
     Some(exp * 1000)  // exp is seconds, we use ms
+}
+
+#[derive(Debug, Clone)]
+pub struct Pkce {
+    pub verifier: String,
+    pub challenge: String,
+    pub state: String,
+}
+
+impl Pkce {
+    pub fn generate() -> Self {
+        let mut verifier_bytes = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut verifier_bytes);
+        let verifier = URL_SAFE_NO_PAD.encode(verifier_bytes);
+
+        let mut hasher = Sha256::new();
+        hasher.update(verifier.as_bytes());
+        let challenge = URL_SAFE_NO_PAD.encode(hasher.finalize());
+
+        let mut state_bytes = [0u8; 16];
+        rand::thread_rng().fill_bytes(&mut state_bytes);
+        let state = URL_SAFE_NO_PAD.encode(state_bytes);
+
+        Self { verifier, challenge, state }
+    }
 }
 
 #[cfg(test)]
@@ -227,5 +254,35 @@ mod tests {
         let read = read_store(&profile).expect("read").expect("Some");
         assert_eq!(read, original);  // unchanged
         std::fs::remove_dir_all(&profile).ok();
+    }
+
+    #[test]
+    fn pkce_challenge_is_base64url_sha256_of_verifier() {
+        let pkce = Pkce::generate();
+        // verifier is 32 bytes base64url-encoded → 43 chars no padding
+        assert_eq!(pkce.verifier.len(), 43);
+        // challenge is sha256(verifier) base64url-encoded → also 43 chars no padding
+        assert_eq!(pkce.challenge.len(), 43);
+        // Verify the relationship: re-derive challenge from verifier
+        use sha2::{Digest, Sha256};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        let mut hasher = Sha256::new();
+        hasher.update(pkce.verifier.as_bytes());
+        let derived = URL_SAFE_NO_PAD.encode(hasher.finalize());
+        assert_eq!(pkce.challenge, derived);
+    }
+
+    #[test]
+    fn pkce_state_is_unique() {
+        let a = Pkce::generate();
+        let b = Pkce::generate();
+        assert_ne!(a.verifier, b.verifier);
+        assert_ne!(a.state, b.state);
+    }
+
+    #[test]
+    fn pkce_state_is_url_safe() {
+        let pkce = Pkce::generate();
+        assert!(pkce.state.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 }
