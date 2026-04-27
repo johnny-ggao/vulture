@@ -181,6 +181,14 @@ impl AppState {
         self.profile_dir.clone()
     }
 
+    pub fn secret_store(&self) -> &dyn SecretStore {
+        self.secret_store.as_ref()
+    }
+
+    pub fn openai_secret_ref(&self) -> &str {
+        &self.openai_secret_ref
+    }
+
     pub fn request_supervisor_restart(&self) {
         self.restart_signal.notify_one();
     }

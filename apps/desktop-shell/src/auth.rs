@@ -1,16 +1,12 @@
 #[cfg(test)]
 use std::sync::Mutex;
-use std::{fs, path::PathBuf, process::Command as StdCommand, time::Duration};
+use std::path::Path;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use keyring::{Entry, Error as KeyringError};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-    time::timeout,
-};
+use serde::Serialize;
+
+use crate::codex_auth::{read_store, unix_now_ms};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,19 +30,53 @@ pub struct SetOpenAiApiKeyRequest {
     pub api_key: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexLoginStart {
-    pub verification_url: String,
-    pub user_code: String,
-    pub already_authenticated: bool,
+pub struct AuthStatusView {
+    pub active: AuthActiveProvider,
+    pub codex: CodexStatusView,
+    pub api_key: ApiKeyStatusView,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthActiveProvider {
+    Codex,
+    ApiKey,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexLoginRequest {
-    #[serde(default)]
-    pub force_reauth: bool,
+pub struct CodexStatusView {
+    pub state: CodexStatusState,
+    pub email: Option<String>,
+    pub expires_at: Option<u64>,
+    pub imported_from: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexStatusState {
+    NotSignedIn,
+    SignedIn,
+    Expired,
+    #[allow(dead_code)]
+    LoggingIn,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKeyStatusView {
+    pub state: ApiKeyState,
+    pub source: AuthSource,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiKeyState {
+    NotSet,
+    Set,
 }
 
 pub trait SecretStore: Send + Sync {
@@ -117,7 +147,7 @@ pub fn auth_status(secret_store: &dyn SecretStore, secret_ref: &str) -> Result<O
         secret_store,
         secret_ref,
         std::env::var_os("OPENAI_API_KEY").is_some(),
-        codex_chatgpt_login_available(),
+        false,
     )
 }
 
@@ -182,200 +212,48 @@ fn resolve_openai_api_key_with_env(
     Err(anyhow!("OpenAI API key required."))
 }
 
-pub fn codex_chatgpt_login_available() -> bool {
-    codex_login_status_reports_chatgpt().unwrap_or(false)
-        || codex_auth_file_reports_chatgpt().unwrap_or(false)
-}
-
-fn codex_login_status_reports_chatgpt() -> Result<bool> {
-    let output = StdCommand::new("codex")
-        .args(["login", "status"])
-        .output()
-        .context("failed to run codex login status")?;
-
-    if !output.status.success() {
-        return Ok(false);
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).contains("ChatGPT"))
-}
-
-fn codex_auth_file_reports_chatgpt() -> Result<bool> {
-    let path = codex_auth_path()?;
-    if !path.is_file() {
-        return Ok(false);
-    }
-
-    let value: Value = serde_json::from_str(
-        &fs::read_to_string(&path)
-            .with_context(|| format!("failed to read Codex auth file at {}", path.display()))?,
-    )
-    .with_context(|| format!("failed to parse Codex auth file at {}", path.display()))?;
-
-    let auth_mode_is_chatgpt = value
-        .get("auth_mode")
-        .and_then(Value::as_str)
-        .is_some_and(|auth_mode| auth_mode.eq_ignore_ascii_case("chatgpt"));
-    let has_refresh_token = value
-        .get("tokens")
-        .and_then(|tokens| tokens.get("refresh_token"))
-        .and_then(Value::as_str)
-        .is_some_and(|token| !token.trim().is_empty());
-
-    Ok(auth_mode_is_chatgpt && has_refresh_token)
-}
-
-fn codex_auth_path() -> Result<PathBuf> {
-    if let Some(codex_home) = std::env::var_os("CODEX_HOME") {
-        return Ok(PathBuf::from(codex_home).join("auth.json"));
-    }
-
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| anyhow!("HOME is not set; cannot locate Codex auth"))?;
-    Ok(PathBuf::from(home).join(".codex").join("auth.json"))
-}
-
-pub async fn start_codex_login(request: CodexLoginRequest) -> Result<CodexLoginStart> {
-    let login_available = codex_chatgpt_login_available();
-    if should_reuse_existing_codex_login(request.force_reauth, login_available) {
-        return Ok(CodexLoginStart {
-            verification_url: String::new(),
-            user_code: String::new(),
-            already_authenticated: true,
-        });
-    }
-
-    if request.force_reauth && login_available {
-        logout_codex()?;
-    }
-
-    let mut child = Command::new("codex")
-        .args(["login", "--device-auth"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .context("failed to start Codex login. Ensure `codex` is installed and on PATH")?;
-
-    let stdout = child
-        .stdout
-        .take()
-        .context("Codex login stdout was not available")?;
-    let mut lines = BufReader::new(stdout).lines();
-
-    let login = timeout(Duration::from_secs(8), async {
-        let mut verification_url = None;
-        let mut user_code = None;
-
-        while let Some(line) = lines
-            .next_line()
-            .await
-            .context("failed to read Codex login output")?
-        {
-            let line = strip_ansi(&line);
-            if verification_url.is_none() {
-                verification_url = find_verification_url(&line);
-            }
-            if user_code.is_none() {
-                user_code = find_user_code(&line);
-            }
-            if let (Some(verification_url), Some(user_code)) = (&verification_url, &user_code) {
-                return Ok(CodexLoginStart {
-                    verification_url: verification_url.clone(),
-                    user_code: user_code.clone(),
-                    already_authenticated: false,
-                });
+pub fn unified_auth_status(
+    secret_store: &dyn SecretStore,
+    secret_ref: &str,
+    profile_dir: &Path,
+) -> Result<AuthStatusView> {
+    let codex = match read_store(profile_dir)? {
+        Some(creds) => {
+            let now = unix_now_ms();
+            let state = if creds.expires_at <= now {
+                CodexStatusState::Expired
+            } else {
+                CodexStatusState::SignedIn
+            };
+            CodexStatusView {
+                state,
+                email: creds.email,
+                expires_at: Some(creds.expires_at),
+                imported_from: creds.imported_from,
             }
         }
-
-        Err(anyhow!("Codex login did not provide a device code"))
-    })
-    .await
-    .map_err(|_| anyhow!("Timed out waiting for Codex device login code"))??;
-
-    open_url(&login.verification_url)?;
-    wait_for_codex_login_in_background(child, lines);
-
-    Ok(login)
-}
-
-fn should_reuse_existing_codex_login(force_reauth: bool, login_available: bool) -> bool {
-    login_available && !force_reauth
-}
-
-fn logout_codex() -> Result<()> {
-    let status = StdCommand::new("codex")
-        .arg("logout")
-        .status()
-        .context("failed to start Codex logout. Ensure `codex` is installed and on PATH")?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow!("Codex logout failed"))
-    }
-}
-
-fn wait_for_codex_login_in_background(
-    mut child: tokio::process::Child,
-    mut lines: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
-) {
-    tokio::spawn(async move {
-        while let Ok(Some(_line)) = lines.next_line().await {}
-        let _ = child.wait().await;
-    });
-}
-
-fn open_url(url: &str) -> Result<()> {
-    let status = StdCommand::new("open")
-        .arg(url)
-        .status()
-        .context("failed to open Codex login URL")?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow!("failed to open Codex login URL"))
-    }
-}
-
-fn find_verification_url(line: &str) -> Option<String> {
-    line.split_whitespace()
-        .find(|part| part.starts_with("https://auth.openai.com/codex/device"))
-        .map(|part| part.trim_end_matches('.').to_string())
-}
-
-fn find_user_code(line: &str) -> Option<String> {
-    let candidate = line.trim();
-    if candidate.len() >= 8
-        && candidate.len() <= 16
-        && candidate.contains('-')
-        && candidate
-            .bytes()
-            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'-')
-    {
-        return Some(candidate.to_string());
-    }
-
-    None
-}
-
-fn strip_ansi(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut chars = value.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' && chars.peek() == Some(&'[') {
-            let _ = chars.next();
-            for next in chars.by_ref() {
-                if next.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-            continue;
-        }
-        output.push(ch);
-    }
-
-    output
+        None => CodexStatusView {
+            state: CodexStatusState::NotSignedIn,
+            email: None,
+            expires_at: None,
+            imported_from: None,
+        },
+    };
+    let openai = auth_status(secret_store, secret_ref)?;
+    let api_key = ApiKeyStatusView {
+        state: if openai.configured {
+            ApiKeyState::Set
+        } else {
+            ApiKeyState::NotSet
+        },
+        source: openai.source,
+    };
+    let active = match (&codex.state, &api_key.state) {
+        (CodexStatusState::SignedIn, _) => AuthActiveProvider::Codex,
+        (_, ApiKeyState::Set) => AuthActiveProvider::ApiKey,
+        _ => AuthActiveProvider::None,
+    };
+    Ok(AuthStatusView { active, codex, api_key })
 }
 
 #[cfg(test)]
@@ -478,39 +356,5 @@ mod tests {
             .expect_err("missing key should fail");
 
         assert_eq!(error.to_string(), "OpenAI API key required.");
-    }
-
-    #[test]
-    fn parses_codex_device_login_output() {
-        let url_line = "   \u{1b}[94mhttps://auth.openai.com/codex/device\u{1b}[0m";
-        let code_line = "   \u{1b}[94m3GAR-Y26LD\u{1b}[0m";
-
-        assert_eq!(
-            find_verification_url(&strip_ansi(url_line)),
-            Some("https://auth.openai.com/codex/device".to_string())
-        );
-        assert_eq!(
-            find_user_code(&strip_ansi(code_line)),
-            Some("3GAR-Y26LD".to_string())
-        );
-    }
-
-    #[test]
-    fn login_start_serializes_already_authenticated_flag() {
-        let start = CodexLoginStart {
-            verification_url: String::new(),
-            user_code: String::new(),
-            already_authenticated: true,
-        };
-        let serialized = serde_json::to_value(start).expect("login start should serialize");
-
-        assert_eq!(serialized["alreadyAuthenticated"], true);
-    }
-
-    #[test]
-    fn forced_codex_login_does_not_reuse_existing_login() {
-        assert!(should_reuse_existing_codex_login(false, true));
-        assert!(!should_reuse_existing_codex_login(true, true));
-        assert!(!should_reuse_existing_codex_login(false, false));
     }
 }

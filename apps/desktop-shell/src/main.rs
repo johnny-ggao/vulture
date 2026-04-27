@@ -1,6 +1,5 @@
 mod auth;
 mod browser;
-#[allow(dead_code)]
 mod codex_auth;
 mod commands;
 mod runtime;
@@ -64,6 +63,8 @@ async fn main() -> Result<()> {
     //    known (profile dir is resolved here).
     let app_state = AppState::new_for_root(&root)
         .context("failed to initialize Vulture desktop state")?;
+    crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
+        .context("import existing codex credentials")?;
     app_state.set_runtime_descriptor(descriptor.clone());
 
     // 5. Shell HTTP callback server (held for the run; Drop on exit).
@@ -118,7 +119,9 @@ async fn main() -> Result<()> {
             commands::get_openai_auth_status,
             commands::set_openai_api_key,
             commands::clear_openai_api_key,
-            commands::start_codex_login,
+            commands::start_chatgpt_login,
+            commands::sign_out_chatgpt,
+            commands::get_auth_status,
             // Browser pairing (system-level):
             commands::get_browser_status,
             commands::start_browser_pairing,

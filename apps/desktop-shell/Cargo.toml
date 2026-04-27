@@ -34,6 +34,7 @@ tauri.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tower-http.workspace = true
+urlencoding = "2"
 uuid.workspace = true
 vulture-core = { path = "../../crates/core" }
 vulture-tool-gateway = { path = "../../crates/tool-gateway" }
