@@ -148,6 +148,11 @@ fn home_dir() -> Result<PathBuf> {
 }
 
 /// Parse `exp` claim from JWT (no signature verification). Returns ms epoch.
+///
+/// SECURITY: Does NOT verify the JWT signature. Acceptable here because the
+/// id_token is received over TLS directly from OpenAI's token endpoint
+/// (trusted-by-protocol). Do NOT use this helper for tokens from untrusted
+/// sources.
 fn expires_at_from_jwt(jwt: &str) -> Option<u64> {
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() < 2 {
@@ -299,6 +304,25 @@ pub struct TokenResponse {
     pub expires_in: u64,
 }
 
+async fn post_token_form(
+    token_url: &str,
+    form: &[(&str, &str)],
+    label: &'static str,
+) -> Result<TokenResponse> {
+    let response = reqwest::Client::new()
+        .post(token_url)
+        .form(form)
+        .send()
+        .await
+        .with_context(|| format!("POST {token_url}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("{label} endpoint returned {status}: {body}"));
+    }
+    response.json().await.with_context(|| format!("parse {label} response"))
+}
+
 /// POST to token_url with `grant_type=authorization_code` form body.
 pub async fn exchange_authorization_code(
     token_url: &str,
@@ -306,7 +330,6 @@ pub async fn exchange_authorization_code(
     code_verifier: &str,
     redirect_uri: &str,
 ) -> Result<TokenResponse> {
-    let client = reqwest::Client::new();
     let form = [
         ("grant_type", "authorization_code"),
         ("client_id", CLIENT_ID),
@@ -314,19 +337,7 @@ pub async fn exchange_authorization_code(
         ("code_verifier", code_verifier),
         ("redirect_uri", redirect_uri),
     ];
-    let response = client
-        .post(token_url)
-        .form(&form)
-        .send()
-        .await
-        .with_context(|| format!("POST {token_url}"))?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(anyhow!("token endpoint returned {status}: {body}"));
-    }
-    let parsed: TokenResponse = response.json().await.context("parse token response")?;
-    Ok(parsed)
+    post_token_form(token_url, &form, "token").await
 }
 
 /// POST refresh request. Same shape as exchange_authorization_code response.
@@ -334,25 +345,12 @@ pub async fn refresh_access_token(
     token_url: &str,
     refresh_token: &str,
 ) -> Result<TokenResponse> {
-    let client = reqwest::Client::new();
     let form = [
         ("grant_type", "refresh_token"),
         ("client_id", CLIENT_ID),
         ("refresh_token", refresh_token),
     ];
-    let response = client
-        .post(token_url)
-        .form(&form)
-        .send()
-        .await
-        .with_context(|| format!("POST {token_url}"))?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(anyhow!("refresh endpoint returned {status}: {body}"));
-    }
-    let parsed: TokenResponse = response.json().await.context("parse refresh response")?;
-    Ok(parsed)
+    post_token_form(token_url, &form, "refresh").await
 }
 
 /// Build a CodexCreds from a TokenResponse + previously known account_id (or extracted from id_token).
@@ -375,6 +373,12 @@ pub fn creds_from_token_response(
     })
 }
 
+/// Extract `chatgpt_account_id` and `email` claims from the id_token JWT.
+///
+/// SECURITY: Does NOT verify the JWT signature. Acceptable here because the
+/// id_token is received over TLS directly from OpenAI's token endpoint
+/// (trusted-by-protocol). Do NOT use this helper for tokens from untrusted
+/// sources.
 fn decode_account_from_id_token(id_token: &str) -> Result<(String, Option<String>)> {
     let parts: Vec<&str> = id_token.split('.').collect();
     if parts.len() < 2 {
