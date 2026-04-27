@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   ToolSchema,
-  ToolInvocationContextSchema,
   ApprovalDecisionSchema,
   type Tool,
 } from "./tool";
@@ -23,12 +22,4 @@ describe("Tool", () => {
     expect(() => ApprovalDecisionSchema.parse("maybe")).toThrow();
   });
 
-  test("ToolInvocationContext: workspace + optional approval", () => {
-    expect(
-      ToolInvocationContextSchema.parse({
-        workspace: { id: "w", path: "/tmp" },
-        approval: null,
-      }).approval,
-    ).toBeNull();
-  });
 });

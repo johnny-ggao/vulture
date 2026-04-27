@@ -11,12 +11,6 @@ import { createApiClient } from "./api/client";
 import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
 
-type RunEvent = {
-  type: string;
-  payload: Record<string, unknown>;
-  createdAt?: string;
-};
-
 type Profile = {
   id: string;
   name: string;
@@ -64,7 +58,6 @@ function authLabel(status: OpenAiAuthStatus | null) {
 }
 
 export function App() {
-  const [events, setEvents] = useState<RunEvent[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
@@ -219,58 +212,17 @@ export function App() {
     };
     setMessages((current) => [...current, userMessage]);
     setTaskInput("");
-    setStatus("running");
-    setError(null);
-    setEvents([]);
-    isRunning.current = true;
-
-    if (!isTauriRuntime()) {
-      setStatus("failed");
-      setError("请在 Tauri 桌面窗口中运行真实任务。");
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: "当前只是浏览器预览。真实 agent 运行需要通过 Tauri 桌面窗口启动。",
-        },
-      ]);
-      isRunning.current = false;
-      return;
-    }
-
-    try {
-      const result = await invoke<RunEvent[]>("start_agent_run", {
-        request: {
-          agentId: selectedAgent.id,
-          input,
-        },
-      });
-      setEvents(result);
-      setStatus("completed");
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: assistantTextFromEvents(result),
-        },
-      ]);
-    } catch (cause) {
-      const message = errorMessage(cause);
-      setStatus("failed");
-      setError(message);
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "system",
-          content: message,
-        },
-      ]);
-    } finally {
-      isRunning.current = false;
-    }
+    setStatus("failed");
+    setError("Agent run 临时下线：UI 正在迁移到新的 gateway HTTP/SSE 协议（Phase 3b）。");
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: "system",
+        content: "Agent run 临时下线：UI 正在迁移到新的 gateway HTTP/SSE 协议（Phase 3b）。",
+      },
+    ]);
+    isRunning.current = false;
   }
 
   async function sendMockMessage() {
@@ -282,44 +234,17 @@ export function App() {
       { id: crypto.randomUUID(), role: "user", content: input },
     ]);
     setTaskInput("");
-    setStatus("running");
+    setStatus("completed");
     setError(null);
-    setEvents([]);
-    isRunning.current = true;
-
-    if (!isTauriRuntime()) {
-      setStatus("completed");
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: `Mock response for: ${input}`,
-        },
-      ]);
-      isRunning.current = false;
-      return;
-    }
-
-    try {
-      const result = await invoke<RunEvent[]>("start_mock_run", { input });
-      setEvents(result);
-      setStatus("completed");
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: assistantTextFromEvents(result),
-        },
-      ]);
-    } catch (cause) {
-      const message = errorMessage(cause);
-      setStatus("failed");
-      setError(message);
-    } finally {
-      isRunning.current = false;
-    }
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "Mock 模式已弃用：UI 重写后将由 gateway stub LLM 直接驱动（Phase 3b）。",
+      },
+    ]);
+    isRunning.current = false;
   }
 
   return (
@@ -341,7 +266,6 @@ export function App() {
           onClick={() => {
             setMessages([]);
             setTaskInput("");
-            setEvents([]);
             setStatus("idle");
             setError(null);
           }}
@@ -507,7 +431,6 @@ export function App() {
           <div className="run-meta">
             <span>{selectedAgent?.workspace.path ?? "未选择智能体工作区"}</span>
             <span>状态：{status}</span>
-            {events.length ? <span>{events.length} events</span> : null}
           </div>
           <div className="api-key-row">
             <input
@@ -524,24 +447,6 @@ export function App() {
       </main>
     </div>
   );
-}
-
-function assistantTextFromEvents(events: RunEvent[]) {
-  const completed = [...events].reverse().find((event) => event.type === "run_completed");
-  const finalOutput = completed?.payload.finalOutput;
-  if (typeof finalOutput === "string" && finalOutput.trim()) {
-    return finalOutput.trim();
-  }
-
-  if (!events.length) return "任务完成，但没有返回内容。";
-
-  return events
-    .map((event) => `${event.type}\n${JSON.stringify(event.payload, null, 2)}`)
-    .join("\n\n");
-}
-
-function isTauriRuntime() {
-  return "__TAURI_INTERNALS__" in window;
 }
 
 function isTauriUnavailable(cause: unknown) {

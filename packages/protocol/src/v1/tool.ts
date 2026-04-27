@@ -21,11 +21,3 @@ export const ApprovalSchema = z.object({
 });
 export type Approval = z.infer<typeof ApprovalSchema>;
 
-export const ToolInvocationContextSchema = z.object({
-  workspace: z.object({
-    id: z.string().min(1),
-    path: z.string().min(1),
-  }),
-  approval: ApprovalSchema.nullable(),
-});
-export type ToolInvocationContext = z.infer<typeof ToolInvocationContextSchema>;
