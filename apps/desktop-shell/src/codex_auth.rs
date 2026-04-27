@@ -6,10 +6,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{anyhow, Context, Result};
 use axum::{extract::Query, http::StatusCode, response::Html, routing::get, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use futures::future::{BoxFuture, Shared};
+use futures::FutureExt;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
+use tokio::{net::TcpListener, sync::oneshot, sync::Mutex as AsyncMutex, task::JoinHandle};
 
 /// Snapshot of the credentials persisted at <profile_dir>/codex_auth.json.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -353,6 +355,49 @@ pub async fn refresh_access_token(
     post_token_form(token_url, &form, "refresh").await
 }
 
+/// In-flight refresh future. `String` (not `anyhow::Error`) because `Shared`
+/// requires `Clone`-able output and `anyhow::Error` carries a non-Clone
+/// context chain.
+type SharedRefreshFuture = Shared<BoxFuture<'static, std::result::Result<TokenResponse, String>>>;
+
+/// Concurrency-safe refresh primitive: when multiple callers request a
+/// refresh at the same time, only ONE actual HTTP request to OpenAI's token
+/// endpoint fires. Other callers wait on the same in-flight `Shared` future.
+#[derive(Default, Clone)]
+pub struct RefreshSingleton {
+    inflight: Arc<AsyncMutex<Option<SharedRefreshFuture>>>,
+}
+
+impl RefreshSingleton {
+    /// If a refresh is already in flight, wait for it. Otherwise, start one.
+    pub async fn refresh_once(
+        &self,
+        token_url: &str,
+        refresh_token: &str,
+    ) -> Result<TokenResponse> {
+        let mut guard = self.inflight.lock().await;
+        if let Some(shared) = &*guard {
+            let fut = shared.clone();
+            drop(guard);
+            return fut.await.map_err(|e| anyhow!("refresh failed: {e}"));
+        }
+        let token_url = token_url.to_string();
+        let refresh_token = refresh_token.to_string();
+        let fut: BoxFuture<'static, std::result::Result<TokenResponse, String>> =
+            Box::pin(async move {
+                refresh_access_token(&token_url, &refresh_token)
+                    .await
+                    .map_err(|e| e.to_string())
+            });
+        let shared = fut.shared();
+        *guard = Some(shared.clone());
+        drop(guard);
+        let result = shared.await;
+        *self.inflight.lock().await = None;
+        result.map_err(|e| anyhow!("refresh failed: {e}"))
+    }
+}
+
 /// Build a CodexCreds from a TokenResponse + previously known account_id (or extracted from id_token).
 pub fn creds_from_token_response(
     response: TokenResponse,
@@ -592,5 +637,48 @@ mod tests {
         assert!(body.contains("code=the-code"));
         assert!(body.contains("code_verifier=the-verifier"));
         assert!(body.contains(&format!("client_id={}", CLIENT_ID)));
+    }
+
+    #[tokio::test]
+    async fn refresh_singleton_fires_only_one_http_request_under_concurrency() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use axum::{routing::post, Router, response::Json};
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let count_clone = count.clone();
+
+        let app = Router::new().route(
+            "/oauth/token",
+            post(move || {
+                count_clone.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    Json(serde_json::json!({
+                        "access_token": "at-new",
+                        "refresh_token": "rt-new",
+                        "id_token": "header.eyJleHAiOjE3MTQyMzg0MDAsImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJhY2MtMSJ9fQ.sig",
+                        "expires_in": 3600
+                    }))
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok(); });
+        let token_url = format!("http://127.0.0.1:{port}/oauth/token");
+
+        let runtime = RefreshSingleton::default();
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let runtime = runtime.clone();
+            let url = token_url.clone();
+            handles.push(tokio::spawn(async move {
+                runtime.refresh_once(&url, "rt-old").await
+            }));
+        }
+        for h in handles {
+            h.await.unwrap().expect("refresh ok");
+        }
+        assert_eq!(count.load(Ordering::SeqCst), 1, "only one HTTP request");
     }
 }

@@ -16,6 +16,7 @@ use crate::{
         KeychainSecretStore, OpenAiAuthStatus, SecretStore, SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
+    codex_auth::RefreshSingleton,
     supervisor::SupervisorStatus,
 };
 
@@ -45,6 +46,15 @@ pub struct AppState {
     /// Notified on Tauri exit so the supervisor loop can SIGTERM the gateway
     /// and unwind cleanly before the process exits.
     shutdown_signal: Arc<Notify>,
+    /// Concurrency-safe Codex refresh primitive: ensures only one HTTP refresh
+    /// to OpenAI's token endpoint is in flight at any given time. Shared across
+    /// all callers (gateway processes, Tauri commands).
+    ///
+    /// Wired into Tauri commands in Task 7 — the field is stored here so future
+    /// callers (`refresh_codex_creds`, etc.) can `clone()` and reuse the same
+    /// in-flight tracker across the whole desktop process.
+    #[allow(dead_code)]
+    pub codex_refresh: RefreshSingleton,
 }
 
 impl AppState {
@@ -100,6 +110,7 @@ impl AppState {
             })),
             restart_signal: Arc::new(Notify::new()),
             shutdown_signal: Arc::new(Notify::new()),
+            codex_refresh: RefreshSingleton::default(),
         })
     }
 
