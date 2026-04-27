@@ -19,14 +19,13 @@ import { conversationsRouter } from "./routes/conversations";
 import { runsRouter } from "./routes/runs";
 import {
   assembleAgentInstructions,
-  type LlmCallable,
   type ToolCallable,
 } from "@vulture/agent-runtime";
-import { isApiKeyConfigured, selectModel } from "@vulture/llm";
+import { selectModel } from "@vulture/llm";
 import { AGENT_TOOL_NAMES } from "@vulture/protocol/src/v1/agent";
 import { ApprovalQueue } from "./runtime/approvalQueue";
 import { makeShellCallbackTools } from "./runtime/shellCallbackTools";
-import { makeOpenAILlm, makeStubLlmFallback } from "./runtime/openaiLlm";
+import { makeLazyLlm } from "./runtime/resolveLlm";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -69,13 +68,10 @@ export function buildServer(cfg: GatewayConfig): Hono {
     cancelSignals,
   });
 
-  const llm: LlmCallable = isApiKeyConfigured(process.env)
-    ? makeOpenAILlm({
-        apiKey: process.env.OPENAI_API_KEY!,
-        toolNames: AGENT_TOOL_NAMES,
-        toolCallable: tools,
-      })
-    : makeStubLlmFallback();
+  const llm = makeLazyLlm({
+    toolNames: AGENT_TOOL_NAMES,
+    toolCallable: tools,
+  });
 
   const app = new Hono();
   app.use("*", errorBoundary);

@@ -75,12 +75,10 @@ interface SdkRunContext {
 async function* defaultRunFactory(
   input: RunFactoryInput,
 ): AsyncIterable<SdkRunEvent> {
-  // The SDK reads OPENAI_API_KEY from the environment. Set it from the
-  // caller-provided key when missing or differing — gateway is single-tenant.
-  if (input.apiKey && process.env.OPENAI_API_KEY !== input.apiKey) {
-    process.env.OPENAI_API_KEY = input.apiKey;
-  }
-
+  // The SDK reads OPENAI_API_KEY from process.env. The lazy wrapper in
+  // resolveLlm.ts only calls makeOpenAILlm when OPENAI_API_KEY is present, so
+  // we can rely on the env being set by the time we reach here. No mutation
+  // of process.env is needed or wanted (FU-3).
   const tools: Tool[] = input.toolNames.map((name) => makeSdkTool(name));
   const agent = new Agent<SdkRunContext>({
     name: "local-work",
