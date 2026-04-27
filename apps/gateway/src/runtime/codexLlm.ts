@@ -1,3 +1,18 @@
+/**
+ * Codex (ChatGPT subscription) LLM provider.
+ *
+ * IMPORTANT — SDK state contract:
+ * Calling `makeCodexLlm` mutates @openai/agents global SDK state via
+ * `setDefaultOpenAIClient`, `setOpenAIAPI("responses")`, and
+ * `setTracingDisabled(true)`. These are PROCESS-GLOBAL side effects.
+ *
+ * Once a codex run executes, subsequent runs through other providers
+ * (e.g. API key) MUST reset the SDK client to a vanilla OpenAI instance
+ * before delegating, otherwise their requests will be routed to
+ * chatgpt.com/backend-api with codex headers (401/404).
+ *
+ * `runtime/resolveLlm.ts` is responsible for enforcing this invariant.
+ */
 import OpenAI from "openai";
 import { setDefaultOpenAIClient, setOpenAIAPI, setTracingDisabled } from "@openai/agents";
 import type { LlmCallable, LlmYield, ToolCallable } from "@vulture/agent-runtime";
@@ -10,9 +25,15 @@ export interface CodexShellResponse {
   email?: string;
 }
 
-export interface CodexShellError extends Error {
-  code: "auth.codex_not_signed_in" | "auth.codex_expired" | "internal";
-  status: number;
+export class CodexShellError extends Error {
+  constructor(
+    message: string,
+    public readonly code: "auth.codex_not_signed_in" | "auth.codex_expired" | "internal",
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "CodexShellError";
+  }
 }
 
 export interface FetchCodexTokenOptions {
@@ -54,11 +75,7 @@ export async function fetchCodexToken(opts: FetchCodexTokenOptions): Promise<Cod
 }
 
 function makeShellError(code: string, status: number, message: string): CodexShellError {
-  const err = new Error(message) as CodexShellError;
-  err.code = code as CodexShellError["code"];
-  err.status = status;
-  err.name = "CodexShellError";
-  return err;
+  return new CodexShellError(message, code as CodexShellError["code"], status);
 }
 
 export interface CodexLlmOptions {
