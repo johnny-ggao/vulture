@@ -1,13 +1,8 @@
 import { z } from "zod";
-import type { BrandedId } from "@vulture/common";
-import type { Iso8601 } from "./index";
+import { Iso8601Schema, type Iso8601 } from "./index";
 import type { AgentId } from "./agent";
 import type { ConversationId, MessageId, RunId } from "./conversation";
 import { AppErrorSchema, type AppError } from "./error";
-
-const Iso8601Schema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/);
 
 export const RunStatusSchema = z.enum([
   "queued",

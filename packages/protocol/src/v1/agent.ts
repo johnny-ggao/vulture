@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { BrandedId } from "@vulture/common";
-import type { Iso8601 } from "./index";
+import { Iso8601Schema, type Iso8601 } from "./index";
 import { WorkspaceSchema, SaveWorkspaceRequestSchema } from "./workspace";
 
 export type AgentId = BrandedId<"AgentId">;
@@ -15,10 +15,6 @@ export type AgentToolName = z.infer<typeof AgentToolNameSchema>;
 
 export const ReasoningLevelSchema = z.enum(["low", "medium", "high"]);
 export type ReasoningLevel = z.infer<typeof ReasoningLevelSchema>;
-
-const Iso8601Schema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/);
 
 const SlugSchema = z
   .string()

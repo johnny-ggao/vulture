@@ -1,15 +1,11 @@
 import { z } from "zod";
 import type { BrandedId } from "@vulture/common";
-import type { Iso8601 } from "./index";
+import { Iso8601Schema, type Iso8601 } from "./index";
 import type { AgentId } from "./agent";
 
 export type ConversationId = BrandedId<"ConversationId">;
 export type MessageId = BrandedId<"MessageId">;
 export type RunId = BrandedId<"RunId">;
-
-const Iso8601Schema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/);
 
 export const ConversationSchema = z.object({
   id: z.string().min(1),

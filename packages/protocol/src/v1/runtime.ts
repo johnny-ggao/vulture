@@ -1,9 +1,5 @@
 import { z } from "zod";
-import { API_VERSION, type Iso8601 } from "./index";
-
-const Iso8601Schema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/);
+import { API_VERSION, Iso8601Schema, type Iso8601 } from "./index";
 
 const PortSchema = z.number().int().min(1).max(65535);
 
