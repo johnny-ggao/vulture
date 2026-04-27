@@ -177,6 +177,52 @@ describe("makeShellCallbackTools", () => {
     });
   });
 
+  test("ask → timeout emits tool.failed and throws ToolCallError(tool.approval_timeout)", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-1", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const { fetchFn } = fakeFetchSequence([
+      {
+        status: 200,
+        body: { status: "ask", callId: "c1", approvalToken: "tok", reason: "x" },
+      },
+    ]);
+
+    const tools = makeShellCallbackTools({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      fetch: fetchFn,
+      approvalTimeoutMs: 5,
+    });
+
+    await expect(
+      tools({
+        callId: "c1",
+        runId: "r-1",
+        tool: "shell.exec",
+        input: {},
+        workspacePath: "",
+      }),
+    ).rejects.toMatchObject({
+      code: "tool.approval_timeout",
+    });
+
+    expect(events.map((e) => e.partial.type)).toEqual([
+      "tool.planned",
+      "tool.ask",
+      "tool.failed",
+    ]);
+    expect(events[2].partial).toMatchObject({
+      type: "tool.failed",
+      error: { code: "tool.approval_timeout" },
+    });
+  });
+
   test("status=denied throws ToolCallError with the inner code", async () => {
     const queue = new ApprovalQueue();
     const cancelSignals = new Map<string, AbortController>();

@@ -1,7 +1,9 @@
 import { ToolCallError, type ToolCallable } from "@vulture/agent-runtime";
 import type { PartialRunEvent } from "../domain/runStore";
-import type { ApprovalQueue } from "./approvalQueue";
+import { ApprovalTimeoutError, type ApprovalQueue } from "./approvalQueue";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+
+const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface ShellCallbackToolsOpts {
   callbackUrl: string;
@@ -13,6 +15,8 @@ export interface ShellCallbackToolsOpts {
   fetch?: typeof fetch;
   /** Test injection point. Defaults to process.pid. */
   callerPid?: number;
+  /** Maximum time to wait for user approval before failing the tool call. */
+  approvalTimeoutMs?: number;
 }
 
 export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallable {
@@ -146,7 +150,26 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
             `no AbortController registered for run ${call.runId}`,
           );
         }
-        const decision = await opts.approvalQueue.wait(call.callId, ac.signal);
+        let decision: "allow" | "deny";
+        try {
+          decision = await opts.approvalQueue.wait(call.callId, ac.signal, {
+            timeoutMs: opts.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS,
+          });
+        } catch (err) {
+          if (err instanceof ApprovalTimeoutError) {
+            const appError: AppError = {
+              code: "tool.approval_timeout",
+              message: `approval timed out for ${call.tool}`,
+            };
+            opts.appendEvent(call.runId, {
+              type: "tool.failed",
+              callId: call.callId,
+              error: appError,
+            });
+            throw new ToolCallError(appError.code, appError.message);
+          }
+          throw err;
+        }
         if (decision === "deny") {
           opts.appendEvent(call.runId, {
             type: "tool.failed",

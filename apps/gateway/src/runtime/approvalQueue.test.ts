@@ -34,4 +34,15 @@ describe("ApprovalQueue", () => {
     await expect(promise).rejects.toThrow(/aborted/);
     expect(q.resolve("c1", "allow")).toBe(false);
   });
+
+  test("timeout rejects the promise and cleans up", async () => {
+    const q = new ApprovalQueue();
+    const ac = new AbortController();
+    const promise = q.wait("c1", ac.signal, { timeoutMs: 5 });
+    await expect(promise).rejects.toMatchObject({
+      name: "ApprovalTimeoutError",
+      code: "tool.approval_timeout",
+    });
+    expect(q.resolve("c1", "allow")).toBe(false);
+  });
 });

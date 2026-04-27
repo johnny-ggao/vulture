@@ -12,6 +12,7 @@ export const ErrorCodeSchema = z.enum([
   "run.not_found",
   "run.cancelled",
   "run.already_completed",
+  "tool.approval_timeout",
   "tool.permission_denied",
   "tool.execution_failed",
   "llm.provider_error",

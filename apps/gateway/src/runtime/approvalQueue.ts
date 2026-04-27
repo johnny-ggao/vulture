@@ -5,15 +5,40 @@ interface PendingEntry {
   reject: (error: Error) => void;
   abortListener: () => void;
   signal: AbortSignal;
+  timeoutId?: ReturnType<typeof setTimeout>;
+}
+
+export class ApprovalTimeoutError extends Error {
+  readonly code = "tool.approval_timeout";
+
+  constructor(callId: string) {
+    super(`approval wait timed out for ${callId}`);
+    this.name = "ApprovalTimeoutError";
+  }
+}
+
+export interface ApprovalWaitOptions {
+  timeoutMs?: number;
 }
 
 export class ApprovalQueue {
   private readonly pending = new Map<string, PendingEntry>();
 
-  wait(callId: string, signal: AbortSignal): Promise<ApprovalDecision> {
+  wait(
+    callId: string,
+    signal: AbortSignal,
+    opts: ApprovalWaitOptions = {},
+  ): Promise<ApprovalDecision> {
     return new Promise((resolve, reject) => {
-      const abortListener = () => {
+      const cleanup = () => {
+        const entry = this.pending.get(callId);
+        if (!entry) return;
         this.pending.delete(callId);
+        entry.signal.removeEventListener("abort", entry.abortListener);
+        if (entry.timeoutId) clearTimeout(entry.timeoutId);
+      };
+      const abortListener = () => {
+        cleanup();
         reject(new Error(`approval wait aborted for ${callId}`));
       };
       if (signal.aborted) {
@@ -21,7 +46,14 @@ export class ApprovalQueue {
         return;
       }
       signal.addEventListener("abort", abortListener, { once: true });
-      this.pending.set(callId, { resolve, reject, abortListener, signal });
+      const entry: PendingEntry = { resolve, reject, abortListener, signal };
+      if (opts.timeoutMs && opts.timeoutMs > 0) {
+        entry.timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new ApprovalTimeoutError(callId));
+        }, opts.timeoutMs);
+      }
+      this.pending.set(callId, entry);
     });
   }
 
@@ -30,6 +62,7 @@ export class ApprovalQueue {
     if (!entry) return false;
     this.pending.delete(callId);
     entry.signal.removeEventListener("abort", entry.abortListener);
+    if (entry.timeoutId) clearTimeout(entry.timeoutId);
     entry.resolve(decision);
     return true;
   }
