@@ -1,5 +1,13 @@
 import { useState } from "react";
 
+export type ThinkingMode = "low" | "medium" | "high";
+
+const THINKING_OPTIONS: Array<{ value: ThinkingMode; label: string }> = [
+  { value: "low", label: "快速" },
+  { value: "medium", label: "标准" },
+  { value: "high", label: "深度" },
+];
+
 export interface ComposerProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
   selectedAgentId: string;
@@ -11,6 +19,7 @@ export interface ComposerProps {
 
 export function Composer(props: ComposerProps) {
   const [value, setValue] = useState("");
+  const [thinking, setThinking] = useState<ThinkingMode>("low");
 
   function send() {
     const trimmed = value.trim();
@@ -18,6 +27,13 @@ export function Composer(props: ComposerProps) {
     props.onSend(trimmed);
     setValue("");
   }
+
+  function cycleThinking() {
+    const idx = THINKING_OPTIONS.findIndex((o) => o.value === thinking);
+    setThinking(THINKING_OPTIONS[(idx + 1) % THINKING_OPTIONS.length].value);
+  }
+
+  const thinkingLabel = THINKING_OPTIONS.find((o) => o.value === thinking)?.label ?? "快速";
 
   return (
     <div className="composer">
@@ -34,8 +50,10 @@ export function Composer(props: ComposerProps) {
       />
       <div className="composer-controls">
         <select
+          className="agent-select"
           value={props.selectedAgentId}
           onChange={(e) => props.onSelectAgent(e.target.value)}
+          aria-label="智能体"
         >
           {props.agents.map((a) => (
             <option key={a.id} value={a.id}>
@@ -43,6 +61,20 @@ export function Composer(props: ComposerProps) {
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className="chip"
+          onClick={cycleThinking}
+          aria-label={`思考模式：${thinkingLabel}`}
+          title={`思考模式：${thinkingLabel}`}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13">
+            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4 17.5v-1A2.5 2.5 0 0 1 2 14v-1A2.5 2.5 0 0 1 4.5 10.5 2.5 2.5 0 0 1 7 8V6.5A2.5 2.5 0 0 1 9.5 4 2.5 2.5 0 0 1 9.5 2Z"/>
+            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 20 17.5v-1A2.5 2.5 0 0 0 22 14v-1a2.5 2.5 0 0 0-2.5-2.5A2.5 2.5 0 0 0 17 8V6.5A2.5 2.5 0 0 0 14.5 4Z"/>
+          </svg>
+          <span>{thinkingLabel}</span>
+        </button>
+        <span className="spacer" />
         {props.running ? (
           <button
             type="button"
@@ -50,7 +82,7 @@ export function Composer(props: ComposerProps) {
             aria-label="取消"
             onClick={props.onCancel}
           >
-            ⏹
+            <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>
           </button>
         ) : (
           <button
@@ -60,7 +92,7 @@ export function Composer(props: ComposerProps) {
             onClick={send}
             disabled={!value.trim()}
           >
-            ↑
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14"><path d="M8 13V3" /><path d="M3 8l5-5 5 5" /></svg>
           </button>
         )}
       </div>

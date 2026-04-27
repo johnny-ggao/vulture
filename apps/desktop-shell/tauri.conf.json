@@ -14,7 +14,9 @@
       {
         "title": "Vulture",
         "width": 1200,
-        "height": 780
+        "height": 780,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ]
   }

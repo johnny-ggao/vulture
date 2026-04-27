@@ -12,10 +12,16 @@ import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
+import { AgentsPage } from "./chat/AgentsPage";
 import { AuthPanel } from "./chat/AuthPanel";
-import { ConversationList } from "./chat/ConversationList";
 import { ChatView } from "./chat/ChatView";
+import { HistoryDrawer } from "./chat/HistoryDrawer";
+import { NewAgentModal } from "./chat/NewAgentModal";
 import { OnboardingCard } from "./chat/OnboardingCard";
+import { PlaceholderPage } from "./chat/PlaceholderPage";
+import { SettingsPage } from "./chat/SettingsPage";
+import { Titlebar } from "./chat/Titlebar";
+import { WorkbenchSidebar, type ViewKey } from "./chat/WorkbenchSidebar";
 import {
   clearActiveRunId,
   readActiveChatState,
@@ -63,6 +69,9 @@ export function App() {
     restoredChatRef.current.runId,
   );
   const sendingRunRef = useRef(false);
+  const [view, setView] = useState<ViewKey>("chat");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [newAgentOpen, setNewAgentOpen] = useState(false);
 
   const conversations = useConversations(apiClient);
   const messages = useMessages(apiClient, activeConversationId);
@@ -299,49 +308,121 @@ export function App() {
       />
     ) : null;
 
+  async function handleCreateAgent(input: { name: string; description: string; instructions: string }) {
+    if (!apiClient) return;
+    const id = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const created = await agentsApi.save(apiClient, {
+      id,
+      name: input.name,
+      description: input.description,
+      model: "gpt-5.5",
+      reasoning: "low",
+      tools: ["shell.exec"],
+      instructions: input.instructions,
+    });
+    setAgents((prev) => [...prev, created]);
+    setSelectedAgentId(created.id);
+    setView("chat");
+  }
+
   return (
     <div className="app-shell">
-      <ConversationList
+      <Titlebar />
+      <div className="shell-body">
+        <div className="sidebar-frame">
+          <WorkbenchSidebar
+            view={view}
+            onSelectView={(v) => {
+              setView(v);
+              if (v !== "chat") setHistoryOpen(false);
+            }}
+            historyOpen={historyOpen}
+            onToggleHistory={() => setHistoryOpen((o) => !o)}
+            footerSlot={authPanel}
+          />
+        </div>
+        <main className="chat-main-wrap content-panel">
+          {runtime.data && (
+            <div className="runtime-debug">
+              gateway:{runtime.data.gateway.port} shell:{runtime.data.shell.port} · auth:
+              {authLabel(authStatus)} · profile:{profile?.name ?? "Default"}
+            </div>
+          )}
+          {view === "chat" ? (
+            <ChatView
+              agents={agents.map((a) => ({ id: a.id, name: a.name }))}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={setSelectedAgentId}
+              messages={messages.items}
+              runEvents={
+                runStream.status === "succeeded" ||
+                runStream.status === "failed" ||
+                runStream.status === "cancelled"
+                  ? []
+                  : runStream.events
+              }
+              runStatus={runStream.status}
+              runError={runStream.error}
+              submittingApprovals={approvals.submitting}
+              onSend={handleSend}
+              onCancel={handleCancel}
+              onDecide={approvals.decide}
+              onboardingCard={onboardingCard}
+            />
+          ) : null}
+          {view === "agents" ? (
+            <AgentsPage
+              agents={agents}
+              onCreate={() => setNewAgentOpen(true)}
+              onSelect={(id) => {
+                setSelectedAgentId(id);
+                setView("chat");
+              }}
+            />
+          ) : null}
+          {view === "skills" ? (
+            <PlaceholderPage
+              title="技能"
+              description="可复用的提示词与工作流。安装后可被任何智能体启用。"
+            />
+          ) : null}
+          {view === "plugins" ? (
+            <PlaceholderPage
+              title="插件"
+              description="MCP 服务器与第三方连接器（GitHub / Linear / Slack 等）。"
+            />
+          ) : null}
+          {view === "tasks" ? (
+            <PlaceholderPage
+              title="定时任务"
+              description="按 cron 计划自动唤起会话。"
+            />
+          ) : null}
+          {view === "settings" ? <SettingsPage authStatus={authStatus} /> : null}
+        </main>
+      </div>
+
+      <HistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
         items={conversations.items}
         activeId={activeConversationId}
         onSelect={(id) => {
           setActiveConversationId(id);
           setActiveRunId(null);
+          setView("chat");
         }}
-        onNew={handleNew}
-        footerSlot={authPanel}
+        onNew={() => {
+          handleNew();
+          setView("chat");
+        }}
       />
-      <main className="chat-main-wrap">
-        {runtime.data && (
-          <div
-            className="runtime-debug"
-            style={{ fontSize: 11, opacity: 0.6, padding: "2px 8px" }}
-          >
-            gateway:{runtime.data.gateway.port} shell:{runtime.data.shell.port} · auth:
-            {authLabel(authStatus)} · profile:{profile?.name ?? "Default"}
-          </div>
-        )}
-        <ChatView
-          agents={agents.map((a) => ({ id: a.id, name: a.name }))}
-          selectedAgentId={selectedAgentId}
-          onSelectAgent={setSelectedAgentId}
-          messages={messages.items}
-          runEvents={
-            runStream.status === "succeeded" ||
-            runStream.status === "failed" ||
-            runStream.status === "cancelled"
-              ? []
-              : runStream.events
-          }
-          runStatus={runStream.status}
-          runError={runStream.error}
-          submittingApprovals={approvals.submitting}
-          onSend={handleSend}
-          onCancel={handleCancel}
-          onDecide={approvals.decide}
-          onboardingCard={onboardingCard}
-        />
-      </main>
+
+      <NewAgentModal
+        open={newAgentOpen}
+        onClose={() => setNewAgentOpen(false)}
+        onCreate={handleCreateAgent}
+      />
     </div>
   );
 }
