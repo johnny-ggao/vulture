@@ -515,3 +515,123 @@ pre {
     grid-template-columns: 1fr;
   }
 }
+
+/* Phase 3c — Auth panel (sidebar footer) */
+.auth-panel {
+  padding: 12px;
+  border-top: 1px solid rgba(150, 150, 170, 0.2);
+  font-size: 12px;
+}
+.auth-panel-section {
+  margin-bottom: 12px;
+}
+.auth-panel-section h4 {
+  font-size: 11px;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  letter-spacing: 0.05em;
+}
+.auth-panel-status {
+  margin: 4px 0;
+}
+.auth-panel-error {
+  color: #ff8080;
+}
+.auth-panel-meta {
+  margin: 2px 0;
+  opacity: 0.6;
+  font-size: 11px;
+}
+.auth-panel-primary,
+.auth-panel-secondary {
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.auth-panel-primary {
+  background: #4f7cf5;
+  color: white;
+}
+.auth-panel-secondary {
+  background: rgba(80, 80, 100, 0.2);
+  color: inherit;
+  border: 1px solid rgba(150, 150, 170, 0.3);
+}
+.auth-panel-divider {
+  border: 0;
+  border-top: 1px solid rgba(150, 150, 170, 0.2);
+  margin: 12px 0;
+}
+.auth-panel-input-row {
+  display: flex;
+  gap: 6px;
+}
+.auth-panel-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Phase 3c — Onboarding card */
+.onboarding-card {
+  padding: 32px;
+  text-align: center;
+}
+.onboarding-card .hero-mark {
+  font-size: 48px;
+  font-weight: bold;
+  margin: 0 auto 12px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(80, 80, 100, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.onboarding-primary,
+.onboarding-secondary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(150, 150, 170, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.onboarding-primary {
+  border-color: #4f7cf5;
+}
+.onboarding-icon {
+  font-size: 20px;
+}
+.onboarding-text strong {
+  display: block;
+  font-size: 14px;
+}
+.onboarding-text small {
+  display: block;
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+
+.chat-sidebar-footer {
+  margin-top: auto;
+}
