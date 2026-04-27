@@ -72,10 +72,10 @@ describe("makeShellCallbackTools", () => {
       workspacePath: "",
     });
 
-    // Wait briefly for the first fetch + ask emission, then approve
+    // Wait briefly for the first fetch + ask emission, then approve.
+    // Ordering: tool.planned → tool.ask → (approval) → tool.started → tool.completed
     await new Promise((r) => setTimeout(r, 20));
-    expect(events.length).toBe(1);
-    expect(events[0].partial.type).toBe("tool.ask");
+    expect(events.map((e) => e.partial.type)).toEqual(["tool.planned", "tool.ask"]);
     expect(queue.resolve("c1", "allow")).toBe(true);
 
     const result = await promise;
@@ -83,6 +83,13 @@ describe("makeShellCallbackTools", () => {
     expect(calls.length).toBe(2);
     expect(calls[0].body.approvalToken).toBeUndefined();
     expect(calls[1].body.approvalToken).toBe("tok-abc");
+    // Final event order: planned, ask, started, completed
+    expect(events.map((e) => e.partial.type)).toEqual([
+      "tool.planned",
+      "tool.ask",
+      "tool.started",
+      "tool.completed",
+    ]);
   });
 
   test("ask → deny throws ToolCallError(tool.permission_denied)", async () => {

@@ -30,6 +30,17 @@ pub async fn execute_shell(input: ShellExecInput) -> Result<ShellExecOutput> {
     if input.argv.is_empty() {
         return Err(anyhow!("argv must not be empty"));
     }
+    // current_dir() that points to a non-existent path makes spawn fail with
+    // a misleading "failed to spawn <bin>: No such file or directory" — the
+    // ENOENT is from the chdir, not the binary lookup. Validate up front so
+    // the model gets an actionable error.
+    let cwd_path = std::path::Path::new(&input.cwd);
+    if !cwd_path.is_dir() {
+        return Err(anyhow!(
+            "cwd does not exist or is not a directory: {}",
+            input.cwd
+        ));
+    }
     let mut cmd = Command::new(&input.argv[0]);
     cmd.args(&input.argv[1..])
         .current_dir(&input.cwd)

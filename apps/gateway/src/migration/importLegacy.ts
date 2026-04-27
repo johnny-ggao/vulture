@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -53,10 +54,14 @@ export function importLegacy(opts: {
       const instructions = existsSync(instrPath)
         ? readFileSync(instrPath, "utf8")
         : "";
+      const wsPath = join(opts.profileDir, "agents", json.id, "workspace");
+      // Ensure the workspace directory exists on disk; otherwise shell.exec
+      // will fail at spawn() with a misleading ENOENT.
+      mkdirSync(wsPath, { recursive: true });
       const wsJson = JSON.stringify({
         id: `${json.id}-workspace`,
         name: `${json.name} Workspace`,
-        path: join(opts.profileDir, "agents", json.id, "workspace"),
+        path: wsPath,
         createdAt: json.createdAt,
         updatedAt: json.updatedAt,
       });
