@@ -20,12 +20,13 @@ import { runsRouter } from "./routes/runs";
 import {
   assembleAgentInstructions,
   type LlmCallable,
-  type LlmYield,
   type ToolCallable,
 } from "@vulture/agent-runtime";
-import { selectModel } from "@vulture/llm";
+import { isApiKeyConfigured, selectModel } from "@vulture/llm";
+import { AGENT_TOOL_NAMES } from "@vulture/protocol/src/v1/agent";
 import { ApprovalQueue } from "./runtime/approvalQueue";
 import { makeShellCallbackTools } from "./runtime/shellCallbackTools";
+import { makeOpenAILlm, makeStubLlmFallback } from "./runtime/openaiLlm";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -60,7 +61,6 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const approvalQueue = new ApprovalQueue();
   const cancelSignals = new Map<string, AbortController>();
 
-  const llm: LlmCallable = makeStubLlm();
   const tools: ToolCallable = makeShellCallbackTools({
     callbackUrl: cfg.shellCallbackUrl,
     token: cfg.token,
@@ -68,6 +68,14 @@ export function buildServer(cfg: GatewayConfig): Hono {
     approvalQueue,
     cancelSignals,
   });
+
+  const llm: LlmCallable = isApiKeyConfigured(process.env)
+    ? makeOpenAILlm({
+        apiKey: process.env.OPENAI_API_KEY!,
+        toolNames: AGENT_TOOL_NAMES,
+        toolCallable: tools,
+      })
+    : makeStubLlmFallback();
 
   const app = new Hono();
   app.use("*", errorBoundary);
@@ -128,14 +136,4 @@ export function buildServer(cfg: GatewayConfig): Hono {
   );
 
   return app;
-}
-
-// Stub LLM for Phase 3a — echoes input back so SSE pipeline is exercisable
-// end-to-end without a real OpenAI key. Replaced with @openai/agents Run in
-// a later phase.
-function makeStubLlm(): LlmCallable {
-  return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
-    yield { kind: "text.delta", text: `[stub] received: ${input.userInput.slice(0, 40)}` };
-    yield { kind: "final", text: `[stub] done` };
-  };
 }

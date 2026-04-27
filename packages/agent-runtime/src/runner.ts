@@ -31,6 +31,8 @@ export type LlmCallable = (input: {
   systemPrompt: string;
   userInput: string;
   model: string;
+  runId: string;
+  workspacePath: string;
 }) => AsyncGenerator<LlmYield, void, unknown>;
 
 export type ToolCallable = (call: {
@@ -76,6 +78,8 @@ export async function runConversation(
       systemPrompt: args.systemPrompt,
       userInput: args.userInput,
       model: args.model,
+      runId: args.runId,
+      workspacePath: args.workspacePath,
     });
 
     let next: IteratorResult<LlmYield, void> | null = await gen.next();

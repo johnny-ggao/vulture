@@ -16,10 +16,17 @@ describe("makeOpenAILlm", () => {
     const llm = makeOpenAILlm({
       apiKey: "sk-test",
       toolNames: ["shell.exec"],
+      toolCallable: async () => "noop",
       runFactory: () => makeMockRun(sdkEvents),
     });
     const yields: LlmYield[] = [];
-    for await (const y of llm({ systemPrompt: "x", userInput: "hi", model: "gpt-5.4" })) {
+    for await (const y of llm({
+      systemPrompt: "x",
+      userInput: "hi",
+      model: "gpt-5.4",
+      runId: "r-test",
+      workspacePath: "",
+    })) {
       yields.push(y);
     }
     expect(yields.map((y) => y.kind)).toEqual(["text.delta", "text.delta", "final"]);
@@ -34,10 +41,17 @@ describe("makeOpenAILlm", () => {
     const llm = makeOpenAILlm({
       apiKey: "sk-test",
       toolNames: ["shell.exec"],
+      toolCallable: async () => "noop",
       runFactory: () => makeMockRun(sdkEvents),
     });
     const yields: LlmYield[] = [];
-    for await (const y of llm({ systemPrompt: "x", userInput: "hi", model: "gpt-5.4" })) {
+    for await (const y of llm({
+      systemPrompt: "x",
+      userInput: "hi",
+      model: "gpt-5.4",
+      runId: "r-test",
+      workspacePath: "",
+    })) {
       yields.push(y);
     }
     expect(yields.map((y) => y.kind)).toEqual(["tool.plan", "await.tool", "final"]);
@@ -49,7 +63,13 @@ describe("makeStubLlmFallback", () => {
   test("yields a single configuration-needed final message", async () => {
     const llm = makeStubLlmFallback();
     const yields: LlmYield[] = [];
-    for await (const y of llm({ systemPrompt: "x", userInput: "hi", model: "gpt-5.4" })) {
+    for await (const y of llm({
+      systemPrompt: "x",
+      userInput: "hi",
+      model: "gpt-5.4",
+      runId: "r-test",
+      workspacePath: "",
+    })) {
       yields.push(y);
     }
     expect(yields).toHaveLength(1);

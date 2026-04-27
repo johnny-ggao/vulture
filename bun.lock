@@ -29,11 +29,13 @@
       "name": "@vulture/gateway",
       "version": "0.1.0",
       "dependencies": {
+        "@openai/agents": "^0.8.5",
         "@vulture/agent-runtime": "workspace:*",
         "@vulture/common": "workspace:*",
         "@vulture/llm": "workspace:*",
         "@vulture/protocol": "workspace:*",
         "hono": "^4.6.0",
+        "zod": "^4.0.0",
       },
       "devDependencies": {
         "@types/bun": "^1.3.13",

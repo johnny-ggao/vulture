@@ -14,6 +14,8 @@
     "@vulture/common": "workspace:*",
     "@vulture/agent-runtime": "workspace:*",
     "@vulture/llm": "workspace:*",
+    "@openai/agents": "^0.8.5",
+    "zod": "^4.0.0",
     "hono": "^4.6.0"
   },
   "devDependencies": {
