@@ -6,16 +6,6 @@ export type OpenAiAuthStatus = {
   source: "keychain" | "environment" | "codex" | "missing";
 };
 
-export type CodexLoginStart = {
-  verificationUrl: string;
-  userCode: string;
-  alreadyAuthenticated: boolean;
-};
-
-export type CodexLoginRequest = {
-  forceReauth: boolean;
-};
-
 // Phase 3c — Codex subscription OAuth types
 
 export type AuthSource = OpenAiAuthStatus["source"];

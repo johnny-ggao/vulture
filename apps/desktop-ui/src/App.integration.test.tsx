@@ -19,7 +19,24 @@ const FAKE_RUNTIME = {
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (cmd: string) => {
     if (cmd === "get_runtime_info") return FAKE_RUNTIME;
+    if (cmd === "get_auth_status") {
+      return {
+        active: "none",
+        codex: { state: "not_signed_in" },
+        apiKey: { state: "not_set" },
+      };
+    }
     if (cmd === "get_openai_auth_status") {
+      return { configured: false, source: "missing" };
+    }
+    if (cmd === "start_chatgpt_login") {
+      return { url: "", alreadyAuthenticated: false };
+    }
+    if (cmd === "sign_out_chatgpt") return undefined;
+    if (cmd === "set_openai_api_key") {
+      return { configured: true, source: "keychain" };
+    }
+    if (cmd === "clear_openai_api_key") {
       return { configured: false, source: "missing" };
     }
     throw new Error(`unmocked invoke: ${cmd}`);

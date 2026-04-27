@@ -1,18 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 
-import type {
-  CodexLoginRequest,
-  CodexLoginStart,
-  OpenAiAuthStatus,
-} from "./commandCenterTypes";
+import type { AuthStatusView, ChatGPTLoginStart } from "./commandCenterTypes";
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
 import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi } from "./api/runs";
+import { AuthPanel } from "./chat/AuthPanel";
 import { ConversationList } from "./chat/ConversationList";
 import { ChatView } from "./chat/ChatView";
+import { OnboardingCard } from "./chat/OnboardingCard";
 import { useConversations } from "./hooks/useConversations";
 import { useMessages } from "./hooks/useMessages";
 import { useRunStream } from "./hooks/useRunStream";
@@ -24,11 +22,15 @@ interface ProfileView {
   activeAgentId: string;
 }
 
-function authLabel(status: OpenAiAuthStatus | null) {
-  if (!status?.configured) return "未认证";
-  if (status.source === "codex") return "Codex OAuth";
-  if (status.source === "environment") return "OPENAI_API_KEY";
-  return "Keychain API key";
+function authLabel(status: AuthStatusView | null): string {
+  if (!status) return "loading";
+  if (status.active === "codex") {
+    const email = status.codex.email ?? "";
+    return `Codex(${email.split("@")[0]})`;
+  }
+  if (status.active === "api_key") return "API key";
+  if (status.codex.state === "expired") return "Codex 已过期⚠";
+  return "未认证";
 }
 
 export function App() {
@@ -41,7 +43,7 @@ export function App() {
   const [profile, setProfile] = useState<ProfileView | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
-  const [authStatus, setAuthStatus] = useState<OpenAiAuthStatus | null>(null);
+  const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
@@ -54,16 +56,37 @@ export function App() {
     events: runStream.events,
   });
 
-  // Bootstrap auth + profile + agents once when apiClient becomes available.
+  const refreshAuthStatus = useMemo(
+    () => async () => {
+      try {
+        const status = await invoke<AuthStatusView>("get_auth_status");
+        setAuthStatus(status);
+      } catch {
+        // Tauri unavailable in browser preview; default to "none"
+        setAuthStatus({
+          active: "none",
+          codex: { state: "not_signed_in" },
+          apiKey: { state: "not_set" },
+        });
+      }
+    },
+    [],
+  );
+
+  // Bootstrap auth status once on mount (independent of gateway availability).
+  useEffect(() => {
+    void refreshAuthStatus();
+  }, [refreshAuthStatus]);
+
+  // Bootstrap profile + agents once when apiClient becomes available.
   useEffect(() => {
     if (!apiClient) return;
     let mounted = true;
     (async () => {
       try {
-        const [profileResult, agentList, nextAuthStatus] = await Promise.all([
+        const [profileResult, agentList] = await Promise.all([
           profileApi.get(apiClient),
           agentsApi.list(apiClient),
-          invoke<OpenAiAuthStatus>("get_openai_auth_status").catch(() => null),
         ]);
         if (!mounted) return;
         setProfile({
@@ -75,7 +98,6 @@ export function App() {
         setSelectedAgentId(
           (cur) => cur || profileResult.activeAgentId || agentList[0]?.id || "",
         );
-        if (nextAuthStatus) setAuthStatus(nextAuthStatus);
       } catch {
         // surfaced via runtime.error or hook errors
       }
@@ -84,6 +106,40 @@ export function App() {
       mounted = false;
     };
   }, [apiClient]);
+
+  async function handleSignInWithChatGPT() {
+    try {
+      await invoke<ChatGPTLoginStart>("start_chatgpt_login");
+    } catch (cause) {
+      console.error("ChatGPT login failed", cause);
+    } finally {
+      void refreshAuthStatus();
+    }
+  }
+
+  async function handleSignOutCodex() {
+    try {
+      await invoke("sign_out_chatgpt");
+    } finally {
+      void refreshAuthStatus();
+    }
+  }
+
+  async function handleSaveApiKey(apiKey: string) {
+    try {
+      await invoke("set_openai_api_key", { request: { apiKey } });
+    } finally {
+      void refreshAuthStatus();
+    }
+  }
+
+  async function handleClearApiKey() {
+    try {
+      await invoke("clear_openai_api_key");
+    } finally {
+      void refreshAuthStatus();
+    }
+  }
 
   async function handleSend(input: string) {
     if (!apiClient || !selectedAgentId) return;
@@ -115,6 +171,24 @@ export function App() {
     setActiveRunId(null);
   }
 
+  const authPanel = authStatus ? (
+    <AuthPanel
+      authStatus={authStatus}
+      onSignInWithChatGPT={handleSignInWithChatGPT}
+      onSignOutCodex={handleSignOutCodex}
+      onSaveApiKey={handleSaveApiKey}
+      onClearApiKey={handleClearApiKey}
+    />
+  ) : null;
+
+  const onboardingCard =
+    authStatus?.active === "none" ? (
+      <OnboardingCard
+        onSignInWithChatGPT={handleSignInWithChatGPT}
+        onFocusApiKey={() => {}}
+      />
+    ) : null;
+
   return (
     <div className="app-shell">
       <ConversationList
@@ -125,6 +199,7 @@ export function App() {
           setActiveRunId(null);
         }}
         onNew={handleNew}
+        footerSlot={authPanel}
       />
       <main className="chat-main-wrap">
         {runtime.data && (
@@ -148,6 +223,7 @@ export function App() {
           onSend={handleSend}
           onCancel={handleCancel}
           onDecide={approvals.decide}
+          onboardingCard={onboardingCard}
         />
       </main>
     </div>

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision } from "../api/runs";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
@@ -19,6 +21,8 @@ export interface ChatViewProps {
   onSend: (input: string) => void;
   onCancel: () => void;
   onDecide: (callId: string, decision: ApprovalDecision) => void;
+
+  onboardingCard?: ReactNode;
 }
 
 export function ChatView(props: ChatViewProps) {
@@ -47,6 +51,8 @@ export function ChatView(props: ChatViewProps) {
               onDecide={props.onDecide}
             />
           </div>
+        ) : props.onboardingCard ? (
+          props.onboardingCard
         ) : (
           <div className="empty-state">
             <div className="hero-mark">V</div>
