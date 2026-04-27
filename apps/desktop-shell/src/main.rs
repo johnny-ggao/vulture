@@ -46,10 +46,7 @@ async fn main() -> Result<()> {
     let gateway_port = runtime::pick_free_port(4099, 100)?;
     let shell_port = runtime::pick_free_port(4199, 100)?;
 
-    // 3. Shell HTTP callback server (held for the run; Drop on exit).
-    let _shell_server = tool_callback::serve(shell_port).await?;
-
-    // 4. Write runtime.json.
+    // 3. Write runtime.json.
     let runtime_path = root.join("runtime.json");
     let descriptor = RuntimeDescriptor {
         api_version: API_VERSION.to_string(),
@@ -62,10 +59,22 @@ async fn main() -> Result<()> {
     };
     runtime::write_runtime_json(&runtime_path, &descriptor)?;
 
-    // 5. App state.
+    // 4. App state — must come before shell server so the audit DB path is
+    //    known (profile dir is resolved here).
     let app_state = AppState::new_for_root(&root)
         .context("failed to initialize Vulture desktop state")?;
     app_state.set_runtime_descriptor(descriptor.clone());
+
+    // 5. Shell HTTP callback server (held for the run; Drop on exit).
+    //    The audit DB lives next to AppState's own AuditStore; WAL mode
+    //    makes two concurrent handles to the same file safe.
+    let audit_db_path = root
+        .join("profiles")
+        .join("default")
+        .join("permissions")
+        .join("audit.sqlite");
+    let _shell_server =
+        tool_callback::serve(shell_port, token.clone(), audit_db_path).await?;
 
     // 6. Spawn Bun gateway as a background task with restart loop.
     let spawn_spec = SpawnSpec {

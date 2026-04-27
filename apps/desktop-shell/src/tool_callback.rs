@@ -1,13 +1,24 @@
-use std::{collections::HashMap, net::SocketAddr, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{Context, Result};
 use axum::{
-    extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router,
+    body::Body,
+    extract::{Request, State},
+    http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
-use vulture_tool_gateway::{PolicyDecision, PolicyEngine, ToolRequest};
+use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
 use crate::tool_executor::{execute_shell, ShellExecInput};
 
@@ -66,17 +77,55 @@ struct AppError {
 #[derive(Clone)]
 struct ShellState {
     policy: Arc<PolicyEngine>,
+    token: Arc<String>,
+    audit_store: Arc<Mutex<AuditStore>>,
     #[allow(dead_code)]
     workspace_path: Arc<Mutex<String>>,
     cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
 }
 
-pub fn router() -> Router {
-    let state = ShellState {
-        policy: Arc::new(PolicyEngine::for_workspace("")),
-        workspace_path: Arc::new(Mutex::new(String::new())),
-        cancel_signals: Arc::new(Mutex::new(HashMap::new())),
-    };
+/// Axum middleware that checks `Authorization: Bearer <token>` on all requests
+/// that pass through it.  Mount this layer only on the `/tools/*` sub-router so
+/// `/healthz` remains publicly accessible for supervisor liveness probing.
+async fn auth_middleware(
+    State(state): State<ShellState>,
+    headers: HeaderMap,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let expected = format!("Bearer {}", state.token);
+    let provided = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if provided != expected {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "code": "auth.token_invalid",
+                "message": "Missing or invalid Authorization Bearer token"
+            })),
+        )
+            .into_response();
+    }
+
+    next.run(req).await
+}
+
+fn build_router(state: ShellState) -> Router {
+    // /tools/* sub-router — all routes require Bearer auth.
+    let tools_router = Router::new()
+        .route("/tools/manifest", get(manifest_handler))
+        .route("/tools/invoke", post(invoke_handler))
+        .route("/tools/cancel", post(cancel_handler))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
+        .with_state(state.clone());
+
+    // /healthz is public (no auth) — supervisor liveness probe.
     Router::new()
         .route(
             "/healthz",
@@ -87,10 +136,7 @@ pub fn router() -> Router {
                 })
             }),
         )
-        .route("/tools/manifest", get(manifest_handler))
-        .route("/tools/invoke", post(invoke_handler))
-        .route("/tools/cancel", post(cancel_handler))
-        .with_state(state)
+        .merge(tools_router)
 }
 
 async fn manifest_handler() -> impl IntoResponse {
@@ -125,28 +171,79 @@ async fn invoke_handler(
         input: req.input.clone(),
     };
     let decision = state.policy.decide(&request);
+
+    // Audit: tool.requested
+    if let Ok(store) = state.audit_store.lock() {
+        let _ = store.append(
+            "tool.requested",
+            &json!({
+                "runId": req.run_id,
+                "tool": req.tool,
+                "input": req.input,
+                "decision": format!("{decision:?}"),
+            }),
+        );
+    }
+
     match decision {
-        PolicyDecision::Deny { reason } => (
-            StatusCode::OK,
-            Json(InvokeResponse::Denied {
-                call_id: req.call_id,
-                error: AppError {
-                    code: "tool.permission_denied".into(),
-                    message: reason,
-                },
-            }),
-        )
-            .into_response(),
-        PolicyDecision::Ask { reason } => (
-            StatusCode::OK,
-            Json(InvokeResponse::Ask {
-                call_id: req.call_id,
-                approval_token: format!("appr-{}", uuid::Uuid::new_v4()),
-                reason,
-            }),
-        )
-            .into_response(),
-        PolicyDecision::Allow => execute(&req).await.into_response(),
+        PolicyDecision::Deny { reason } => {
+            if let Ok(store) = state.audit_store.lock() {
+                let _ = store.append(
+                    "tool.completed",
+                    &json!({
+                        "runId": req.run_id,
+                        "tool": req.tool,
+                        "status": "denied",
+                    }),
+                );
+            }
+            (
+                StatusCode::OK,
+                Json(InvokeResponse::Denied {
+                    call_id: req.call_id,
+                    error: AppError {
+                        code: "tool.permission_denied".into(),
+                        message: reason,
+                    },
+                }),
+            )
+                .into_response()
+        }
+        PolicyDecision::Ask { reason } => {
+            if let Ok(store) = state.audit_store.lock() {
+                let _ = store.append(
+                    "tool.completed",
+                    &json!({
+                        "runId": req.run_id,
+                        "tool": req.tool,
+                        "status": "ask",
+                    }),
+                );
+            }
+            (
+                StatusCode::OK,
+                Json(InvokeResponse::Ask {
+                    call_id: req.call_id,
+                    approval_token: format!("appr-{}", uuid::Uuid::new_v4()),
+                    reason,
+                }),
+            )
+                .into_response()
+        }
+        PolicyDecision::Allow => {
+            let result = execute(&req).await;
+            if let Ok(store) = state.audit_store.lock() {
+                let _ = store.append(
+                    "tool.completed",
+                    &json!({
+                        "runId": req.run_id,
+                        "tool": req.tool,
+                        "status": "executed",
+                    }),
+                );
+            }
+            result.into_response()
+        }
     }
 }
 
@@ -246,7 +343,32 @@ impl ToolCallbackHandle {
     }
 }
 
-pub async fn serve(port: u16) -> Result<ToolCallbackHandle> {
+/// Start the shell HTTP callback server.
+///
+/// - `port`: TCP port to bind (0 = OS-assigned, useful in tests).
+/// - `token`: Runtime secret; every `/tools/*` request must carry
+///   `Authorization: Bearer <token>`. `/healthz` is intentionally exempt.
+/// - `audit_db_path`: Path to the SQLite audit database.  Two handles to the
+///   same file are safe because WAL mode is enabled in `AuditStore::open`.
+///
+/// FU-3 follow-up: thread real workspace path through descriptor.
+pub async fn serve(
+    port: u16,
+    token: String,
+    audit_db_path: PathBuf,
+) -> Result<ToolCallbackHandle> {
+    let audit_store = AuditStore::open(&audit_db_path)
+        .with_context(|| format!("open audit db at {}", audit_db_path.display()))?;
+
+    let state = ShellState {
+        // FU-3 follow-up: thread real workspace path through descriptor.
+        policy: Arc::new(PolicyEngine::for_workspace("")),
+        token: Arc::new(token),
+        audit_store: Arc::new(Mutex::new(audit_store)),
+        workspace_path: Arc::new(Mutex::new(String::new())),
+        cancel_signals: Arc::new(Mutex::new(HashMap::new())),
+    };
+
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
     let listener = TcpListener::bind(addr)
         .await
@@ -254,10 +376,12 @@ pub async fn serve(port: u16) -> Result<ToolCallbackHandle> {
     let bound_port = listener.local_addr()?.port();
 
     let (tx, rx) = oneshot::channel::<()>();
-    let app = router();
+    let app = build_router(state);
     let join = tokio::spawn(async move {
         axum::serve(listener, app)
-            .with_graceful_shutdown(async move { let _ = rx.await; })
+            .with_graceful_shutdown(async move {
+                let _ = rx.await;
+            })
             .await
             .ok();
     });
@@ -272,11 +396,25 @@ pub async fn serve(port: u16) -> Result<ToolCallbackHandle> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
+
+    fn temp_audit_path() -> PathBuf {
+        std::env::temp_dir().join(format!("vulture-tc-audit-{}.sqlite", Uuid::new_v4()))
+    }
+
+    const TEST_TOKEN: &str = "test-token-abc123";
+
+    async fn start_server() -> (ToolCallbackHandle, u16) {
+        let handle = serve(0, TEST_TOKEN.to_string(), temp_audit_path())
+            .await
+            .expect("serve");
+        let port = handle.bound_port;
+        (handle, port)
+    }
 
     #[tokio::test]
     async fn healthz_still_works() {
-        let handle = serve(0).await.expect("serve");
-        let port = handle.bound_port;
+        let (handle, port) = start_server().await;
         let body: serde_json::Value = reqwest::get(format!("http://127.0.0.1:{port}/healthz"))
             .await
             .unwrap()
@@ -289,9 +427,11 @@ mod tests {
 
     #[tokio::test]
     async fn manifest_lists_tools() {
-        let handle = serve(0).await.expect("serve");
-        let port = handle.bound_port;
-        let body: serde_json::Value = reqwest::get(format!("http://127.0.0.1:{port}/tools/manifest"))
+        let (handle, port) = start_server().await;
+        let body: serde_json::Value = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/tools/manifest"))
+            .header("Authorization", format!("Bearer {TEST_TOKEN}"))
+            .send()
             .await
             .unwrap()
             .json()
@@ -303,10 +443,10 @@ mod tests {
 
     #[tokio::test]
     async fn invoke_shell_exec_denied_or_asks_by_policy() {
-        let handle = serve(0).await.expect("serve");
-        let port = handle.bound_port;
+        let (handle, port) = start_server().await;
         let res: serde_json::Value = reqwest::Client::new()
             .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .header("Authorization", format!("Bearer {TEST_TOKEN}"))
             .json(&serde_json::json!({
                 "callId": "c1",
                 "runId": "r1",
@@ -321,6 +461,48 @@ mod tests {
             .unwrap();
         // Policy default is Ask for shell.exec — accept ask, completed, or denied
         assert!(["ask", "completed", "denied"].contains(&res["status"].as_str().unwrap()));
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn invoke_without_token_returns_401() {
+        let (handle, port) = start_server().await;
+
+        // No Authorization header.
+        let resp = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .json(&serde_json::json!({
+                "callId": "c2",
+                "runId": "r2",
+                "tool": "shell.exec",
+                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 }
+            }))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), 401);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(body["code"], "auth.token_invalid");
+
+        // Wrong token.
+        let resp2 = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .header("Authorization", "Bearer wrong-token")
+            .json(&serde_json::json!({
+                "callId": "c3",
+                "runId": "r3",
+                "tool": "shell.exec",
+                "input": { "cwd": "/tmp", "argv": ["echo", "hi"], "timeoutMs": 5000 }
+            }))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp2.status(), 401);
+        let body2: serde_json::Value = resp2.json().await.unwrap();
+        assert_eq!(body2["code"], "auth.token_invalid");
+
         handle.shutdown().await;
     }
 }

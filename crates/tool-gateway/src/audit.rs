@@ -9,7 +9,16 @@ pub struct AuditStore {
 
 impl AuditStore {
     pub fn open(path: &std::path::Path) -> Result<Self> {
+        // Ensure parent directory exists so open() doesn't fail when the
+        // caller passes a path whose parent hasn't been created yet.
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
         let conn = Connection::open(path)?;
+        // WAL mode allows concurrent readers + one writer; safe when multiple
+        // AuditStore handles are opened against the same file (e.g. AppState
+        // and tool_callback each holding their own handle).
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS audit_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
