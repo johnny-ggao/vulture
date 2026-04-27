@@ -74,8 +74,14 @@ async fn main() -> Result<()> {
         .join("default")
         .join("permissions")
         .join("audit.sqlite");
-    let _shell_server =
-        tool_callback::serve(shell_port, token.clone(), audit_db_path).await?;
+    let _shell_server = tool_callback::serve_with_codex(
+        shell_port,
+        token.clone(),
+        audit_db_path,
+        app_state.profile_dir(),
+        app_state.codex_refresh.clone(),
+    )
+    .await?;
 
     // 6. Spawn Bun gateway as a background task with restart loop.
     let spawn_spec = SpawnSpec {

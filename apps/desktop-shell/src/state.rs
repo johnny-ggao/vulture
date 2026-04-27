@@ -53,7 +53,6 @@ pub struct AppState {
     /// Wired into Tauri commands in Task 7 — the field is stored here so future
     /// callers (`refresh_codex_creds`, etc.) can `clone()` and reuse the same
     /// in-flight tracker across the whole desktop process.
-    #[allow(dead_code)]
     pub codex_refresh: RefreshSingleton,
 }
 
