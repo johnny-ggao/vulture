@@ -86,6 +86,95 @@ export interface CodexLlmOptions {
   fetch?: typeof fetch;
 }
 
+/**
+ * Wraps fetch so the chatgpt.com/backend-api/codex SSE stream is patched on
+ * the fly: items reported via `response.output_item.done` are buffered and
+ * injected into the `response.completed` event's `response.output[]` array
+ * (which the codex backend ships empty). Without this, @openai/agents'
+ * runner sees no assistant message in the response and loops until it
+ * exceeds maxTurns.
+ */
+export function makeCodexResponsesFetch(baseFetch?: typeof fetch): typeof fetch {
+  const f = baseFetch ?? fetch;
+  return (async (input, init) => {
+    const upstream = await f(input, init);
+    const ct = upstream.headers.get("content-type") ?? "";
+    if (!ct.includes("text/event-stream") || !upstream.body) {
+      return upstream;
+    }
+    const transformed = upstream.body.pipeThrough(makeCodexSseTransformer());
+    return new Response(transformed, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: upstream.headers,
+    });
+  }) as typeof fetch;
+}
+
+interface CodexResponseItem {
+  id?: string;
+  type?: string;
+  [k: string]: unknown;
+}
+
+function makeCodexSseTransformer(): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  const items: CodexResponseItem[] = [];
+  return new TransformStream({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const block = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const out = transformBlock(block, items);
+        controller.enqueue(encoder.encode(out + "\n\n"));
+        boundary = buffer.indexOf("\n\n");
+      }
+    },
+    flush(controller) {
+      if (buffer.length > 0) {
+        controller.enqueue(encoder.encode(buffer));
+      }
+    },
+  });
+}
+
+function transformBlock(block: string, items: CodexResponseItem[]): string {
+  const lines = block.split("\n");
+  const dataLine = lines.find((l) => l.startsWith("data:"));
+  const eventLine = lines.find((l) => l.startsWith("event:"));
+  if (!dataLine) return block;
+  const eventType = eventLine?.slice("event:".length).trim();
+  const payload = dataLine.slice("data:".length).trim();
+  if (!payload || payload === "[DONE]") return block;
+  let parsed: { type?: string; item?: CodexResponseItem; response?: { output?: unknown[] } };
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return block;
+  }
+  // Buffer every output_item.done item.
+  if (parsed.type === "response.output_item.done" && parsed.item) {
+    items.push(parsed.item);
+    return block;
+  }
+  // On the terminal completed event, inject buffered items if backend's
+  // output[] is empty.
+  const isTerminal =
+    eventType === "response.completed" || parsed.type === "response.completed";
+  if (isTerminal && parsed.response && Array.isArray(parsed.response.output)) {
+    if (parsed.response.output.length === 0 && items.length > 0) {
+      parsed.response.output = items.slice();
+      const newPayload = JSON.stringify(parsed);
+      return `${eventLine ? eventLine + "\n" : ""}data: ${newPayload}`;
+    }
+  }
+  return block;
+}
+
 export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
   return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
     const token = await fetchCodexToken({
@@ -110,6 +199,12 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
         session_id: input.runId,
         conversation_id: input.runId,
       },
+      // chatgpt.com/backend-api/codex emits `response.completed` with
+      // `output: []` even when items came through earlier `output_item.done`
+      // events. The SDK reads `response.completed.output[]` to decide if
+      // there's a final assistant message; an empty array sends the runner
+      // into infinite re-loop. Buffer items locally and inject them back.
+      fetch: makeCodexResponsesFetch(opts.fetch),
     });
     setDefaultOpenAIClient(client);
     setOpenAIAPI("responses");
