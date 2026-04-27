@@ -94,16 +94,19 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
       fetch: opts.fetch,
     });
 
-    // Configure @openai/agents to route via chatgpt.com/backend-api with the
-    // codex-specific headers. This is process-global; runs are sequential so
-    // setting it per-call is safe.
+    // Configure @openai/agents to route via chatgpt.com/backend-api/codex
+    // (the only path that accepts ChatGPT-subscription tokens). The SDK
+    // appends "/responses", landing on the right endpoint.
+    //
+    // `originator: "codex_cli_rs"` is the only originator the backend allows
+    // for ChatGPT-subscription auth — other values return 403.
     const client = new OpenAI({
       apiKey: token.accessToken,
-      baseURL: "https://chatgpt.com/backend-api",
+      baseURL: "https://chatgpt.com/backend-api/codex",
       defaultHeaders: {
         "OpenAI-Beta": "responses=experimental",
         "chatgpt-account-id": token.accountId,
-        originator: "vulture",
+        originator: "codex_cli_rs",
         session_id: input.runId,
         conversation_id: input.runId,
       },

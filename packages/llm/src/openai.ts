@@ -1,5 +1,5 @@
-const SUPPORTED_MODELS = new Set(["gpt-5.4", "gpt-5.5", "gpt-4o", "gpt-4o-mini"]);
-export const DEFAULT_MODEL = "gpt-5.4";
+const SUPPORTED_MODELS = new Set(["gpt-5.5", "gpt-5.4", "gpt-4o", "gpt-4o-mini"]);
+export const DEFAULT_MODEL = "gpt-5.5";
 
 export function selectModel(requested: string): string {
   if (SUPPORTED_MODELS.has(requested)) return requested;

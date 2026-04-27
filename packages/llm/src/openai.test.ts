@@ -3,9 +3,9 @@ import { selectModel, isApiKeyConfigured } from "./openai";
 
 describe("openai helpers", () => {
   test("selectModel falls back to default for unsupported names", () => {
-    expect(selectModel("gpt-5.4")).toBe("gpt-5.4");
-    expect(selectModel("")).toBe("gpt-5.4");
-    expect(selectModel("definitely-not-real")).toBe("gpt-5.4");
+    expect(selectModel("gpt-5.5")).toBe("gpt-5.5");
+    expect(selectModel("")).toBe("gpt-5.5");
+    expect(selectModel("definitely-not-real")).toBe("gpt-5.5");
   });
 
   test("isApiKeyConfigured: true if env var present and non-empty", () => {
