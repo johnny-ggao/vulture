@@ -313,4 +313,50 @@ describe("/v1/runs", () => {
     expect(res.status).toBe(404);
     cleanup();
   });
+
+  test("cancel aborts pending ApprovalQueue waits for the run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-runs-cancel-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    const convs = new ConversationStore(db);
+    const msgs = new MessageStore(db);
+    const runs = new RunStore(db);
+    const c = convs.create({ agentId: "local-work-agent" });
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRunning(run.id);
+
+    const approvalQueue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    const ac = new AbortController();
+    cancelSignals.set(run.id, ac);
+    const waitPromise = approvalQueue.wait("c1", ac.signal);
+
+    const app = runsRouter({
+      conversations: convs,
+      messages: msgs,
+      runs,
+      llm: fakeLlm,
+      tools: async () => "noop",
+      approvalQueue,
+      cancelSignals,
+      systemPromptForAgent: () => "",
+      modelForAgent: () => "gpt-5.4",
+      workspacePathForAgent: () => "",
+    });
+
+    const res = await app.request(`/v1/runs/${run.id}/cancel`, {
+      method: "POST",
+      headers: auth,
+    });
+    expect(res.status).toBe(202);
+    await expect(waitPromise).rejects.toThrow(/aborted/);
+
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
 });

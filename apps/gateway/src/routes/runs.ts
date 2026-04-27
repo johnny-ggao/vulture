@@ -147,6 +147,9 @@ export function runsRouter(deps: RunsDeps): Hono {
     if (["succeeded", "failed", "cancelled"].includes(run.status)) {
       return c.json({ code: "run.already_completed", message: run.status }, 409);
     }
+    // Abort any pending approvalQueue.wait for this run; the orchestrator's
+    // try/finally will clean up cancelSignals on completion.
+    deps.cancelSignals.get(rid)?.abort();
     deps.runs.markCancelled(rid);
     deps.runs.appendEvent(rid, { type: "run.cancelled" });
     return c.json(deps.runs.get(rid), 202);
