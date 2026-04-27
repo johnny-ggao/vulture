@@ -156,6 +156,10 @@ describe("/v1/runs", () => {
     cleanup();
   });
 
+  // This test verifies the runner ↔ tools-callable contract end-to-end. It uses
+  // a fakeShellTools that simulates the ask flow internally; the production
+  // makeShellCallbackTools' while-loop is unit-tested in
+  // apps/gateway/src/runtime/shellCallbackTools.test.ts.
   test("tool callback ask path: emits tool.ask, awaits approval, retries with token", async () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-runs-ask-"));
     const db = openDatabase(join(dir, "data.sqlite"));
