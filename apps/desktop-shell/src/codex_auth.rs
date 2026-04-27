@@ -1,11 +1,15 @@
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
+use axum::{extract::Query, http::StatusCode, response::Html, routing::get, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 
 /// Snapshot of the credentials persisted at <profile_dir>/codex_auth.json.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -180,6 +184,108 @@ impl Pkce {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct CallbackParams {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+    #[allow(dead_code)]
+    error_description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallbackResult {
+    pub code: String,
+    pub state: String,
+}
+
+pub struct CallbackServerHandle {
+    pub bound_port: u16,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl CallbackServerHandle {
+    pub async fn shutdown(mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+        if let Some(join) = self.join.take() {
+            let _ = join.await;
+        }
+    }
+}
+
+pub async fn start_callback_server(
+    port: u16,
+    sender: oneshot::Sender<CallbackResult>,
+) -> Result<CallbackServerHandle> {
+    let addr: SocketAddr = format!("127.0.0.1:{port}").parse()?;
+    let listener = TcpListener::bind(addr)
+        .await
+        .with_context(|| format!("bind 127.0.0.1:{port}"))?;
+    let bound_port = listener.local_addr()?.port();
+
+    let sender = Arc::new(Mutex::new(Some(sender)));
+    let app = Router::new()
+        .route("/auth/callback", get(callback_handler))
+        .with_state(sender);
+
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let join = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move { let _ = shutdown_rx.await; })
+            .await
+            .ok();
+    });
+
+    Ok(CallbackServerHandle {
+        bound_port,
+        shutdown_tx: Some(shutdown_tx),
+        join: Some(join),
+    })
+}
+
+async fn callback_handler(
+    axum::extract::State(sender): axum::extract::State<Arc<Mutex<Option<oneshot::Sender<CallbackResult>>>>>,
+    Query(params): Query<CallbackParams>,
+) -> (StatusCode, Html<&'static str>) {
+    if let Some(error) = params.error {
+        let _ = error;
+        return (
+            StatusCode::BAD_REQUEST,
+            Html(
+                "<html><body><h2>Login failed</h2><p>You can close this window.</p></body></html>",
+            ),
+        );
+    }
+    let (Some(code), Some(state)) = (params.code, params.state) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Html("<html><body><h2>Login failed</h2><p>Missing code or state.</p></body></html>"),
+        );
+    };
+    if let Some(tx) = sender.lock().expect("sender lock").take() {
+        let _ = tx.send(CallbackResult { code, state });
+    }
+    (
+        StatusCode::OK,
+        Html("<html><body><h2>Login complete</h2><p>You can close this window and return to Vulture.</p></body></html>"),
+    )
+}
+
+/// macOS-only browser open. Uses `open` command (already used elsewhere in this crate).
+pub fn open_browser(url: &str) -> Result<()> {
+    let status = std::process::Command::new("open")
+        .arg(url)
+        .status()
+        .with_context(|| format!("failed to open browser at {url}"))?;
+    if !status.success() {
+        return Err(anyhow!("open browser exited with {}", status));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +390,46 @@ mod tests {
     fn pkce_state_is_url_safe() {
         let pkce = Pkce::generate();
         assert!(pkce.state.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+    }
+
+    #[tokio::test]
+    async fn callback_server_receives_code_and_state() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<CallbackResult>();
+        let handle = start_callback_server(0, tx).await.expect("server");
+        let port = handle.bound_port;
+
+        let url = format!(
+            "http://127.0.0.1:{}/auth/callback?code=abc&state=xyz",
+            port
+        );
+        let response = reqwest::get(&url).await.expect("request");
+        assert_eq!(response.status(), 200);
+
+        let result = rx.await.expect("oneshot");
+        assert_eq!(result.code, "abc");
+        assert_eq!(result.state, "xyz");
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn callback_server_handles_error_param() {
+        let (tx, rx) = tokio::sync::oneshot::channel::<CallbackResult>();
+        let handle = start_callback_server(0, tx).await.expect("server");
+        let port = handle.bound_port;
+
+        let url = format!(
+            "http://127.0.0.1:{}/auth/callback?error=access_denied&error_description=user+denied",
+            port
+        );
+        let response = reqwest::get(&url).await.expect("request");
+        assert_eq!(response.status(), 400);
+
+        // The oneshot channel should NOT receive a value (server returns error to browser);
+        // verify it's still pending or closed without value.
+        drop(handle);
+        // After server shutdown the rx should error (sender dropped without sending);
+        let result = rx.await;
+        assert!(result.is_err());
     }
 }
