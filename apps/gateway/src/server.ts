@@ -19,6 +19,7 @@ import { conversationsRouter } from "./routes/conversations";
 import { runsRouter } from "./routes/runs";
 import {
   assembleAgentInstructions,
+  ToolCallError,
   type LlmCallable,
   type LlmYield,
   type ToolCallable,
@@ -147,8 +148,30 @@ function makeShellCallbackTools(callbackUrl: string, token: string): ToolCallabl
     if (!res.ok) {
       throw new Error(`tool callback failed: HTTP ${res.status}`);
     }
-    const body = (await res.json()) as { status: string; output?: unknown; error?: { message: string } };
+    const body = (await res.json()) as {
+      status: "completed" | "failed" | "denied" | "ask";
+      output?: unknown;
+      error?: { code?: string; message?: string };
+      approvalToken?: string;
+      reason?: string;
+    };
     if (body.status === "completed") return body.output;
-    throw new Error(body.error?.message ?? `tool returned status ${body.status}`);
+    if (body.status === "denied") {
+      throw new ToolCallError(
+        body.error?.code ?? "tool.permission_denied",
+        body.error?.message ?? "tool permission denied",
+      );
+    }
+    if (body.status === "ask") {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `approval required for ${call.tool} but UI approval flow is not yet wired (Phase 3b)`,
+      );
+    }
+    // status === "failed"
+    throw new ToolCallError(
+      body.error?.code ?? "tool.execution_failed",
+      body.error?.message ?? `tool returned status ${body.status}`,
+    );
   };
 }

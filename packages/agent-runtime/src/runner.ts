@@ -1,6 +1,15 @@
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 import { nowIso8601 } from "@vulture/protocol/src/v1/index";
+
+export class ToolCallError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "ToolCallError";
+  }
+}
 import {
   runStarted,
   textDelta,
@@ -98,8 +107,12 @@ export async function runConversation(
               });
               emit(toolCompleted(base(), { callId: y.callId, output: result }));
             } catch (err) {
+              const code =
+                err instanceof ToolCallError
+                  ? (err.code as AppError["code"])
+                  : "tool.execution_failed";
               const error: AppError = {
-                code: "tool.execution_failed",
+                code,
                 message: err instanceof Error ? err.message : String(err),
               };
               emit(toolFailed(base(), { callId: y.callId, error }));

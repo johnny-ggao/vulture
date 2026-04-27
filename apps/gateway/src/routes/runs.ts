@@ -96,6 +96,7 @@ export function runsRouter(deps: RunsDeps): Hono {
       // Replay any events already buffered before subscription
       const missed = deps.runs.listEventsAfter(rid, sentSeq);
       for (const ev of missed) {
+        if (stream.aborted || stream.closed) return;
         await stream.writeSSE({
           id: String(ev.seq),
           event: ev.type,
@@ -103,12 +104,13 @@ export function runsRouter(deps: RunsDeps): Hono {
         });
         sentSeq = ev.seq;
       }
-      // Poll-loop until terminal
-      while (true) {
+      // Poll-loop until terminal OR client abort
+      while (!stream.aborted && !stream.closed) {
         const cur = deps.runs.get(rid);
         if (!cur) break;
         const more = deps.runs.listEventsAfter(rid, sentSeq);
         for (const ev of more) {
+          if (stream.aborted || stream.closed) return;
           await stream.writeSSE({
             id: String(ev.seq),
             event: ev.type,

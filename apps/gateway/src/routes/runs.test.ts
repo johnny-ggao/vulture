@@ -66,6 +66,76 @@ describe("/v1/runs", () => {
     cleanup();
   });
 
+  test("tool call path: tool.plan → await.tool → tool.completed events persisted", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-runs-tool-"));
+    const { openDatabase } = await import("../persistence/sqlite");
+    const { applyMigrations } = await import("../persistence/migrate");
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    const convs = new ConversationStore(db);
+    const msgs = new MessageStore(db);
+    const runs = new RunStore(db);
+    const c = convs.create({ agentId: "local-work-agent" });
+
+    const toolLlm: LlmCallable = async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      yield { kind: "tool.plan", callId: "c1", tool: "shell.exec", input: { argv: ["echo"] } };
+      yield { kind: "await.tool", callId: "c1" };
+      yield { kind: "final", text: "done" };
+    };
+
+    let toolCalled = 0;
+    const app = runsRouter({
+      conversations: convs,
+      messages: msgs,
+      runs,
+      llm: toolLlm,
+      tools: async () => {
+        toolCalled += 1;
+        return { stdout: "hi" };
+      },
+      systemPromptForAgent: () => "system",
+      modelForAgent: () => "gpt-5.4",
+      workspacePathForAgent: () => "",
+    });
+
+    const rRes = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "tk" },
+      body: JSON.stringify({ input: "test" }),
+    });
+    expect(rRes.status).toBe(202);
+    const { run } = (await rRes.json()) as { run: { id: string } };
+
+    // Poll until terminal
+    let final: { status: string } = { status: "running" };
+    for (let i = 0; i < 50; i += 1) {
+      await new Promise((r) => setTimeout(r, 50));
+      const get = await app.request(`/v1/runs/${run.id}`, { headers: auth });
+      final = (await get.json()) as { status: string };
+      if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
+    }
+    expect(final.status).toBe("succeeded");
+    expect(toolCalled).toBe(1);
+
+    // Verify event sequence in run_events table
+    const events = runs.listEventsAfter(run.id, -1);
+    const types = events.map((e) => e.type);
+    expect(types).toContain("run.started");
+    expect(types).toContain("tool.planned");
+    expect(types).toContain("tool.started");
+    expect(types).toContain("tool.completed");
+    expect(types).toContain("run.completed");
+    // Order check: tool.planned before tool.started before tool.completed
+    const planned = types.indexOf("tool.planned");
+    const started = types.indexOf("tool.started");
+    const completed = types.indexOf("tool.completed");
+    expect(planned).toBeLessThan(started);
+    expect(started).toBeLessThan(completed);
+
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
   test("POST cancel on completed run → 409 run.already_completed", async () => {
     const { app, c, runs, msgs, cleanup } = fresh();
     const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
