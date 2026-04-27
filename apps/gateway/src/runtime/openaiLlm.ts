@@ -135,7 +135,11 @@ function makeSdkTool(toolName: string): Tool {
       parameters: z.object({
         cwd: z.string(),
         argv: z.array(z.string()),
-        timeoutMs: z.number().int().positive().default(120_000).optional(),
+        // Codex backend enforces strict JSON schema: every property must
+        // appear in `required`. We use `.nullable()` so the model can pass
+        // null when it has no preference; gateway-side execution treats
+        // null as "use default 120_000ms".
+        timeoutMs: z.number().int().positive().nullable(),
       }),
       execute: async (input, context, details) => {
         const ctx = context?.context as SdkRunContext | undefined;
