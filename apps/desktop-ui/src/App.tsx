@@ -78,6 +78,15 @@ export function App() {
     void refreshAuthStatus();
   }, [refreshAuthStatus]);
 
+  // When a run reaches a terminal status, refetch the conversation so the
+  // assistant message persisted by the gateway appears in the chronological
+  // message list (instead of only living in the transient runEvents).
+  useEffect(() => {
+    if (runStream.status === "succeeded" || runStream.status === "failed") {
+      void messages.refetch();
+    }
+  }, [runStream.status, messages]);
+
   // Bootstrap profile + agents once when apiClient becomes available.
   useEffect(() => {
     if (!apiClient) return;
@@ -216,7 +225,13 @@ export function App() {
           selectedAgentId={selectedAgentId}
           onSelectAgent={setSelectedAgentId}
           messages={messages.items}
-          runEvents={runStream.events}
+          runEvents={
+            runStream.status === "succeeded" ||
+            runStream.status === "failed" ||
+            runStream.status === "cancelled"
+              ? []
+              : runStream.events
+          }
           runStatus={runStream.status}
           runError={runStream.error}
           submittingApprovals={approvals.submitting}

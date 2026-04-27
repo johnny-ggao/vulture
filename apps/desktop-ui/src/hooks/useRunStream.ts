@@ -28,11 +28,19 @@ export interface RunStreamState {
 }
 
 export type RunStreamAction =
+  | { type: "reset" }
   | { type: "connect.start" }
   | { type: "connect.success" }
   | { type: "frame"; event: AnyRunEvent }
   | { type: "error"; error: string }
   | { type: "abort" };
+
+const INITIAL_STATE: RunStreamState = {
+  status: "idle",
+  events: [],
+  lastSeq: -1,
+  error: null,
+};
 
 const TERMINAL: RunStreamStatus[] = ["succeeded", "failed", "cancelled"];
 
@@ -42,6 +50,8 @@ function isTerminal(s: RunStreamStatus): boolean {
 
 export function runStreamReducer(state: RunStreamState, action: RunStreamAction): RunStreamState {
   switch (action.type) {
+    case "reset":
+      return INITIAL_STATE;
     case "connect.start":
       if (isTerminal(state.status)) return state;
       return { ...state, status: "connecting", error: null };
@@ -73,17 +83,19 @@ export interface UseRunStreamOptions {
 }
 
 export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
-  const [state, dispatch] = useReducer(runStreamReducer, {
-    status: "idle",
-    events: [],
-    lastSeq: -1,
-    error: null,
-  });
+  const [state, dispatch] = useReducer(runStreamReducer, INITIAL_STATE);
   const stateRef = useRef(state);
   stateRef.current = state;
 
   useEffect(() => {
-    if (!opts.client || !opts.runId) return;
+    if (!opts.client || !opts.runId) {
+      dispatch({ type: "reset" });
+      return;
+    }
+    // Fresh state for each runId so a previous terminal status doesn't
+    // short-circuit the next run's connection loop.
+    dispatch({ type: "reset" });
+    stateRef.current = INITIAL_STATE;
     const ac = new AbortController();
     let retry = 0;
 
