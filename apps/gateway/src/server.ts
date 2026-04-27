@@ -71,6 +71,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const llm = makeLazyLlm({
     toolNames: AGENT_TOOL_NAMES,
     toolCallable: tools,
+    shellCallbackUrl: cfg.shellCallbackUrl,
+    shellToken: cfg.token,
   });
 
   const app = new Hono();
