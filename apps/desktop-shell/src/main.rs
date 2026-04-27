@@ -1,5 +1,7 @@
 mod auth;
 mod browser;
+#[allow(dead_code)]
+mod codex_auth;
 mod commands;
 mod runtime;
 mod single_instance;
