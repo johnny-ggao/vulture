@@ -20,9 +20,8 @@ impl InstanceLock {
     pub fn acquire(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("failed to ensure lock dir {}", parent.display())
-            })?;
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to ensure lock dir {}", parent.display()))?;
         }
 
         let file = OpenOptions::new()

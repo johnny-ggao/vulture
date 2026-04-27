@@ -1,6 +1,6 @@
+use std::path::Path;
 #[cfg(test)]
 use std::sync::Mutex;
-use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use keyring::{Entry, Error as KeyringError};
@@ -61,6 +61,9 @@ pub enum CodexStatusState {
     NotSignedIn,
     SignedIn,
     Expired,
+    /// Reserved for UI-side transient state during the OAuth flow.
+    /// Never emitted by the shell; the UI synthesizes this between calling
+    /// `start_chatgpt_login` and resolution of the returned promise.
     #[allow(dead_code)]
     LoggingIn,
 }
@@ -253,7 +256,11 @@ pub fn unified_auth_status(
         (_, ApiKeyState::Set) => AuthActiveProvider::ApiKey,
         _ => AuthActiveProvider::None,
     };
-    Ok(AuthStatusView { active, codex, api_key })
+    Ok(AuthStatusView {
+        active,
+        codex,
+        api_key,
+    })
 }
 
 #[cfg(test)]

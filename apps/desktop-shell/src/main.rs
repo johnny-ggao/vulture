@@ -61,8 +61,8 @@ async fn main() -> Result<()> {
 
     // 4. App state — must come before shell server so the audit DB path is
     //    known (profile dir is resolved here).
-    let app_state = AppState::new_for_root(&root)
-        .context("failed to initialize Vulture desktop state")?;
+    let app_state =
+        AppState::new_for_root(&root).context("failed to initialize Vulture desktop state")?;
     crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
         .context("import existing codex credentials")?;
     app_state.set_runtime_descriptor(descriptor.clone());

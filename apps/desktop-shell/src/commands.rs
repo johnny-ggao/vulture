@@ -62,7 +62,11 @@ pub fn get_runtime_info(state: State<'_, AppState>) -> Result<RuntimeDescriptor,
 
 #[tauri::command]
 pub fn open_log_dir(state: State<'_, AppState>) -> Result<(), String> {
-    let dir = state.profile_dir().join("..").join("..").join("Logs/Vulture");
+    let dir = state
+        .profile_dir()
+        .join("..")
+        .join("..")
+        .join("Logs/Vulture");
     open_in_finder(&dir)
 }
 
@@ -127,13 +131,20 @@ pub async fn start_chatgpt_login(state: State<'_, AppState>) -> Result<ChatGPTLo
     url.push_str("&code_challenge_method=S256");
     url.push_str(&format!("&state={}", pkce.state));
 
-    open_browser(&url).map_err(|e| format!("open browser: {e:#}"))?;
+    if let Err(e) = open_browser(&url) {
+        handle.shutdown().await;
+        return Err(format!("open browser: {e:#}"));
+    }
 
     let callback = match tokio::time::timeout(std::time::Duration::from_secs(300), rx).await {
         Ok(Ok(cb)) => cb,
-        _ => {
+        Ok(Err(_)) => {
             handle.shutdown().await;
-            return Err("login timed out or cancelled".to_string());
+            return Err("callback channel closed unexpectedly".to_string());
+        }
+        Err(_) => {
+            handle.shutdown().await;
+            return Err("login timed out (5 minutes)".to_string());
         }
     };
     handle.shutdown().await;

@@ -347,7 +347,10 @@ async fn cancel_handler(
     State(state): State<ShellState>,
     Json(req): Json<CancelRequest>,
 ) -> impl IntoResponse {
-    let mut signals = state.cancel_signals.lock().expect("cancel signals poisoned");
+    let mut signals = state
+        .cancel_signals
+        .lock()
+        .expect("cancel signals poisoned");
     if let Some(tx) = signals.remove(&req.call_id) {
         let _ = tx.send(());
         return Json(CancelResponse { cancelled: true });
@@ -380,11 +383,7 @@ impl ToolCallbackHandle {
 /// Tests not exercising codex routes can use this. Codex endpoints will
 /// always return 404 (`std::env::temp_dir()` won't have a codex_auth.json).
 #[allow(dead_code)]
-pub async fn serve(
-    port: u16,
-    token: String,
-    audit_db_path: PathBuf,
-) -> Result<ToolCallbackHandle> {
+pub async fn serve(port: u16, token: String, audit_db_path: PathBuf) -> Result<ToolCallbackHandle> {
     serve_with_codex(
         port,
         token,
@@ -603,7 +602,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(res["status"].as_str().unwrap(), "completed");
-        assert!(res["output"]["stdout"].as_str().unwrap().contains("approved"));
+        assert!(res["output"]["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("approved"));
         handle.shutdown().await;
         std::fs::remove_dir_all(dir).ok();
     }

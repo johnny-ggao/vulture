@@ -156,7 +156,10 @@ pub async fn signal_gateway_shutdown(child: &mut Child) {
         // SIGTERM: graceful shutdown on Unix.
         unsafe { libc::kill(pid as i32, libc::SIGTERM) };
     }
-    if timeout(TokioDuration::from_secs(5), child.wait()).await.is_err() {
+    if timeout(TokioDuration::from_secs(5), child.wait())
+        .await
+        .is_err()
+    {
         // Graceful window elapsed — SIGKILL.
         let _ = child.kill().await;
     }

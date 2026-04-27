@@ -19,8 +19,7 @@ fn write_then_read_round_trip_preserves_mode_0600() {
         shell: PortBinding { port: 4199 },
         token: "x".repeat(43),
         pid: std::process::id(),
-        started_at: chrono::Utc::now()
-            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        started_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         shell_version: "0.1.0".to_string(),
     };
 

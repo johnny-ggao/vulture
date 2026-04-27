@@ -137,8 +137,7 @@ mod tests {
             shell: vulture_core::PortBinding { port: 4199 },
             token: "x".repeat(TOKEN_B64_LEN),
             pid: std::process::id(),
-            started_at: chrono::Utc::now()
-                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            started_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             shell_version: env!("CARGO_PKG_VERSION").to_string(),
         };
 
@@ -170,8 +169,7 @@ mod tests {
             shell: vulture_core::PortBinding { port: 4199 },
             token: "x".repeat(TOKEN_B64_LEN),
             pid: 1,
-            started_at: chrono::Utc::now()
-                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            started_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             shell_version: "0".to_string(),
         };
         write_runtime_json(&path, &descriptor).unwrap();

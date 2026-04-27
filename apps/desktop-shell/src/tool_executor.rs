@@ -39,7 +39,10 @@ pub async fn execute_shell(input: ShellExecInput) -> Result<ShellExecOutput> {
         .kill_on_drop(true);
 
     let mut child = cmd.spawn().with_context(|| {
-        format!("failed to spawn {}", input.argv.first().cloned().unwrap_or_default())
+        format!(
+            "failed to spawn {}",
+            input.argv.first().cloned().unwrap_or_default()
+        )
     })?;
     let stdout = child.stdout.take().context("missing stdout")?;
     let stderr = child.stderr.take().context("missing stderr")?;

@@ -41,10 +41,10 @@ pub fn read_store(profile_dir: &Path) -> Result<Option<CodexCreds>> {
     if !path.is_file() {
         return Ok(None);
     }
-    let bytes = std::fs::read_to_string(&path)
-        .with_context(|| format!("read {}", path.display()))?;
-    let creds: CodexCreds = serde_json::from_str(&bytes)
-        .with_context(|| format!("parse {}", path.display()))?;
+    let bytes =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let creds: CodexCreds =
+        serde_json::from_str(&bytes).with_context(|| format!("parse {}", path.display()))?;
     Ok(Some(creds))
 }
 
@@ -52,8 +52,7 @@ pub fn read_store(profile_dir: &Path) -> Result<Option<CodexCreds>> {
 pub fn write_store(profile_dir: &Path, creds: &CodexCreds) -> Result<()> {
     let path = store_path(profile_dir);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("mkdir {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| format!("mkdir {}", parent.display()))?;
     }
     let tmp = path.with_extension("json.tmp");
     let bytes = serde_json::to_vec_pretty(creds)?;
@@ -73,8 +72,7 @@ pub fn write_store(profile_dir: &Path, creds: &CodexCreds) -> Result<()> {
 pub fn delete_store(profile_dir: &Path) -> Result<()> {
     let path = store_path(profile_dir);
     if path.is_file() {
-        std::fs::remove_file(&path)
-            .with_context(|| format!("remove {}", path.display()))?;
+        std::fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
     }
     Ok(())
 }
@@ -93,14 +91,12 @@ pub fn ensure_store_with_import(profile_dir: &Path) -> Result<()> {
     if our.is_file() {
         return Ok(());
     }
-    let codex = home_dir()?
-        .join(".codex")
-        .join("auth.json");
+    let codex = home_dir()?.join(".codex").join("auth.json");
     if !codex.is_file() {
         return Ok(());
     }
-    let raw = std::fs::read_to_string(&codex)
-        .with_context(|| format!("read {}", codex.display()))?;
+    let raw =
+        std::fs::read_to_string(&codex).with_context(|| format!("read {}", codex.display()))?;
     let value: serde_json::Value = serde_json::from_str(&raw)?;
     let tokens = value
         .get("tokens")
@@ -128,7 +124,8 @@ pub fn ensure_store_with_import(profile_dir: &Path) -> Result<()> {
     // Codex CLI doesn't store expires_at directly — we infer from JWT exp claim
     // for imported creds. If JWT decode fails, default to 1h from now (safe;
     // a refresh will run shortly).
-    let expires_at = expires_at_from_jwt(&access_token).unwrap_or_else(|| unix_now_ms() + 3_600_000);
+    let expires_at =
+        expires_at_from_jwt(&access_token).unwrap_or_else(|| unix_now_ms() + 3_600_000);
     let creds = CodexCreds {
         access_token,
         refresh_token,
@@ -163,7 +160,7 @@ fn expires_at_from_jwt(jwt: &str) -> Option<u64> {
     let payload = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
     let value: serde_json::Value = serde_json::from_slice(&payload).ok()?;
     let exp = value.get("exp")?.as_u64()?;
-    Some(exp * 1000)  // exp is seconds, we use ms
+    Some(exp * 1000) // exp is seconds, we use ms
 }
 
 #[derive(Debug, Clone)]
@@ -187,7 +184,11 @@ impl Pkce {
         rand::thread_rng().fill_bytes(&mut state_bytes);
         let state = URL_SAFE_NO_PAD.encode(state_bytes);
 
-        Self { verifier, challenge, state }
+        Self {
+            verifier,
+            challenge,
+            state,
+        }
     }
 }
 
@@ -241,7 +242,9 @@ pub async fn start_callback_server(
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let join = tokio::spawn(async move {
         axum::serve(listener, app)
-            .with_graceful_shutdown(async move { let _ = shutdown_rx.await; })
+            .with_graceful_shutdown(async move {
+                let _ = shutdown_rx.await;
+            })
             .await
             .ok();
     });
@@ -254,7 +257,9 @@ pub async fn start_callback_server(
 }
 
 async fn callback_handler(
-    axum::extract::State(sender): axum::extract::State<Arc<Mutex<Option<oneshot::Sender<CallbackResult>>>>>,
+    axum::extract::State(sender): axum::extract::State<
+        Arc<Mutex<Option<oneshot::Sender<CallbackResult>>>>,
+    >,
     Query(params): Query<CallbackParams>,
 ) -> (StatusCode, Html<&'static str>) {
     if let Some(error) = params.error {
@@ -322,7 +327,10 @@ async fn post_token_form(
         let body = response.text().await.unwrap_or_default();
         return Err(anyhow!("{label} endpoint returned {status}: {body}"));
     }
-    response.json().await.with_context(|| format!("parse {label} response"))
+    response
+        .json()
+        .await
+        .with_context(|| format!("parse {label} response"))
 }
 
 /// POST to token_url with `grant_type=authorization_code` form body.
@@ -343,10 +351,7 @@ pub async fn exchange_authorization_code(
 }
 
 /// POST refresh request. Same shape as exchange_authorization_code response.
-pub async fn refresh_access_token(
-    token_url: &str,
-    refresh_token: &str,
-) -> Result<TokenResponse> {
+pub async fn refresh_access_token(token_url: &str, refresh_token: &str) -> Result<TokenResponse> {
     let form = [
         ("grant_type", "refresh_token"),
         ("client_id", CLIENT_ID),
@@ -429,7 +434,9 @@ fn decode_account_from_id_token(id_token: &str) -> Result<(String, Option<String
     if parts.len() < 2 {
         return Err(anyhow!("id_token not a JWT"));
     }
-    let payload = URL_SAFE_NO_PAD.decode(parts[1]).context("decode JWT payload")?;
+    let payload = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .context("decode JWT payload")?;
     let value: serde_json::Value = serde_json::from_slice(&payload).context("parse JWT payload")?;
     let auth_claim = value
         .get("https://api.openai.com/auth")
@@ -439,7 +446,10 @@ fn decode_account_from_id_token(id_token: &str) -> Result<(String, Option<String
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow!("auth claim missing chatgpt_account_id"))?
         .to_string();
-    let email = value.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let email = value
+        .get("email")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     Ok((account_id, email))
 }
 
@@ -515,7 +525,7 @@ mod tests {
         write_store(&profile, &original).expect("write our store first");
         ensure_store_with_import(&profile).expect("import");
         let read = read_store(&profile).expect("read").expect("Some");
-        assert_eq!(read, original);  // unchanged
+        assert_eq!(read, original); // unchanged
         std::fs::remove_dir_all(&profile).ok();
     }
 
@@ -527,8 +537,8 @@ mod tests {
         // challenge is sha256(verifier) base64url-encoded → also 43 chars no padding
         assert_eq!(pkce.challenge.len(), 43);
         // Verify the relationship: re-derive challenge from verifier
-        use sha2::{Digest, Sha256};
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(pkce.verifier.as_bytes());
         let derived = URL_SAFE_NO_PAD.encode(hasher.finalize());
@@ -546,7 +556,10 @@ mod tests {
     #[test]
     fn pkce_state_is_url_safe() {
         let pkce = Pkce::generate();
-        assert!(pkce.state.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(pkce
+            .state
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 
     #[tokio::test]
@@ -555,10 +568,7 @@ mod tests {
         let handle = start_callback_server(0, tx).await.expect("server");
         let port = handle.bound_port;
 
-        let url = format!(
-            "http://127.0.0.1:{}/auth/callback?code=abc&state=xyz",
-            port
-        );
+        let url = format!("http://127.0.0.1:{}/auth/callback?code=abc&state=xyz", port);
         let response = reqwest::get(&url).await.expect("request");
         assert_eq!(response.status(), 200);
 
@@ -592,7 +602,7 @@ mod tests {
 
     #[tokio::test]
     async fn exchange_code_constructs_correct_request() {
-        use axum::{routing::post, Router, response::Json};
+        use axum::{response::Json, routing::post, Router};
 
         // Build a fake token endpoint that records the form body
         let recorded = Arc::new(Mutex::new(None::<String>));
@@ -616,7 +626,9 @@ mod tests {
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok(); });
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let response = exchange_authorization_code(
@@ -641,8 +653,8 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_singleton_fires_only_one_http_request_under_concurrency() {
+        use axum::{response::Json, routing::post, Router};
         use std::sync::atomic::{AtomicUsize, Ordering};
-        use axum::{routing::post, Router, response::Json};
 
         let count = Arc::new(AtomicUsize::new(0));
         let count_clone = count.clone();
@@ -664,7 +676,9 @@ mod tests {
         );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok(); });
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
         let token_url = format!("http://127.0.0.1:{port}/oauth/token");
 
         let runtime = RefreshSingleton::default();

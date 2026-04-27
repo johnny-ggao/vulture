@@ -12,8 +12,8 @@ use vulture_core::{AppPaths, Profile, RuntimeDescriptor, StorageLayout};
 
 use crate::{
     auth::{
-        auth_status, resolve_openai_api_key,
-        KeychainSecretStore, OpenAiAuthStatus, SecretStore, SetOpenAiApiKeyRequest,
+        auth_status, resolve_openai_api_key, KeychainSecretStore, OpenAiAuthStatus, SecretStore,
+        SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
     codex_auth::RefreshSingleton,
@@ -155,7 +155,6 @@ impl AppState {
             .lock()
             .map_err(|_| anyhow!("browser relay lock poisoned"))
     }
-
 }
 
 impl AppState {
@@ -164,11 +163,17 @@ impl AppState {
     }
 
     pub fn runtime_descriptor(&self) -> Option<RuntimeDescriptor> {
-        self.runtime_descriptor.read().expect("rt lock poisoned").clone()
+        self.runtime_descriptor
+            .read()
+            .expect("rt lock poisoned")
+            .clone()
     }
 
     pub fn supervisor_status(&self) -> SupervisorStatus {
-        self.supervisor_status.read().expect("sup lock poisoned").clone()
+        self.supervisor_status
+            .read()
+            .expect("sup lock poisoned")
+            .clone()
     }
 
     /// Hand the supervisor task a write handle to the status so it can publish
