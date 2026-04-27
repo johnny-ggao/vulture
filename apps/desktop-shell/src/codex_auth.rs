@@ -286,6 +286,114 @@ pub fn open_browser(url: &str) -> Result<()> {
     Ok(())
 }
 
+pub const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+pub const AUTHORIZE_URL: &str = "https://auth.openai.com/oauth/authorize";
+pub const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
+pub const SCOPE: &str = "openid profile email offline_access";
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TokenResponse {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub id_token: String,
+    pub expires_in: u64,
+}
+
+/// POST to token_url with `grant_type=authorization_code` form body.
+pub async fn exchange_authorization_code(
+    token_url: &str,
+    code: &str,
+    code_verifier: &str,
+    redirect_uri: &str,
+) -> Result<TokenResponse> {
+    let client = reqwest::Client::new();
+    let form = [
+        ("grant_type", "authorization_code"),
+        ("client_id", CLIENT_ID),
+        ("code", code),
+        ("code_verifier", code_verifier),
+        ("redirect_uri", redirect_uri),
+    ];
+    let response = client
+        .post(token_url)
+        .form(&form)
+        .send()
+        .await
+        .with_context(|| format!("POST {token_url}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("token endpoint returned {status}: {body}"));
+    }
+    let parsed: TokenResponse = response.json().await.context("parse token response")?;
+    Ok(parsed)
+}
+
+/// POST refresh request. Same shape as exchange_authorization_code response.
+pub async fn refresh_access_token(
+    token_url: &str,
+    refresh_token: &str,
+) -> Result<TokenResponse> {
+    let client = reqwest::Client::new();
+    let form = [
+        ("grant_type", "refresh_token"),
+        ("client_id", CLIENT_ID),
+        ("refresh_token", refresh_token),
+    ];
+    let response = client
+        .post(token_url)
+        .form(&form)
+        .send()
+        .await
+        .with_context(|| format!("POST {token_url}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("refresh endpoint returned {status}: {body}"));
+    }
+    let parsed: TokenResponse = response.json().await.context("parse refresh response")?;
+    Ok(parsed)
+}
+
+/// Build a CodexCreds from a TokenResponse + previously known account_id (or extracted from id_token).
+pub fn creds_from_token_response(
+    response: TokenResponse,
+    imported_from: Option<String>,
+) -> Result<CodexCreds> {
+    let now = unix_now_ms();
+    let expires_at = now.saturating_add(response.expires_in.saturating_mul(1000));
+    let (account_id, email) = decode_account_from_id_token(&response.id_token)?;
+    Ok(CodexCreds {
+        access_token: response.access_token,
+        refresh_token: response.refresh_token,
+        id_token: response.id_token,
+        account_id,
+        email,
+        expires_at,
+        stored_at: now,
+        imported_from,
+    })
+}
+
+fn decode_account_from_id_token(id_token: &str) -> Result<(String, Option<String>)> {
+    let parts: Vec<&str> = id_token.split('.').collect();
+    if parts.len() < 2 {
+        return Err(anyhow!("id_token not a JWT"));
+    }
+    let payload = URL_SAFE_NO_PAD.decode(parts[1]).context("decode JWT payload")?;
+    let value: serde_json::Value = serde_json::from_slice(&payload).context("parse JWT payload")?;
+    let auth_claim = value
+        .get("https://api.openai.com/auth")
+        .ok_or_else(|| anyhow!("id_token missing 'https://api.openai.com/auth' claim"))?;
+    let account_id = auth_claim
+        .get("chatgpt_account_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("auth claim missing chatgpt_account_id"))?
+        .to_string();
+    let email = value.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
+    Ok((account_id, email))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,5 +539,54 @@ mod tests {
         // After server shutdown the rx should error (sender dropped without sending);
         let result = rx.await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn exchange_code_constructs_correct_request() {
+        use axum::{routing::post, Router, response::Json};
+
+        // Build a fake token endpoint that records the form body
+        let recorded = Arc::new(Mutex::new(None::<String>));
+        let recorded_clone = recorded.clone();
+
+        let app = Router::new().route(
+            "/oauth/token",
+            post(move |body: String| {
+                let recorded = recorded_clone.clone();
+                async move {
+                    *recorded.lock().unwrap() = Some(body);
+                    Json(serde_json::json!({
+                        "access_token": "at-new",
+                        "refresh_token": "rt-new",
+                        "id_token": "header.eyJleHAiOjE3MTQyMzg0MDAsImh0dHBzOi8vYXBpLm9wZW5haS5jb20vYXV0aCI6eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJhY2MtMSJ9fQ.sig",
+                        "expires_in": 3600
+                    }))
+                }
+            }),
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok(); });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let response = exchange_authorization_code(
+            &format!("http://127.0.0.1:{port}/oauth/token"),
+            "the-code",
+            "the-verifier",
+            "http://localhost:1455/auth/callback",
+        )
+        .await
+        .expect("exchange");
+
+        assert_eq!(response.access_token, "at-new");
+        assert_eq!(response.refresh_token, "rt-new");
+        assert_eq!(response.expires_in, 3600);
+
+        let body = recorded.lock().unwrap().clone().expect("body recorded");
+        assert!(body.contains("grant_type=authorization_code"));
+        assert!(body.contains("code=the-code"));
+        assert!(body.contains("code_verifier=the-verifier"));
+        assert!(body.contains(&format!("client_id={}", CLIENT_ID)));
     }
 }
