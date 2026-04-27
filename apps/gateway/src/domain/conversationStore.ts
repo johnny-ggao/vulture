@@ -71,4 +71,11 @@ export class ConversationStore {
       .query("UPDATE conversations SET updated_at = ? WHERE id = ?")
       .run(nowIso8601(), id);
   }
+
+  updateTitle(id: string, title: string): Conversation | null {
+    this.db
+      .query("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?")
+      .run(title, nowIso8601(), id);
+    return this.get(id);
+  }
 }

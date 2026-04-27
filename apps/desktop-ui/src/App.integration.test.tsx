@@ -119,7 +119,14 @@ async function authedJson<T>(app: ReturnType<typeof buildServer>, path: string, 
 
 describe("App integration", () => {
   test("send message → assistant message appears (stub LLM, no API key)", async () => {
-    const { cleanup } = setup();
+    let conversationListRequests = 0;
+    const { cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "GET" && path === "/v1/conversations") {
+          conversationListRequests += 1;
+        }
+      },
+    });
 
     render(<App />);
 
@@ -156,6 +163,12 @@ describe("App integration", () => {
         expect(text).toContain("OPENAI_API_KEY not configured");
       },
       { timeout: 10_000 },
+    );
+    await waitFor(
+      () => {
+        expect(conversationListRequests).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 5000 },
     );
 
     cleanup();

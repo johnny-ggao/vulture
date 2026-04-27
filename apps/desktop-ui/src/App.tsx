@@ -97,6 +97,8 @@ export function App() {
   // not on every render (messages object identity is unstable).
   const refetchMessagesRef = useRef(messages.refetch);
   refetchMessagesRef.current = messages.refetch;
+  const refetchConversationsRef = useRef(conversations.refetch);
+  refetchConversationsRef.current = conversations.refetch;
   useEffect(() => {
     if (
       runStream.status === "succeeded" ||
@@ -104,6 +106,7 @@ export function App() {
       runStream.status === "cancelled"
     ) {
       void refetchMessagesRef.current();
+      void refetchConversationsRef.current();
       setActiveRunId(null);
       clearActiveRunId();
     }

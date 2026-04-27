@@ -81,6 +81,15 @@ describe("/v1/runs", () => {
     expect(body.run.id).toMatch(/^r-/);
     expect(body.message.role).toBe("user");
     expect(body.eventStreamUrl).toMatch(/\/v1\/runs\/.+\/events/);
+
+    let final: { status: string } = { status: "running" };
+    for (let i = 0; i < 50; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+      const get = await app.request(`/v1/runs/${body.run.id}`, { headers: auth });
+      final = (await get.json()) as { status: string };
+      if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
+    }
+    expect(final.status).toBe("succeeded");
     cleanup();
   });
 

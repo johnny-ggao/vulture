@@ -47,4 +47,16 @@ describe("ConversationStore", () => {
     expect(c.title).toBe("");
     cleanup();
   });
+
+  test("updateTitle changes title and touches updatedAt", async () => {
+    const { store, cleanup } = freshStore();
+    const c = store.create({ agentId: "a-1", title: "old" });
+    await new Promise((r) => setTimeout(r, 2));
+
+    const updated = store.updateTitle(c.id, "new title");
+
+    expect(updated?.title).toBe("new title");
+    expect(updated?.updatedAt).not.toBe(c.updatedAt);
+    cleanup();
+  });
 });
