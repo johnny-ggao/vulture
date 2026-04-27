@@ -23,9 +23,7 @@ impl PolicyEngine {
             "file.write" => PolicyDecision::Ask {
                 reason: "file.write requires approval".to_string(),
             },
-            "shell.exec" => PolicyDecision::Ask {
-                reason: "shell.exec requires approval".to_string(),
-            },
+            "shell.exec" => self.decide_shell_exec(request),
             tool if tool.starts_with("git.") => PolicyDecision::Ask {
                 reason: format!("{tool} requires approval"),
             },
@@ -35,6 +33,34 @@ impl PolicyEngine {
             other => PolicyDecision::Deny {
                 reason: format!("unknown tool {other}"),
             },
+        }
+    }
+
+    fn decide_shell_exec(&self, request: &ToolRequest) -> PolicyDecision {
+        let Some(cwd) = request.input.get("cwd").and_then(|value| value.as_str()) else {
+            return PolicyDecision::Ask {
+                reason: "shell.exec missing cwd".to_string(),
+            };
+        };
+
+        let Some(workspace_root) = self.workspace_root.as_deref() else {
+            return PolicyDecision::Ask {
+                reason: "shell.exec outside known workspace".to_string(),
+            };
+        };
+
+        let Some(workspace_root) = normalize_root(workspace_root) else {
+            return PolicyDecision::Ask {
+                reason: "shell.exec outside known workspace".to_string(),
+            };
+        };
+
+        if is_inside_root(Path::new(cwd), &workspace_root) {
+            PolicyDecision::Allow
+        } else {
+            PolicyDecision::Ask {
+                reason: "shell.exec outside workspace".to_string(),
+            }
         }
     }
 
@@ -208,12 +234,63 @@ mod tests {
             input: json!({ "argv": ["bun", "test"], "cwd": "/tmp/vulture-workspace" }),
         };
 
-        assert_eq!(
-            engine.decide(&request),
-            PolicyDecision::Ask {
-                reason: "shell.exec requires approval".to_string()
-            }
-        );
+        assert!(matches!(engine.decide(&request), PolicyDecision::Ask { .. }));
+    }
+
+    #[test]
+    fn allows_shell_exec_inside_workspace() {
+        let engine = PolicyEngine::for_workspace("/tmp/vulture-workspace");
+        let request = ToolRequest {
+            run_id: "r1".into(),
+            tool: "shell.exec".into(),
+            input: serde_json::json!({
+                "cwd": "/tmp/vulture-workspace/src",
+                "argv": ["echo", "hi"]
+            }),
+        };
+        assert_eq!(engine.decide(&request), PolicyDecision::Allow);
+    }
+
+    #[test]
+    fn asks_shell_exec_outside_workspace() {
+        let engine = PolicyEngine::for_workspace("/tmp/vulture-workspace");
+        let request = ToolRequest {
+            run_id: "r1".into(),
+            tool: "shell.exec".into(),
+            input: serde_json::json!({
+                "cwd": "/etc",
+                "argv": ["ls"]
+            }),
+        };
+        let decision = engine.decide(&request);
+        assert!(matches!(decision, PolicyDecision::Ask { .. }));
+    }
+
+    #[test]
+    fn asks_shell_exec_with_no_workspace_root() {
+        let engine = PolicyEngine::for_workspace("");
+        let request = ToolRequest {
+            run_id: "r1".into(),
+            tool: "shell.exec".into(),
+            input: serde_json::json!({
+                "cwd": "/tmp",
+                "argv": ["ls"]
+            }),
+        };
+        let decision = engine.decide(&request);
+        assert!(matches!(decision, PolicyDecision::Ask { .. }));
+    }
+
+    #[test]
+    fn asks_shell_exec_when_cwd_missing() {
+        let engine = PolicyEngine::for_workspace("/tmp/vulture-workspace");
+        let request = ToolRequest {
+            run_id: "r1".into(),
+            tool: "shell.exec".into(),
+            input: serde_json::json!({ "argv": ["ls"] }),
+        };
+        let decision = engine.decide(&request);
+        assert!(matches!(decision, PolicyDecision::Ask { .. }));
     }
 
     #[test]
