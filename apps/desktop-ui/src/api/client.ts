@@ -15,6 +15,8 @@ export interface ApiError extends Error {
 }
 
 export interface ApiClient {
+  readonly base: string;
+  readonly token: string;
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
   patch<T>(path: string, body: unknown): Promise<T>;
@@ -61,6 +63,8 @@ export function createApiClient(rt: RuntimeBase, opts: ApiClientOptions = {}): A
   }
 
   return {
+    base,
+    token: rt.token,
     get: <T>(path: string) => request<T>("GET", path),
     post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
     patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
