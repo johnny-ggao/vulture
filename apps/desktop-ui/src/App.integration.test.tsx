@@ -1,4 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +50,7 @@ const [{ App }, { buildServer }] = await Promise.all([
   import("./App"),
   import("../../gateway/src/server"),
 ]);
+const { readActiveChatState, writeActiveChatState, writeRunLastSeq } = await import("./chat/recoveryState");
 
 const { render, screen, fireEvent, waitFor } = await import(
   "@testing-library/react/pure"
@@ -60,6 +62,7 @@ function setup(
     onResponse?: (path: string, init: RequestInit | undefined) => void;
   } = {},
 ) {
+  localStorage.clear();
   const dir = mkdtempSync(join(tmpdir(), "vulture-app-int-"));
   const cfg = {
     port: 4099,
@@ -91,11 +94,27 @@ function setup(
   }) as typeof fetch;
 
   return {
+    app,
+    dir,
     cleanup: () => {
       globalThis.fetch = realFetch;
+      localStorage.clear();
       rmSync(dir, { recursive: true });
     },
   };
+}
+
+async function authedJson<T>(app: ReturnType<typeof buildServer>, path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${TOKEN}`);
+  headers.set("X-Request-Id", crypto.randomUUID());
+  if (init.method === "POST") {
+    headers.set("Idempotency-Key", crypto.randomUUID());
+    headers.set("Content-Type", "application/json");
+  }
+  const res = await app.request(path, { ...init, headers });
+  if (!res.ok) throw new Error(`${init.method ?? "GET"} ${path} -> ${res.status}`);
+  return (await res.json()) as T;
 }
 
 describe("App integration", () => {
@@ -188,6 +207,111 @@ describe("App integration", () => {
     await new Promise((r) => setTimeout(r, 50));
 
     expect(activeRunRestoreRequestsBeforeRunCreate).toBe(0);
+    cleanup();
+  }, 15_000);
+
+  test("restores saved active conversation on remount", async () => {
+    localStorage.clear();
+    let restoredMessagesRequested = false;
+    const { app, cleanup } = setup({
+      onRequest: (path, init) => {
+        if (
+          init?.method === "GET" &&
+          /^\/v1\/conversations\/[^/]+\/messages$/.test(path)
+        ) {
+          restoredMessagesRequested = true;
+        }
+      },
+    });
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    const conv = await authedJson<{ id: string }>(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agents.items[0].id, title: "Restored conversation" }),
+    });
+    writeActiveChatState({ conversationId: conv.id, runId: null });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(restoredMessagesRequested).toBe(true);
+      },
+      { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
+  test("restores saved active run and resumes SSE from persisted seq", async () => {
+    let eventStreamRequested = false;
+    let lastEventId: string | null = null;
+    const { app, dir, cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "GET" && /^\/v1\/runs\/r-active\/events$/.test(path)) {
+          eventStreamRequested = true;
+          lastEventId = new Headers(init.headers).get("Last-Event-ID");
+        }
+      },
+    });
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    const agentId = agents.items[0].id;
+    const conv = await authedJson<{ id: string }>(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId, title: "Active restored conversation" }),
+    });
+    const now = "2026-04-27T00:00:00.000Z";
+    const db = new Database(join(dir, "data.sqlite"));
+    db.query(
+      "INSERT INTO messages(id, conversation_id, role, content, run_id, created_at) VALUES (?, ?, 'user', 'still running', NULL, ?)",
+    ).run("m-active-trigger", conv.id, now);
+    db.query(
+      `INSERT INTO runs(id, conversation_id, agent_id, status, triggered_by_message_id,
+                        result_message_id, started_at, ended_at, error_json)
+       VALUES ('r-active', ?, ?, 'running', 'm-active-trigger', NULL, ?, NULL, NULL)`,
+    ).run(conv.id, agentId, now);
+    const startedEvent = {
+      type: "run.started",
+      runId: "r-active",
+      seq: 0,
+      createdAt: now,
+      agentId,
+      model: "gpt-5.4",
+    };
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES ('r-active', 0, 'run.started', ?, ?)",
+    ).run(JSON.stringify(startedEvent), now);
+    db.close();
+    writeActiveChatState({ conversationId: conv.id, runId: "r-active" });
+    writeRunLastSeq("r-active", 0);
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(eventStreamRequested).toBe(true);
+        expect(lastEventId).toBe("0");
+      },
+      { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
+  test("clears saved active state when conversation no longer exists", async () => {
+    const { cleanup } = setup();
+    writeActiveChatState({ conversationId: "c-missing", runId: "r-missing" });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(readActiveChatState()).toEqual({ conversationId: null, runId: null });
+      },
+      { timeout: 5000 },
+    );
+
     cleanup();
   }, 15_000);
 });

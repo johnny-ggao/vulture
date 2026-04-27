@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef } from "react";
 import type { ApiClient } from "../api/client";
 import { sseStream, type SseFrame } from "../api/sse";
+import { readRunLastSeq, writeRunLastSeq } from "../chat/recoveryState";
 
 // Permissive event shape — components type-narrow at the rendering boundary.
 export type AnyRunEvent = {
@@ -28,7 +29,7 @@ export interface RunStreamState {
 }
 
 export type RunStreamAction =
-  | { type: "reset" }
+  | { type: "reset"; lastSeq?: number }
   | { type: "connect.start" }
   | { type: "connect.success" }
   | { type: "frame"; event: AnyRunEvent }
@@ -56,7 +57,7 @@ export function parseRunEventFrame(frame: SseFrame): AnyRunEvent | null {
 export function runStreamReducer(state: RunStreamState, action: RunStreamAction): RunStreamState {
   switch (action.type) {
     case "reset":
-      return INITIAL_STATE;
+      return { ...INITIAL_STATE, lastSeq: action.lastSeq ?? -1 };
     case "connect.start":
       if (isTerminal(state.status)) return state;
       return { ...state, status: "connecting", error: null };
@@ -97,10 +98,13 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
       dispatch({ type: "reset" });
       return;
     }
+    const runId = opts.runId;
     // Fresh state for each runId so a previous terminal status doesn't
     // short-circuit the next run's connection loop.
-    dispatch({ type: "reset" });
-    stateRef.current = INITIAL_STATE;
+    const restoredLastSeq = readRunLastSeq(runId);
+    const restoredState = { ...INITIAL_STATE, lastSeq: restoredLastSeq };
+    dispatch({ type: "reset", lastSeq: restoredLastSeq });
+    stateRef.current = restoredState;
     const ac = new AbortController();
     let retry = 0;
 
@@ -112,7 +116,7 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
       while (!ac.signal.aborted && !sawTerminal && !isTerminal(stateRef.current.status)) {
         dispatch({ type: "connect.start" });
         try {
-          const url = `${opts.client!.base}/v1/runs/${opts.runId}/events`;
+          const url = `${opts.client!.base}/v1/runs/${runId}/events`;
           for await (const frame of sseStream({
             url,
             token: opts.client!.token,
@@ -127,6 +131,7 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
           })) {
             const parsed = parseRunEventFrame(frame);
             if (!parsed) continue;
+            writeRunLastSeq(runId, parsed.seq);
             dispatch({ type: "frame", event: parsed });
             if (
               parsed.type === "run.completed" ||

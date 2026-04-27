@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { parseRunEventFrame, runStreamReducer, type RunStreamState } from "./useRunStream";
+import { render, waitFor } from "@testing-library/react/pure";
+import { createElement } from "react";
+import {
+  parseRunEventFrame,
+  runStreamReducer,
+  useRunStream,
+  type RunStreamState,
+} from "./useRunStream";
+import { writeRunLastSeq } from "../chat/recoveryState";
+import type { ApiClient } from "../api/client";
 
 type Event =
   | { type: "run.started"; runId: string; seq: number; createdAt: string; agentId: string; model: string }
@@ -102,5 +111,52 @@ describe("parseRunEventFrame", () => {
       text: "hello",
     };
     expect(parseRunEventFrame({ id: "1", event: "text.delta", data: JSON.stringify(event) })).toEqual(event);
+  });
+});
+
+describe("useRunStream recovery", () => {
+  test("uses persisted last seq as Last-Event-ID when reconnecting after remount", async () => {
+    localStorage.clear();
+    writeRunLastSeq("r-restore", 7);
+
+    let capturedLastEventId: string | null = null;
+    const fetchFn = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      capturedLastEventId = headers.get("Last-Event-ID");
+      const completed = {
+        type: "run.completed",
+        runId: "r-restore",
+        seq: 8,
+        createdAt: "2026-04-27T00:00:00.000Z",
+        resultMessageId: "m-1",
+        finalText: "done",
+      };
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `id: 8\nevent: run.completed\ndata: ${JSON.stringify(completed)}\n\n`,
+            ),
+          );
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200 });
+    }) as typeof fetch;
+    const client = {
+      base: "http://127.0.0.1:4099",
+      token: "x".repeat(43),
+    } as ApiClient;
+
+    function Probe() {
+      useRunStream({ client, runId: "r-restore", fetch: fetchFn });
+      return createElement("div", null, "probe");
+    }
+
+    render(createElement(Probe));
+
+    await waitFor(() => {
+      expect(capturedLastEventId).toBe("7");
+    });
   });
 });

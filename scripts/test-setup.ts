@@ -12,6 +12,8 @@ if (!(globalThis as { document?: unknown }).document) {
   const nativeReadableStream = globalThis.ReadableStream;
   const nativeWritableStream = globalThis.WritableStream;
   const nativeTransformStream = globalThis.TransformStream;
+  const nativeAbortController = globalThis.AbortController;
+  const nativeAbortSignal = globalThis.AbortSignal;
 
   GlobalRegistrator.register();
 
@@ -22,6 +24,8 @@ if (!(globalThis as { document?: unknown }).document) {
   globalThis.ReadableStream = nativeReadableStream;
   globalThis.WritableStream = nativeWritableStream;
   globalThis.TransformStream = nativeTransformStream;
+  globalThis.AbortController = nativeAbortController;
+  globalThis.AbortSignal = nativeAbortSignal;
 }
 
 // Auto-cleanup after each test so multiple component tests in the same process

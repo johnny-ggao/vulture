@@ -7,10 +7,16 @@ import { createApiClient } from "./api/client";
 import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi } from "./api/runs";
+import { conversationsApi } from "./api/conversations";
 import { AuthPanel } from "./chat/AuthPanel";
 import { ConversationList } from "./chat/ConversationList";
 import { ChatView } from "./chat/ChatView";
 import { OnboardingCard } from "./chat/OnboardingCard";
+import {
+  clearActiveRunId,
+  readActiveChatState,
+  writeActiveChatState,
+} from "./chat/recoveryState";
 import { useConversations } from "./hooks/useConversations";
 import { useMessages } from "./hooks/useMessages";
 import { useRunStream } from "./hooks/useRunStream";
@@ -44,8 +50,13 @@ export function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const restoredChatRef = useRef(readActiveChatState());
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    restoredChatRef.current.conversationId,
+  );
+  const [activeRunId, setActiveRunId] = useState<string | null>(
+    restoredChatRef.current.runId,
+  );
   const sendingRunRef = useRef(false);
 
   const conversations = useConversations(apiClient);
@@ -87,10 +98,38 @@ export function App() {
   const refetchMessagesRef = useRef(messages.refetch);
   refetchMessagesRef.current = messages.refetch;
   useEffect(() => {
-    if (runStream.status === "succeeded" || runStream.status === "failed") {
+    if (
+      runStream.status === "succeeded" ||
+      runStream.status === "failed" ||
+      runStream.status === "cancelled"
+    ) {
       void refetchMessagesRef.current();
+      setActiveRunId(null);
+      clearActiveRunId();
     }
   }, [runStream.status]);
+
+  useEffect(() => {
+    writeActiveChatState({ conversationId: activeConversationId, runId: activeRunId });
+  }, [activeConversationId, activeRunId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await conversationsApi.get(apiClient, activeConversationId);
+      } catch {
+        if (cancelled) return;
+        setActiveConversationId(null);
+        setActiveRunId(null);
+        writeActiveChatState({ conversationId: null, runId: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
 
   // Switching away aborts only the local SSE reader. When switching back,
   // reattach to any queued/running run for that conversation so the in-flight
