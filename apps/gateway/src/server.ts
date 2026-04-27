@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { authMiddleware, originGuard } from "./middleware/auth";
 import { errorBoundary } from "./middleware/error";
@@ -45,6 +46,17 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const conversationStore = new ConversationStore(db);
   const messageStore = new MessageStore(db);
   const runStore = new RunStore(db);
+
+  // Ensure every agent's workspace directory exists. shell.exec sets cwd to
+  // workspace.path; if that path is missing the spawn fails with a misleading
+  // "No such file or directory". Cheap to run on every boot.
+  for (const agent of agentStore.list()) {
+    try {
+      mkdirSync(agent.workspace.path, { recursive: true });
+    } catch {
+      // ignore — surfaces later as a clear cwd error from tool_executor
+    }
+  }
 
   // One-time recovery sweep on startup. Marks any queued/running run as failed.
   const swept = runStore.recoverInflightOnStartup();
