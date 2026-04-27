@@ -13,7 +13,6 @@ export interface WorkbenchSidebarProps {
   onSelectView: (v: ViewKey) => void;
   historyOpen: boolean;
   onToggleHistory: () => void;
-  footerSlot?: ReactNode;
 }
 
 const PRIMARY: Array<{ key: ViewKey; label: string; icon: ReactNode }> = [
@@ -34,7 +33,7 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
         aria-label="Vulture Work 首页"
       >
         <span className="sidebar-brand-mark">V</span>
-        <span className="sidebar-brand-text">Vulture Work</span>
+        <span className="sidebar-brand-text">Vulture</span>
       </button>
 
       <nav className="sidebar-nav">
@@ -61,7 +60,6 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
       </nav>
 
       <nav className="sidebar-foot" aria-label="次要导航">
-        {props.footerSlot}
         <button
           type="button"
           className={"sb-item" + (props.view === "settings" ? " sb-item-active" : "")}

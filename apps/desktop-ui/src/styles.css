@@ -634,58 +634,9 @@ pre {
 .approval-card button.deny:hover { background: var(--fill-quaternary); }
 
 /* ============================================================
- * Auth panel + onboarding (Phase 3c — token-aligned)
+ * Onboarding card (zero-auth empty state)
  * ============================================================ */
 
-.auth-panel {
-  padding: 12px;
-  border-top: 1px solid rgba(15, 15, 15, 0.06);
-  font-size: 12px;
-}
-.auth-panel-section { margin-bottom: 12px; }
-.auth-panel-section h4 {
-  font-size: 11px;
-  margin: 0 0 6px;
-  text-transform: uppercase;
-  opacity: 0.7;
-  letter-spacing: 0.05em;
-  color: var(--text-tertiary);
-}
-.auth-panel-status { margin: 4px 0; color: var(--text-primary); }
-.auth-panel-error { color: var(--danger); }
-.auth-panel-meta {
-  margin: 2px 0;
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-.auth-panel-primary,
-.auth-panel-secondary {
-  width: 100%;
-  border: 0;
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  margin-top: 4px;
-  min-height: 0;
-}
-.auth-panel-primary { background: var(--brand-500); color: white; }
-.auth-panel-primary:hover { background: var(--brand-600); }
-.auth-panel-secondary {
-  background: var(--fill-quaternary);
-  color: var(--text-primary);
-  border: 1px solid var(--fill-tertiary);
-}
-.auth-panel-secondary:hover { background: var(--fill-tertiary); }
-.auth-panel-divider {
-  border: 0;
-  border-top: 1px solid rgba(15, 15, 15, 0.06);
-  margin: 12px 0;
-}
-.auth-panel-input-row { display: flex; gap: 6px; }
-.auth-panel-input-row input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--fill-tertiary); border-radius: var(--radius-sm); background: var(--bg-primary); }
-
-/* Onboarding card (zero-auth empty state) */
 .onboarding-card {
   padding: 32px;
   text-align: center;

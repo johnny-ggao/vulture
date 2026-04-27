@@ -13,7 +13,6 @@ import { profileApi } from "./api/profile";
 import { runsApi } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { AgentsPage } from "./chat/AgentsPage";
-import { AuthPanel } from "./chat/AuthPanel";
 import { ChatView } from "./chat/ChatView";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
 import { NewAgentModal } from "./chat/NewAgentModal";
@@ -288,18 +287,6 @@ export function App() {
     setActiveRunId(null);
   }
 
-  const authPanel = authStatus ? (
-    <AuthPanel
-      authStatus={authStatus}
-      onSignInWithChatGPT={handleSignInWithChatGPT}
-      onSignOutCodex={handleSignOutCodex}
-      onSaveApiKey={handleSaveApiKey}
-      onClearApiKey={handleClearApiKey}
-      browserStatus={browserStatus}
-      onStartBrowserPairing={handleStartBrowserPairing}
-    />
-  ) : null;
-
   const onboardingCard =
     authStatus?.active === "none" ? (
       <OnboardingCard
@@ -338,7 +325,6 @@ export function App() {
             }}
             historyOpen={historyOpen}
             onToggleHistory={() => setHistoryOpen((o) => !o)}
-            footerSlot={authPanel}
           />
         </div>
         <main className="chat-main-wrap content-panel">
@@ -398,7 +384,17 @@ export function App() {
               description="按 cron 计划自动唤起会话。"
             />
           ) : null}
-          {view === "settings" ? <SettingsPage authStatus={authStatus} /> : null}
+          {view === "settings" ? (
+            <SettingsPage
+              authStatus={authStatus}
+              browserStatus={browserStatus}
+              onSignInWithChatGPT={handleSignInWithChatGPT}
+              onSignOutCodex={handleSignOutCodex}
+              onSaveApiKey={handleSaveApiKey}
+              onClearApiKey={handleClearApiKey}
+              onStartBrowserPairing={handleStartBrowserPairing}
+            />
+          ) : null}
         </main>
       </div>
 
