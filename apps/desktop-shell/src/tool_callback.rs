@@ -49,6 +49,8 @@ struct InvokeRequest {
     tool: String,
     input: Value,
     workspace_path: String,
+    #[serde(default)]
+    approval_token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -163,6 +165,21 @@ async fn invoke_handler(
     State(state): State<ShellState>,
     Json(req): Json<InvokeRequest>,
 ) -> impl IntoResponse {
+    if let Some(token) = req.approval_token.as_ref() {
+        if let Ok(store) = state.audit_store.lock() {
+            let _ = store.append(
+                "tool.approval_used",
+                &json!({
+                    "callId": req.call_id,
+                    "runId": req.run_id,
+                    "tool": req.tool,
+                    "token": token,
+                }),
+            );
+        }
+        return execute(&req).await.into_response();
+    }
+
     let request = ToolRequest {
         run_id: req.run_id.clone(),
         tool: req.tool.clone(),
@@ -510,6 +527,39 @@ mod tests {
         );
 
         handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn invoke_with_approval_token_skips_policy_and_executes() {
+        let dir = std::env::temp_dir().join(format!("tcb-token-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let audit_path = dir.join("audit.sqlite");
+        let token = "x".repeat(43);
+        let handle = serve(0, token.clone(), audit_path).await.expect("serve");
+        let port = handle.bound_port;
+
+        let res: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&serde_json::json!({
+                "callId": "c1",
+                "runId": "r1",
+                "tool": "shell.exec",
+                "input": { "cwd": std::env::temp_dir().to_string_lossy(), "argv": ["echo", "approved"], "timeoutMs": 5000 },
+                "workspacePath": "",
+                "approvalToken": "approval-abc"
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        assert_eq!(res["status"].as_str().unwrap(), "completed");
+        assert!(res["output"]["stdout"].as_str().unwrap().contains("approved"));
+        handle.shutdown().await;
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[tokio::test]
