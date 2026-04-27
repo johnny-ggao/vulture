@@ -1,3 +1,5 @@
+mod codex_routes;
+
 use std::{
     collections::HashMap,
     net::SocketAddr,
@@ -20,10 +22,9 @@ use serde_json::{json, Value};
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
-use crate::codex_auth::{
-    creds_from_token_response, read_store, unix_now_ms, write_store, RefreshSingleton, TOKEN_URL,
-};
+use crate::codex_auth::RefreshSingleton;
 use crate::tool_executor::{execute_shell, ShellExecInput};
+use codex_routes::{auth_codex_handler, auth_codex_refresh_handler, CodexState};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -85,21 +86,6 @@ struct ShellState {
     token: Arc<String>,
     audit_store: Arc<Mutex<AuditStore>>,
     cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
-}
-
-#[derive(Clone, Default)]
-pub struct CodexState {
-    pub profile_dir: PathBuf,
-    pub refresh: RefreshSingleton,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexAuthResponse {
-    access_token: String,
-    account_id: String,
-    expires_at: u64,
-    email: Option<String>,
 }
 
 /// Axum middleware that checks `Authorization: Bearer <token>` on all requests
@@ -367,112 +353,6 @@ async fn cancel_handler(
         return Json(CancelResponse { cancelled: true });
     }
     Json(CancelResponse { cancelled: false })
-}
-
-async fn auth_codex_handler(State(state): State<CodexState>) -> Response {
-    let creds = match read_store(&state.profile_dir) {
-        Ok(Some(c)) => c,
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "code": "auth.codex_not_signed_in",
-                    "message": "no codex credentials found"
-                })),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "code": "internal",
-                    "message": format!("read store: {e:#}")
-                })),
-            )
-                .into_response();
-        }
-    };
-    if creds.expires_at <= unix_now_ms() {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "code": "auth.codex_expired",
-                "message": "codex token expired; refresh required"
-            })),
-        )
-            .into_response();
-    }
-    Json(CodexAuthResponse {
-        access_token: creds.access_token,
-        account_id: creds.account_id,
-        expires_at: creds.expires_at,
-        email: creds.email,
-    })
-    .into_response()
-}
-
-async fn auth_codex_refresh_handler(State(state): State<CodexState>) -> Response {
-    let creds = match read_store(&state.profile_dir) {
-        Ok(Some(c)) => c,
-        _ => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({
-                    "code": "auth.codex_not_signed_in",
-                    "message": "no codex credentials found"
-                })),
-            )
-                .into_response();
-        }
-    };
-    let response = match state
-        .refresh
-        .refresh_once(TOKEN_URL, &creds.refresh_token)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "code": "auth.codex_expired",
-                    "message": format!("refresh failed: {e:#}")
-                })),
-            )
-                .into_response();
-        }
-    };
-    let new_creds = match creds_from_token_response(response, creds.imported_from.clone()) {
-        Ok(c) => c,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({
-                    "code": "internal",
-                    "message": format!("creds from token: {e:#}")
-                })),
-            )
-                .into_response();
-        }
-    };
-    if let Err(e) = write_store(&state.profile_dir, &new_creds) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "code": "internal",
-                "message": format!("write store: {e:#}")
-            })),
-        )
-            .into_response();
-    }
-    Json(CodexAuthResponse {
-        access_token: new_creds.access_token,
-        account_id: new_creds.account_id,
-        expires_at: new_creds.expires_at,
-        email: new_creds.email,
-    })
-    .into_response()
 }
 
 pub struct ToolCallbackHandle {
@@ -770,124 +650,5 @@ mod tests {
         assert_eq!(body2["code"], "auth.token_invalid");
 
         handle.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn auth_codex_returns_404_when_store_missing() {
-        let dir = std::env::temp_dir().join(format!("tcb-codex-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let token = "x".repeat(43);
-        let handle = serve_with_codex(
-            0,
-            token.clone(),
-            dir.join("audit.sqlite"),
-            dir.clone(),
-            Default::default(),
-        )
-        .await
-        .expect("serve");
-        let port = handle.bound_port;
-
-        let res = reqwest::Client::new()
-            .get(format!("http://127.0.0.1:{port}/auth/codex"))
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(res.status(), 404);
-        let body: serde_json::Value = res.json().await.unwrap();
-        assert_eq!(body["code"], "auth.codex_not_signed_in");
-
-        handle.shutdown().await;
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[tokio::test]
-    async fn auth_codex_returns_creds_when_valid() {
-        use crate::codex_auth::{unix_now_ms, write_store, CodexCreds};
-        let dir = std::env::temp_dir().join(format!("tcb-codex-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let creds = CodexCreds {
-            access_token: "at".into(),
-            refresh_token: "rt".into(),
-            id_token: "id".into(),
-            account_id: "acc".into(),
-            email: Some("user@x".into()),
-            expires_at: unix_now_ms() + 3_600_000,
-            stored_at: unix_now_ms(),
-            imported_from: None,
-        };
-        write_store(&dir, &creds).unwrap();
-
-        let token = "x".repeat(43);
-        let handle = serve_with_codex(
-            0,
-            token.clone(),
-            dir.join("audit.sqlite"),
-            dir.clone(),
-            Default::default(),
-        )
-        .await
-        .expect("serve");
-        let port = handle.bound_port;
-
-        let res = reqwest::Client::new()
-            .get(format!("http://127.0.0.1:{port}/auth/codex"))
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(res.status(), 200);
-        let body: serde_json::Value = res.json().await.unwrap();
-        assert_eq!(body["accessToken"], "at");
-        assert_eq!(body["accountId"], "acc");
-        assert!(body["expiresAt"].as_u64().unwrap() > 0);
-
-        handle.shutdown().await;
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[tokio::test]
-    async fn auth_codex_returns_401_when_expired() {
-        use crate::codex_auth::{unix_now_ms, write_store, CodexCreds};
-        let dir = std::env::temp_dir().join(format!("tcb-codex-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let now = unix_now_ms();
-        let creds = CodexCreds {
-            access_token: "at".into(),
-            refresh_token: "rt".into(),
-            id_token: "id".into(),
-            account_id: "acc".into(),
-            email: None,
-            expires_at: now.saturating_sub(1000),
-            stored_at: now.saturating_sub(3_600_000),
-            imported_from: None,
-        };
-        write_store(&dir, &creds).unwrap();
-
-        let token = "x".repeat(43);
-        let handle = serve_with_codex(
-            0,
-            token.clone(),
-            dir.join("audit.sqlite"),
-            dir.clone(),
-            Default::default(),
-        )
-        .await
-        .expect("serve");
-        let port = handle.bound_port;
-
-        let res = reqwest::Client::new()
-            .get(format!("http://127.0.0.1:{port}/auth/codex"))
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(res.status(), 401);
-        let body: serde_json::Value = res.json().await.unwrap();
-        assert_eq!(body["code"], "auth.codex_expired");
-
-        handle.shutdown().await;
-        std::fs::remove_dir_all(&dir).ok();
     }
 }
