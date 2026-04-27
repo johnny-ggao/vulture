@@ -1,7 +1,12 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::{Duration, Instant},
+};
 
 use anyhow::{anyhow, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 const PAIRING_TOKEN_TTL: Duration = Duration::from_secs(5 * 60);
@@ -15,10 +20,13 @@ pub struct BrowserRelayStatus {
     pub relay_port: Option<u16>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct BrowserRelayState {
     paired: bool,
+    session_token: Option<String>,
     pairing_token: Option<PairingToken>,
+    pending_actions: VecDeque<BrowserActionRequest>,
+    action_waiters: HashMap<String, oneshot::Sender<BrowserActionResult>>,
     relay_port: Option<u16>,
 }
 
@@ -26,6 +34,20 @@ pub struct BrowserRelayState {
 struct PairingToken {
     value: String,
     expires_at: Instant,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserActionRequest {
+    pub request_id: String,
+    pub tool: String,
+    pub input: Value,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BrowserActionResult {
+    pub ok: bool,
+    pub value: Value,
 }
 
 impl BrowserRelayState {
@@ -44,16 +66,18 @@ impl BrowserRelayState {
         }
 
         self.paired = false;
+        self.session_token = None;
         self.relay_port = Some(relay_port);
         self.pairing_token = Some(PairingToken {
             value: Uuid::new_v4().to_string(),
             expires_at: Instant::now() + PAIRING_TOKEN_TTL,
         });
+        self.pending_actions.clear();
+        self.action_waiters.clear();
 
         Ok(self.status())
     }
 
-    #[allow(dead_code)]
     pub fn accept_token(&mut self, token: &str) -> bool {
         let Some(pairing_token) = self.pairing_token.as_ref() else {
             return false;
@@ -69,8 +93,59 @@ impl BrowserRelayState {
         }
 
         self.pairing_token = None;
+        self.session_token = Some(token.to_string());
         self.paired = true;
         true
+    }
+
+    pub fn enqueue_action(
+        &mut self,
+        tool: String,
+        input: Value,
+    ) -> Result<(BrowserActionRequest, oneshot::Receiver<BrowserActionResult>)> {
+        if !self.paired {
+            return Err(anyhow!("browser extension is not paired"));
+        }
+
+        let request = BrowserActionRequest {
+            request_id: format!("browser-{}", Uuid::new_v4()),
+            tool,
+            input,
+        };
+        let (tx, rx) = oneshot::channel();
+        self.action_waiters.insert(request.request_id.clone(), tx);
+        self.pending_actions.push_back(request.clone());
+        Ok((request, rx))
+    }
+
+    pub fn take_next_action(&mut self, token: &str) -> Result<Option<BrowserActionRequest>> {
+        if !self.is_authorized(token) {
+            return Err(anyhow!("browser extension is not paired"));
+        }
+
+        Ok(self.pending_actions.pop_front())
+    }
+
+    pub fn complete_action(
+        &mut self,
+        token: &str,
+        request_id: &str,
+        ok: bool,
+        value: Value,
+    ) -> bool {
+        if !self.is_authorized(token) {
+            return false;
+        }
+
+        let Some(waiter) = self.action_waiters.remove(request_id) else {
+            return false;
+        };
+        let _ = waiter.send(BrowserActionResult { ok, value });
+        true
+    }
+
+    fn is_authorized(&self, token: &str) -> bool {
+        self.paired && self.session_token.as_deref() == Some(token)
     }
 
     fn current_pairing_token(&mut self) -> Option<String> {
@@ -128,10 +203,13 @@ mod tests {
     fn expired_pairing_token_is_hidden_and_rejected() {
         let mut state = BrowserRelayState {
             paired: false,
+            session_token: None,
             pairing_token: Some(PairingToken {
                 value: "expired-token".to_string(),
                 expires_at: Instant::now() - Duration::from_secs(1),
             }),
+            pending_actions: Default::default(),
+            action_waiters: Default::default(),
             relay_port: Some(9444),
         };
 
@@ -142,5 +220,36 @@ mod tests {
         assert_eq!(status.pairing_token, None);
         assert!(!state.accept_token("expired-token"));
         assert!(state.pairing_token.is_none());
+    }
+
+    #[tokio::test]
+    async fn paired_extension_can_take_and_complete_browser_action() {
+        let mut state = BrowserRelayState::default();
+        let status = state
+            .enable_pairing(9444)
+            .expect("pairing should start");
+        let token = status.pairing_token.expect("token should be present");
+        assert!(state.accept_token(&token));
+
+        let (request, result) = state
+            .enqueue_action("browser.snapshot".to_string(), serde_json::json!({}))
+            .expect("paired relay should accept actions");
+        assert_eq!(request.tool, "browser.snapshot");
+
+        let taken = state
+            .take_next_action(&token)
+            .expect("authorized token should take an action")
+            .expect("pending action should exist");
+        assert_eq!(taken.request_id, request.request_id);
+
+        assert!(state.complete_action(
+            &token,
+            &request.request_id,
+            true,
+            serde_json::json!({ "title": "Example" }),
+        ));
+        let result = result.await.expect("result should be delivered");
+        assert!(result.ok);
+        assert_eq!(result.value["title"], "Example");
     }
 }

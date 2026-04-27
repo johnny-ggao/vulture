@@ -1,7 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { AuthStatusView, ChatGPTLoginStart } from "./commandCenterTypes";
+import type {
+  AuthStatusView,
+  BrowserRelayStatus,
+  ChatGPTLoginStart,
+} from "./commandCenterTypes";
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
 import { agentsApi, type Agent } from "./api/agents";
@@ -50,6 +54,7 @@ export function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
+  const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
   const restoredChatRef = useRef(readActiveChatState());
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     restoredChatRef.current.conversationId,
@@ -85,10 +90,22 @@ export function App() {
     [],
   );
 
+  const refreshBrowserStatus = useMemo(
+    () => async () => {
+      try {
+        setBrowserStatus(await invoke<BrowserRelayStatus>("get_browser_status"));
+      } catch {
+        setBrowserStatus(null);
+      }
+    },
+    [],
+  );
+
   // Bootstrap auth status once on mount (independent of gateway availability).
   useEffect(() => {
     void refreshAuthStatus();
-  }, [refreshAuthStatus]);
+    void refreshBrowserStatus();
+  }, [refreshAuthStatus, refreshBrowserStatus]);
 
   // When a run reaches a terminal status, refetch the conversation so the
   // assistant message persisted by the gateway appears in the chronological
@@ -219,6 +236,14 @@ export function App() {
     }
   }
 
+  async function handleStartBrowserPairing() {
+    try {
+      setBrowserStatus(await invoke<BrowserRelayStatus>("start_browser_pairing"));
+    } catch (cause) {
+      console.error("Browser pairing failed", cause);
+    }
+  }
+
   async function handleSend(input: string) {
     if (!apiClient || !selectedAgentId) return;
     sendingRunRef.current = true;
@@ -261,6 +286,8 @@ export function App() {
       onSignOutCodex={handleSignOutCodex}
       onSaveApiKey={handleSaveApiKey}
       onClearApiKey={handleClearApiKey}
+      browserStatus={browserStatus}
+      onStartBrowserPairing={handleStartBrowserPairing}
     />
   ) : null;
 

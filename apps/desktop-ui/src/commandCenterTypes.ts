@@ -38,3 +38,10 @@ export interface ChatGPTLoginStart {
   url: string;
   alreadyAuthenticated: boolean;
 }
+
+export interface BrowserRelayStatus {
+  enabled: boolean;
+  paired: boolean;
+  pairingToken?: string | null;
+  relayPort?: number | null;
+}

@@ -3,10 +3,17 @@
   "name": "Vulture Browser Relay",
   "version": "0.1.0",
   "permissions": ["tabs", "storage"],
+  "host_permissions": ["http://127.0.0.1/*", "<all_urls>"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"]
+    }
+  ],
   "action": {
     "default_popup": "src/popup.html"
   }

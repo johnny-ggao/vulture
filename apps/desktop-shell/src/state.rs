@@ -34,7 +34,7 @@ pub struct AppState {
     profile_dir: PathBuf,
     openai_secret_ref: String,
     secret_store: Box<dyn SecretStore>,
-    browser_relay: Mutex<BrowserRelayState>,
+    browser_relay: Arc<Mutex<BrowserRelayState>>,
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
     /// Shared with the supervisor task so the loop can publish state transitions
     /// (Starting → Running → Restarting → Faulted) that the UI reads via the
@@ -101,7 +101,7 @@ impl AppState {
             profile_dir,
             openai_secret_ref,
             secret_store,
-            browser_relay: Mutex::new(BrowserRelayState::default()),
+            browser_relay: Arc::new(Mutex::new(BrowserRelayState::default())),
             runtime_descriptor: RwLock::new(None),
             supervisor_status: Arc::new(RwLock::new(SupervisorStatus {
                 state: crate::supervisor::SupervisorState::Starting,
@@ -147,7 +147,11 @@ impl AppState {
     }
 
     pub fn start_browser_pairing(&self) -> Result<BrowserRelayStatus> {
-        self.browser_relay()?.enable_pairing(38421)
+        let relay_port = self
+            .runtime_descriptor()
+            .map(|descriptor| descriptor.shell.port)
+            .ok_or_else(|| anyhow!("runtime descriptor is not ready"))?;
+        self.browser_relay()?.enable_pairing(relay_port)
     }
 
     fn browser_relay(&self) -> Result<MutexGuard<'_, BrowserRelayState>> {
@@ -184,6 +188,10 @@ impl AppState {
 
     pub fn profile_dir(&self) -> PathBuf {
         self.profile_dir.clone()
+    }
+
+    pub fn browser_relay_handle(&self) -> Arc<Mutex<BrowserRelayState>> {
+        self.browser_relay.clone()
     }
 
     pub fn secret_store(&self) -> &dyn SecretStore {

@@ -75,12 +75,13 @@ async fn main() -> Result<()> {
         .join("default")
         .join("permissions")
         .join("audit.sqlite");
-    let _shell_server = tool_callback::serve_with_codex(
+    let _shell_server = tool_callback::serve_with_codex_and_browser_relay(
         shell_port,
         token.clone(),
         audit_db_path,
         app_state.profile_dir(),
         app_state.codex_refresh.clone(),
+        app_state.browser_relay_handle(),
     )
     .await?;
 

@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Context, Result};
 use axum::{
     body::Body,
-    extract::{Request, State},
+    extract::{Query, Request, State},
     http::{HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -22,6 +22,10 @@ use serde_json::{json, Value};
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
+use crate::browser::{
+    protocol::BrowserRelayMessage,
+    relay::{BrowserActionResult, BrowserRelayState},
+};
 use crate::codex_auth::RefreshSingleton;
 use crate::tool_executor::{execute_shell, ShellExecInput};
 use codex_routes::{auth_codex_handler, auth_codex_refresh_handler, CodexState};
@@ -86,6 +90,7 @@ struct ShellState {
     token: Arc<String>,
     audit_store: Arc<Mutex<AuditStore>>,
     cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    browser_relay: Arc<Mutex<BrowserRelayState>>,
 }
 
 /// Axum middleware that checks `Authorization: Bearer <token>` on all requests
@@ -141,6 +146,12 @@ fn build_router(state: ShellState, codex_state: CodexState) -> Router {
         ))
         .with_state(codex_state);
 
+    let browser_router = Router::new()
+        .route("/browser/hello", post(browser_hello_handler))
+        .route("/browser/requests", get(browser_requests_handler))
+        .route("/browser/results", post(browser_results_handler))
+        .with_state(state.clone());
+
     // /healthz is public (no auth) — supervisor liveness probe.
     Router::new()
         .route(
@@ -154,6 +165,7 @@ fn build_router(state: ShellState, codex_state: CodexState) -> Router {
         )
         .merge(tools_router)
         .merge(codex_router)
+        .merge(browser_router)
 }
 
 async fn manifest_handler() -> impl IntoResponse {
@@ -194,7 +206,7 @@ async fn invoke_handler(
                 }),
             );
         }
-        return execute(&req).await.into_response();
+        return execute(&state, &req).await.into_response();
     }
 
     let request = ToolRequest {
@@ -264,7 +276,7 @@ async fn invoke_handler(
                 .into_response()
         }
         PolicyDecision::Allow => {
-            let result = execute(&req).await;
+            let result = execute(&state, &req).await;
             if let Ok(store) = state.audit_store.lock() {
                 let _ = store.append(
                     "tool.completed",
@@ -280,7 +292,7 @@ async fn invoke_handler(
     }
 }
 
-async fn execute(req: &InvokeRequest) -> impl IntoResponse {
+async fn execute(state: &ShellState, req: &InvokeRequest) -> impl IntoResponse {
     if req.tool == "shell.exec" {
         let parsed: ShellExecInput = match serde_json::from_value(req.input.clone()) {
             Ok(p) => p,
@@ -316,6 +328,69 @@ async fn execute(req: &InvokeRequest) -> impl IntoResponse {
                 }),
             ),
         }
+    } else if matches!(req.tool.as_str(), "browser.snapshot" | "browser.click") {
+        let receiver = {
+            let mut relay = state.browser_relay.lock().expect("browser relay lock poisoned");
+            match relay.enqueue_action(req.tool.clone(), req.input.clone()) {
+                Ok((_request, receiver)) => receiver,
+                Err(err) => {
+                    return (
+                        StatusCode::OK,
+                        Json(InvokeResponse::Failed {
+                            call_id: req.call_id.clone(),
+                            error: AppError {
+                                code: "tool.browser_not_paired".into(),
+                                message: format!("{err:#}"),
+                            },
+                        }),
+                    );
+                }
+            }
+        };
+
+        match tokio::time::timeout(std::time::Duration::from_secs(30), receiver).await {
+            Ok(Ok(BrowserActionResult { ok: true, value })) => (
+                StatusCode::OK,
+                Json(InvokeResponse::Completed {
+                    call_id: req.call_id.clone(),
+                    output: value,
+                }),
+            ),
+            Ok(Ok(BrowserActionResult { ok: false, value })) => (
+                StatusCode::OK,
+                Json(InvokeResponse::Failed {
+                    call_id: req.call_id.clone(),
+                    error: AppError {
+                        code: "tool.execution_failed".into(),
+                        message: value
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("browser action failed")
+                            .to_string(),
+                    },
+                }),
+            ),
+            Ok(Err(_closed)) => (
+                StatusCode::OK,
+                Json(InvokeResponse::Failed {
+                    call_id: req.call_id.clone(),
+                    error: AppError {
+                        code: "tool.execution_failed".into(),
+                        message: "browser action was cancelled".into(),
+                    },
+                }),
+            ),
+            Err(_elapsed) => (
+                StatusCode::OK,
+                Json(InvokeResponse::Failed {
+                    call_id: req.call_id.clone(),
+                    error: AppError {
+                        code: "tool.execution_failed".into(),
+                        message: "browser action timed out".into(),
+                    },
+                }),
+            ),
+        }
     } else {
         (
             StatusCode::OK,
@@ -328,6 +403,81 @@ async fn execute(req: &InvokeRequest) -> impl IntoResponse {
             }),
         )
     }
+}
+
+async fn browser_hello_handler(
+    State(state): State<ShellState>,
+    Json(message): Json<BrowserRelayMessage>,
+) -> impl IntoResponse {
+    let BrowserRelayMessage::ExtensionHello { pairing_token, .. } = message else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "message": "expected Extension.hello" })),
+        );
+    };
+
+    let ok = state
+        .browser_relay
+        .lock()
+        .expect("browser relay lock poisoned")
+        .accept_token(&pairing_token);
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::UNAUTHORIZED
+    };
+    (status, Json(json!({ "ok": ok })))
+}
+
+#[derive(Deserialize)]
+struct BrowserRequestQuery {
+    token: String,
+}
+
+async fn browser_requests_handler(
+    State(state): State<ShellState>,
+    Query(query): Query<BrowserRequestQuery>,
+) -> impl IntoResponse {
+    let action = state
+        .browser_relay
+        .lock()
+        .expect("browser relay lock poisoned")
+        .take_next_action(&query.token);
+
+    match action {
+        Ok(Some(action)) => (StatusCode::OK, Json(serde_json::to_value(action).unwrap())),
+        Ok(None) => (StatusCode::NO_CONTENT, Json(Value::Null)),
+        Err(err) => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "code": "auth.token_invalid", "message": format!("{err:#}") })),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserResultRequest {
+    token: String,
+    request_id: String,
+    ok: bool,
+    value: Value,
+}
+
+async fn browser_results_handler(
+    State(state): State<ShellState>,
+    Json(req): Json<BrowserResultRequest>,
+) -> impl IntoResponse {
+    let ok = state
+        .browser_relay
+        .lock()
+        .expect("browser relay lock poisoned")
+        .complete_action(&req.token, &req.request_id, req.ok, req.value);
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::NOT_FOUND
+    };
+    (status, Json(json!({ "ok": ok })))
 }
 
 #[derive(Deserialize)]
@@ -384,12 +534,13 @@ impl ToolCallbackHandle {
 /// always return 404 (`std::env::temp_dir()` won't have a codex_auth.json).
 #[allow(dead_code)]
 pub async fn serve(port: u16, token: String, audit_db_path: PathBuf) -> Result<ToolCallbackHandle> {
-    serve_with_codex(
+    serve_with_codex_and_browser_relay(
         port,
         token,
         audit_db_path,
         std::env::temp_dir(),
         RefreshSingleton::default(),
+        Arc::new(Mutex::new(BrowserRelayState::default())),
     )
     .await
 }
@@ -405,12 +556,32 @@ pub async fn serve(port: u16, token: String, audit_db_path: PathBuf) -> Result<T
 ///   `/auth/codex` endpoints.
 /// - `refresh`: Shared `RefreshSingleton` ensuring only one refresh HTTP
 ///   request is in flight at any time across the whole desktop process.
+#[allow(dead_code)]
 pub async fn serve_with_codex(
     port: u16,
     token: String,
     audit_db_path: PathBuf,
     profile_dir: PathBuf,
     refresh: RefreshSingleton,
+) -> Result<ToolCallbackHandle> {
+    serve_with_codex_and_browser_relay(
+        port,
+        token,
+        audit_db_path,
+        profile_dir,
+        refresh,
+        Arc::new(Mutex::new(BrowserRelayState::default())),
+    )
+    .await
+}
+
+pub async fn serve_with_codex_and_browser_relay(
+    port: u16,
+    token: String,
+    audit_db_path: PathBuf,
+    profile_dir: PathBuf,
+    refresh: RefreshSingleton,
+    browser_relay: Arc<Mutex<BrowserRelayState>>,
 ) -> Result<ToolCallbackHandle> {
     let audit_store = AuditStore::open(&audit_db_path)
         .with_context(|| format!("open audit db at {}", audit_db_path.display()))?;
@@ -419,6 +590,7 @@ pub async fn serve_with_codex(
         token: Arc::new(token),
         audit_store: Arc::new(Mutex::new(audit_store)),
         cancel_signals: Arc::new(Mutex::new(HashMap::new())),
+        browser_relay,
     };
     let codex_state = CodexState {
         profile_dir,
@@ -639,6 +811,116 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("approved"));
+        handle.shutdown().await;
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn browser_snapshot_waits_for_extension_result() {
+        let relay = Arc::new(Mutex::new(crate::browser::relay::BrowserRelayState::default()));
+        let pairing_token = {
+            let mut relay_state = relay.lock().expect("relay lock");
+            relay_state
+                .enable_pairing(9444)
+                .expect("pairing should start")
+                .pairing_token
+                .expect("token should be present")
+        };
+        let dir = std::env::temp_dir().join(format!("tcb-browser-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let audit_path = dir.join("audit.sqlite");
+        let token = "x".repeat(43);
+        let handle = serve_with_codex_and_browser_relay(
+            0,
+            token.clone(),
+            audit_path,
+            std::env::temp_dir(),
+            RefreshSingleton::default(),
+            relay,
+        )
+        .await
+        .expect("serve");
+        let port = handle.bound_port;
+
+        let hello: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/browser/hello"))
+            .json(&serde_json::json!({
+                "method": "Extension.hello",
+                "params": {
+                    "protocol_version": 1,
+                    "extension_version": "0.1.0",
+                    "pairing_token": pairing_token
+                }
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(hello["ok"], true);
+
+        let invoke = tokio::spawn({
+            let token = token.clone();
+            async move {
+                reqwest::Client::new()
+                    .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+                    .header("Authorization", format!("Bearer {}", token))
+                    .json(&serde_json::json!({
+                        "callId": "c-browser",
+                        "runId": "r-browser",
+                        "tool": "browser.snapshot",
+                        "input": {},
+                        "workspacePath": "",
+                        "approvalToken": "approval-browser"
+                    }))
+                    .send()
+                    .await
+                    .unwrap()
+                    .json::<serde_json::Value>()
+                    .await
+                    .unwrap()
+            }
+        });
+
+        let mut action = serde_json::Value::Null;
+        for _ in 0..20 {
+            let response = reqwest::Client::new()
+                .get(format!(
+                    "http://127.0.0.1:{port}/browser/requests?token={}",
+                    pairing_token
+                ))
+                .send()
+                .await
+                .unwrap();
+            if response.status() == reqwest::StatusCode::OK {
+                action = response.json().await.unwrap();
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(action["tool"], "browser.snapshot");
+
+        let result: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/browser/results"))
+            .json(&serde_json::json!({
+                "token": pairing_token,
+                "requestId": action["requestId"],
+                "ok": true,
+                "value": { "title": "Example", "text": "Hello from browser" }
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(result["ok"], true);
+
+        let completed = invoke.await.expect("invoke task should complete");
+        assert_eq!(completed["status"], "completed");
+        assert_eq!(completed["output"]["title"], "Example");
+
         handle.shutdown().await;
         std::fs::remove_dir_all(dir).ok();
     }

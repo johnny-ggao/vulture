@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AuthStatusView } from "../commandCenterTypes";
+import type { AuthStatusView, BrowserRelayStatus } from "../commandCenterTypes";
 
 export interface AuthPanelProps {
   authStatus: AuthStatusView;
@@ -7,9 +7,11 @@ export interface AuthPanelProps {
   onSignOutCodex: () => Promise<void>;
   onSaveApiKey: (apiKey: string) => Promise<void>;
   onClearApiKey: () => Promise<void>;
+  browserStatus: BrowserRelayStatus | null;
+  onStartBrowserPairing: () => Promise<void>;
 }
 
-type BusyAction = "signin" | "signout" | "savekey" | null;
+type BusyAction = "signin" | "signout" | "savekey" | "browser" | null;
 
 export function AuthPanel(props: AuthPanelProps) {
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -128,6 +130,33 @@ export function AuthPanel(props: AuthPanelProps) {
             </div>
           </>
         )}
+      </div>
+
+      <hr className="auth-panel-divider" />
+
+      <div className="auth-panel-section">
+        <h4>Browser Relay</h4>
+        <p className="auth-panel-status">
+          {props.browserStatus?.paired
+            ? "⦿ 已连接"
+            : props.browserStatus?.enabled
+              ? "◐ 等待扩展配对"
+              : "◯ 未启用"}
+        </p>
+        {props.browserStatus?.relayPort ? (
+          <p className="auth-panel-meta">端口：{props.browserStatus.relayPort}</p>
+        ) : null}
+        {props.browserStatus?.pairingToken ? (
+          <code className="auth-panel-code">{props.browserStatus.pairingToken}</code>
+        ) : null}
+        <button
+          type="button"
+          className="auth-panel-secondary"
+          disabled={busy !== null}
+          onClick={() => safeAction("browser", props.onStartBrowserPairing)}
+        >
+          {busy === "browser" ? "..." : "Start pairing"}
+        </button>
       </div>
     </div>
   );

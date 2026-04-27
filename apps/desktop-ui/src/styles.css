@@ -543,6 +543,15 @@ pre {
   opacity: 0.6;
   font-size: 11px;
 }
+.auth-panel-code {
+  display: block;
+  margin: 6px 0 4px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  background: rgba(80, 80, 100, 0.18);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 .auth-panel-primary,
 .auth-panel-secondary {
   width: 100%;

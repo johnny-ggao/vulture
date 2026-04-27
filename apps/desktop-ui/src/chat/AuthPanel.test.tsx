@@ -1,7 +1,7 @@
 import { describe, expect, test, mock } from "bun:test";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { AuthPanel } from "./AuthPanel";
-import type { AuthStatusView } from "../commandCenterTypes";
+import type { AuthStatusView, BrowserRelayStatus } from "../commandCenterTypes";
 
 const noAuthStatus: AuthStatusView = {
   active: "none",
@@ -25,6 +25,13 @@ const codexExpired: AuthStatusView = {
   apiKey: { state: "not_set" },
 };
 
+const browserStatus: BrowserRelayStatus = {
+  enabled: false,
+  paired: false,
+  pairingToken: null,
+  relayPort: null,
+};
+
 describe("AuthPanel", () => {
   test("renders signed-in state with email", () => {
     render(
@@ -34,6 +41,8 @@ describe("AuthPanel", () => {
         onSignOutCodex={async () => {}}
         onSaveApiKey={async () => {}}
         onClearApiKey={async () => {}}
+        browserStatus={browserStatus}
+        onStartBrowserPairing={async () => {}}
       />,
     );
     expect(screen.getByText(/user@example.com/)).toBeDefined();
@@ -48,6 +57,8 @@ describe("AuthPanel", () => {
         onSignOutCodex={async () => {}}
         onSaveApiKey={async () => {}}
         onClearApiKey={async () => {}}
+        browserStatus={browserStatus}
+        onStartBrowserPairing={async () => {}}
       />,
     );
     expect(screen.getByText(/Sign in with ChatGPT/i)).toBeDefined();
@@ -62,6 +73,8 @@ describe("AuthPanel", () => {
         onSignOutCodex={async () => {}}
         onSaveApiKey={async () => {}}
         onClearApiKey={async () => {}}
+        browserStatus={browserStatus}
+        onStartBrowserPairing={async () => {}}
       />,
     );
     fireEvent.click(screen.getByText(/Sign in with ChatGPT/i));
@@ -76,6 +89,8 @@ describe("AuthPanel", () => {
         onSignOutCodex={async () => {}}
         onSaveApiKey={async () => {}}
         onClearApiKey={async () => {}}
+        browserStatus={browserStatus}
+        onStartBrowserPairing={async () => {}}
       />,
     );
     expect(container.textContent).toContain("已过期");
@@ -90,11 +105,38 @@ describe("AuthPanel", () => {
         onSignOutCodex={async () => {}}
         onSaveApiKey={onSave}
         onClearApiKey={async () => {}}
+        browserStatus={browserStatus}
+        onStartBrowserPairing={async () => {}}
       />,
     );
     const input = screen.getByPlaceholderText(/sk-/) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "sk-abc" } });
     fireEvent.click(screen.getByText(/Save/i));
     expect(onSave).toHaveBeenCalledWith("sk-abc");
+  });
+
+  test("browser pairing shows relay token and calls callback", () => {
+    const onStartBrowserPairing = mock(async () => {});
+    render(
+      <AuthPanel
+        authStatus={noAuthStatus}
+        onSignInWithChatGPT={async () => {}}
+        onSignOutCodex={async () => {}}
+        onSaveApiKey={async () => {}}
+        onClearApiKey={async () => {}}
+        browserStatus={{
+          enabled: true,
+          paired: false,
+          pairingToken: "pair-token",
+          relayPort: 4199,
+        }}
+        onStartBrowserPairing={onStartBrowserPairing}
+      />,
+    );
+
+    expect(screen.getByText("pair-token")).toBeDefined();
+    expect(screen.getByText(/端口：4199/)).toBeDefined();
+    fireEvent.click(screen.getByText(/Start pairing/i));
+    expect(onStartBrowserPairing).toHaveBeenCalled();
   });
 });

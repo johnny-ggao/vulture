@@ -27,6 +27,22 @@ mock.module("@tauri-apps/api/core", () => ({
         apiKey: { state: "not_set" },
       };
     }
+    if (cmd === "get_browser_status") {
+      return {
+        enabled: false,
+        paired: false,
+        pairingToken: null,
+        relayPort: null,
+      };
+    }
+    if (cmd === "start_browser_pairing") {
+      return {
+        enabled: true,
+        paired: false,
+        pairingToken: "pair-token",
+        relayPort: 4199,
+      };
+    }
     if (cmd === "get_openai_auth_status") {
       return { configured: false, source: "missing" };
     }
