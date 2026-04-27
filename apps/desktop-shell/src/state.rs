@@ -8,13 +8,11 @@ use tokio::sync::Notify;
 
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
-use serde_json::json;
 use vulture_core::{AppPaths, Profile, RuntimeDescriptor, StorageLayout};
-use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
 use crate::{
     auth::{
-        auth_status, resolve_agent_runtime_auth, resolve_openai_api_key, AgentRuntimeAuth,
+        auth_status, resolve_openai_api_key,
         KeychainSecretStore, OpenAiAuthStatus, SecretStore, SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
@@ -35,10 +33,6 @@ pub struct AppState {
     profile_dir: PathBuf,
     openai_secret_ref: String,
     secret_store: Box<dyn SecretStore>,
-    #[allow(dead_code)]
-    policy_engine: PolicyEngine,
-    #[allow(dead_code)]
-    audit_store: Mutex<AuditStore>,
     browser_relay: Mutex<BrowserRelayState>,
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
     /// Shared with the supervisor task so the loop can publish state transitions
@@ -88,10 +82,6 @@ impl AppState {
             })?)
             .with_context(|| format!("failed to parse profile at {}", profile_path.display()))?;
         let openai_secret_ref = profile.openai_secret_ref.clone();
-        let audit_path = profile_dir.join("permissions").join("audit.sqlite");
-        let audit_store = AuditStore::open(&audit_path).with_context(|| {
-            format!("failed to open audit database at {}", audit_path.display())
-        })?;
 
         Ok(Self {
             profile: ProfileView {
@@ -102,8 +92,6 @@ impl AppState {
             profile_dir,
             openai_secret_ref,
             secret_store,
-            policy_engine: PolicyEngine::default(),
-            audit_store: Mutex::new(audit_store),
             browser_relay: Mutex::new(BrowserRelayState::default()),
             runtime_descriptor: RwLock::new(None),
             supervisor_status: Arc::new(RwLock::new(SupervisorStatus {
@@ -144,49 +132,12 @@ impl AppState {
         resolve_openai_api_key(self.secret_store.as_ref(), &self.openai_secret_ref)
     }
 
-    #[allow(dead_code)]
-    pub fn resolve_agent_runtime_auth(&self) -> Result<AgentRuntimeAuth> {
-        resolve_agent_runtime_auth(self.secret_store.as_ref(), &self.openai_secret_ref)
-    }
-
-    #[allow(dead_code)]
-    pub fn decide_tool_request(&self, request: &ToolRequest) -> Result<PolicyDecision> {
-        self.audit_store()?.append(
-            "tool.requested",
-            &json!({
-                "runId": request.run_id,
-                "tool": request.tool,
-                "input": request.input,
-            }),
-        )?;
-
-        let decision = self.policy_engine.decide(request);
-
-        self.audit_store()?.append(
-            "tool.policy_decision",
-            &json!({
-                "runId": request.run_id,
-                "tool": request.tool,
-                "decision": decision,
-            }),
-        )?;
-
-        Ok(decision)
-    }
-
     pub fn browser_status(&self) -> Result<BrowserRelayStatus> {
         Ok(self.browser_relay()?.status())
     }
 
     pub fn start_browser_pairing(&self) -> Result<BrowserRelayStatus> {
         self.browser_relay()?.enable_pairing(38421)
-    }
-
-    #[allow(dead_code)]
-    fn audit_store(&self) -> Result<MutexGuard<'_, AuditStore>> {
-        self.audit_store
-            .lock()
-            .map_err(|_| anyhow!("audit store lock poisoned"))
     }
 
     fn browser_relay(&self) -> Result<MutexGuard<'_, BrowserRelayState>> {
@@ -204,14 +155,6 @@ impl AppState {
 
     pub fn runtime_descriptor(&self) -> Option<RuntimeDescriptor> {
         self.runtime_descriptor.read().expect("rt lock poisoned").clone()
-    }
-
-    #[allow(dead_code)]
-    pub fn gateway_client(&self) -> anyhow::Result<crate::gateway_client::GatewayClient> {
-        let rt = self
-            .runtime_descriptor()
-            .ok_or_else(|| anyhow::anyhow!("runtime descriptor not initialized"))?;
-        crate::gateway_client::GatewayClient::from_runtime(&rt)
     }
 
     pub fn supervisor_status(&self) -> SupervisorStatus {
@@ -255,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn new_for_root_creates_profile_json_and_audit_database() {
+    fn new_for_root_creates_profile_json() {
         let root = temp_root();
 
         let state = AppState::new_for_root(&root).expect("app state should initialize");
@@ -264,9 +207,6 @@ mod tests {
         assert_eq!(state.profile().name, "Default");
         assert_eq!(state.profile().active_agent_id, "local-work-agent");
         assert!(root.join("profiles/default/profile.json").is_file());
-        assert!(root
-            .join("profiles/default/permissions/audit.sqlite")
-            .is_file());
 
         fs::remove_dir_all(root).expect("test root should be removable");
     }

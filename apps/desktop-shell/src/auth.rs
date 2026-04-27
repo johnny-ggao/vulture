@@ -28,13 +28,6 @@ pub enum AuthSource {
     Missing,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum AgentRuntimeAuth {
-    ApiKey(String),
-    Codex,
-}
-
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetOpenAiApiKeyRequest {
@@ -187,22 +180,6 @@ fn resolve_openai_api_key_with_env(
     }
 
     Err(anyhow!("OpenAI API key required."))
-}
-
-#[allow(dead_code)]
-pub fn resolve_agent_runtime_auth(
-    secret_store: &dyn SecretStore,
-    secret_ref: &str,
-) -> Result<AgentRuntimeAuth> {
-    if let Ok(api_key) = resolve_openai_api_key(secret_store, secret_ref) {
-        return Ok(AgentRuntimeAuth::ApiKey(api_key));
-    }
-
-    if codex_chatgpt_login_available() {
-        return Ok(AgentRuntimeAuth::Codex);
-    }
-
-    Err(anyhow!("OpenAI API key or Codex ChatGPT login required."))
 }
 
 pub fn codex_chatgpt_login_available() -> bool {

@@ -1,7 +1,6 @@
 mod auth;
 mod browser;
 mod commands;
-mod gateway_client;
 mod runtime;
 mod single_instance;
 mod state;
@@ -66,8 +65,8 @@ async fn main() -> Result<()> {
     app_state.set_runtime_descriptor(descriptor.clone());
 
     // 5. Shell HTTP callback server (held for the run; Drop on exit).
-    //    The audit DB lives next to AppState's own AuditStore; WAL mode
-    //    makes two concurrent handles to the same file safe.
+    //    The audit DB is owned exclusively by tool_callback::serve(); the path
+    //    is derived from the profile dir for convenience.
     let audit_db_path = root
         .join("profiles")
         .join("default")
