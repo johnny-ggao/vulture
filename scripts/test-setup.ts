@@ -14,6 +14,15 @@ if (!(globalThis as { document?: unknown }).document) {
   const nativeTransformStream = globalThis.TransformStream;
   const nativeAbortController = globalThis.AbortController;
   const nativeAbortSignal = globalThis.AbortSignal;
+  // Timers — happy-dom replaces setTimeout/setInterval with its virtual-clock
+  // implementations that never fire under bun's real-time test runner. Any
+  // backend code that relies on them (ApprovalQueue.wait timeout, retry
+  // backoff, etc.) hangs the test forever. Keep the native bun timers.
+  const nativeSetTimeout = globalThis.setTimeout;
+  const nativeClearTimeout = globalThis.clearTimeout;
+  const nativeSetInterval = globalThis.setInterval;
+  const nativeClearInterval = globalThis.clearInterval;
+  const nativeQueueMicrotask = globalThis.queueMicrotask;
 
   GlobalRegistrator.register();
 
@@ -26,6 +35,11 @@ if (!(globalThis as { document?: unknown }).document) {
   globalThis.TransformStream = nativeTransformStream;
   globalThis.AbortController = nativeAbortController;
   globalThis.AbortSignal = nativeAbortSignal;
+  globalThis.setTimeout = nativeSetTimeout;
+  globalThis.clearTimeout = nativeClearTimeout;
+  globalThis.setInterval = nativeSetInterval;
+  globalThis.clearInterval = nativeClearInterval;
+  globalThis.queueMicrotask = nativeQueueMicrotask;
 }
 
 // Auto-cleanup after each test so multiple component tests in the same process
