@@ -13,7 +13,9 @@ describe("ToolBlock", () => {
       />,
     );
     expect(screen.getByText("shell.exec")).toBeDefined();
-    expect(screen.getByText(/ls/)).toBeDefined();
+    // The argv "ls" appears twice: once in the inputSummary in the header,
+    // once in the JSON body (running auto-expands per Q5 spec).
+    expect(screen.getAllByText(/ls/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("运行中")).toBeDefined();
   });
 

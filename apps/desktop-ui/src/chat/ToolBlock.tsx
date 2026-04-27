@@ -41,12 +41,10 @@ export function ToolBlock(props: ToolBlockProps) {
       </button>
       {open ? (
         <div className="tool-block-body">
-          {props.status !== "running" ? (
-            <div className="tool-block-input-full">
-              <span className="label">Input</span>
-              <pre>{JSON.stringify(props.input, null, 2)}</pre>
-            </div>
-          ) : null}
+          <div className="tool-block-input-full">
+            <span className="label">Input</span>
+            <pre>{JSON.stringify(props.input, null, 2)}</pre>
+          </div>
           {props.output !== undefined ? (
             <div className="tool-block-output">
               <span className="label">Output</span>
