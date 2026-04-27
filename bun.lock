@@ -40,6 +40,7 @@
         "@vulture/llm": "workspace:*",
         "@vulture/protocol": "workspace:*",
         "hono": "^4.6.0",
+        "openai": "^6.26.0",
         "zod": "^4.0.0",
       },
       "devDependencies": {
