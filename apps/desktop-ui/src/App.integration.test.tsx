@@ -106,7 +106,7 @@ const [{ App }, { buildServer }] = await Promise.all([
 ]);
 const { readActiveChatState, writeActiveChatState, writeRunLastSeq } = await import("./chat/recoveryState");
 
-const { render, screen, fireEvent, waitFor } = await import(
+const { render, screen, fireEvent, waitFor, within } = await import(
   "@testing-library/react/pure"
 );
 
@@ -470,6 +470,47 @@ describe("App integration", () => {
       },
       { timeout: 5000 },
     );
+
+    cleanup();
+  }, 15_000);
+
+  test("agents page exposes editable agent configuration", async () => {
+    let savedPatch: unknown = null;
+    const { cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "PATCH" && path === "/v1/agents/local-work-agent") {
+          savedPatch = JSON.parse(String(init?.body ?? "{}"));
+        }
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
+    await waitFor(() => {
+      expect(screen.getByText("新建智能体")).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Local Work Agent/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent 配置")).toBeDefined();
+      expect(screen.getByText("Workspace")).toBeDefined();
+      expect(screen.getByLabelText("Skills")).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByLabelText("Skills"), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(savedPatch).toMatchObject({ skills: [] });
+    });
 
     cleanup();
   }, 15_000);

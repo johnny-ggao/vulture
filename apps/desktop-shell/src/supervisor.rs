@@ -120,7 +120,6 @@ pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
         )
         .env("VULTURE_SHELL_PID", spec.shell_pid.to_string())
         .env("VULTURE_PROFILE_DIR", profile_dir)
-        .env("VULTURE_DEFAULT_WORKSPACE", &spec.workdir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -229,6 +228,42 @@ mod tests {
 
         let mut running = spawn_gateway(&spec).await.expect("spawn ready");
         assert_eq!(running.reported_port, 12345);
+        signal_gateway_shutdown(&mut running.child).await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn spawn_does_not_export_default_workspace() {
+        use std::io::Write;
+
+        let dir = tempdir();
+        let env_file = dir.join("default-workspace-env.txt");
+        let entry = dir.join("fake-gateway-env.ts");
+        std::fs::File::create(&entry)
+            .unwrap()
+            .write_all(
+                format!(
+                    "await Bun.write('{}', process.env.VULTURE_DEFAULT_WORKSPACE ?? ''); console.log('READY 12345'); setTimeout(()=>{{}}, 60_000);",
+                    env_file.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let spec = SpawnSpec {
+            bun_bin: PathBuf::from("bun"),
+            gateway_entry: entry.clone(),
+            workdir: dir.clone(),
+            gateway_port: 12345,
+            shell_port: 12346,
+            token: "x".repeat(43),
+            shell_pid: std::process::id(),
+            profile_dir: Arc::new(RwLock::new(dir.clone())),
+        };
+
+        let mut running = spawn_gateway(&spec).await.expect("spawn ready");
+        let value = std::fs::read_to_string(&env_file).unwrap();
+        assert_eq!(value, "");
         signal_gateway_shutdown(&mut running.child).await;
         let _ = std::fs::remove_dir_all(dir);
     }

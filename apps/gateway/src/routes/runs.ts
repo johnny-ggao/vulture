@@ -34,6 +34,7 @@ export interface RunsDeps {
   cancelSignals: Map<string, AbortController>;
   resumeRun(runId: string, mode: "auto" | "manual"): ResumeRunResult;
   systemPromptForAgent(a: { id: string }): string;
+  skillsPromptForAgent?: (a: { id: string }) => string;
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
 }
@@ -192,6 +193,7 @@ export function runsRouter(deps: RunsDeps): Hono {
           agentId: conv.agentId,
           model: deps.modelForAgent({ id: conv.agentId }),
           systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
+          contextPrompt: deps.skillsPromptForAgent?.({ id: conv.agentId }),
           workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
           conversationId: cid,
           userInput: parsed.data.input,

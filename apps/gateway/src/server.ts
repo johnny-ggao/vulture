@@ -34,13 +34,18 @@ import { makeLazyLlm } from "./runtime/resolveLlm";
 import { orchestrateRun } from "./runtime/runOrchestrator";
 import { recoverInflightRuns } from "./runtime/runRecovery";
 import { makeSdkTool, sdkStateHasInterruptions, type SdkRunContext } from "./runtime/openaiLlm";
+import { filterSkillEntries, formatSkillsForPrompt, loadSkillEntries } from "./runtime/skills";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
   const db = openDatabase(dbPath);
   applyMigrations(db);
 
-  const importResult = importLegacy({ profileDir: cfg.profileDir, db });
+  const importResult = importLegacy({
+    profileDir: cfg.profileDir,
+    db,
+    privateWorkspaceHomeDir: cfg.privateWorkspaceHomeDir,
+  });
   if (importResult.agentsImported || importResult.workspacesImported) {
     console.log(
       `[gateway] migrated ${importResult.agentsImported} agents + ${importResult.workspacesImported} workspaces from legacy file store`,
@@ -49,7 +54,12 @@ export function buildServer(cfg: GatewayConfig): Hono {
 
   const profileStore = new ProfileStore(db, cfg.profileDir);
   const workspaceStore = new WorkspaceStore(db);
-  const agentStore = new AgentStore(db, cfg.profileDir, cfg.defaultWorkspace);
+  const agentStore = new AgentStore(
+    db,
+    cfg.profileDir,
+    cfg.defaultWorkspace,
+    cfg.privateWorkspaceHomeDir,
+  );
   const conversationStore = new ConversationStore(db);
   const messageStore = new MessageStore(db);
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
@@ -109,6 +119,15 @@ export function buildServer(cfg: GatewayConfig): Hono {
     selectModel(agentStore.get(id)?.model ?? "");
   const workspacePathForAgent = ({ id }: { id: string }): string =>
     agentStore.get(id)?.workspace.path ?? "";
+  const skillsPromptForAgent = ({ id }: { id: string }): string => {
+    const agent = agentStore.get(id);
+    if (!agent) return "";
+    const entries = loadSkillEntries({
+      workspaceDir: agent.workspace.path,
+      profileDir: cfg.profileDir,
+    });
+    return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
+  };
   const startConversationRun = (conversationId: string, input: string) => {
     const conv = conversationStore.get(conversationId);
     if (!conv) throw new Error(`conversation not found: ${conversationId}`);
@@ -137,6 +156,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         agentId: conv.agentId,
         model: modelForAgent({ id: conv.agentId }),
         systemPrompt: systemPromptForAgent({ id: conv.agentId }),
+        contextPrompt: skillsPromptForAgent({ id: conv.agentId }),
         workspacePath: workspacePathForAgent({ id: conv.agentId }),
         conversationId,
         userInput: input,
@@ -254,6 +274,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         agentId: state.metadata.agentId,
         model: state.metadata.model,
         systemPrompt: state.metadata.systemPrompt,
+        contextPrompt: state.metadata.contextPrompt,
         workspacePath: state.metadata.workspacePath,
         conversationId: state.metadata.conversationId,
         userInput: state.metadata.userInput,
@@ -367,6 +388,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
       cancelSignals,
       resumeRun,
       systemPromptForAgent,
+      skillsPromptForAgent,
       modelForAgent,
       workspacePathForAgent,
     }),

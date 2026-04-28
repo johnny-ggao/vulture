@@ -89,6 +89,7 @@ export interface RunRecoveryMetadata {
   agentId: string;
   model: string;
   systemPrompt: string;
+  contextPrompt?: string;
   userInput: string;
   workspacePath: string;
   providerKind: "codex" | "api_key" | "stub";
@@ -127,6 +128,7 @@ function isRunRecoveryMetadata(value: unknown): value is RunRecoveryMetadata {
     typeof value.agentId === "string" &&
     typeof value.model === "string" &&
     typeof value.systemPrompt === "string" &&
+    (value.contextPrompt === undefined || typeof value.contextPrompt === "string") &&
     typeof value.userInput === "string" &&
     typeof value.workspacePath === "string" &&
     isRecoveryProviderKind(value.providerKind) &&

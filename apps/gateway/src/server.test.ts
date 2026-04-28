@@ -15,6 +15,7 @@ function freshCfg(): { cfg: GatewayConfig; cleanup: () => void } {
     shellCallbackUrl: "http://127.0.0.1:4199",
     shellPid: 1,
     profileDir: dir,
+    privateWorkspaceHomeDir: dir,
   };
   return { cfg, cleanup: () => rmSync(dir, { recursive: true }) };
 }

@@ -25,6 +25,7 @@ export interface OrchestrateArgs {
   agentId: string;
   model: string;
   systemPrompt: string;
+  contextPrompt?: string;
   conversationId: string;
   userInput: string;
   attachments?: LlmAttachment[];
@@ -45,6 +46,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       agentId: args.agentId,
       model: args.model,
       systemPrompt: args.systemPrompt,
+      contextPrompt: args.contextPrompt,
       userInput: args.userInput,
       workspacePath: args.workspacePath,
       providerKind: args.providerKind ?? "api_key",
@@ -64,6 +66,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       agentId: args.agentId,
       model: args.model,
       systemPrompt: args.systemPrompt,
+      contextPrompt: args.contextPrompt,
       userInput: args.userInput,
       attachments: args.attachments,
       workspacePath: args.workspacePath,

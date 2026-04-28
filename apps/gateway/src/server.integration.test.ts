@@ -14,6 +14,7 @@ function makeServer() {
     shellCallbackUrl: "http://127.0.0.1:4199",
     shellPid: process.pid,
     profileDir: dir,
+    privateWorkspaceHomeDir: dir,
   });
   return { app, dir, cleanup: () => rmSync(dir, { recursive: true }) };
 }
@@ -79,6 +80,7 @@ describe("server integration (full stack)", () => {
       shellCallbackUrl: "http://127.0.0.1:4199",
       shellPid: process.pid,
       profileDir: dir,
+      privateWorkspaceHomeDir: dir,
     });
     const list = await app.request("/v1/agents", {
       headers: { Authorization: `Bearer ${TOKEN}` },

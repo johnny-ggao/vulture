@@ -1,5 +1,6 @@
-import { mkdirSync, existsSync, statSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { mkdirSync, existsSync, statSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, parse } from "node:path";
 import { brandId } from "@vulture/common";
 import type { DB } from "../persistence/sqlite";
 import type {
@@ -24,6 +25,7 @@ interface AgentRow {
   model: string;
   reasoning: string;
   tools: string;
+  skills?: string | null;
   workspace_json: string;
   instructions: string;
   created_at: string;
@@ -56,6 +58,7 @@ function rowToAgent(r: AgentRow): Agent {
     model: r.model,
     reasoning: r.reasoning as ReasoningLevel,
     tools: JSON.parse(r.tools) as AgentToolName[],
+    skills: parseSkillsJson(r.skills),
     workspace: {
       id: brandId<WorkspaceId>(workspace_data.id),
       name: workspace_data.name,
@@ -74,6 +77,7 @@ export class AgentStore {
     private readonly db: DB,
     private readonly profileDir: string,
     private readonly defaultWorkspacePath?: string,
+    private readonly privateWorkspaceHomeDir: string = homedir(),
   ) {}
 
   list(): Agent[] {
@@ -108,6 +112,7 @@ export class AgentStore {
     const count = (this.db.query("SELECT COUNT(*) AS c FROM agents").get() as { c: number }).c;
     if (count > 0) {
       this.ensureDefaultToolsCurrent();
+      this.ensureLegacyPrivateWorkspacesCurrent();
       this.ensureDefaultWorkspaceCurrent();
       return;
     }
@@ -127,6 +132,25 @@ export class AgentStore {
       .run(JSON.stringify(merged), nowIso8601(), DEFAULT_AGENT.id);
   }
 
+  private ensureLegacyPrivateWorkspacesCurrent(): void {
+    const rows = this.db.query("SELECT * FROM agents").all() as AgentRow[];
+    for (const row of rows) {
+      const agent = rowToAgent(row);
+      const workspace = agent.workspace as Workspace;
+      if (
+        !this.isLegacyPrivateWorkspace(row.id, workspace.path) &&
+        !this.isOutdatedManagedPrivateWorkspace(row.id, row.name, workspace)
+      ) {
+        continue;
+      }
+      const migrated = this.migrateLegacyPrivateWorkspace(row.id, row.name, workspace);
+      if (migrated.path === workspace.path) continue;
+      this.db
+        .query("UPDATE agents SET workspace_json = ?, updated_at = ? WHERE id = ?")
+        .run(JSON.stringify(migrated), nowIso8601(), row.id);
+    }
+  }
+
   private _save(req: SaveAgentRequest): Agent {
     const now = nowIso8601();
     const existingRow = this.db.query("SELECT * FROM agents WHERE id = ?").get(req.id) as AgentRow | undefined;
@@ -140,7 +164,7 @@ export class AgentStore {
     if (existing) {
       this.db
         .query(
-          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
+          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, skills=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
         )
         .run(
           req.name,
@@ -148,6 +172,7 @@ export class AgentStore {
           req.model,
           req.reasoning,
           JSON.stringify(req.tools),
+          req.skills === undefined ? null : JSON.stringify(req.skills),
           JSON.stringify(workspace),
           req.instructions,
           now,
@@ -156,8 +181,8 @@ export class AgentStore {
     } else {
       this.db
         .query(
-          `INSERT INTO agents(id, name, description, model, reasoning, tools, workspace_json, instructions, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO agents(id, name, description, model, reasoning, tools, skills, workspace_json, instructions, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           req.id,
@@ -166,6 +191,7 @@ export class AgentStore {
           req.model,
           req.reasoning,
           JSON.stringify(req.tools),
+          req.skills === undefined ? null : JSON.stringify(req.skills),
           JSON.stringify(workspace),
           req.instructions,
           now,
@@ -185,6 +211,9 @@ export class AgentStore {
     if (requested) {
       return this.workspaceFromRequest(requested, existing);
     }
+    if (existing && this.isLegacyPrivateWorkspace(agentId, existing.path)) {
+      return this.migrateLegacyPrivateWorkspace(agentId, agentName, existing);
+    }
     if (existing && existsSync(existing.path) && statSync(existing.path).isDirectory()) {
       return existing;
     }
@@ -192,14 +221,69 @@ export class AgentStore {
     if (defaultWorkspace) {
       return defaultWorkspace;
     }
-    const path = this.privateWorkspacePath(agentId);
+    return this.createPrivateWorkspace(agentId, agentName, existing);
+  }
+
+  private migrateLegacyPrivateWorkspace(
+    agentId: string,
+    agentName: string,
+    existing: Workspace,
+  ): Workspace {
+    const desiredPath = this.privateWorkspacePath(agentId, agentName);
+    if (existing.path === desiredPath) return existing;
+
+    if (existsSync(existing.path) && statSync(existing.path).isDirectory()) {
+      mkdirSync(dirname(desiredPath), { recursive: true });
+      if (existsSync(desiredPath)) {
+        if (!statSync(desiredPath).isDirectory()) {
+          throw new Error(`private workspace path is not a directory: ${desiredPath}`);
+        }
+        if (readdirSync(desiredPath).length === 0) {
+          rmSync(desiredPath, { recursive: true, force: true });
+          renameSync(existing.path, desiredPath);
+        } else {
+          this.mergeWorkspaceDirectories(existing.path, desiredPath);
+        }
+      } else {
+        renameSync(existing.path, desiredPath);
+      }
+    } else {
+      mkdirSync(desiredPath, { recursive: true });
+    }
+
+    return {
+      ...existing,
+      path: desiredPath,
+      updatedAt: nowIso8601(),
+    };
+  }
+
+  private mergeWorkspaceDirectories(sourcePath: string, targetPath: string): void {
+    for (const entry of readdirSync(sourcePath)) {
+      const from = join(sourcePath, entry);
+      let to = join(targetPath, entry);
+      if (existsSync(to)) {
+        const parsed = parse(entry);
+        to = join(targetPath, `${parsed.name}.legacy-${Date.now()}${parsed.ext}`);
+      }
+      renameSync(from, to);
+    }
+    rmSync(sourcePath, { recursive: true, force: true });
+  }
+
+  private createPrivateWorkspace(
+    agentId: string,
+    agentName: string,
+    existing?: Workspace,
+  ): Workspace {
+    const path = this.privateWorkspacePath(agentId, agentName);
     mkdirSync(path, { recursive: true });
     const now = nowIso8601();
     return {
-      id: brandId<WorkspaceId>(`${agentId}-workspace`),
-      name: `${agentName} Workspace`,
+      id: existing?.id ?? brandId<WorkspaceId>(`${agentId}-workspace`),
+      name: existing?.name ?? `${agentName} Workspace`,
       path,
-      createdAt: now,
+      createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
   }
@@ -210,9 +294,25 @@ export class AgentStore {
       .get(DEFAULT_AGENT.id) as AgentRow | undefined;
     if (!existingRow) return;
     const existing = rowToAgent(existingRow).workspace as Workspace;
-    const desired = this.defaultWorkspaceFor(DEFAULT_AGENT.id, existing);
-    if (!desired || existing.path === desired.path) return;
-    if (!this.isEmptyPrivateWorkspace(DEFAULT_AGENT.id, existing.path)) return;
+    let desired = this.defaultWorkspaceFor(DEFAULT_AGENT.id, existing);
+    let replacingManagedDefaultWorkspace = false;
+    if (!desired) {
+      if (this.isLegacyPrivateWorkspace(DEFAULT_AGENT.id, existing.path)) {
+        desired = this.migrateLegacyPrivateWorkspace(DEFAULT_AGENT.id, DEFAULT_AGENT.name, existing);
+      } else if (this.isManagedPrivateWorkspace(DEFAULT_AGENT.id, existing)) {
+        desired = this.createPrivateWorkspace(DEFAULT_AGENT.id, DEFAULT_AGENT.name, existing);
+        replacingManagedDefaultWorkspace = true;
+      } else {
+        return;
+      }
+    }
+    if (existing.path === desired.path) return;
+    if (
+      !replacingManagedDefaultWorkspace &&
+      !this.isEmptyPrivateWorkspace(DEFAULT_AGENT.id, DEFAULT_AGENT.name, existing.path)
+    ) {
+      return;
+    }
     this.db
       .query("UPDATE agents SET workspace_json = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(desired), nowIso8601(), DEFAULT_AGENT.id);
@@ -249,13 +349,81 @@ export class AgentStore {
     };
   }
 
-  private privateWorkspacePath(agentId: string): string {
+  private privateWorkspacePath(agentId: string, agentName: string): string {
+    return privateWorkspacePathForAgent(this.privateWorkspaceHomeDir, agentId, agentName);
+  }
+
+  private privateWorkspaceRoot(): string {
+    return join(this.privateWorkspaceHomeDir, ".vuture", "workspace");
+  }
+
+  private legacyPrivateWorkspacePath(agentId: string): string {
     return join(this.profileDir, "agents", agentId, "workspace");
   }
 
-  private isEmptyPrivateWorkspace(agentId: string, path: string): boolean {
-    if (path !== this.privateWorkspacePath(agentId)) return false;
+  private isLegacyPrivateWorkspace(agentId: string, path: string): boolean {
+    return path === this.legacyPrivateWorkspacePath(agentId);
+  }
+
+  private isManagedPrivateWorkspace(agentId: string, workspace: Workspace): boolean {
+    return workspace.id === brandId<WorkspaceId>(`${agentId}-workspace`);
+  }
+
+  private isOutdatedManagedPrivateWorkspace(
+    agentId: string,
+    agentName: string,
+    workspace: Workspace,
+  ): boolean {
+    return (
+      this.isManagedPrivateWorkspace(agentId, workspace) &&
+      dirname(workspace.path) === this.privateWorkspaceRoot() &&
+      workspace.path !== this.privateWorkspacePath(agentId, agentName)
+    );
+  }
+
+  private isEmptyPrivateWorkspace(agentId: string, agentName: string, path: string): boolean {
+    if (
+      path !== this.privateWorkspacePath(agentId, agentName) &&
+      path !== this.legacyPrivateWorkspacePath(agentId)
+    ) {
+      return false;
+    }
     if (!existsSync(path) || !statSync(path).isDirectory()) return true;
     return readdirSync(path).length === 0;
+  }
+
+}
+
+export function privateWorkspacePathForAgent(
+  homeDir: string,
+  agentId: string,
+  agentName: string,
+): string {
+  return join(homeDir, ".vuture", "workspace", privateWorkspaceDirName(agentId, agentName));
+}
+
+function privateWorkspaceDirName(agentId: string, agentName: string): string {
+  const normalized = agentName
+    .trim()
+    .toLowerCase()
+    .replace(/[\\/:"*?<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^\.+$/, "")
+    .replace(/^\.\.+/, "")
+    .trim();
+  return normalized.length > 0 && /[\p{L}\p{N}]/u.test(normalized) ? normalized : agentId.toLowerCase();
+}
+
+function parseSkillsJson(raw: string | null | undefined): string[] | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : undefined;
+  } catch {
+    return undefined;
   }
 }

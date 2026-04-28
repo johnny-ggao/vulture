@@ -56,6 +56,7 @@ export interface LlmCheckpoint {
 
 export type LlmCallable = (input: {
   systemPrompt: string;
+  contextPrompt?: string;
   userInput: string;
   model: string;
   runId: string;
@@ -79,6 +80,7 @@ export interface RunConversationArgs {
   agentId: string;
   model: string;
   systemPrompt: string;
+  contextPrompt?: string;
   userInput: string;
   attachments?: LlmAttachment[];
   workspacePath: string;
@@ -115,6 +117,7 @@ export async function runConversation(
   try {
     gen = args.llm({
       systemPrompt: args.systemPrompt,
+      contextPrompt: args.contextPrompt,
       userInput: args.userInput,
       model: args.model,
       runId: args.runId,

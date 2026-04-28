@@ -1060,6 +1060,13 @@
               ]
             }
           },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
           "workspace": {
             "type": "object",
             "properties": {
@@ -1187,6 +1194,13 @@
                 "browser.snapshot",
                 "browser.click"
               ]
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
             }
           },
           "workspace": {

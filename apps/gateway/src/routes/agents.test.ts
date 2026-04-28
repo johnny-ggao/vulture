@@ -14,7 +14,7 @@ function freshApp() {
   const dir = mkdtempSync(join(tmpdir(), "vulture-agent-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
   applyMigrations(db);
-  const app = agentsRouter(new AgentStore(db, dir));
+  const app = agentsRouter(new AgentStore(db, dir, undefined, dir));
   return { app, cleanup: () => { db.close(); rmSync(dir, { recursive: true }); } };
 }
 
@@ -68,6 +68,21 @@ describe("/v1/agents", () => {
     expect(body.workspace.id).toBe("repo");
     cleanup();
     rmSync(workspace, { recursive: true });
+  });
+
+  test("PATCH persists empty skills allowlist", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents/local-work-agent", {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ skills: [] }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).skills).toEqual([]);
+
+    const get = await app.request("/v1/agents/local-work-agent", { headers: auth });
+    expect((await get.json()).skills).toEqual([]);
+    cleanup();
   });
 
   test("POST without Idempotency-Key → 400", async () => {

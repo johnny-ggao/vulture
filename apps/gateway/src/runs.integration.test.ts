@@ -14,6 +14,7 @@ function makeServer() {
     shellCallbackUrl: "http://127.0.0.1:4199",
     shellPid: process.pid,
     profileDir: dir,
+    privateWorkspaceHomeDir: dir,
   });
   return { app, dir, cleanup: () => rmSync(dir, { recursive: true }) };
 }
@@ -76,6 +77,7 @@ describe("end-to-end run flow", () => {
       shellCallbackUrl: "http://127.0.0.1:4199",
       shellPid: process.pid,
       profileDir: dir,
+      privateWorkspaceHomeDir: dir,
     };
     const app1 = buildServer(cfg);
     const cRes = await app1.request("/v1/conversations", {
@@ -117,6 +119,7 @@ describe("end-to-end run flow", () => {
       shellCallbackUrl: "http://127.0.0.1:4199",
       shellPid: process.pid,
       profileDir: dir,
+      privateWorkspaceHomeDir: dir,
     };
     const app1 = buildServer(cfg);
     const cRes = await app1.request("/v1/conversations", {
@@ -177,6 +180,7 @@ describe("end-to-end run flow", () => {
       shellCallbackUrl: "http://127.0.0.1:4199",
       shellPid: process.pid,
       profileDir: dir,
+      privateWorkspaceHomeDir: dir,
     };
     const app1 = buildServer(cfg);
     const cRes = await app1.request("/v1/conversations", {

@@ -25,6 +25,7 @@ function fresh(
     status: "scheduled" as const,
   })),
   llm: LlmCallable = fakeLlm,
+  skillsPromptForAgent?: () => string,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
@@ -45,6 +46,7 @@ function fresh(
     cancelSignals: new Map<string, AbortController>(),
     resumeRun,
     systemPromptForAgent: () => "system",
+    skillsPromptForAgent,
     modelForAgent: () => "gpt-5.4",
     workspacePathForAgent: () => "",
   });
@@ -107,6 +109,34 @@ describe("/v1/runs", () => {
       if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
     }
     expect(final.status).toBe("succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs passes skills prompt as run context", async () => {
+    const seenContextPrompts: Array<string | undefined> = [];
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      seenContextPrompts.push(input.contextPrompt);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, cleanup } = fresh(
+      undefined,
+      llm,
+      () => "\n\n<available_skills><skill><name>csv-insights</name></skill></available_skills>",
+    );
+
+    const response = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "skills" },
+      body: JSON.stringify({ input: "test" }),
+    });
+    expect(response.status).toBe(202);
+
+    for (let i = 0; i < 50 && seenContextPrompts.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(seenContextPrompts).toHaveLength(1);
+    expect(seenContextPrompts[0]).toContain("<available_skills>");
+    expect(seenContextPrompts[0]).toContain("csv-insights");
     cleanup();
   });
 

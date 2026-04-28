@@ -33,6 +33,7 @@ const SlugSchema = z
   .string()
   .min(1)
   .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+const SkillNameSchema = z.string().min(1);
 
 export const AgentSchema = z.object({
   id: SlugSchema,
@@ -41,6 +42,7 @@ export const AgentSchema = z.object({
   model: z.string().min(1),
   reasoning: ReasoningLevelSchema,
   tools: z.array(AgentToolNameSchema),
+  skills: z.array(SkillNameSchema).optional(),
   workspace: WorkspaceSchema,
   instructions: z.string().min(1),
   createdAt: Iso8601Schema,
@@ -64,6 +66,7 @@ export const SaveAgentRequestSchema = z
     model: z.string().min(1),
     reasoning: ReasoningLevelSchema,
     tools: z.array(AgentToolNameSchema).default([]),
+    skills: z.array(SkillNameSchema).optional(),
     workspace: SaveWorkspaceRequestSchema.optional(),
     instructions: z.string().min(1),
   })

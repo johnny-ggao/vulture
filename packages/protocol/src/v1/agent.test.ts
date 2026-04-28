@@ -22,6 +22,7 @@ const sampleAgent: Agent = {
   model: "gpt-5.4",
   reasoning: "medium",
   tools: ["shell.exec" as Agent["tools"][number]],
+  skills: ["csv-insights"],
   workspace: ws,
   instructions: "Be concise.",
   createdAt: "2026-04-26T00:00:00.000Z" as Agent["createdAt"],
@@ -56,6 +57,20 @@ describe("Agent schema", () => {
       instructions: "x",
     });
     expect(req.workspace).toBeUndefined();
+  });
+
+  test("SaveAgentRequest accepts optional skills allowlist", () => {
+    const req = SaveAgentRequestSchema.parse({
+      id: "x",
+      name: "X",
+      description: "x",
+      model: "gpt-5.4",
+      reasoning: "low",
+      tools: [],
+      skills: [],
+      instructions: "x",
+    });
+    expect(req.skills).toEqual([]);
   });
 
   test("AGENT_TOOL_NAMES is non-empty", () => {

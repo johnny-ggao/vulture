@@ -9,13 +9,14 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
+const LATEST_SCHEMA_VERSION = 6;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -33,7 +34,7 @@ describe("migrate", () => {
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     db.close();
     rmSync(dir, { recursive: true });
   });
@@ -42,7 +43,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v2-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -59,7 +60,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v3-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -88,7 +89,7 @@ describe("migrate", () => {
     db.exec(init002);
     expect(currentSchemaVersion(db)).toBe(2);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -102,7 +103,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v4-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     const columns = db
       .query("PRAGMA table_info(runs)")
       .all() as { name: string }[];
@@ -117,7 +118,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v5-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(5);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -136,6 +137,20 @@ describe("migrate", () => {
       "created_at",
     ]);
     expect(attachmentColumns.find((c) => c.name === "message_id")?.notnull).toBe(0);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("006 adds optional agent skills column", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v6-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(agents)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toContain("skills");
+    expect(columns.find((c) => c.name === "skills")?.notnull).toBe(0);
     db.close();
     rmSync(dir, { recursive: true });
   });

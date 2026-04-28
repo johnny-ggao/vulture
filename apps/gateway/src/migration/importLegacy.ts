@@ -7,7 +7,9 @@ import {
   statSync,
 } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import type { DB } from "../persistence/sqlite";
+import { privateWorkspacePathForAgent } from "../domain/agentStore";
 
 export interface ImportResult {
   agentsImported: number;
@@ -36,6 +38,7 @@ interface LegacyWorkspaceJson {
 export function importLegacy(opts: {
   profileDir: string;
   db: DB;
+  privateWorkspaceHomeDir?: string;
 }): ImportResult {
   const result: ImportResult = { agentsImported: 0, workspacesImported: 0 };
   const ts = new Date()
@@ -54,7 +57,11 @@ export function importLegacy(opts: {
       const instructions = existsSync(instrPath)
         ? readFileSync(instrPath, "utf8")
         : "";
-      const wsPath = join(opts.profileDir, "agents", json.id, "workspace");
+      const wsPath = privateWorkspacePathForAgent(
+        opts.privateWorkspaceHomeDir ?? homedir(),
+        json.id,
+        json.name,
+      );
       // Ensure the workspace directory exists on disk; otherwise shell.exec
       // will fail at spawn() with a misleading ENOENT.
       mkdirSync(wsPath, { recursive: true });

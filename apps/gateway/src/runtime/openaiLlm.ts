@@ -49,6 +49,7 @@ export type SdkApprovalCallable = (request: {
 
 export interface RunFactoryInput {
   systemPrompt: string;
+  contextPrompt?: string;
   userInput: string;
   attachments?: LlmAttachment[];
   model: string;
@@ -85,6 +86,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
   return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
     const stream = factory({
       systemPrompt: input.systemPrompt,
+      contextPrompt: input.contextPrompt,
       userInput: input.userInput,
       attachments: input.attachments,
       model: input.model,
@@ -147,7 +149,7 @@ async function* defaultRunFactory(
   const runContext = new RunContext(context);
   let runInput = await resolveSdkRunInput(
     agent,
-    buildSdkUserInput(input.userInput, input.attachments),
+    buildSdkUserInput(composeUserInputWithContext(input.userInput, input.contextPrompt), input.attachments),
     input.recovery,
     runContext,
   );
@@ -279,6 +281,12 @@ export function buildSdkUserInput(userInput: string, attachments: LlmAttachment[
       }),
     ],
   }];
+}
+
+export function composeUserInputWithContext(userInput: string, contextPrompt?: string): string {
+  const context = contextPrompt?.trim();
+  if (!context) return userInput;
+  return [context, "", "User message:", userInput].join("\n");
 }
 
 function isTextAttachment(attachment: LlmAttachment): boolean {

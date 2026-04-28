@@ -41,6 +41,7 @@ export function agentsRouter(store: AgentStore): Hono {
       model: raw.model ?? existing.model,
       reasoning: raw.reasoning ?? existing.reasoning,
       tools: raw.tools ?? existing.tools,
+      skills: raw.skills ?? existing.skills,
       workspace:
         raw.workspace ??
         {

@@ -27,6 +27,7 @@ export interface Agent {
   model: string;
   reasoning: ReasoningLevel;
   tools: AgentToolName[];
+  skills?: string[];
   workspace: Workspace;
   instructions: string;
   createdAt: string;
@@ -40,6 +41,7 @@ export interface SaveAgentRequest {
   model: string;
   reasoning: ReasoningLevel;
   tools: AgentToolName[];
+  skills?: string[];
   workspace?: Pick<Workspace, "id" | "name" | "path">;
   instructions: string;
 }
@@ -50,5 +52,7 @@ export const agentsApi = {
   get: (client: ApiClient, id: string) => client.get<Agent>(`/v1/agents/${id}`),
   save: (client: ApiClient, body: SaveAgentRequest) =>
     client.post<Agent>("/v1/agents", body),
+  update: (client: ApiClient, id: string, body: Partial<SaveAgentRequest>) =>
+    client.patch<Agent>(`/v1/agents/${id}`, body),
   delete: (client: ApiClient, id: string) => client.delete(`/v1/agents/${id}`),
 };

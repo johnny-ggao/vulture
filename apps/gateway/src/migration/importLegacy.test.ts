@@ -56,12 +56,14 @@ describe("importLegacy", () => {
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
 
-    const result = importLegacy({ profileDir: dir, db });
+    const result = importLegacy({ profileDir: dir, db, privateWorkspaceHomeDir: dir });
     expect(result.agentsImported).toBe(1);
     expect(result.workspacesImported).toBe(1);
 
-    const agents = new AgentStore(db, dir).list();
-    expect(agents.find((a) => a.id === "old-agent")).toBeTruthy();
+    const agents = new AgentStore(db, dir, undefined, dir).list();
+    const importedAgent = agents.find((a) => a.id === "old-agent");
+    expect(importedAgent).toBeTruthy();
+    expect(importedAgent?.workspace.path).toBe(join(dir, ".vuture", "workspace", "old-agent"));
     const ws = new WorkspaceStore(db).list();
     expect(ws.find((w) => w.id === "ws-1")).toBeTruthy();
 

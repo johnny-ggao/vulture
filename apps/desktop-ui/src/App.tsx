@@ -13,7 +13,7 @@ import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
-import { AgentsPage } from "./chat/AgentsPage";
+import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { ChatView } from "./chat/ChatView";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
 import { NewAgentModal } from "./chat/NewAgentModal";
@@ -551,6 +551,13 @@ export function App() {
     setView("chat");
   }
 
+  async function handleSaveAgent(id: string, patch: AgentConfigPatch) {
+    if (!apiClient) return;
+    const saved = await agentsApi.update(apiClient, id, patch);
+    setAgents((prev) => prev.map((agent) => (agent.id === saved.id ? saved : agent)));
+    if (selectedAgentId === id) setSelectedAgentId(saved.id);
+  }
+
   return (
     <div className="app-shell">
       <Titlebar />
@@ -597,11 +604,13 @@ export function App() {
           {view === "agents" ? (
             <AgentsPage
               agents={agents}
+              selectedAgentId={selectedAgentId}
               onCreate={() => setNewAgentOpen(true)}
-              onSelect={(id) => {
+              onOpenChat={(id) => {
                 setSelectedAgentId(id);
                 setView("chat");
               }}
+              onSave={handleSaveAgent}
             />
           ) : null}
           {view === "skills" ? (

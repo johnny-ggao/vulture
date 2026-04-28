@@ -5,6 +5,7 @@ export interface GatewayConfig {
   shellPid: number;
   profileDir: string;
   defaultWorkspace?: string;
+  privateWorkspaceHomeDir?: string;
 }
 
 function required(

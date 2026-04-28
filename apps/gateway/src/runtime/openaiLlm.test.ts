@@ -167,6 +167,40 @@ describe("makeOpenAILlm", () => {
     expect(checkpoints).toEqual([{ sdkState: "sdk-2", activeTool: null }]);
   });
 
+  test("passes context prompt through runFactory without changing system prompt", async () => {
+    const seen: Array<{ systemPrompt: string; userInput: string; contextPrompt?: string }> = [];
+    const llm = makeOpenAILlm({
+      apiKey: "sk-test",
+      toolNames: [],
+      toolCallable: async () => "noop",
+      runFactory: (input) => {
+        seen.push({
+          systemPrompt: input.systemPrompt,
+          userInput: input.userInput,
+          contextPrompt: input.contextPrompt,
+        });
+        return makeMockRun([{ kind: "final", text: "ok" }]);
+      },
+    });
+
+    for await (const _ of llm({
+      systemPrompt: "system",
+      contextPrompt: "<available_skills></available_skills>",
+      userInput: "hello",
+      model: "gpt-5.4",
+      runId: "r",
+      workspacePath: "/tmp/work",
+    })) {}
+
+    expect(seen).toEqual([
+      {
+        systemPrompt: "system",
+        userInput: "hello",
+        contextPrompt: "<available_skills></available_skills>",
+      },
+    ]);
+  });
+
   test("restores SDK run input with RunState.fromStringWithContext", async () => {
     const agent = {} as never;
     const runContext = {} as never;
