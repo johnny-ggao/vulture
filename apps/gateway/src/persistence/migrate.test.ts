@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 10;
+const LATEST_SCHEMA_VERSION = 11;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -240,6 +240,50 @@ describe("migrate", () => {
     expect(columns.map((c) => c.name)).toContain("disabled_tools_json");
     expect(columns.find((c) => c.name === "enabled_tools_json")?.notnull).toBe(0);
     expect(columns.find((c) => c.name === "disabled_tools_json")?.notnull).toBe(1);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("migration 11 creates conversation context tables", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v11-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    const contextColumns = db
+      .query("PRAGMA table_info(conversation_contexts)")
+      .all() as Array<{ name: string }>;
+    expect(contextColumns.map((column) => column.name)).toContain("conversation_id");
+    expect(contextColumns.map((column) => column.name)).toContain("summary");
+    expect(contextColumns.map((column) => column.name)).toContain(
+      "summarized_through_message_id",
+    );
+
+    const itemColumns = db
+      .query("PRAGMA table_info(conversation_session_items)")
+      .all() as Array<{ name: string }>;
+    expect(itemColumns.map((column) => column.name)).toContain("item_json");
+    expect(itemColumns.map((column) => column.name)).toContain("message_id");
+
+    const contextForeignKeys = db
+      .query("PRAGMA foreign_key_list(conversation_contexts)")
+      .all() as Array<{ table: string; from: string; to: string; on_delete: string }>;
+    expect(contextForeignKeys).toContainEqual(expect.objectContaining({
+      table: "conversations",
+      from: "conversation_id",
+      to: "id",
+      on_delete: "CASCADE",
+    }));
+
+    const itemForeignKeys = db
+      .query("PRAGMA foreign_key_list(conversation_session_items)")
+      .all() as Array<{ table: string; from: string; to: string; on_delete: string }>;
+    expect(itemForeignKeys).toContainEqual(expect.objectContaining({
+      table: "conversations",
+      from: "conversation_id",
+      to: "id",
+      on_delete: "CASCADE",
+    }));
+
+    expect(currentSchemaVersion(db)).toBe(11);
     db.close();
     rmSync(dir, { recursive: true });
   });
