@@ -114,6 +114,7 @@ pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
         )
         .env("VULTURE_SHELL_PID", spec.shell_pid.to_string())
         .env("VULTURE_PROFILE_DIR", &spec.profile_dir)
+        .env("VULTURE_DEFAULT_WORKSPACE", &spec.workdir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

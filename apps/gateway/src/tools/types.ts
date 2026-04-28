@@ -3,7 +3,14 @@ import type { z } from "zod";
 
 export type GatewayToolRisk = "safe" | "approval" | "dangerous";
 export type GatewayToolSource = "core" | "plugin" | "mcp";
-export type GatewayToolCategory = "runtime" | "browser" | "fs" | "workspace";
+export type GatewayToolCategory =
+  | "runtime"
+  | "browser"
+  | "fs"
+  | "workspace"
+  | "web"
+  | "sessions"
+  | "agents";
 
 export interface GatewayToolRunContext {
   runId: string;

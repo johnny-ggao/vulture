@@ -26,9 +26,13 @@ import {
   readActiveChatState,
   writeActiveChatState,
 } from "./chat/recoveryState";
+import {
+  retainedRunEventsForTerminalRun,
+  visibleRunEventsForChat,
+} from "./chat/visibleRunEvents";
 import { useConversations } from "./hooks/useConversations";
 import { useMessages } from "./hooks/useMessages";
-import { useRunStream } from "./hooks/useRunStream";
+import { useRunStream, type AnyRunEvent } from "./hooks/useRunStream";
 import { useApproval } from "./hooks/useApproval";
 
 interface ProfileView {
@@ -67,6 +71,10 @@ export function App() {
   const [activeRunId, setActiveRunId] = useState<string | null>(
     restoredChatRef.current.runId,
   );
+  const [retainedRunEvents, setRetainedRunEvents] = useState<{
+    conversationId: string | null;
+    events: AnyRunEvent[];
+  }>({ conversationId: null, events: [] });
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
   const sendingRunRef = useRef(false);
@@ -85,6 +93,14 @@ export function App() {
     client: apiClient,
     runId: activeRunId,
     events: runStream.events,
+  });
+  const visibleRunEvents = visibleRunEventsForChat({
+    activeRunId,
+    activeConversationId,
+    streamStatus: runStream.status,
+    streamEvents: runStream.events,
+    retained: retainedRunEvents.events,
+    retainedConversationId: retainedRunEvents.conversationId,
   });
 
   const refreshAuthStatus = useMemo(
@@ -136,12 +152,16 @@ export function App() {
       runStream.status === "failed" ||
       runStream.status === "cancelled"
     ) {
+      setRetainedRunEvents({
+        conversationId: activeConversationId,
+        events: retainedRunEventsForTerminalRun(runStream.events),
+      });
       void refetchMessagesRef.current();
       void refetchConversationsRef.current();
       setActiveRunId(null);
       clearActiveRunId();
     }
-  }, [runStream.status]);
+  }, [activeConversationId, runStream.events, runStream.status]);
 
   useEffect(() => {
     writeActiveChatState({ conversationId: activeConversationId, runId: activeRunId });
@@ -262,6 +282,7 @@ export function App() {
     if (!apiClient || !selectedAgentId || runStream.status === "recoverable" || resumingRun) {
       return;
     }
+    setRetainedRunEvents({ conversationId: null, events: [] });
     sendingRunRef.current = true;
     try {
       let cid = activeConversationId;
@@ -308,6 +329,7 @@ export function App() {
   function handleNew() {
     setActiveConversationId(null);
     setActiveRunId(null);
+    setRetainedRunEvents({ conversationId: null, events: [] });
     writeActiveChatState({ conversationId: null, runId: null });
   }
 
@@ -334,7 +356,22 @@ export function App() {
       description: input.description,
       model: "gpt-5.5",
       reasoning: "low",
-      tools: ["shell.exec"],
+      tools: [
+        "read",
+        "write",
+        "edit",
+        "apply_patch",
+        "shell.exec",
+        "process",
+        "web_search",
+        "web_fetch",
+        "sessions_list",
+        "sessions_history",
+        "sessions_send",
+        "sessions_spawn",
+        "sessions_yield",
+        "update_plan",
+      ],
       instructions: input.instructions,
     });
     setAgents((prev) => [...prev, created]);
@@ -371,13 +408,7 @@ export function App() {
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
               messages={messages.items}
-              runEvents={
-                runStream.status === "succeeded" ||
-                runStream.status === "failed" ||
-                runStream.status === "cancelled"
-                  ? []
-                  : runStream.events
-              }
+              runEvents={visibleRunEvents}
               runStatus={runStream.status}
               runError={runStream.error}
               submittingApprovals={approvals.submitting}
@@ -439,6 +470,7 @@ export function App() {
         onSelect={(id) => {
           setActiveConversationId(id);
           setActiveRunId(null);
+          setRetainedRunEvents({ conversationId: null, events: [] });
           setView("chat");
         }}
         onNew={startNewConversation}

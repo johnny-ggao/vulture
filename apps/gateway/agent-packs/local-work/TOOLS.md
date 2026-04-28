@@ -5,3 +5,9 @@ Tool protocol:
 - For workspace summaries, inspect the repository structure before summarizing.
 - For code changes, verify with the narrowest relevant test or build command.
 - For browser tasks, use browser observations when available and clearly separate observed facts from inference.
+- For direct file requests such as "read package.json" or "show this file", call `read` first. Do not use `shell.exec` with `cat`, `find`, `ls`, or similar commands unless the file tools are insufficient or the user explicitly asks for a shell command.
+- Prefer `write`, `edit`, and `apply_patch` for direct workspace file changes; use `shell.exec` only when a command is actually needed.
+- Use `process` for background commands that must continue while you inspect output.
+- Use `web_search` and `web_fetch` when current external information is needed.
+- Use `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, and `sessions_yield` for multi-session coordination.
+- Use `update_plan` to publish concise progress for multi-step tasks.

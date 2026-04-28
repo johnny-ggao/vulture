@@ -27,6 +27,7 @@ import { selectModel } from "@vulture/llm";
 import { AGENT_TOOL_NAMES } from "@vulture/protocol/src/v1/agent";
 import { ApprovalQueue } from "./runtime/approvalQueue";
 import { makeShellApprovalHandler, makeShellCallbackTools } from "./runtime/shellCallbackTools";
+import { makeGatewayLocalTools } from "./runtime/gatewayLocalTools";
 import { makeLazyLlm } from "./runtime/resolveLlm";
 import { orchestrateRun } from "./runtime/runOrchestrator";
 import { recoverInflightRuns } from "./runtime/runRecovery";
@@ -46,7 +47,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
 
   const profileStore = new ProfileStore(db);
   const workspaceStore = new WorkspaceStore(db);
-  const agentStore = new AgentStore(db, cfg.profileDir);
+  const agentStore = new AgentStore(db, cfg.profileDir, cfg.defaultWorkspace);
   const conversationStore = new ConversationStore(db);
   const messageStore = new MessageStore(db);
   const runStore = new RunStore(db);
@@ -70,13 +71,136 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const approvalQueue = new ApprovalQueue();
   const cancelSignals = new Map<string, AbortController>();
 
-  const tools: ToolCallable = makeShellCallbackTools({
+  const shellTools: ToolCallable = makeShellCallbackTools({
     callbackUrl: cfg.shellCallbackUrl,
     token: cfg.token,
     appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
     approvalQueue,
     cancelSignals,
     interactiveApprovalFallback: false,
+  });
+  let llm: ReturnType<typeof makeLazyLlm>;
+  let tools: ToolCallable;
+  const systemPromptForAgent = ({ id }: { id: string }): string => {
+    const agent = agentStore.get(id);
+    if (!agent) return "";
+    return assembleAgentInstructions({
+      packDir: join(packDir, "local-work"),
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        description: agent.description,
+        instructions: agent.instructions,
+        tools: agent.tools,
+        model: agent.model,
+        reasoning: agent.reasoning,
+      },
+      workspace: {
+        id: agent.workspace.id,
+        name: agent.workspace.name,
+        path: agent.workspace.path,
+      },
+    });
+  };
+  const modelForAgent = ({ id }: { id: string }): string =>
+    selectModel(agentStore.get(id)?.model ?? "");
+  const workspacePathForAgent = ({ id }: { id: string }): string =>
+    agentStore.get(id)?.workspace.path ?? "";
+  const startConversationRun = (conversationId: string, input: string) => {
+    const conv = conversationStore.get(conversationId);
+    if (!conv) throw new Error(`conversation not found: ${conversationId}`);
+    const userMsg = messageStore.append({
+      conversationId,
+      role: "user",
+      content: input,
+      runId: null,
+    });
+    const run = runStore.create({
+      conversationId,
+      agentId: conv.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    orchestrateRun(
+      {
+        runs: runStore,
+        messages: messageStore,
+        conversations: conversationStore,
+        llm,
+        tools,
+        cancelSignals,
+      },
+      {
+        runId: run.id,
+        agentId: conv.agentId,
+        model: modelForAgent({ id: conv.agentId }),
+        systemPrompt: systemPromptForAgent({ id: conv.agentId }),
+        workspacePath: workspacePathForAgent({ id: conv.agentId }),
+        conversationId,
+        userInput: input,
+      },
+    ).catch((err) => {
+      runStore.markFailed(run.id, {
+        code: "internal",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+    return { conversationId, runId: run.id, messageId: userMsg.id };
+  };
+  tools = makeGatewayLocalTools({
+    shellTools,
+    appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
+    sessions: {
+      list: (input) => {
+        const limit = typeof (input as { limit?: unknown }).limit === "number"
+          ? (input as { limit: number }).limit
+          : 20;
+        return conversationStore.list().slice(0, limit).map((conversation) => ({
+          id: conversation.id,
+          agentId: conversation.agentId,
+          title: conversation.title,
+          createdAt: conversation.createdAt,
+          updatedAt: conversation.updatedAt,
+          activeRuns: runStore.listForConversation(conversation.id, { status: "active" }),
+        }));
+      },
+      history: (input) => {
+        const value = input as { conversationId?: unknown; limit?: unknown };
+        if (typeof value.conversationId !== "string") {
+          throw new Error("sessions_history missing conversationId");
+        }
+        const limit = typeof value.limit === "number" ? value.limit : 50;
+        const messages = messageStore.listSince({ conversationId: value.conversationId });
+        return messages.slice(-limit);
+      },
+      send: async (input) => {
+        const value = input as { conversationId?: unknown; message?: unknown };
+        if (typeof value.conversationId !== "string" || typeof value.message !== "string") {
+          throw new Error("sessions_send missing conversationId/message");
+        }
+        return startConversationRun(value.conversationId, value.message);
+      },
+      spawn: async (input) => {
+        const value = input as { agentId?: unknown; title?: unknown; message?: unknown };
+        const agentId =
+          typeof value.agentId === "string" && value.agentId.length > 0
+            ? value.agentId
+            : "local-work-agent";
+        if (!agentStore.get(agentId)) throw new Error(`agent not found: ${agentId}`);
+        const conversation = conversationStore.create({
+          agentId,
+          title: typeof value.title === "string" ? value.title : "",
+        });
+        if (typeof value.message === "string" && value.message.length > 0) {
+          return { ...startConversationRun(conversation.id, value.message), conversation };
+        }
+        return { conversation, runId: null };
+      },
+      yield: () => ({
+        activeRuns: conversationStore
+          .list()
+          .flatMap((conversation) => runStore.listForConversation(conversation.id, { status: "active" })),
+      }),
+    },
   });
   const approvalCallable = makeShellApprovalHandler({
     callbackUrl: cfg.shellCallbackUrl,
@@ -86,7 +210,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     cancelSignals,
   });
 
-  const llm = makeLazyLlm({
+  llm = makeLazyLlm({
     toolNames: AGENT_TOOL_NAMES,
     toolCallable: tools,
     approvalCallable,
@@ -237,29 +361,9 @@ export function buildServer(cfg: GatewayConfig): Hono {
       approvalQueue,
       cancelSignals,
       resumeRun,
-      systemPromptForAgent: ({ id }) => {
-        const agent = agentStore.get(id);
-        if (!agent) return "";
-        return assembleAgentInstructions({
-          packDir: join(packDir, "local-work"),
-          agent: {
-            id: agent.id,
-            name: agent.name,
-            description: agent.description,
-            model: agent.model,
-            reasoning: agent.reasoning,
-            tools: agent.tools,
-            instructions: agent.instructions,
-          },
-          workspace: {
-            id: agent.workspace.id,
-            name: agent.workspace.name,
-            path: agent.workspace.path,
-          },
-        });
-      },
-      modelForAgent: ({ id }) => selectModel(agentStore.get(id)?.model ?? ""),
-      workspacePathForAgent: ({ id }) => agentStore.get(id)?.workspace.path ?? "",
+      systemPromptForAgent,
+      modelForAgent,
+      workspacePathForAgent,
     }),
   );
 

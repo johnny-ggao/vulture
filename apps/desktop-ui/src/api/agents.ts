@@ -1,7 +1,23 @@
 import type { ApiClient } from "./client";
 import type { Workspace } from "./workspaces";
 
-export type AgentToolName = "shell.exec" | "browser.snapshot" | "browser.click";
+export type AgentToolName =
+  | "read"
+  | "write"
+  | "edit"
+  | "apply_patch"
+  | "shell.exec"
+  | "process"
+  | "web_search"
+  | "web_fetch"
+  | "sessions_list"
+  | "sessions_history"
+  | "sessions_send"
+  | "sessions_spawn"
+  | "sessions_yield"
+  | "update_plan"
+  | "browser.snapshot"
+  | "browser.click";
 export type ReasoningLevel = "low" | "medium" | "high";
 
 export interface Agent {
@@ -24,6 +40,7 @@ export interface SaveAgentRequest {
   model: string;
   reasoning: ReasoningLevel;
   tools: AgentToolName[];
+  workspace?: Pick<Workspace, "id" | "name" | "path">;
   instructions: string;
 }
 

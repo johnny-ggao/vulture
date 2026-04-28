@@ -48,6 +48,28 @@ describe("/v1/agents", () => {
     cleanup();
   });
 
+  test("PATCH preserves requested workspace", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "vulture-agent-route-workspace-"));
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents/local-work-agent", {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspace: {
+          id: "repo",
+          name: "Repo",
+          path: workspace,
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.workspace.path).toBe(workspace);
+    expect(body.workspace.id).toBe("repo");
+    cleanup();
+    rmSync(workspace, { recursive: true });
+  });
+
   test("POST without Idempotency-Key → 400", async () => {
     const { app, cleanup } = freshApp();
     const res = await app.request("/v1/agents", {

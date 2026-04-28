@@ -381,6 +381,98 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
+  test("keeps completed tool blocks visible after the assistant message is persisted", async () => {
+    const { app, dir, cleanup } = setup();
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    const agentId = agents.items[0].id;
+    const conv = await authedJson<{ id: string }>(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId, title: "Tool transcript" }),
+    });
+    const now = "2026-04-27T00:00:00.000Z";
+    const db = new Database(join(dir, "data.sqlite"));
+    db.query(
+      "INSERT INTO messages(id, conversation_id, role, content, run_id, created_at) VALUES (?, ?, 'user', 'read file', NULL, ?)",
+    ).run("m-tool-user", conv.id, now);
+    db.query(
+      "INSERT INTO messages(id, conversation_id, role, content, run_id, created_at) VALUES (?, ?, 'assistant', 'done', 'r-tool', ?)",
+    ).run("m-tool-assistant", conv.id, now);
+    db.query(
+      `INSERT INTO runs(id, conversation_id, agent_id, status, triggered_by_message_id,
+                        result_message_id, started_at, ended_at, error_json)
+       VALUES ('r-tool', ?, ?, 'succeeded', 'm-tool-user', 'm-tool-assistant', ?, ?, NULL)`,
+    ).run(conv.id, agentId, now, now);
+    const events = [
+      {
+        type: "run.started",
+        runId: "r-tool",
+        seq: 0,
+        createdAt: now,
+        agentId,
+        model: "gpt-5.4",
+      },
+      {
+        type: "text.delta",
+        runId: "r-tool",
+        seq: 1,
+        createdAt: now,
+        text: "transient draft",
+      },
+      {
+        type: "tool.planned",
+        runId: "r-tool",
+        seq: 2,
+        createdAt: now,
+        callId: "tc-1",
+        tool: "read",
+        input: { path: "package.json", maxBytes: null },
+      },
+      {
+        type: "tool.completed",
+        runId: "r-tool",
+        seq: 3,
+        createdAt: now,
+        callId: "tc-1",
+        output: { content: "ok" },
+      },
+      {
+        type: "run.completed",
+        runId: "r-tool",
+        seq: 4,
+        createdAt: now,
+        resultMessageId: "m-tool-assistant",
+        finalText: "done",
+      },
+    ];
+    for (const event of events) {
+      db.query(
+        "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES ('r-tool', ?, ?, ?, ?)",
+      ).run(event.seq, event.type, JSON.stringify(event), now);
+    }
+    db.close();
+    writeActiveChatState({ conversationId: conv.id, runId: "r-tool" });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("read")).toBeDefined();
+        expect(screen.getByText("✓ 完成")).toBeDefined();
+        expect(screen.getByText("done")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    await waitFor(
+      () => {
+        expect(screen.queryByText("transient draft")).toBeNull();
+      },
+      { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
   test("clears saved active state when conversation no longer exists", async () => {
     const { cleanup } = setup();
     writeActiveChatState({ conversationId: "c-missing", runId: "r-missing" });

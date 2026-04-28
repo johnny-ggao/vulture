@@ -23,11 +23,25 @@ describe("gateway tool sdk adapter", () => {
   test("resolves core tools from the registry before adapting them to SDK tools", () => {
     const registry = createCoreToolRegistry();
     const tools = resolveEffectiveTools(registry, {
-      allow: ["shell.exec", "browser.click"],
+      allow: ["read", "write", "process", "web_fetch", "sessions_list", "update_plan"],
     });
 
-    expect(tools.map((tool) => tool.id)).toEqual(["shell.exec", "browser.click"]);
-    expect(tools.map((tool) => toSdkTool(tool).name)).toEqual(["shell_exec", "browser_click"]);
+    expect(tools.map((tool) => tool.id)).toEqual([
+      "read",
+      "write",
+      "process",
+      "web_fetch",
+      "sessions_list",
+      "update_plan",
+    ]);
+    expect(tools.map((tool) => toSdkTool(tool).name)).toEqual([
+      "read",
+      "write",
+      "process",
+      "web_fetch",
+      "sessions_list",
+      "update_plan",
+    ]);
   });
 
   test("fails closed when policy allows an unknown tool", () => {

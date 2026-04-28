@@ -4,6 +4,7 @@ export interface GatewayConfig {
   shellCallbackUrl: string;
   shellPid: number;
   profileDir: string;
+  defaultWorkspace?: string;
 }
 
 function required(
@@ -47,5 +48,6 @@ export function parseGatewayEnv(
     shellCallbackUrl: required(env, "VULTURE_SHELL_CALLBACK_URL"),
     shellPid,
     profileDir: required(env, "VULTURE_PROFILE_DIR"),
+    defaultWorkspace: env.VULTURE_DEFAULT_WORKSPACE,
   };
 }

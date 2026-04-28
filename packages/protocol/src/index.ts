@@ -38,7 +38,24 @@ export const JsonRpcError = z.object({
   }),
 });
 
-export const AgentToolName = z.enum(["shell.exec", "browser.snapshot", "browser.click"]);
+export const AgentToolName = z.enum([
+  "read",
+  "write",
+  "edit",
+  "apply_patch",
+  "shell.exec",
+  "process",
+  "web_search",
+  "web_fetch",
+  "sessions_list",
+  "sessions_history",
+  "sessions_send",
+  "sessions_spawn",
+  "sessions_yield",
+  "update_plan",
+  "browser.snapshot",
+  "browser.click",
+]);
 
 export const AgentRunConfig = z.object({
   id: z.string().min(1),
@@ -63,9 +80,22 @@ export const RunCreateParams = z.object({
 });
 
 export const ToolName = z.enum([
+  "read",
+  "write",
+  "edit",
+  "apply_patch",
   "file.read",
   "file.write",
   "shell.exec",
+  "process",
+  "web_search",
+  "web_fetch",
+  "sessions_list",
+  "sessions_history",
+  "sessions_send",
+  "sessions_spawn",
+  "sessions_yield",
+  "update_plan",
   "terminal.pty",
   "browser.open",
   "browser.attach",

@@ -4,7 +4,7 @@ const TEMPLATES = [
   { key: "blank",   label: "空白",     desc: "从零开始构建", instructions: "" },
   { key: "writer",  label: "写作助手", desc: "适合长文写作 + 编辑润色", instructions: "你是一名细致的中文写作助手。" },
   { key: "reviewer", label: "代码审阅", desc: "审 PR、读代码、定位 bug", instructions: "你是一名严谨的代码审阅者。" },
-  { key: "shell",   label: "终端工具", desc: "运行 shell 命令的本地助手", instructions: "你是一名本地工作助手，可以使用 shell.exec 工具。" },
+  { key: "shell",   label: "本地工具", desc: "读写文件、运行命令、检索网页", instructions: "你是一名本地工作助手，可以使用文件、终端、网页和会话工具。" },
 ] as const;
 
 export interface NewAgentModalProps {

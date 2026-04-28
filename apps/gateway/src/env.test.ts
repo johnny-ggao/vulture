@@ -15,6 +15,15 @@ describe("parseGatewayEnv", () => {
     expect(cfg.port).toBe(4099);
     expect(cfg.token).toHaveLength(43);
     expect(cfg.shellPid).toBe(1234);
+    expect(cfg.defaultWorkspace).toBeUndefined();
+  });
+
+  test("parses optional default workspace", () => {
+    const cfg = parseGatewayEnv({
+      ...valid,
+      VULTURE_DEFAULT_WORKSPACE: "/tmp/repo",
+    });
+    expect(cfg.defaultWorkspace).toBe("/tmp/repo");
   });
 
   test("rejects missing token", () => {

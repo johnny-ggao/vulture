@@ -41,6 +41,13 @@ export function agentsRouter(store: AgentStore): Hono {
       model: raw.model ?? existing.model,
       reasoning: raw.reasoning ?? existing.reasoning,
       tools: raw.tools ?? existing.tools,
+      workspace:
+        raw.workspace ??
+        {
+          id: existing.workspace.id,
+          name: existing.workspace.name,
+          path: existing.workspace.path,
+        },
       instructions: raw.instructions ?? existing.instructions,
     };
     const parsed = SaveAgentRequestSchema.safeParse(merged);
