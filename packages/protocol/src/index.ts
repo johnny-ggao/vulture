@@ -1,5 +1,18 @@
 import { z } from "zod";
-export { buildOpenApiV1 } from "./openapi";
+export {
+  OPENAPI_V1_ENDPOINTS,
+  OPENAPI_V1_ENDPOINTS_BY_OPERATION_ID,
+  buildOpenApiV1,
+  buildOpenApiV1Path,
+  getOpenApiV1Endpoint,
+  type OpenApiV1Endpoint,
+  type OpenApiV1EndpointByOperationId,
+  type OpenApiV1Method,
+  type OpenApiV1OperationId,
+  type OpenApiV1Path,
+  type OpenApiV1PathParamNames,
+  type OpenApiV1PathParams,
+} from "./openapi";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type Json = JsonPrimitive | Json[] | { [key: string]: Json };
