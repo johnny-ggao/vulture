@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  OPENAPI_V1_ENDPOINTS,
+  type OpenApiV1EndpointByOperationId,
+} from "./generated/v1-endpoints";
 import { buildOpenApiV1 } from "./v1";
 
 type OpenApiDoc = {
@@ -64,6 +68,37 @@ describe("OpenAPI v1", () => {
       enum: ["low", "medium", "high"],
     });
     expect(postMessage.properties.attachmentIds.maxItems).toBe(10);
+  });
+
+  test("generated endpoint metadata matches documented operations", () => {
+    const doc = buildOpenApiV1() as OpenApiDoc;
+    const operations = Object.entries(doc.paths).flatMap(([path, pathItem]) =>
+      Object.entries(pathItem).map(([method, operation]) => ({
+        operationId: operation.operationId,
+        method: method.toUpperCase(),
+        path,
+        hasRequestBody: "requestBody" in operation,
+        responseStatuses: Object.keys(operation.responses ?? {}).map(Number),
+      })),
+    );
+
+    expect(OPENAPI_V1_ENDPOINTS).toHaveLength(operations.length);
+    for (const operation of operations) {
+      expect(OPENAPI_V1_ENDPOINTS).toContainEqual(expect.objectContaining(operation));
+    }
+  });
+
+  test("generated endpoint types can select by operation id", () => {
+    const endpoint: OpenApiV1EndpointByOperationId<"createConversationRun"> = {
+      operationId: "createConversationRun",
+      method: "POST",
+      path: "/v1/conversations/{cid}/runs",
+      tags: ["runs"],
+      hasRequestBody: true,
+      responseStatuses: [202, 404, 409],
+    };
+
+    expect(endpoint.operationId).toBe("createConversationRun");
   });
 
   test("generated artifact is up to date", () => {
