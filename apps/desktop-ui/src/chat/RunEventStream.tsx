@@ -1,12 +1,12 @@
 import type { AnyRunEvent } from "../hooks/useRunStream";
-import type { ApprovalDecision } from "../api/runs";
+import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import { MessageBubble } from "./MessageBubble";
 import { ToolBlock, type ToolBlockStatus } from "./ToolBlock";
 import { ApprovalCard } from "./ApprovalCard";
 import { RecoveryCard } from "./RecoveryCard";
 
 export type RunBlock =
-  | { kind: "text"; content: string; firstSeq: number }
+  | { kind: "text"; content: string; firstSeq: number; usage?: TokenUsageDto }
   | { kind: "recovery"; message: string; reason: string; firstSeq: number }
   | { kind: "recovery-boundary"; firstSeq: number }
   | {
@@ -129,11 +129,46 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         blocks.push({ kind: "recovery-boundary", firstSeq: e.seq });
         break;
       }
+      case "run.usage": {
+        const usage = normalizeUsage(e.usage);
+        if (!usage) break;
+        const textBlock = findLastTextBlock(blocks);
+        if (textBlock) {
+          blocks[textBlock.index] = { ...textBlock.block, usage };
+        }
+        break;
+      }
       // run.started / run.completed / run.failed / run.cancelled produce no inline block
     }
   }
 
   return blocks.filter((block): block is RunBlock => block !== undefined);
+}
+
+function normalizeUsage(value: unknown): TokenUsageDto | null {
+  const usage = value as Partial<TokenUsageDto> | undefined;
+  if (
+    typeof usage?.inputTokens !== "number" ||
+    typeof usage.outputTokens !== "number" ||
+    typeof usage.totalTokens !== "number"
+  ) {
+    return null;
+  }
+  return {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+  };
+}
+
+function findLastTextBlock(
+  blocks: Array<RunBlock | undefined>,
+): { index: number; block: Extract<RunBlock, { kind: "text" }> } | null {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i];
+    if (block?.kind === "text") return { index: i, block };
+  }
+  return null;
 }
 
 function removeApprovalBlock(
@@ -162,7 +197,7 @@ export function RunEventStream(props: RunEventStreamProps) {
     <div className="run-event-stream">
       {blocks.map((b, i) => {
         if (b.kind === "text") {
-          return <MessageBubble key={i} role="assistant" content={b.content} />;
+          return <MessageBubble key={i} role="assistant" content={b.content} usage={b.usage} />;
         }
         if (b.kind === "tool") {
           return (

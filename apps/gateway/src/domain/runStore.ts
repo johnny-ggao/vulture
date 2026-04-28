@@ -4,6 +4,7 @@ import {
   type Run,
   type RunStatus,
   type RunEvent,
+  type TokenUsage,
 } from "@vulture/protocol/src/v1/run";
 import type {
   RunId,
@@ -34,6 +35,9 @@ interface RunRow {
   started_at: string;
   ended_at: string | null;
   error_json: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
 }
 
 function parseAppError(value: string | null): AppError | null {
@@ -45,6 +49,16 @@ function parseAppError(value: string | null): AppError | null {
 }
 
 function rowToRun(r: RunRow): Run {
+  const usage =
+    typeof r.input_tokens === "number" &&
+    typeof r.output_tokens === "number" &&
+    typeof r.total_tokens === "number"
+      ? {
+          inputTokens: r.input_tokens,
+          outputTokens: r.output_tokens,
+          totalTokens: r.total_tokens,
+        }
+      : null;
   return {
     id: r.id as RunId,
     conversationId: r.conversation_id as ConversationId,
@@ -55,6 +69,7 @@ function rowToRun(r: RunRow): Run {
     startedAt: r.started_at as Iso8601,
     endedAt: (r.ended_at ?? null) as Iso8601 | null,
     error: parseAppError(r.error_json),
+    usage,
   };
 }
 
@@ -225,6 +240,14 @@ export class RunStore {
         "UPDATE runs SET status = 'succeeded', result_message_id = ?, ended_at = ? WHERE id = ?",
       )
       .run(resultMessageId, nowIso8601(), id);
+  }
+
+  saveTokenUsage(id: string, usage: TokenUsage): void {
+    this.db
+      .query(
+        "UPDATE runs SET input_tokens = ?, output_tokens = ?, total_tokens = ? WHERE id = ?",
+      )
+      .run(usage.inputTokens, usage.outputTokens, usage.totalTokens, id);
   }
 
   markFailed(id: string, error: AppError): void {

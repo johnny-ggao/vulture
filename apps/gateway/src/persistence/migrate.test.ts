@@ -15,7 +15,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(3);
+    expect(currentSchemaVersion(db)).toBe(4);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -33,7 +33,7 @@ describe("migrate", () => {
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(3);
+    expect(currentSchemaVersion(db)).toBe(4);
     db.close();
     rmSync(dir, { recursive: true });
   });
@@ -42,7 +42,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v2-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(3);
+    expect(currentSchemaVersion(db)).toBe(4);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -59,7 +59,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v3-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(3);
+    expect(currentSchemaVersion(db)).toBe(4);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -81,19 +81,34 @@ describe("migrate", () => {
     rmSync(dir, { recursive: true });
   });
 
-  test("upgrades an existing version 2 database to version 3", () => {
+  test("upgrades an existing version 2 database to latest schema", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v2-to-v3-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     db.exec(init001);
     db.exec(init002);
     expect(currentSchemaVersion(db)).toBe(2);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(3);
+    expect(currentSchemaVersion(db)).toBe(4);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
     const names = tables.map((t) => t.name);
     expect(names).toContain("run_recovery_state");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("004 adds run token usage columns", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v4-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(4);
+    const columns = db
+      .query("PRAGMA table_info(runs)")
+      .all() as { name: string }[];
+    expect(columns.map((c) => c.name)).toContain("input_tokens");
+    expect(columns.map((c) => c.name)).toContain("output_tokens");
+    expect(columns.map((c) => c.name)).toContain("total_tokens");
     db.close();
     rmSync(dir, { recursive: true });
   });

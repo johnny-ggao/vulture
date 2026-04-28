@@ -26,6 +26,22 @@ describe("reduceRunEvents", () => {
     if (blocks[0].kind === "text") expect(blocks[0].content).toBe("Hello, world.");
   });
 
+  test("run.usage attaches token usage to the latest assistant text block", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "text.delta", seq: 1, text: "Hello" }),
+      ev({
+        type: "run.usage",
+        seq: 2,
+        usage: { inputTokens: 100, outputTokens: 25, totalTokens: 125 },
+      }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks[0].kind).toBe("text");
+    if (blocks[0].kind === "text") {
+      expect(blocks[0].usage?.totalTokens).toBe(125);
+    }
+  });
+
   test("tool.planned -> tool block with running status when not yet completed", () => {
     const events: AnyRunEvent[] = [
       ev({ type: "tool.planned", seq: 0, callId: "c1", tool: "shell.exec", input: { argv: ["ls"] } }),

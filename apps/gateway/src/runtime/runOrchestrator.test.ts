@@ -131,6 +131,51 @@ describe("orchestrateRun recovery persistence", () => {
     }
   });
 
+  test("persists token usage reported by the LLM", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+        yield {
+          kind: "usage",
+          usage: { inputTokens: 100, outputTokens: 25, totalTokens: 125 },
+        };
+        yield { kind: "final", text: "ok" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools: async () => ({}),
+          cancelSignals: new Map(),
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+        },
+      );
+
+      expect(deps.runs.get(run.id)?.usage).toEqual({
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      });
+      expect(
+        deps.runs.listEventsAfter(run.id, -1).some((event) => event.type === "run.usage"),
+      ).toBe(true);
+    } finally {
+      deps.cleanup();
+    }
+  });
+
   test("clears recovery state after a failed LLM/tool run", async () => {
     const deps = freshDeps();
     try {

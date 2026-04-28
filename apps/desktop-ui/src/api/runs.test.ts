@@ -21,6 +21,7 @@ const sampleRun: RunDto = {
   startedAt: "2026-04-27T00:00:00.000Z",
   endedAt: null,
   error: null,
+  usage: null,
 };
 
 describe("runsApi", () => {

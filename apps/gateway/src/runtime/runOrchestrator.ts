@@ -85,6 +85,9 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
           completedFinalText = e.finalText;
           return;
         }
+        if (e.type === "run.usage") {
+          deps.runs.saveTokenUsage(args.runId, e.usage);
+        }
         const appended = deps.runs.appendEvent(args.runId, stripBase(e));
         updateActiveToolSequence(deps, args.runId, appended);
       },
@@ -96,6 +99,9 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
     }
 
     if (result.status === "succeeded") {
+      if (result.usage) {
+        deps.runs.saveTokenUsage(args.runId, result.usage);
+      }
       const assistantMsg = deps.messages.append({
         conversationId: args.conversationId,
         role: "assistant",

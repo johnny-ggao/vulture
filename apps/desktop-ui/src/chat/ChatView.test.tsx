@@ -45,6 +45,30 @@ describe("ChatView", () => {
     expect(screen.getByText("hi back")).toBeDefined();
   });
 
+  test("renders historical assistant token usage", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs}
+        messageUsages={new Map([
+          ["r-1", { inputTokens: 100, outputTokens: 25, totalTokens: 125 }],
+        ])}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByText("Tokens: 100 in · 25 out · 125 total")).toBeDefined();
+  });
+
   test("shows reconnecting chip when status=reconnecting", () => {
     render(
       <ChatView

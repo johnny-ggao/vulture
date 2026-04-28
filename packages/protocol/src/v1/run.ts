@@ -14,6 +14,13 @@ export const RunStatusSchema = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 
+export const TokenUsageSchema = z.object({
+  inputTokens: z.number().int().min(0),
+  outputTokens: z.number().int().min(0),
+  totalTokens: z.number().int().min(0),
+});
+export type TokenUsage = z.infer<typeof TokenUsageSchema>;
+
 export const RunSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
@@ -24,6 +31,7 @@ export const RunSchema = z.object({
   startedAt: Iso8601Schema,
   endedAt: Iso8601Schema.nullable(),
   error: AppErrorSchema.nullable(),
+  usage: TokenUsageSchema.nullable(),
 });
 
 export type Run = Omit<
@@ -38,6 +46,7 @@ export type Run = Omit<
   startedAt: Iso8601;
   endedAt: Iso8601 | null;
   error: AppError | null;
+  usage: TokenUsage | null;
 };
 
 const baseEvent = z.object({
@@ -98,6 +107,10 @@ export const RunEventSchema = z.discriminatedUnion("type", [
     callId: z.string().min(1),
     tool: z.string().min(1),
     input: z.unknown(),
+  }),
+  baseEvent.extend({
+    type: z.literal("run.usage"),
+    usage: TokenUsageSchema,
   }),
   baseEvent.extend({
     type: z.literal("run.completed"),

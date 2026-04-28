@@ -10,7 +10,7 @@ import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
 import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
-import { runsApi } from "./api/runs";
+import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { AgentsPage } from "./chat/AgentsPage";
 import { ChatView } from "./chat/ChatView";
@@ -75,6 +75,7 @@ export function App() {
     conversationId: string | null;
     events: AnyRunEvent[];
   }>({ conversationId: null, events: [] });
+  const [conversationRuns, setConversationRuns] = useState<RunDto[]>([]);
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
   const sendingRunRef = useRef(false);
@@ -102,6 +103,13 @@ export function App() {
     retained: retainedRunEvents.events,
     retainedConversationId: retainedRunEvents.conversationId,
   });
+  const messageUsages = useMemo(() => {
+    const usages = new Map<string, TokenUsageDto>();
+    for (const run of conversationRuns) {
+      if (run.resultMessageId && run.usage) usages.set(run.id, run.usage);
+    }
+    return usages;
+  }, [conversationRuns]);
 
   const refreshAuthStatus = useMemo(
     () => async () => {
@@ -146,6 +154,7 @@ export function App() {
   refetchMessagesRef.current = messages.refetch;
   const refetchConversationsRef = useRef(conversations.refetch);
   refetchConversationsRef.current = conversations.refetch;
+  const refetchRunsRef = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => {
     if (
       runStream.status === "succeeded" ||
@@ -158,6 +167,7 @@ export function App() {
       });
       void refetchMessagesRef.current();
       void refetchConversationsRef.current();
+      void refetchRunsRef.current();
       setActiveRunId(null);
       clearActiveRunId();
     }
@@ -180,6 +190,28 @@ export function App() {
         writeActiveChatState({ conversationId: null, runId: null });
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) {
+      setConversationRuns([]);
+      refetchRunsRef.current = async () => undefined;
+      return;
+    }
+    let cancelled = false;
+    const refetchRuns = async () => {
+      try {
+        const runs = await runsApi.listForConversation(apiClient, activeConversationId);
+        if (!cancelled) setConversationRuns(runs);
+      } catch {
+        if (!cancelled) setConversationRuns([]);
+      }
+    };
+    refetchRunsRef.current = refetchRuns;
+    void refetchRuns();
     return () => {
       cancelled = true;
     };
@@ -297,6 +329,10 @@ export function App() {
       const result = await runsApi.create(apiClient, cid, { input });
       setActiveRunId(result.run.id);
       messages.append(result.message);
+      setConversationRuns((items) => [
+        result.run,
+        ...items.filter((run) => run.id !== result.run.id),
+      ]);
     } finally {
       sendingRunRef.current = false;
     }
@@ -408,6 +444,7 @@ export function App() {
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
               messages={messages.items}
+              messageUsages={messageUsages}
               runEvents={visibleRunEvents}
               runStatus={runStream.status}
               runError={runStream.error}

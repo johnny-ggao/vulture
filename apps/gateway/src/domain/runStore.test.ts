@@ -51,6 +51,25 @@ describe("RunStore", () => {
     cleanup();
   });
 
+  test("saveTokenUsage stores run token totals", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+
+    runs.saveTokenUsage(r.id, {
+      inputTokens: 100,
+      outputTokens: 25,
+      totalTokens: 125,
+    });
+
+    expect(runs.get(r.id)?.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 25,
+      totalTokens: 125,
+    });
+    expect(runs.listForConversation(c.id)[0].usage?.totalTokens).toBe(125);
+    cleanup();
+  });
+
   test("markFailed records error_json", () => {
     const { runs, c, userMsg, cleanup } = fresh();
     const r = runs.create({

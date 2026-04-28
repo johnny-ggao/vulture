@@ -127,6 +127,38 @@ describe("runConversation", () => {
     expect(result.finalText).toBe("Here is the result.");
   });
 
+  test("emits token usage before run.completed when LLM reports usage", async () => {
+    const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      yield {
+        kind: "usage",
+        usage: { inputTokens: 100, outputTokens: 25, totalTokens: 125 },
+      };
+      yield { kind: "final", text: "Done." };
+    });
+    const events: Array<{ type: string; usage?: { totalTokens: number } }> = [];
+
+    const result = await runConversation({
+      runId: "r-usage",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      systemPrompt: "ignored",
+      userInput: "hi",
+      workspacePath: "",
+      llm,
+      tools: async () => ({}),
+      onEvent: (e) => events.push(e as { type: string; usage?: { totalTokens: number } }),
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.usage?.totalTokens).toBe(125);
+    expect(events.map((e) => e.type)).toEqual([
+      "run.started",
+      "run.usage",
+      "run.completed",
+    ]);
+    expect(events[1].usage?.totalTokens).toBe(125);
+  });
+
   test("passes recovery options through to llm", async () => {
     const recovery: LlmRecoveryInput = { sdkState: "resume-state", retryToolCallId: null };
     const checkpoint: LlmCheckpoint = { sdkState: "checkpoint", activeTool: null };

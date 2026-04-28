@@ -18,4 +18,16 @@ describe("MessageBubble", () => {
     const { container } = render(<MessageBubble role="system" content="info" />);
     expect(container.querySelector("article")!.className).toContain("system");
   });
+
+  test("renders token usage metadata", () => {
+    render(
+      <MessageBubble
+        role="assistant"
+        content="hi"
+        usage={{ inputTokens: 1234, outputTokens: 56, totalTokens: 1290 }}
+      />,
+    );
+
+    expect(screen.getByText("Tokens: 1,234 in · 56 out · 1,290 total")).toBeDefined();
+  });
 });

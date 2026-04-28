@@ -458,6 +458,12 @@ pre {
 }
 .message.user .message-bubble pre { white-space: pre-wrap; }
 .message.assistant .message-bubble { padding: 0; }
+.message-meta {
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
 
 /* ============================================================
  * Composer

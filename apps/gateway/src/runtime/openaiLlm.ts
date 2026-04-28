@@ -13,6 +13,7 @@ import type {
   LlmYield,
   ToolCallable,
 } from "@vulture/agent-runtime";
+import type { TokenUsage } from "@vulture/protocol/src/v1/run";
 import { createCoreToolRegistry } from "../tools/coreTools";
 import { resolveEffectiveTools } from "../tools/registry";
 import {
@@ -31,6 +32,7 @@ export type SdkRunEvent =
   | { kind: "text.delta"; text: string }
   | { kind: "tool.plan"; callId: string; tool: string; input: unknown }
   | { kind: "await.tool"; callId: string }
+  | { kind: "usage"; usage: TokenUsage }
   | { kind: "final"; text: string };
 
 export type SdkApprovalCallable = (request: {
@@ -165,6 +167,10 @@ async function* defaultRunFactory(
       activeTool: null,
     });
     if (stream.interruptions.length === 0) {
+      const usage = tokenUsageFromSdkUsage(stream.state.usage);
+      if (usage) {
+        yield { kind: "usage", usage };
+      }
       const final = stream.finalOutput;
       yield { kind: "final", text: typeof final === "string" ? final : "" };
       return;
@@ -185,6 +191,31 @@ async function* defaultRunFactory(
     }
     runInput = stream.state;
   }
+}
+
+export function tokenUsageFromSdkUsage(usage: unknown): TokenUsage | null {
+  const value = usage as
+    | {
+        inputTokens?: unknown;
+        outputTokens?: unknown;
+        totalTokens?: unknown;
+      }
+    | undefined;
+  if (
+    typeof value?.inputTokens !== "number" ||
+    typeof value.outputTokens !== "number" ||
+    typeof value.totalTokens !== "number"
+  ) {
+    return null;
+  }
+  if (value.inputTokens === 0 && value.outputTokens === 0 && value.totalTokens === 0) {
+    return null;
+  }
+  return {
+    inputTokens: Math.max(0, Math.trunc(value.inputTokens)),
+    outputTokens: Math.max(0, Math.trunc(value.outputTokens)),
+    totalTokens: Math.max(0, Math.trunc(value.totalTokens)),
+  };
 }
 
 export async function resolveSdkRunInput(

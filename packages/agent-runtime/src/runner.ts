@@ -1,4 +1,5 @@
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
+import type { TokenUsage } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 import { nowIso8601 } from "@vulture/protocol/src/v1/index";
 
@@ -17,6 +18,7 @@ import {
   toolStarted,
   toolCompleted,
   toolFailed,
+  runUsage,
   runCompleted,
   runFailed,
 } from "./events";
@@ -25,6 +27,7 @@ export type LlmYield =
   | { kind: "text.delta"; text: string }
   | { kind: "tool.plan"; callId: string; tool: string; input: unknown }
   | { kind: "await.tool"; callId: string }
+  | { kind: "usage"; usage: TokenUsage }
   | { kind: "final"; text: string };
 
 export interface LlmRecoveryInput {
@@ -79,6 +82,7 @@ export interface RunConversationArgs {
 export interface RunConversationResult {
   status: "succeeded" | "failed";
   finalText: string;
+  usage?: TokenUsage;
   error?: AppError;
 }
 
@@ -94,6 +98,7 @@ export async function runConversation(
   const pendingTools = new Map<string, { tool: string; input: unknown }>();
 
   let assembled = "";
+  let usage: TokenUsage | undefined;
   let gen: AsyncGenerator<LlmYield, void, unknown> | undefined;
   const idleTimeoutMs = args.idleTimeoutMs ?? 180_000;
   try {
@@ -156,6 +161,11 @@ export async function runConversation(
           next = await withIdleTimeout(() => gen!.next(result), idleTimeoutMs);
           break;
         }
+        case "usage":
+          usage = y.usage;
+          emit(runUsage(base(), { usage }));
+          next = await withIdleTimeout(() => gen!.next(), idleTimeoutMs);
+          break;
         case "final":
           if (y.text.length > 0) {
             assembled = y.text;
@@ -171,7 +181,7 @@ export async function runConversation(
         finalText: assembled,
       }),
     );
-    return { status: "succeeded", finalText: assembled };
+    return { status: "succeeded", finalText: assembled, usage };
   } catch (err) {
     void gen?.return?.().catch(() => undefined);
     const error: AppError = {

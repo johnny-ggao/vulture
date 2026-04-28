@@ -13,8 +13,29 @@ describe("Run + RunEvent", () => {
       startedAt: "2026-04-26T00:00:00.000Z",
       endedAt: null,
       error: null,
+      usage: null,
     });
     expect(r.status).toBe("running");
+  });
+
+  test("Run parses token usage summary", () => {
+    const r = RunSchema.parse({
+      id: "r-1",
+      conversationId: "c-1",
+      agentId: "a-1",
+      status: "succeeded",
+      triggeredByMessageId: "m-1",
+      resultMessageId: "m-2",
+      startedAt: "2026-04-26T00:00:00.000Z",
+      endedAt: "2026-04-26T00:00:01.000Z",
+      error: null,
+      usage: {
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      },
+    });
+    expect(r.usage?.totalTokens).toBe(125);
   });
 
   test("RunEvent discriminated union — text.delta", () => {
@@ -53,6 +74,24 @@ describe("Run + RunEvent", () => {
       finalText: "Done.",
     });
     expect(ev.type).toBe("run.completed");
+  });
+
+  test("RunEvent — run.usage carries token usage", () => {
+    const ev = RunEventSchema.parse({
+      type: "run.usage",
+      runId: "r-1",
+      seq: 98,
+      createdAt: "2026-04-26T00:00:00.000Z",
+      usage: {
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      },
+    });
+    expect(ev.type).toBe("run.usage");
+    if (ev.type === "run.usage") {
+      expect(ev.usage.totalTokens).toBe(125);
+    }
   });
 
   test("RunEvent rejects unknown type", () => {

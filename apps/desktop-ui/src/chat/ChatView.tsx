@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { MessageDto } from "../api/conversations";
-import type { ApprovalDecision } from "../api/runs";
+import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
@@ -13,6 +13,7 @@ export interface ChatViewProps {
   onSelectAgent: (id: string) => void;
 
   messages: ReadonlyArray<MessageDto>;
+  messageUsages?: ReadonlyMap<string, TokenUsageDto>;
   runEvents: ReadonlyArray<AnyRunEvent>;
   runStatus: RunStreamStatus;
   runError: string | null;
@@ -47,7 +48,12 @@ export function ChatView(props: ChatViewProps) {
         {hasContent ? (
           <div className="message-list">
             {props.messages.map((m) => (
-              <MessageBubble key={m.id} role={m.role} content={m.content} />
+              <MessageBubble
+                key={m.id}
+                role={m.role}
+                content={m.content}
+                usage={m.runId ? props.messageUsages?.get(m.runId) : null}
+              />
             ))}
             <RunEventStream
               events={props.runEvents}

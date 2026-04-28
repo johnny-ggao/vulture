@@ -19,6 +19,13 @@ export interface RunDto {
   startedAt: string;
   endedAt: string | null;
   error: { code: string; message: string } | null;
+  usage: TokenUsageDto | null;
+}
+
+export interface TokenUsageDto {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
 }
 
 export interface CreateRunResponse {

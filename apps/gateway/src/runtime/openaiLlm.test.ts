@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extractTextDeltaFromRunStreamEvent,
+  tokenUsageFromSdkUsage,
   makeOpenAILlm,
   makeSdkTool,
   makeStubLlmFallback,
@@ -187,6 +188,32 @@ describe("extractTextDeltaFromRunStreamEvent", () => {
     };
 
     expect(extractTextDeltaFromRunStreamEvent(event)).toBe("hello");
+  });
+});
+
+describe("tokenUsageFromSdkUsage", () => {
+  test("normalizes Agents SDK usage totals", () => {
+    expect(
+      tokenUsageFromSdkUsage({
+        inputTokens: 100,
+        outputTokens: 25,
+        totalTokens: 125,
+      }),
+    ).toEqual({
+      inputTokens: 100,
+      outputTokens: 25,
+      totalTokens: 125,
+    });
+  });
+
+  test("returns null when SDK usage has no token totals", () => {
+    expect(
+      tokenUsageFromSdkUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      }),
+    ).toBe(null);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
+import type { TokenUsage } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 
 interface Base {
@@ -27,6 +28,9 @@ export function toolFailed(base: Base, x: { callId: string; error: AppError }): 
 }
 export function toolAsk(base: Base, x: { callId: string; tool: string; reason: string; approvalToken: string }): RunEvent {
   return { type: "tool.ask", ...base, ...x };
+}
+export function runUsage(base: Base, x: { usage: TokenUsage }): RunEvent {
+  return { type: "run.usage", ...base, ...x };
 }
 export function runCompleted(base: Base, x: { resultMessageId: string; finalText: string }): RunEvent {
   return { type: "run.completed", ...base, ...x };
