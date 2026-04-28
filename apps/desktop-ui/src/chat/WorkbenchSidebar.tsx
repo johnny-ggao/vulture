@@ -11,6 +11,7 @@ export type ViewKey =
 export interface WorkbenchSidebarProps {
   view: ViewKey;
   onSelectView: (v: ViewKey) => void;
+  onNewConversation: () => void;
   historyOpen: boolean;
   onToggleHistory: () => void;
 }
@@ -42,7 +43,13 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
             key={key}
             type="button"
             className={"sb-item" + (props.view === key ? " sb-item-active" : "")}
-            onClick={() => props.onSelectView(key)}
+            onClick={() => {
+              if (key === "chat") {
+                props.onNewConversation();
+                return;
+              }
+              props.onSelectView(key);
+            }}
           >
             {icon}
             <span>{label}</span>

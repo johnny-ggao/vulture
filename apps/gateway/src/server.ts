@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { Agent } from "@openai/agents";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { authMiddleware, originGuard } from "./middleware/auth";
@@ -17,7 +18,7 @@ import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
 import { conversationsRouter } from "./routes/conversations";
-import { runsRouter } from "./routes/runs";
+import { runsRouter, type ResumeRunResult } from "./routes/runs";
 import {
   assembleAgentInstructions,
   type ToolCallable,
@@ -25,8 +26,11 @@ import {
 import { selectModel } from "@vulture/llm";
 import { AGENT_TOOL_NAMES } from "@vulture/protocol/src/v1/agent";
 import { ApprovalQueue } from "./runtime/approvalQueue";
-import { makeShellCallbackTools } from "./runtime/shellCallbackTools";
+import { makeShellApprovalHandler, makeShellCallbackTools } from "./runtime/shellCallbackTools";
 import { makeLazyLlm } from "./runtime/resolveLlm";
+import { orchestrateRun } from "./runtime/runOrchestrator";
+import { recoverInflightRuns } from "./runtime/runRecovery";
+import { makeSdkTool, sdkStateHasInterruptions, type SdkRunContext } from "./runtime/openaiLlm";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -58,12 +62,6 @@ export function buildServer(cfg: GatewayConfig): Hono {
     }
   }
 
-  // One-time recovery sweep on startup. Marks any queued/running run as failed.
-  const swept = runStore.recoverInflightOnStartup();
-  if (swept > 0) {
-    console.log(`[gateway] swept ${swept} inflight runs on startup`);
-  }
-
   // Agent-pack root for the local-work pack (only pack in Phase 3a). Move from
   // apps/desktop-shell/agent-packs/ → apps/gateway/agent-packs/ happens in
   // Task 18; this path resolves to the new location.
@@ -78,16 +76,135 @@ export function buildServer(cfg: GatewayConfig): Hono {
     appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
     approvalQueue,
     cancelSignals,
+    interactiveApprovalFallback: false,
+  });
+  const approvalCallable = makeShellApprovalHandler({
+    callbackUrl: cfg.shellCallbackUrl,
+    token: cfg.token,
+    appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
+    approvalQueue,
+    cancelSignals,
   });
 
   const llm = makeLazyLlm({
     toolNames: AGENT_TOOL_NAMES,
     toolCallable: tools,
+    approvalCallable,
     shellCallbackUrl: cfg.shellCallbackUrl,
     shellToken: cfg.token,
   });
 
+  const resumeRun = (runId: string, mode: "auto" | "manual"): ResumeRunResult => {
+    const state = runStore.getRecoveryState(runId);
+    const run = runStore.get(runId);
+    if (!run) return { status: "missing_state" };
+    if (!state) {
+      runStore.markFailed(runId, {
+        code: "internal.recovery_state_unavailable",
+        message: `recovery state unavailable for ${runId}`,
+      });
+      return { status: "missing_state" };
+    }
+    if (!runStore.claimRecoverable(runId)) return { status: "already_started" };
+
+    runStore.appendEvent(runId, {
+      type: "run.recovered",
+      mode,
+      discardPriorDraft: true,
+    });
+
+    orchestrateRun(
+      {
+        runs: runStore,
+        messages: messageStore,
+        conversations: conversationStore,
+        llm,
+        tools,
+        cancelSignals,
+      },
+      {
+        runId,
+        agentId: state.metadata.agentId,
+        model: state.metadata.model,
+        systemPrompt: state.metadata.systemPrompt,
+        workspacePath: state.metadata.workspacePath,
+        conversationId: state.metadata.conversationId,
+        userInput: state.metadata.userInput,
+        recovery: {
+          sdkState: state.sdkState,
+          retryToolCallId: state.activeTool?.callId ?? null,
+        },
+        providerKind: state.metadata.providerKind,
+        recoveryFailureMode: "recoverable",
+      },
+    ).catch((err) => {
+      runStore.markRecoverable(runId);
+      runStore.appendEvent(runId, {
+        type: "run.recoverable",
+        reason: "gateway_restarted",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+    return { status: "scheduled" };
+  };
+
+  const recoveryStatesByRunId = new Map<
+    string,
+    NonNullable<ReturnType<RunStore["getRecoveryState"]>>
+  >();
+  for (const run of runStore.listInflight()) {
+    const state = runStore.getRecoveryState(run.id);
+    if (state?.sdkState) recoveryStatesByRunId.set(run.id, state);
+  }
+
+  const startupRecovery = recoverInflightRuns({
+    runs: runStore,
+    hasApprovalInterruption: async (sdkState, runId) => {
+      const state = recoveryStatesByRunId.get(runId);
+      if (!state) return false;
+      if (
+        state.activeTool &&
+        !runStore.hasTerminalToolEvent(state.metadata.runId, state.activeTool.callId)
+      ) {
+        return false;
+      }
+      try {
+        const agent = new Agent<SdkRunContext>({
+          name: "local-work",
+          instructions: state.metadata.systemPrompt,
+          model: state.metadata.model,
+          tools: AGENT_TOOL_NAMES.map((toolName) => makeSdkTool(toolName)),
+          modelSettings: { store: false },
+        });
+        return await sdkStateHasInterruptions({
+          sdkState,
+          agent,
+          context: {
+            runId: state.metadata.runId,
+            workspacePath: state.metadata.workspacePath,
+            toolCallable: tools,
+            sdkApprovedToolCalls: new Map(),
+          },
+        });
+      } catch {
+        return false;
+      }
+    },
+  })
+    .then((recoveryActions) => {
+      for (const action of recoveryActions) {
+        if (action.kind === "auto_resume") resumeRun(action.runId, "auto");
+      }
+    })
+    .catch((err) => {
+      console.error("[gateway] startup recovery failed", err);
+    });
+
   const app = new Hono();
+  app.use("*", async (_c, next) => {
+    await startupRecovery;
+    return next();
+  });
   app.use("*", errorBoundary);
   app.get("/healthz", (c) =>
     c.json({
@@ -119,6 +236,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
       tools,
       approvalQueue,
       cancelSignals,
+      resumeRun,
       systemPromptForAgent: ({ id }) => {
         const agent = agentStore.get(id);
         if (!agent) return "";

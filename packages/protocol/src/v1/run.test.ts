@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RunSchema, RunEventSchema, type RunEvent } from "./run";
+import { RunSchema, RunEventSchema, RunStatusSchema, type RunEvent } from "./run";
 
 describe("Run + RunEvent", () => {
   test("Run parses minimal", () => {
@@ -64,5 +64,47 @@ describe("Run + RunEvent", () => {
         createdAt: "2026-04-26T00:00:00.000Z",
       }),
     ).toThrow();
+  });
+});
+
+describe("run protocol recovery additions", () => {
+  test("accepts recoverable run status", () => {
+    expect(RunStatusSchema.parse("recoverable")).toBe("recoverable");
+  });
+
+  test("accepts run recovery events", () => {
+    expect(
+      RunEventSchema.parse({
+        type: "run.recoverable",
+        runId: "r-1",
+        seq: 0,
+        createdAt: "2026-04-27T00:00:00.000Z",
+        reason: "incomplete_tool",
+        message: "Tool may need retry",
+      }).type,
+    ).toBe("run.recoverable");
+
+    expect(
+      RunEventSchema.parse({
+        type: "run.recovered",
+        runId: "r-1",
+        seq: 1,
+        createdAt: "2026-04-27T00:00:00.000Z",
+        mode: "manual",
+        discardPriorDraft: true,
+      }).type,
+    ).toBe("run.recovered");
+
+    expect(
+      RunEventSchema.parse({
+        type: "tool.retrying",
+        runId: "r-1",
+        seq: 2,
+        createdAt: "2026-04-27T00:00:00.000Z",
+        callId: "c-1",
+        tool: "shell.exec",
+        input: { argv: ["pwd"] },
+      }).type,
+    ).toBe("tool.retrying");
   });
 });

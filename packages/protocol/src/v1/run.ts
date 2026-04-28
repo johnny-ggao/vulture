@@ -7,6 +7,7 @@ import { AppErrorSchema, type AppError } from "./error";
 export const RunStatusSchema = z.enum([
   "queued",
   "running",
+  "recoverable",
   "succeeded",
   "failed",
   "cancelled",
@@ -81,6 +82,22 @@ export const RunEventSchema = z.discriminatedUnion("type", [
     tool: z.string().min(1),
     reason: z.string().min(1),
     approvalToken: z.string().min(1),
+  }),
+  baseEvent.extend({
+    type: z.literal("run.recoverable"),
+    reason: z.enum(["gateway_restarted", "incomplete_tool", "approval_pending"]),
+    message: z.string().min(1),
+  }),
+  baseEvent.extend({
+    type: z.literal("run.recovered"),
+    mode: z.enum(["auto", "manual"]),
+    discardPriorDraft: z.boolean(),
+  }),
+  baseEvent.extend({
+    type: z.literal("tool.retrying"),
+    callId: z.string().min(1),
+    tool: z.string().min(1),
+    input: z.unknown(),
   }),
   baseEvent.extend({
     type: z.literal("run.completed"),

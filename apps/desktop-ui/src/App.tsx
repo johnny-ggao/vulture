@@ -67,6 +67,8 @@ export function App() {
   const [activeRunId, setActiveRunId] = useState<string | null>(
     restoredChatRef.current.runId,
   );
+  const [runReconnectKey, setRunReconnectKey] = useState(0);
+  const [resumingRun, setResumingRun] = useState(false);
   const sendingRunRef = useRef(false);
   const [view, setView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -74,7 +76,11 @@ export function App() {
 
   const conversations = useConversations(apiClient);
   const messages = useMessages(apiClient, activeConversationId);
-  const runStream = useRunStream({ client: apiClient, runId: activeRunId });
+  const runStream = useRunStream({
+    client: apiClient,
+    runId: activeRunId,
+    reconnectKey: runReconnectKey,
+  });
   const approvals = useApproval({
     client: apiClient,
     runId: activeRunId,
@@ -253,7 +259,9 @@ export function App() {
   }
 
   async function handleSend(input: string) {
-    if (!apiClient || !selectedAgentId) return;
+    if (!apiClient || !selectedAgentId || runStream.status === "recoverable" || resumingRun) {
+      return;
+    }
     sendingRunRef.current = true;
     try {
       let cid = activeConversationId;
@@ -282,9 +290,31 @@ export function App() {
     }
   }
 
+  async function handleResume() {
+    if (!apiClient || !activeRunId || resumingRun) return;
+    const runId = activeRunId;
+    setResumingRun(true);
+    try {
+      await runsApi.resume(apiClient, runId);
+      setActiveRunId(runId);
+      setRunReconnectKey((v) => v + 1);
+    } catch (cause) {
+      console.error("Run resume failed", cause);
+    } finally {
+      setResumingRun(false);
+    }
+  }
+
   function handleNew() {
     setActiveConversationId(null);
     setActiveRunId(null);
+    writeActiveChatState({ conversationId: null, runId: null });
+  }
+
+  function startNewConversation() {
+    handleNew();
+    setView("chat");
+    setHistoryOpen(false);
   }
 
   const onboardingCard =
@@ -323,6 +353,7 @@ export function App() {
               setView(v);
               if (v !== "chat") setHistoryOpen(false);
             }}
+            onNewConversation={startNewConversation}
             historyOpen={historyOpen}
             onToggleHistory={() => setHistoryOpen((o) => !o)}
           />
@@ -350,8 +381,10 @@ export function App() {
               runStatus={runStream.status}
               runError={runStream.error}
               submittingApprovals={approvals.submitting}
+              resumingRun={resumingRun}
               onSend={handleSend}
               onCancel={handleCancel}
+              onResume={handleResume}
               onDecide={approvals.decide}
               onboardingCard={onboardingCard}
             />
@@ -408,10 +441,7 @@ export function App() {
           setActiveRunId(null);
           setView("chat");
         }}
-        onNew={() => {
-          handleNew();
-          setView("chat");
-        }}
+        onNew={startNewConversation}
       />
 
       <NewAgentModal

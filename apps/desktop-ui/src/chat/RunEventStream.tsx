@@ -3,9 +3,12 @@ import type { ApprovalDecision } from "../api/runs";
 import { MessageBubble } from "./MessageBubble";
 import { ToolBlock, type ToolBlockStatus } from "./ToolBlock";
 import { ApprovalCard } from "./ApprovalCard";
+import { RecoveryCard } from "./RecoveryCard";
 
 export type RunBlock =
   | { kind: "text"; content: string; firstSeq: number }
+  | { kind: "recovery"; message: string; reason: string; firstSeq: number }
+  | { kind: "recovery-boundary"; firstSeq: number }
   | {
       kind: "tool";
       callId: string;
@@ -26,7 +29,7 @@ export type RunBlock =
     };
 
 export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
-  const blocks: RunBlock[] = [];
+  const blocks: Array<RunBlock | undefined> = [];
   const toolIndex = new Map<string, number>(); // callId -> blocks index
   const approvalIndex = new Map<string, number>(); // callId -> blocks index
 
@@ -60,8 +63,8 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const callId = String(e.callId);
         removeApprovalBlock(blocks, approvalIndex, callId);
         const idx = toolIndex.get(callId);
-        if (idx !== undefined && blocks[idx].kind === "tool") {
-          const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
+        const block = idx !== undefined ? blocks[idx] : undefined;
+        if (idx !== undefined && block?.kind === "tool") {
           blocks[idx] = { ...block, status: "running" };
         }
         break;
@@ -70,8 +73,8 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const callId = String(e.callId);
         removeApprovalBlock(blocks, approvalIndex, callId);
         const idx = toolIndex.get(callId);
-        if (idx !== undefined && blocks[idx].kind === "tool") {
-          const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
+        const block = idx !== undefined ? blocks[idx] : undefined;
+        if (idx !== undefined && block?.kind === "tool") {
           blocks[idx] = { ...block, status: "completed", output: e.output };
         }
         break;
@@ -80,8 +83,8 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const callId = String(e.callId);
         removeApprovalBlock(blocks, approvalIndex, callId);
         const idx = toolIndex.get(callId);
-        if (idx !== undefined && blocks[idx].kind === "tool") {
-          const block = blocks[idx] as Extract<RunBlock, { kind: "tool" }>;
+        const block = idx !== undefined ? blocks[idx] : undefined;
+        if (idx !== undefined && block?.kind === "tool") {
           blocks[idx] = { ...block, status: "failed", error: e.error as { code: string; message: string } };
         } else {
           // No prior tool.planned (e.g. ask → deny path with no plan event):
@@ -112,6 +115,20 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         });
         break;
       }
+      case "run.recoverable": {
+        blocks.push({
+          kind: "recovery",
+          message: String(e.message ?? "Run can be recovered."),
+          reason: String(e.reason ?? ""),
+          firstSeq: e.seq,
+        });
+        break;
+      }
+      case "run.recovered": {
+        removeRecoveryBlocks(blocks);
+        blocks.push({ kind: "recovery-boundary", firstSeq: e.seq });
+        break;
+      }
       // run.started / run.completed / run.failed / run.cancelled produce no inline block
     }
   }
@@ -133,7 +150,10 @@ function removeApprovalBlock(
 export interface RunEventStreamProps {
   events: readonly AnyRunEvent[];
   submittingApprovals: ReadonlySet<string>;
+  resuming: boolean;
   onDecide: (callId: string, decision: ApprovalDecision) => void;
+  onResume: () => void;
+  onCancel: () => void;
 }
 
 export function RunEventStream(props: RunEventStreamProps) {
@@ -157,6 +177,24 @@ export function RunEventStream(props: RunEventStreamProps) {
             />
           );
         }
+        if (b.kind === "recovery") {
+          return (
+            <RecoveryCard
+              key={`recovery-${b.firstSeq}`}
+              message={b.message}
+              busy={props.resuming}
+              onResume={props.onResume}
+              onCancel={props.onCancel}
+            />
+          );
+        }
+        if (b.kind === "recovery-boundary") {
+          return (
+            <div key={`recovery-boundary-${b.firstSeq}`} className="recovery-boundary" role="separator">
+              运行已恢复
+            </div>
+          );
+        }
         return (
           <ApprovalCard
             key={`${b.callId}-${b.firstSeq}`}
@@ -170,4 +208,10 @@ export function RunEventStream(props: RunEventStreamProps) {
       })}
     </div>
   );
+}
+
+function removeRecoveryBlocks(blocks: Array<RunBlock | undefined>): void {
+  for (let i = 0; i < blocks.length; i += 1) {
+    if (blocks[i]?.kind === "recovery") blocks[i] = undefined;
+  }
 }

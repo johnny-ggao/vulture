@@ -14,6 +14,10 @@ const notSignedInFetch = (async (url: string | URL | Request) => {
   return new Response("", { status: 200 });
 }) as typeof fetch;
 
+async function* finalOnlyRun() {
+  yield { kind: "final" as const, text: "ok" };
+}
+
 describe("makeLazyLlm", () => {
   test("uses stub fallback when env.OPENAI_API_KEY is missing", async () => {
     const llm = makeLazyLlm({
@@ -111,6 +115,7 @@ describe("makeLazyLlm", () => {
       shellCallbackUrl: "http://shell:4199",
       shellToken: "x".repeat(43),
       fetch: trackingFetch,
+      runFactory: () => finalOnlyRun(),
     });
     const iter = llm({
       systemPrompt: "x",
@@ -142,6 +147,7 @@ describe("makeLazyLlm", () => {
       shellCallbackUrl: "http://shell:4199",
       shellToken: "x".repeat(43),
       fetch: fetchFn,
+      runFactory: () => finalOnlyRun(),
     });
     const iter = llm({
       systemPrompt: "x",

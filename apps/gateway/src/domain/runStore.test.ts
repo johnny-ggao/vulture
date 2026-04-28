@@ -65,6 +65,32 @@ describe("RunStore", () => {
     cleanup();
   });
 
+  test("malformed error_json returns failed run with null error", () => {
+    const { db, runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.markFailed(r.id, { code: "internal", message: "boom" });
+    db.query("UPDATE runs SET error_json = ? WHERE id = ?").run("{bad-json", r.id);
+
+    expect(() => runs.get(r.id)).not.toThrow();
+    const recovered = runs.get(r.id)!;
+    expect(recovered.status).toBe("failed");
+    expect(recovered.error).toBe(null);
+    expect(() => runs.listForConversation(c.id)).not.toThrow();
+    cleanup();
+  });
+
+  test("schema-invalid error_json returns failed run with null error", () => {
+    const { db, runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.markFailed(r.id, { code: "internal", message: "boom" });
+    db.query("UPDATE runs SET error_json = ? WHERE id = ?").run(JSON.stringify({ code: 123 }), r.id);
+
+    const recovered = runs.get(r.id)!;
+    expect(recovered.status).toBe("failed");
+    expect(recovered.error).toBe(null);
+    cleanup();
+  });
+
   test("recoverInflightOnStartup sweeps queued/running → failed", () => {
     const { db, runs, c, userMsg, cleanup } = fresh();
     const r = runs.create({
@@ -110,6 +136,236 @@ describe("RunStore", () => {
     cleanup();
   });
 
+  test("save + load recovery state", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+
+    runs.saveRecoveryState(r.id, {
+      schemaVersion: 1,
+      sdkState: "sdk-state-1",
+      metadata: {
+        runId: r.id,
+        conversationId: c.id,
+        agentId: c.agentId,
+        model: "gpt-5.4",
+        systemPrompt: "system",
+        userInput: "hi",
+        workspacePath: "/tmp/work",
+        providerKind: "api_key",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      },
+      checkpointSeq: 7,
+      activeTool: null,
+    });
+
+    expect(runs.getRecoveryState(r.id)).toMatchObject({
+      schemaVersion: 1,
+      sdkState: "sdk-state-1",
+      checkpointSeq: 7,
+      activeTool: null,
+    });
+    cleanup();
+  });
+
+  test("corrupt recovery JSON returns null", () => {
+    const { db, runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    db.query(
+      `INSERT INTO run_recovery_state(
+         run_id, schema_version, sdk_state, metadata_json, checkpoint_seq, active_tool_json, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(r.id, 1, "sdk-state-1", "{bad-json", 7, null, "2026-04-27T00:00:00.000Z");
+
+    expect(() => runs.getRecoveryState(r.id)).not.toThrow();
+    expect(runs.getRecoveryState(r.id)).toBe(null);
+    cleanup();
+  });
+
+  test("saveRecoveryState upsert overwrites prior state", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    const metadata = {
+      runId: r.id,
+      conversationId: c.id,
+      agentId: c.agentId,
+      model: "gpt-5.4",
+      systemPrompt: "system",
+      userInput: "hi",
+      workspacePath: "/tmp/work",
+      providerKind: "api_key" as const,
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+
+    runs.saveRecoveryState(r.id, {
+      schemaVersion: 1,
+      sdkState: "sdk-state-1",
+      metadata,
+      checkpointSeq: 7,
+      activeTool: null,
+    });
+    runs.saveRecoveryState(r.id, {
+      schemaVersion: 1,
+      sdkState: "sdk-state-2",
+      metadata,
+      checkpointSeq: 9,
+      activeTool: {
+        callId: "c2",
+        tool: "shell.exec",
+        input: { cmd: "pwd" },
+        approvalToken: "approval-1",
+        startedSeq: 8,
+      },
+    });
+
+    expect(runs.getRecoveryState(r.id)).toMatchObject({
+      sdkState: "sdk-state-2",
+      checkpointSeq: 9,
+      activeTool: {
+        callId: "c2",
+        tool: "shell.exec",
+        input: { cmd: "pwd" },
+        approvalToken: "approval-1",
+        startedSeq: 8,
+      },
+    });
+    cleanup();
+  });
+
+  test("clearRecoveryState deletes recovery state", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.saveRecoveryState(r.id, {
+      schemaVersion: 1,
+      sdkState: "sdk-state-1",
+      metadata: {
+        runId: r.id,
+        conversationId: c.id,
+        agentId: c.agentId,
+        model: "gpt-5.4",
+        systemPrompt: "system",
+        userInput: "hi",
+        workspacePath: "/tmp/work",
+        providerKind: "api_key",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      },
+      checkpointSeq: 7,
+      activeTool: null,
+    });
+
+    runs.clearRecoveryState(r.id);
+
+    expect(runs.getRecoveryState(r.id)).toBe(null);
+    cleanup();
+  });
+
+  test("markRecoverable changes status without ending the run", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.markRunning(r.id);
+    runs.markRecoverable(r.id);
+    const recovered = runs.get(r.id)!;
+    expect(recovered.status).toBe("recoverable");
+    expect(recovered.endedAt).toBe(null);
+    cleanup();
+  });
+
+  test("claimRecoverable atomically transitions only recoverable runs to running", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const recoverable = freshRun(runs, c, userMsg);
+    runs.markRecoverable(recoverable.id);
+    const queued = freshRun(runs, c, userMsg);
+
+    expect(runs.claimRecoverable(recoverable.id)).toBe(true);
+    expect(runs.get(recoverable.id)?.status).toBe("running");
+    expect(runs.claimRecoverable(recoverable.id)).toBe(false);
+    expect(runs.claimRecoverable(queued.id)).toBe(false);
+    expect(runs.get(queued.id)?.status).toBe("queued");
+    cleanup();
+  });
+
+  test("active filter includes recoverable runs", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.markRecoverable(r.id);
+    expect(runs.listForConversation(c.id, { status: "active" }).map((x) => x.id)).toContain(r.id);
+    cleanup();
+  });
+
+  test("listInflight returns queued and running runs but excludes recoverable runs", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const queued = freshRun(runs, c, userMsg);
+    const running = freshRun(runs, c, userMsg);
+    runs.markRunning(running.id);
+    const recoverable = freshRun(runs, c, userMsg);
+    runs.markRecoverable(recoverable.id);
+    const failed = freshRun(runs, c, userMsg);
+    runs.markFailed(failed.id, { code: "internal", message: "boom" });
+
+    expect(runs.listInflight().map((x) => x.id)).toEqual([queued.id, running.id]);
+    cleanup();
+  });
+
+  test("latestSeq returns -1 with no events and latest seq after events", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    expect(runs.latestSeq(r.id)).toBe(-1);
+    runs.appendEvent(r.id, { type: "text.delta", text: "hello" });
+    runs.appendEvent(r.id, { type: "text.delta", text: " world" });
+    expect(runs.latestSeq(r.id)).toBe(1);
+    cleanup();
+  });
+
+  test("detects terminal tool event for callId", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.appendEvent(r.id, { type: "tool.started", callId: "c1" });
+    expect(runs.hasTerminalToolEvent(r.id, "c1")).toBe(false);
+    runs.appendEvent(r.id, { type: "tool.completed", callId: "c1", output: "ok" });
+    expect(runs.hasTerminalToolEvent(r.id, "c1")).toBe(true);
+    cleanup();
+  });
+
+  test("detects failed terminal tool event for callId", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.appendEvent(r.id, {
+      type: "tool.failed",
+      callId: "c1",
+      error: { code: "internal", message: "boom" },
+    });
+    expect(runs.hasTerminalToolEvent(r.id, "c1")).toBe(true);
+    cleanup();
+  });
+
+  test("hasTerminalToolEvent ignores malformed payload_json", () => {
+    const { db, runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(r.id, 0, "tool.completed", "{bad-json", "2026-04-27T00:00:00.000Z");
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(
+      r.id,
+      1,
+      "tool.completed",
+      JSON.stringify({
+        type: "tool.completed",
+        runId: r.id,
+        seq: 1,
+        createdAt: "2026-04-27T00:00:01.000Z",
+        callId: "c1",
+        output: "ok",
+      }),
+      "2026-04-27T00:00:01.000Z",
+    );
+
+    expect(() => runs.hasTerminalToolEvent(r.id, "missing")).not.toThrow();
+    expect(runs.hasTerminalToolEvent(r.id, "missing")).toBe(false);
+    expect(runs.hasTerminalToolEvent(r.id, "c1")).toBe(true);
+    cleanup();
+  });
+
   test("appendEvent + listEventsAfter (in-memory + persisted)", () => {
     const { runs, c, userMsg, cleanup } = fresh();
     const r = runs.create({
@@ -125,6 +381,59 @@ describe("RunStore", () => {
     const after = runs.listEventsAfter(r.id, 0);
     expect(after.length).toBe(1);
     expect(after[0].type).toBe("text.delta");
+    cleanup();
+  });
+
+  test("listEventsAfter skips malformed payload_json", () => {
+    const { db, runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(r.id, 0, "text.delta", "{bad-json", "2026-04-27T00:00:00.000Z");
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(
+      r.id,
+      1,
+      "text.delta",
+      JSON.stringify({
+        type: "text.delta",
+        runId: r.id,
+        seq: 1,
+        createdAt: "2026-04-27T00:00:01.000Z",
+        text: "valid",
+      }),
+      "2026-04-27T00:00:01.000Z",
+    );
+
+    expect(() => runs.listEventsAfter(r.id, -1)).not.toThrow();
+    expect(runs.listEventsAfter(r.id, -1).map((event) => event.seq)).toEqual([1]);
+    cleanup();
+  });
+
+  test("listEventsAfter skips schema-invalid payload_json", () => {
+    const { db, runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(r.id, 0, "text.delta", JSON.stringify({ foo: "bar" }), "2026-04-27T00:00:00.000Z");
+    db.query(
+      "INSERT INTO run_events(run_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(
+      r.id,
+      1,
+      "text.delta",
+      JSON.stringify({
+        type: "text.delta",
+        runId: r.id,
+        seq: 1,
+        createdAt: "2026-04-27T00:00:01.000Z",
+        text: "valid",
+      }),
+      "2026-04-27T00:00:01.000Z",
+    );
+
+    expect(runs.listEventsAfter(r.id, -1).map((event) => event.seq)).toEqual([1]);
     cleanup();
   });
 

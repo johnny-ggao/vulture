@@ -18,8 +18,10 @@ export interface ChatViewProps {
   runError: string | null;
 
   submittingApprovals: ReadonlySet<string>;
+  resumingRun: boolean;
   onSend: (input: string) => void;
   onCancel: () => void;
+  onResume: () => void;
   onDecide: (callId: string, decision: ApprovalDecision) => void;
 
   onboardingCard?: ReactNode;
@@ -27,9 +29,11 @@ export interface ChatViewProps {
 
 export function ChatView(props: ChatViewProps) {
   const running =
+    props.resumingRun ||
     props.runStatus === "connecting" ||
     props.runStatus === "streaming" ||
-    props.runStatus === "reconnecting";
+    props.runStatus === "reconnecting" ||
+    props.runStatus === "recoverable";
 
   const hasContent = props.messages.length > 0 || props.runEvents.length > 0;
 
@@ -48,7 +52,10 @@ export function ChatView(props: ChatViewProps) {
             <RunEventStream
               events={props.runEvents}
               submittingApprovals={props.submittingApprovals}
+              resuming={props.resumingRun}
               onDecide={props.onDecide}
+              onResume={props.onResume}
+              onCancel={props.onCancel}
             />
           </div>
         ) : props.onboardingCard ? (

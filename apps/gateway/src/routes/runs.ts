@@ -14,6 +14,11 @@ import { orchestrateRun } from "../runtime/runOrchestrator";
 import type { LlmCallable, ToolCallable } from "@vulture/agent-runtime";
 import type { ApprovalQueue } from "../runtime/approvalQueue";
 
+export type ResumeRunResult =
+  | { status: "scheduled" }
+  | { status: "already_started" }
+  | { status: "missing_state" };
+
 export interface RunsDeps {
   conversations: ConversationStore;
   messages: MessageStore;
@@ -22,6 +27,7 @@ export interface RunsDeps {
   tools: ToolCallable;
   approvalQueue: ApprovalQueue;
   cancelSignals: Map<string, AbortController>;
+  resumeRun(runId: string, mode: "auto" | "manual"): ResumeRunResult;
   systemPromptForAgent(a: { id: string }): string;
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
@@ -41,6 +47,7 @@ const DEFAULT_HEARTBEAT_MS = 15_000;
 const RUN_STATUS_FILTERS = new Set<string>([
   "queued",
   "running",
+  "recoverable",
   "succeeded",
   "failed",
   "cancelled",
@@ -235,6 +242,29 @@ export function runsRouter(deps: RunsDeps): Hono {
     deps.cancelSignals.get(rid)?.abort();
     deps.runs.markCancelled(rid);
     deps.runs.appendEvent(rid, { type: "run.cancelled" });
+    return c.json(deps.runs.get(rid), 202);
+  });
+
+  app.post("/v1/runs/:rid/resume", (c) => {
+    const rid = c.req.param("rid");
+    const run = deps.runs.get(rid);
+    if (!run) return c.json({ code: "run.not_found", message: rid }, 404);
+    if (run.status !== "recoverable") {
+      return c.json({ code: "run.not_recoverable", message: run.status }, 409);
+    }
+    const result = deps.resumeRun(rid, "manual");
+    if (result.status === "already_started") {
+      return c.json({ code: "run.not_recoverable", message: "already started" }, 409);
+    }
+    if (result.status === "missing_state") {
+      return c.json(
+        {
+          code: "internal.recovery_state_unavailable",
+          message: `recovery state unavailable for ${rid}`,
+        },
+        409,
+      );
+    }
     return c.json(deps.runs.get(rid), 202);
   });
 

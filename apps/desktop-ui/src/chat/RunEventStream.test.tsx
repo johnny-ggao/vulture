@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { render, screen } from "@testing-library/react";
 import { reduceRunEvents } from "./RunEventStream";
+import { RunEventStream } from "./RunEventStream";
 import type { AnyRunEvent } from "../hooks/useRunStream";
 
 const ev = (overrides: Partial<AnyRunEvent>): AnyRunEvent => ({
@@ -118,5 +120,70 @@ describe("reduceRunEvents", () => {
     ];
     const blocks = reduceRunEvents(events);
     expect(blocks.map((b) => b.kind)).toEqual(["text", "tool", "text"]);
+  });
+
+  test("run.recoverable renders recovery block", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "text.delta", seq: 0, text: "before" }),
+      ev({
+        type: "run.recoverable",
+        seq: 1,
+        reason: "incomplete_tool",
+        message: "Tool shell.exec may have been interrupted before completion.",
+      }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks.map((b) => b.kind)).toEqual(["text", "recovery"]);
+    expect(blocks[1]).toMatchObject({
+      kind: "recovery",
+      message: "Tool shell.exec may have been interrupted before completion.",
+      firstSeq: 1,
+    });
+  });
+
+  test("run.recovered creates a boundary before later text", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "text.delta", seq: 0, text: "draft" }),
+      ev({ type: "run.recovered", seq: 1, mode: "manual", discardPriorDraft: true }),
+      ev({ type: "text.delta", seq: 2, text: " resumed" }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks.map((b) => b.kind)).toEqual(["text", "recovery-boundary", "text"]);
+    if (blocks[0].kind === "text") expect(blocks[0].content).toBe("draft");
+    if (blocks[2].kind === "text") expect(blocks[2].content).toBe(" resumed");
+  });
+
+  test("run.recovered removes the pending recovery block", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "text.delta", seq: 0, text: "draft" }),
+      ev({
+        type: "run.recoverable",
+        seq: 1,
+        reason: "incomplete_tool",
+        message: "Tool shell.exec may have been interrupted before completion.",
+      }),
+      ev({ type: "run.recovered", seq: 2, mode: "manual", discardPriorDraft: true }),
+      ev({ type: "text.delta", seq: 3, text: "after" }),
+    ];
+    const blocks = reduceRunEvents(events);
+    expect(blocks.map((b) => b.kind)).toEqual(["text", "recovery-boundary", "text"]);
+  });
+
+  test("run.recovered renders a visible recovery boundary", () => {
+    render(
+      <RunEventStream
+        events={[
+          ev({ type: "text.delta", seq: 0, text: "draft" }),
+          ev({ type: "run.recovered", seq: 1, mode: "manual", discardPriorDraft: true }),
+          ev({ type: "text.delta", seq: 2, text: "after" }),
+        ]}
+        submittingApprovals={new Set()}
+        resuming={false}
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByRole("separator").textContent).toBe("运行已恢复");
   });
 });

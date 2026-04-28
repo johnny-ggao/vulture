@@ -1,22 +1,6 @@
-/**
- * Codex (ChatGPT subscription) LLM provider.
- *
- * IMPORTANT — SDK state contract:
- * Calling `makeCodexLlm` mutates @openai/agents global SDK state via
- * `setDefaultOpenAIClient`, `setOpenAIAPI("responses")`, and
- * `setTracingDisabled(true)`. These are PROCESS-GLOBAL side effects.
- *
- * Once a codex run executes, subsequent runs through other providers
- * (e.g. API key) MUST reset the SDK client to a vanilla OpenAI instance
- * before delegating, otherwise their requests will be routed to
- * chatgpt.com/backend-api with codex headers (401/404).
- *
- * `runtime/resolveLlm.ts` is responsible for enforcing this invariant.
- */
 import OpenAI from "openai";
-import { setDefaultOpenAIClient, setOpenAIAPI, setTracingDisabled } from "@openai/agents";
 import type { LlmCallable, LlmYield, ToolCallable } from "@vulture/agent-runtime";
-import { makeOpenAILlm } from "./openaiLlm";
+import { makeOpenAILlm, makeResponsesModelProvider, type OpenAILlmOptions } from "./openaiLlm";
 
 export interface CodexShellResponse {
   accessToken: string;
@@ -84,6 +68,9 @@ export interface CodexLlmOptions {
   toolNames: readonly string[];
   toolCallable: ToolCallable;
   fetch?: typeof fetch;
+  codexToken?: CodexShellResponse;
+  runFactory?: OpenAILlmOptions["runFactory"];
+  approvalCallable?: OpenAILlmOptions["approvalCallable"];
 }
 
 /**
@@ -186,15 +173,19 @@ function transformBlock(block: string, items: CodexResponseItem[]): string {
 
 export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
   return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
-    const token = await fetchCodexToken({
-      shellUrl: opts.shellUrl,
-      bearer: opts.shellBearer,
-      fetch: opts.fetch,
-    });
+    const token =
+      opts.codexToken ??
+      (await fetchCodexToken({
+        shellUrl: opts.shellUrl,
+        bearer: opts.shellBearer,
+        fetch: opts.fetch,
+      }));
 
-    // Configure @openai/agents to route via chatgpt.com/backend-api/codex
+    // Configure this run's provider to route via chatgpt.com/backend-api/codex
     // (the only path that accepts ChatGPT-subscription tokens). The SDK
-    // appends "/responses", landing on the right endpoint.
+    // appends "/responses", landing on the right endpoint. This is deliberately
+    // passed to Runner as a per-run modelProvider by openaiLlm.ts; no global SDK
+    // client mutation is needed.
     //
     // `originator: "codex_cli_rs"` is the only originator the backend allows
     // for ChatGPT-subscription auth — other values return 403.
@@ -214,18 +205,19 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
       // there's a final assistant message; an empty array sends the runner
       // into infinite re-loop. Buffer items locally and inject them back.
       fetch: makeCodexResponsesFetch(opts.fetch),
+      dangerouslyAllowBrowser: true,
     });
-    setDefaultOpenAIClient(client);
-    setOpenAIAPI("responses");
-    setTracingDisabled(true);
 
-    // Delegate to existing OpenAILlm machinery; it uses the client we just
-    // configured. apiKey here is unused on the wire (OpenAI client already has
-    // it), but makeOpenAILlm requires the parameter for non-codex callers.
+    // Delegate to existing OpenAILlm machinery with an explicit provider.
+    // apiKey here is unused on the wire because the provider owns the client,
+    // but makeOpenAILlm keeps it for API-key callers.
     const inner = makeOpenAILlm({
       apiKey: token.accessToken,
       toolNames: opts.toolNames,
       toolCallable: opts.toolCallable,
+      modelProvider: makeResponsesModelProvider({ openAIClient: client }),
+      runFactory: opts.runFactory,
+      approvalCallable: opts.approvalCallable,
     });
     yield* inner(input);
   };

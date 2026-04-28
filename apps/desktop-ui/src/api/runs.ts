@@ -1,7 +1,13 @@
 import type { ApiClient } from "./client";
 import type { MessageDto } from "./conversations";
 
-export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type RunStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "recoverable";
 
 export interface RunDto {
   id: string;
@@ -47,6 +53,9 @@ export const runsApi = {
 
   cancel: (client: ApiClient, runId: string) =>
     client.post<RunDto>(`/v1/runs/${runId}/cancel`, {}),
+
+  resume: (client: ApiClient, runId: string) =>
+    client.post<RunDto>(`/v1/runs/${runId}/resume`, {}),
 
   approve: (client: ApiClient, runId: string, body: ApprovalRequest) =>
     client.post<void>(`/v1/runs/${runId}/approvals`, body),

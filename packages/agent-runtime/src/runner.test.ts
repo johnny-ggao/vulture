@@ -1,5 +1,13 @@
 import { describe, expect, test, mock } from "bun:test";
-import { runConversation, ToolCallError, type LlmCallable, type LlmYield, type ToolCallable } from "./runner";
+import {
+  runConversation,
+  ToolCallError,
+  type LlmCallable,
+  type LlmCheckpoint,
+  type LlmRecoveryInput,
+  type LlmYield,
+  type ToolCallable,
+} from "./runner";
 
 describe("runConversation", () => {
   test("happy path: LLM returns text → emits run.started + text.delta + run.completed", async () => {
@@ -117,6 +125,38 @@ describe("runConversation", () => {
 
     expect(result.status).toBe("succeeded");
     expect(result.finalText).toBe("Here is the result.");
+  });
+
+  test("passes recovery options through to llm", async () => {
+    const recovery: LlmRecoveryInput = { sdkState: "resume-state", retryToolCallId: null };
+    const checkpoint: LlmCheckpoint = { sdkState: "checkpoint", activeTool: null };
+    let seen: unknown;
+    const checkpoints: LlmCheckpoint[] = [];
+    const llm: LlmCallable = mock(async function* (
+      input: Parameters<LlmCallable>[0],
+    ): AsyncGenerator<LlmYield, void, unknown> {
+      seen = input.recovery;
+      input.onCheckpoint?.(checkpoint);
+      yield { kind: "final", text: "ok" };
+    });
+
+    const result = await runConversation({
+      runId: "r-recovery",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      systemPrompt: "ignored",
+      userInput: "resume",
+      workspacePath: "",
+      llm,
+      tools: async () => ({}),
+      onEvent: () => undefined,
+      recovery,
+      onCheckpoint: (value) => checkpoints.push(value),
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(seen).toEqual(recovery);
+    expect(checkpoints).toEqual([checkpoint]);
   });
 
   test("fails when the LLM stream is idle past the timeout", async () => {

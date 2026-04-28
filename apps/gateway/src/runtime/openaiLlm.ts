@@ -1,7 +1,26 @@
-import { Agent, Runner, tool } from "@openai/agents";
-import type { Tool } from "@openai/agents";
-import { z } from "zod";
-import type { LlmCallable, LlmYield, ToolCallable } from "@vulture/agent-runtime";
+import OpenAI from "openai";
+import { Agent, OpenAIProvider, RunContext, Runner, RunState } from "@openai/agents";
+import type {
+  ModelProvider,
+  RunStreamEvent,
+  RunToolApprovalItem,
+  StreamedRunResult,
+} from "@openai/agents";
+import type {
+  LlmCallable,
+  LlmCheckpoint,
+  LlmRecoveryInput,
+  LlmYield,
+  ToolCallable,
+} from "@vulture/agent-runtime";
+import { createCoreToolRegistry } from "../tools/coreTools";
+import { resolveEffectiveTools } from "../tools/registry";
+import {
+  sdkApprovalDecision,
+  toSdkTool,
+  type GatewayToolRunContext,
+} from "../tools/sdkAdapter";
+export { sdkApprovalDecision } from "../tools/sdkAdapter";
 
 /**
  * Internal event shape representing one normalized step from the @openai/agents
@@ -14,7 +33,17 @@ export type SdkRunEvent =
   | { kind: "await.tool"; callId: string }
   | { kind: "final"; text: string };
 
-interface RunFactoryInput {
+export type SdkApprovalCallable = (request: {
+  callId: string;
+  tool: string;
+  input: unknown;
+  runId: string;
+  workspacePath: string;
+  reason: string;
+  approvalToken: string;
+}) => Promise<"allow" | "deny">;
+
+export interface RunFactoryInput {
   systemPrompt: string;
   userInput: string;
   model: string;
@@ -23,12 +52,20 @@ interface RunFactoryInput {
   toolCallable: ToolCallable;
   runId: string;
   workspacePath: string;
+  modelProvider: ModelProvider;
+  tracingDisabled: boolean;
+  approvalCallable?: SdkApprovalCallable;
+  recovery?: LlmRecoveryInput;
+  onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
 }
 
 export interface OpenAILlmOptions {
   apiKey: string;
   toolNames: readonly string[];
   toolCallable: ToolCallable;
+  modelProvider?: ModelProvider;
+  tracingDisabled?: boolean;
+  approvalCallable?: SdkApprovalCallable;
   /**
    * Factory that returns an async iterable of SDK events for one run. Default
    * uses the real @openai/agents Run; tests inject a deterministic stream so
@@ -39,6 +76,7 @@ export interface OpenAILlmOptions {
 
 export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
   const factory = opts.runFactory ?? defaultRunFactory;
+  const modelProvider = opts.modelProvider ?? makeResponsesModelProvider({ apiKey: opts.apiKey });
   return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
     const stream = factory({
       systemPrompt: input.systemPrompt,
@@ -49,6 +87,11 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
       toolCallable: opts.toolCallable,
       runId: input.runId,
       workspacePath: input.workspacePath,
+      modelProvider,
+      tracingDisabled: opts.tracingDisabled ?? true,
+      approvalCallable: opts.approvalCallable,
+      recovery: input.recovery,
+      onCheckpoint: input.onCheckpoint,
     });
     for await (const event of stream) {
       yield event as LlmYield;
@@ -66,20 +109,13 @@ export function makeStubLlmFallback(): LlmCallable {
   };
 }
 
-interface SdkRunContext {
-  runId: string;
-  workspacePath: string;
-  toolCallable: ToolCallable;
-}
+export type SdkRunContext = GatewayToolRunContext;
 
 async function* defaultRunFactory(
   input: RunFactoryInput,
 ): AsyncIterable<SdkRunEvent> {
-  // The SDK reads OPENAI_API_KEY from process.env. The lazy wrapper in
-  // resolveLlm.ts only calls makeOpenAILlm when OPENAI_API_KEY is present, so
-  // we can rely on the env being set by the time we reach here. No mutation
-  // of process.env is needed or wanted (FU-3).
-  const tools: Tool[] = input.toolNames.map((name) => makeSdkTool(name));
+  const registry = createCoreToolRegistry();
+  const tools = resolveEffectiveTools(registry, { allow: input.toolNames }).map(toSdkTool);
   const agent = new Agent<SdkRunContext>({
     name: "local-work",
     instructions: input.systemPrompt,
@@ -91,108 +127,183 @@ async function* defaultRunFactory(
     modelSettings: { store: false },
   });
 
-  const runner = new Runner();
-  const stream = await runner.run(agent, input.userInput, {
-    stream: true,
-    context: {
-      runId: input.runId,
-      workspacePath: input.workspacePath,
-      toolCallable: input.toolCallable,
-    },
+  const runner = new Runner({
+    modelProvider: input.modelProvider,
+    tracingDisabled: input.tracingDisabled,
   });
+  const context: SdkRunContext = {
+    runId: input.runId,
+    workspacePath: input.workspacePath,
+    toolCallable: input.toolCallable,
+    sdkApprovedToolCalls: new Map(),
+    onCheckpoint: input.onCheckpoint,
+  };
+  const runContext = new RunContext(context);
+  let runInput = await resolveSdkRunInput(agent, input.userInput, input.recovery, runContext);
 
-  for await (const event of stream) {
-    if (event.type === "raw_model_stream_event") {
-      const data = event.data as { type?: string; delta?: string };
-      if (data?.type === "output_text_delta" && typeof data.delta === "string") {
-        yield { kind: "text.delta", text: data.delta };
+  while (true) {
+    const stream = (await runner.run(agent, runInput, {
+      stream: true,
+      context: runContext,
+    })) as StreamedRunResult<SdkRunContext, Agent<SdkRunContext, any>>;
+
+    for await (const event of stream) {
+      const delta = extractTextDeltaFromRunStreamEvent(event);
+      if (delta) {
+        yield { kind: "text.delta", text: delta };
+      }
+      // run_item_stream_event covers tool lifecycle. We DO NOT yield tool.plan /
+      // await.tool here because the SDK invokes Tool.execute internally — the
+      // runner's `await args.tools(...)` path is bypassed for openaiLlm. Tool
+      // visibility instead surfaces via run_events emitted from the tool
+      // callback and SDK approval bridge.
+    }
+
+    await stream.completed;
+    input.onCheckpoint?.({
+      sdkState: stream.state.toString(),
+      activeTool: null,
+    });
+    if (stream.interruptions.length === 0) {
+      const final = stream.finalOutput;
+      yield { kind: "final", text: typeof final === "string" ? final : "" };
+      return;
+    }
+
+    if (!input.approvalCallable) {
+      throw new Error("makeOpenAILlm: SDK approval requested but no approvalCallable is configured");
+    }
+    for (const interruption of stream.interruptions) {
+      const request = approvalRequestFromInterruption(interruption, input, context);
+      const decision = await input.approvalCallable(request);
+      if (decision === "allow") {
+        context.sdkApprovedToolCalls.set(request.callId, request.approvalToken);
+        stream.state.approve(interruption);
+      } else {
+        stream.state.reject(interruption, { message: `user denied ${request.tool}` });
       }
     }
-    // run_item_stream_event covers tool lifecycle. We DO NOT yield tool.plan /
-    // await.tool here because the SDK invokes Tool.execute internally — the
-    // runner's `await args.tools(...)` path is bypassed for openaiLlm. Tool
-    // visibility instead surfaces via:
-    //   - tool.ask events emitted from inside makeShellCallbackTools when an
-    //     approval is required (those land in run_events normally),
-    //   - the model's natural-language summary of the tool result in the
-    //     subsequent text deltas.
-    // Phase 4 can add proper SDK→LlmYield tool event mapping if desired.
+    runInput = stream.state;
   }
-
-  await stream.completed;
-  const final = stream.finalOutput;
-  yield { kind: "final", text: typeof final === "string" ? final : "" };
 }
 
-function makeSdkTool(toolName: string): Tool {
-  // Build a tool whose execute() routes through the user-provided ToolCallable
-  // captured in RunContext.context.toolCallable.
-  if (toolName === "shell.exec") {
-    return tool({
-      name: "shell.exec",
-      description:
-        "Execute a shell command in the workspace. Returns stdout/stderr/exitCode.",
-      parameters: z.object({
-        cwd: z.string(),
-        argv: z.array(z.string()),
-        // Codex backend enforces strict JSON schema: every property must
-        // appear in `required`. We use `.nullable()` so the model can pass
-        // null when it has no preference; gateway-side execution treats
-        // null as "use default 120_000ms".
-        timeoutMs: z.number().int().positive().nullable(),
-      }),
-      execute: async (input, context, details) => {
-        const ctx = context?.context as SdkRunContext | undefined;
-        if (!ctx) throw new Error("makeOpenAILlm: missing SdkRunContext");
-        const callId = details?.toolCall?.callId ?? `c-${crypto.randomUUID()}`;
-        return await ctx.toolCallable({
-          callId,
-          tool: "shell.exec",
-          input,
-          runId: ctx.runId,
-          workspacePath: ctx.workspacePath,
-        });
-      },
-    });
+export async function resolveSdkRunInput(
+  agent: Agent<any, any>,
+  userInput: string,
+  recovery: LlmRecoveryInput | undefined,
+  runContext: RunContext<any>,
+  fromStringWithContext: typeof RunState.fromStringWithContext = RunState.fromStringWithContext,
+): Promise<string | RunState<any, Agent<any, any>>> {
+  if (!recovery?.sdkState) return userInput;
+  try {
+    return await fromStringWithContext(agent, recovery.sdkState, runContext);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`internal.recovery_state_invalid: ${message}`);
   }
-  if (toolName === "browser.snapshot") {
-    return tool({
-      name: "browser.snapshot",
-      description:
-        "Capture a screenshot or DOM snapshot of the current browser tab.",
-      parameters: z.object({}),
-      execute: async (input, context, details) => {
-        const ctx = context?.context as SdkRunContext | undefined;
-        if (!ctx) throw new Error("makeOpenAILlm: missing SdkRunContext");
-        const callId = details?.toolCall?.callId ?? `c-${crypto.randomUUID()}`;
-        return await ctx.toolCallable({
-          callId,
-          tool: "browser.snapshot",
-          input,
-          runId: ctx.runId,
-          workspacePath: ctx.workspacePath,
-        });
-      },
+}
+
+export async function sdkStateHasInterruptions(
+  opts: {
+    sdkState: string;
+    agent: Agent<SdkRunContext, any>;
+    context: SdkRunContext;
+  },
+  fromStringWithContext: typeof RunState.fromStringWithContext = RunState.fromStringWithContext,
+): Promise<boolean> {
+  const runContext = new RunContext(opts.context);
+  const state = await fromStringWithContext(opts.agent, opts.sdkState, runContext);
+  return state.getInterruptions().length > 0;
+}
+
+export function makeResponsesModelProvider(opts:
+  | { apiKey: string; openAIClient?: never }
+  | { apiKey?: never; openAIClient: OpenAI },
+): ModelProvider {
+  const openAIClient =
+    opts.openAIClient ??
+    new OpenAI({
+      apiKey: opts.apiKey,
+      // The gateway runs in Bun inside the desktop app, which the OpenAI JS
+      // client treats as browser-like. This process is local server-side code;
+      // the key is not exposed to the renderer.
+      dangerouslyAllowBrowser: true,
     });
+  return new OpenAIProvider({
+    openAIClient,
+    useResponses: true,
+    cacheResponsesWebSocketModels: false,
+  });
+}
+
+export function extractTextDeltaFromRunStreamEvent(event: unknown): string | undefined {
+  const streamEvent = event as Partial<RunStreamEvent> | undefined;
+  if (streamEvent?.type !== "raw_model_stream_event") return undefined;
+  const data = streamEvent.data as
+    | { type?: string; delta?: string; event?: { type?: string; delta?: string }; choices?: unknown }
+    | undefined;
+  const raw = data?.event ?? data;
+  if (
+    (raw?.type === "response.output_text.delta" || raw?.type === "output_text_delta") &&
+    typeof raw.delta === "string"
+  ) {
+    return raw.delta;
   }
-  if (toolName === "browser.click") {
-    return tool({
-      name: "browser.click",
-      description: "Click an element by selector in the browser.",
-      parameters: z.object({ selector: z.string() }),
-      execute: async (input, context, details) => {
-        const ctx = context?.context as SdkRunContext | undefined;
-        if (!ctx) throw new Error("makeOpenAILlm: missing SdkRunContext");
-        const callId = details?.toolCall?.callId ?? `c-${crypto.randomUUID()}`;
-        return await ctx.toolCallable({
-          callId,
-          tool: "browser.click",
-          input,
-          runId: ctx.runId,
-          workspacePath: ctx.workspacePath,
-        });
-      },
-    });
+  const choice = Array.isArray(data?.choices) ? data.choices[0] : undefined;
+  const content = (choice as { delta?: { content?: unknown } } | undefined)?.delta?.content;
+  return typeof content === "string" ? content : undefined;
+}
+
+function approvalRequestFromInterruption(
+  interruption: RunToolApprovalItem,
+  input: RunFactoryInput,
+  context: SdkRunContext,
+): Parameters<SdkApprovalCallable>[0] {
+  const sdkToolName = interruption.name ?? "(unknown)";
+  const tool = internalToolNameFromSdkName(sdkToolName);
+  const parsedInput = parseToolArguments(interruption.arguments);
+  const decision = sdkApprovalDecision(tool, parsedInput, context.workspacePath);
+  const callId =
+    "callId" in interruption.rawItem && typeof interruption.rawItem.callId === "string"
+      ? interruption.rawItem.callId
+      : `c-${crypto.randomUUID()}`;
+  return {
+    callId,
+    tool,
+    input: parsedInput,
+    runId: input.runId,
+    workspacePath: input.workspacePath,
+    reason: decision.reason ?? `${tool} requires approval`,
+    approvalToken: `sdk-approved-${callId}`,
+  };
+}
+
+function parseToolArguments(args: string | undefined): unknown {
+  if (!args) return {};
+  try {
+    return JSON.parse(args) as unknown;
+  } catch {
+    return {};
   }
-  throw new Error(`makeOpenAILlm: unknown tool ${toolName}`);
+}
+
+function internalToolNameFromSdkName(toolName: string): string {
+  switch (toolName) {
+    case "shell_exec":
+      return "shell.exec";
+    case "browser_snapshot":
+      return "browser.snapshot";
+    case "browser_click":
+      return "browser.click";
+    default:
+      return toolName;
+  }
+}
+
+export function makeSdkTool(toolName: string) {
+  const spec = createCoreToolRegistry().get(toolName);
+  if (!spec) {
+    throw new Error(`makeOpenAILlm: unknown tool ${toolName}`);
+  }
+  return toSdkTool(spec);
 }

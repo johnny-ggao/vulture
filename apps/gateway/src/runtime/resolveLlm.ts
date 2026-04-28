@@ -1,8 +1,16 @@
-import OpenAI from "openai";
-import { setDefaultOpenAIClient, setOpenAIAPI } from "@openai/agents";
 import type { LlmCallable, LlmYield, ToolCallable } from "@vulture/agent-runtime";
-import { makeOpenAILlm, makeStubLlmFallback } from "./openaiLlm";
-import { fetchCodexToken, makeCodexLlm, type CodexShellError } from "./codexLlm";
+import {
+  makeOpenAILlm,
+  makeStubLlmFallback,
+  type OpenAILlmOptions,
+  type SdkApprovalCallable,
+} from "./openaiLlm";
+import {
+  fetchCodexToken,
+  makeCodexLlm,
+  type CodexShellError,
+  type CodexShellResponse,
+} from "./codexLlm";
 
 export interface ResolveLlmDeps {
   toolNames: readonly string[];
@@ -10,6 +18,8 @@ export interface ResolveLlmDeps {
   env?: Record<string, string | undefined>;
   shellCallbackUrl: string;
   shellToken: string;
+  approvalCallable?: SdkApprovalCallable;
+  runFactory?: OpenAILlmOptions["runFactory"];
   /** Test injection point. Defaults to global fetch. */
   fetch?: typeof fetch;
 }
@@ -17,17 +27,15 @@ export interface ResolveLlmDeps {
 /**
  * 3-way LLM resolution: Codex (if signed in) > API key (if set) > stub.
  *
- * SDK state contract:
- * `codexLlm` mutates @openai/agents process-global state when it runs.
- * Whenever this resolver chooses the API key path, it FIRST resets the
- * SDK default client to a vanilla `api.openai.com` OpenAI instance so a
- * prior codex run doesn't leak into subsequent API-key requests.
+ * The selected provider is passed into the Agents SDK Runner for each run.
+ * This resolver does not mutate @openai/agents process-global client state.
  */
 export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
   return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
     let codexState: "available" | "not_signed_in" | "expired" = "not_signed_in";
+    let codexToken: CodexShellResponse | undefined;
     try {
-      await fetchCodexToken({
+      codexToken = await fetchCodexToken({
         shellUrl: deps.shellCallbackUrl,
         bearer: deps.shellToken,
         fetch: deps.fetch,
@@ -56,6 +64,9 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
         toolNames: deps.toolNames,
         toolCallable: deps.toolCallable,
         fetch: deps.fetch,
+        codexToken,
+        approvalCallable: deps.approvalCallable,
+        runFactory: deps.runFactory,
       });
       yield* inner(input);
       return;
@@ -75,16 +86,12 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
     const env = deps.env ?? process.env;
     const apiKey = env.OPENAI_API_KEY;
     if (apiKey) {
-      // Reset SDK default client so a prior codex run doesn't leak baseURL
-      // (chatgpt.com) into this api.openai.com call. `setOpenAIAPI("responses")`
-      // matches the API surface that openaiLlm.ts's defaultRunFactory expects
-      // (output_text_delta events come from the Responses streaming protocol).
-      setDefaultOpenAIClient(new OpenAI({ apiKey }));
-      setOpenAIAPI("responses");
       const inner = makeOpenAILlm({
         apiKey,
         toolNames: deps.toolNames,
         toolCallable: deps.toolCallable,
+        approvalCallable: deps.approvalCallable,
+        runFactory: deps.runFactory,
       });
       yield* inner(input);
       return;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ChatView } from "./ChatView";
 import type { MessageDto } from "../api/conversations";
 
@@ -34,8 +34,10 @@ describe("ChatView", () => {
         runStatus="idle"
         runError={null}
         submittingApprovals={new Set()}
+        resumingRun={false}
         onSend={() => {}}
         onCancel={() => {}}
+        onResume={() => {}}
         onDecide={() => {}}
       />,
     );
@@ -54,8 +56,10 @@ describe("ChatView", () => {
         runStatus="reconnecting"
         runError="net"
         submittingApprovals={new Set()}
+        resumingRun={false}
         onSend={() => {}}
         onCancel={() => {}}
+        onResume={() => {}}
         onDecide={() => {}}
       />,
     );
@@ -73,11 +77,84 @@ describe("ChatView", () => {
         runStatus="idle"
         runError={null}
         submittingApprovals={new Set()}
+        resumingRun={false}
         onSend={() => {}}
         onCancel={() => {}}
+        onResume={() => {}}
         onDecide={() => {}}
       />,
     );
     expect(screen.getByText(/选择智能体/)).toBeDefined();
+  });
+
+  test("shows recovery actions when run is recoverable", async () => {
+    const calls: string[] = [];
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs.slice(0, 1)}
+        runEvents={[
+          {
+            type: "run.recoverable",
+            runId: "r-1",
+            seq: 4,
+            createdAt: "2026-04-27T00:00:00.000Z",
+            reason: "incomplete_tool",
+            message: "Tool shell.exec may have been interrupted before completion.",
+          },
+        ]}
+        runStatus="recoverable"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => calls.push("cancel")}
+        onResume={() => calls.push("resume")}
+        onDecide={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/可恢复/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "恢复运行" }));
+    fireEvent.click(screen.getByRole("button", { name: "取消恢复" }));
+    expect(calls).toEqual(["resume", "cancel"]);
+  });
+
+  test("recoverable run blocks new sends from the composer", async () => {
+    const calls: string[] = [];
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs.slice(0, 1)}
+        runEvents={[
+          {
+            type: "run.recoverable",
+            runId: "r-1",
+            seq: 4,
+            createdAt: "2026-04-27T00:00:00.000Z",
+            reason: "incomplete_tool",
+            message: "Tool shell.exec may have been interrupted before completion.",
+          },
+        ]}
+        runStatus="recoverable"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => calls.push("send")}
+        onCancel={() => calls.push("cancel")}
+        onResume={() => calls.push("resume")}
+        onDecide={() => {}}
+      />,
+    );
+
+    const input = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "new work" } });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
+    expect(calls).toEqual([]);
+    expect(screen.queryByLabelText("发送")).toBeNull();
   });
 });

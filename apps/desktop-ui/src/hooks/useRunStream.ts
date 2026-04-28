@@ -19,7 +19,8 @@ export type RunStreamStatus =
   | "reconnecting"
   | "succeeded"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "recoverable";
 
 export interface RunStreamState {
   status: RunStreamStatus;
@@ -31,6 +32,7 @@ export interface RunStreamState {
 export type RunStreamAction =
   | { type: "reset"; lastSeq?: number }
   | { type: "connect.start" }
+  | { type: "resume.start" }
   | { type: "connect.success" }
   | { type: "frame"; event: AnyRunEvent }
   | { type: "error"; error: string }
@@ -43,7 +45,7 @@ const INITIAL_STATE: RunStreamState = {
   error: null,
 };
 
-const TERMINAL: RunStreamStatus[] = ["succeeded", "failed", "cancelled"];
+const TERMINAL: RunStreamStatus[] = ["succeeded", "failed", "cancelled", "recoverable"];
 
 function isTerminal(s: RunStreamStatus): boolean {
   return TERMINAL.includes(s);
@@ -61,6 +63,8 @@ export function runStreamReducer(state: RunStreamState, action: RunStreamAction)
     case "connect.start":
       if (isTerminal(state.status)) return state;
       return { ...state, status: "connecting", error: null };
+    case "resume.start":
+      return { ...state, status: "connecting", error: null };
     case "connect.success":
       if (isTerminal(state.status)) return state;
       return { ...state, status: "streaming", error: null };
@@ -72,6 +76,7 @@ export function runStreamReducer(state: RunStreamState, action: RunStreamAction)
       if (action.event.type === "run.completed") status = "succeeded";
       else if (action.event.type === "run.failed") status = "failed";
       else if (action.event.type === "run.cancelled") status = "cancelled";
+      else if (action.event.type === "run.recoverable") status = "recoverable";
       return { ...state, events, lastSeq: action.event.seq, status };
     }
     case "error":
@@ -86,25 +91,36 @@ export interface UseRunStreamOptions {
   client: ApiClient | null;
   runId: string | null;
   fetch?: typeof fetch;
+  reconnectKey?: unknown;
 }
 
 export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
   const [state, dispatch] = useReducer(runStreamReducer, INITIAL_STATE);
   const stateRef = useRef(state);
+  const streamRunIdRef = useRef<string | null>(null);
   stateRef.current = state;
 
   useEffect(() => {
     if (!opts.client || !opts.runId) {
+      streamRunIdRef.current = null;
       dispatch({ type: "reset" });
       return;
     }
     const runId = opts.runId;
-    // Fresh state for each runId so a previous terminal status doesn't
-    // short-circuit the next run's connection loop.
-    const restoredLastSeq = readRunLastSeq(runId);
-    const restoredState = { ...INITIAL_STATE, lastSeq: restoredLastSeq };
-    dispatch({ type: "reset", lastSeq: restoredLastSeq });
-    stateRef.current = restoredState;
+    const sameRunReconnect = streamRunIdRef.current === runId;
+    streamRunIdRef.current = runId;
+    if (sameRunReconnect) {
+      const resumedState = { ...stateRef.current, status: "connecting" as const, error: null };
+      stateRef.current = resumedState;
+      dispatch({ type: "resume.start" });
+    } else {
+      // Fresh state for each runId so a previous terminal status doesn't
+      // short-circuit the next run's connection loop.
+      const restoredLastSeq = readRunLastSeq(runId);
+      const restoredState = { ...INITIAL_STATE, lastSeq: restoredLastSeq };
+      dispatch({ type: "reset", lastSeq: restoredLastSeq });
+      stateRef.current = restoredState;
+    }
     const ac = new AbortController();
     let retry = 0;
 
@@ -136,7 +152,8 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
             if (
               parsed.type === "run.completed" ||
               parsed.type === "run.failed" ||
-              parsed.type === "run.cancelled"
+              parsed.type === "run.cancelled" ||
+              parsed.type === "run.recoverable"
             ) {
               sawTerminal = true;
               return;
@@ -160,7 +177,7 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
 
     void loop();
     return () => ac.abort();
-  }, [opts.client, opts.runId, opts.fetch]);
+  }, [opts.client, opts.runId, opts.fetch, opts.reconnectKey]);
 
   return state;
 }

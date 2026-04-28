@@ -80,6 +80,18 @@ describe("runsApi", () => {
     await runsApi.cancel(client, "r-1");
   });
 
+  test("resume posts to resume path", async () => {
+    const recoverableRun: RunDto = { ...sampleRun, status: "recoverable" };
+    const client = fakeClient({
+      post: async <T>(path: string, body: unknown) => {
+        expect(path).toBe("/v1/runs/r-1/resume");
+        expect(body).toEqual({});
+        return recoverableRun as T;
+      },
+    });
+    expect(await runsApi.resume(client, "r-1")).toEqual(recoverableRun);
+  });
+
   test("approve posts callId + decision", async () => {
     const client = fakeClient({
       post: async <T>(path: string, body: unknown) => {

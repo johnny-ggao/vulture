@@ -13,3 +13,4 @@ dist/
 .superpowers/
 *.pkg
 apps/desktop-shell/gen/
+openclaw/

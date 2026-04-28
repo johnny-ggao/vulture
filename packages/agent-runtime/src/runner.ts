@@ -27,12 +27,29 @@ export type LlmYield =
   | { kind: "await.tool"; callId: string }
   | { kind: "final"; text: string };
 
+export interface LlmRecoveryInput {
+  sdkState: string | null;
+  retryToolCallId: string | null;
+}
+
+export interface LlmCheckpoint {
+  sdkState: string | null;
+  activeTool: {
+    callId: string;
+    tool: string;
+    input: unknown;
+    approvalToken?: string;
+  } | null;
+}
+
 export type LlmCallable = (input: {
   systemPrompt: string;
   userInput: string;
   model: string;
   runId: string;
   workspacePath: string;
+  recovery?: LlmRecoveryInput;
+  onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
 }) => AsyncGenerator<LlmYield, void, unknown>;
 
 export type ToolCallable = (call: {
@@ -41,6 +58,7 @@ export type ToolCallable = (call: {
   input: unknown;
   runId: string;
   workspacePath: string;
+  approvalToken?: string;
 }) => Promise<unknown>;
 
 export interface RunConversationArgs {
@@ -53,6 +71,8 @@ export interface RunConversationArgs {
   llm: LlmCallable;
   tools: ToolCallable;
   onEvent: (e: RunEvent) => void;
+  recovery?: LlmRecoveryInput;
+  onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
   idleTimeoutMs?: number;
 }
 
@@ -83,6 +103,8 @@ export async function runConversation(
       model: args.model,
       runId: args.runId,
       workspacePath: args.workspacePath,
+      recovery: args.recovery,
+      onCheckpoint: args.onCheckpoint,
     });
 
     let next: IteratorResult<LlmYield, void> | null = await withIdleTimeout(

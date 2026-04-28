@@ -223,6 +223,49 @@ describe("makeShellCallbackTools", () => {
     });
   });
 
+  test("strict SDK mode rejects Rust ask responses instead of blocking on local approvals", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-1", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const { fetchFn } = fakeFetchSequence([
+      {
+        status: 200,
+        body: { status: "ask", callId: "c1", approvalToken: "tok", reason: "x" },
+      },
+    ]);
+
+    const tools = makeShellCallbackTools({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      fetch: fetchFn,
+      interactiveApprovalFallback: false,
+    });
+
+    await expect(
+      tools({
+        callId: "c1",
+        runId: "r-1",
+        tool: "shell.exec",
+        input: {},
+        workspacePath: "",
+      }),
+    ).rejects.toMatchObject({
+      code: "tool.execution_failed",
+      message: expect.stringContaining("OpenAI Agents SDK"),
+    });
+
+    expect(events.map((e) => e.partial.type)).toEqual(["tool.planned", "tool.failed"]);
+    expect(events[1].partial).toMatchObject({
+      type: "tool.failed",
+      error: { code: "tool.execution_failed" },
+    });
+  });
+
   test("status=denied throws ToolCallError with the inner code", async () => {
     const queue = new ApprovalQueue();
     const cancelSignals = new Map<string, AbortController>();

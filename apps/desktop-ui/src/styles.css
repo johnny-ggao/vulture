@@ -627,6 +627,46 @@ pre {
 .approval-card button.allow:hover { background: var(--brand-600); }
 .approval-card button.deny:hover { background: var(--fill-quaternary); }
 
+.recovery-card {
+  border: 1px solid rgba(37, 99, 235, 0.24);
+  background: rgba(239, 246, 255, 0.72);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+.recovery-card-header { font-size: 13px; color: #1d4ed8; }
+.recovery-card p { font-size: 13px; color: var(--text-secondary); }
+.recovery-card-actions { display: inline-flex; gap: 8px; }
+.recovery-card-actions button {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--fill-secondary);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.recovery-card-actions button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.recovery-card-resume { background: var(--brand-500); color: #fff; }
+.recovery-card-cancel { background: var(--bg-primary); color: var(--text-primary); }
+
+.recovery-boundary {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  margin: 2px 0;
+}
+.recovery-boundary::before,
+.recovery-boundary::after {
+  background: var(--fill-secondary);
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
 /* ============================================================
  * Onboarding card (zero-auth empty state)
  * ============================================================ */

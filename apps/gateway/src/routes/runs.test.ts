@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { applyMigrations } from "../persistence/migrate";
 import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
-import { runsRouter, writeRunEventStream } from "./runs";
+import { runsRouter, writeRunEventStream, type ResumeRunResult } from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { ApprovalQueue } from "../runtime/approvalQueue";
 
@@ -19,7 +19,11 @@ const fakeLlm: LlmCallable = async function* (): AsyncGenerator<LlmYield, void, 
   yield { kind: "final", text: "ok" };
 };
 
-function fresh() {
+function fresh(
+  resumeRun: (runId: string, mode: "auto" | "manual") => ResumeRunResult = mock((_runId: string, _mode: "auto" | "manual") => ({
+    status: "scheduled" as const,
+  })),
+) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
   applyMigrations(db);
@@ -35,11 +39,19 @@ function fresh() {
     tools: async () => "noop",
     approvalQueue: new ApprovalQueue(),
     cancelSignals: new Map<string, AbortController>(),
+    resumeRun,
     systemPromptForAgent: () => "system",
     modelForAgent: () => "gpt-5.4",
     workspacePathForAgent: () => "",
   });
-  return { app, c, runs, msgs, cleanup: () => { db.close(); rmSync(dir, { recursive: true }); } };
+  return {
+    app,
+    c,
+    runs,
+    msgs,
+    resumeRun,
+    cleanup: () => { db.close(); rmSync(dir, { recursive: true }); },
+  };
 }
 
 describe("/v1/runs", () => {
@@ -118,6 +130,28 @@ describe("/v1/runs", () => {
     cleanup();
   });
 
+  test("GET /v1/conversations/:cid/runs?status=recoverable returns recoverable runs", async () => {
+    const { app, c, runs, msgs, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRecoverable(run.id);
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs?status=recoverable`, {
+      headers: auth,
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: Array<{ id: string; status: string }> };
+    expect(body.items.map((item) => ({ id: item.id, status: item.status }))).toEqual([
+      { id: run.id, status: "recoverable" },
+    ]);
+    cleanup();
+  });
+
   test("POST without Idempotency-Key → 400", async () => {
     const { app, c, cleanup } = fresh();
     const res = await app.request(`/v1/conversations/${c.id}/runs`, {
@@ -158,6 +192,7 @@ describe("/v1/runs", () => {
       },
       approvalQueue: new ApprovalQueue(),
       cancelSignals: new Map<string, AbortController>(),
+      resumeRun: () => ({ status: "scheduled" as const }),
       systemPromptForAgent: () => "system",
       modelForAgent: () => "gpt-5.4",
       workspacePathForAgent: () => "",
@@ -213,6 +248,116 @@ describe("/v1/runs", () => {
     const res = await app.request(`/v1/runs/${run.id}/cancel`, { method: "POST", headers: auth });
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("run.already_completed");
+    cleanup();
+  });
+
+  test("POST /v1/runs/:rid/cancel marks recoverable run cancelled", async () => {
+    const { app, c, runs, msgs, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRecoverable(run.id);
+
+    const res = await app.request(`/v1/runs/${run.id}/cancel`, { method: "POST", headers: auth });
+
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { status: string }).status).toBe("cancelled");
+    cleanup();
+  });
+
+  test("POST /v1/runs/:rid/resume schedules recoverable run", async () => {
+    const { app, c, runs, msgs, resumeRun, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRecoverable(run.id);
+
+    const res = await app.request(`/v1/runs/${run.id}/resume`, {
+      method: "POST",
+      headers: auth,
+    });
+
+    expect(res.status).toBe(202);
+    expect(resumeRun).toHaveBeenCalledWith(run.id, "manual");
+    cleanup();
+  });
+
+  test("POST /v1/runs/:rid/resume rejects an already claimed run", async () => {
+    const resumeRun = mock((_runId: string, _mode: "auto" | "manual") => ({
+      status: "already_started" as const,
+    }));
+    const { app, c, runs, msgs, cleanup } = fresh(resumeRun);
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRecoverable(run.id);
+
+    const res = await app.request(`/v1/runs/${run.id}/resume`, {
+      method: "POST",
+      headers: auth,
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      code: "run.not_recoverable",
+      message: "already started",
+    });
+    cleanup();
+  });
+
+  test("POST /v1/runs/:rid/resume rejects missing recovery state", async () => {
+    const resumeRun = mock((_runId: string, _mode: "auto" | "manual") => ({
+      status: "missing_state" as const,
+    }));
+    const { app, c, runs, msgs, cleanup } = fresh(resumeRun);
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markRecoverable(run.id);
+
+    const res = await app.request(`/v1/runs/${run.id}/resume`, {
+      method: "POST",
+      headers: auth,
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      code: "internal.recovery_state_unavailable",
+      message: `recovery state unavailable for ${run.id}`,
+    });
+    cleanup();
+  });
+
+  test("POST /v1/runs/:rid/resume rejects terminal run", async () => {
+    const { app, c, runs, msgs, resumeRun, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.markSucceeded(run.id, "m-result");
+
+    const res = await app.request(`/v1/runs/${run.id}/resume`, {
+      method: "POST",
+      headers: auth,
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ code: "run.not_recoverable", message: "succeeded" });
+    expect(resumeRun).not.toHaveBeenCalled();
     cleanup();
   });
 
@@ -278,6 +423,7 @@ describe("/v1/runs", () => {
       tools: fakeShellTools,
       approvalQueue,
       cancelSignals,
+      resumeRun: () => ({ status: "scheduled" as const }),
       systemPromptForAgent: () => "system",
       modelForAgent: () => "gpt-5.4",
       workspacePathForAgent: () => "",
@@ -340,6 +486,7 @@ describe("/v1/runs", () => {
       tools: async () => "noop",
       approvalQueue,
       cancelSignals: new Map(),
+      resumeRun: () => ({ status: "scheduled" as const }),
       systemPromptForAgent: () => "",
       modelForAgent: () => "gpt-5.4",
       workspacePathForAgent: () => "",
@@ -404,6 +551,7 @@ describe("/v1/runs", () => {
       tools: async () => "noop",
       approvalQueue,
       cancelSignals,
+      resumeRun: () => ({ status: "scheduled" as const }),
       systemPromptForAgent: () => "",
       modelForAgent: () => "gpt-5.4",
       workspacePathForAgent: () => "",

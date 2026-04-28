@@ -19,6 +19,7 @@ export const ErrorCodeSchema = z.enum([
   "llm.rate_limited",
   "internal",
   "internal.gateway_restarted",
+  "internal.recovery_state_unavailable",
   "internal.shutdown",
 ]);
 

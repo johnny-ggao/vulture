@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { fetchCodexToken, makeCodexResponsesFetch, type CodexShellResponse } from "./codexLlm";
+import {
+  fetchCodexToken,
+  makeCodexLlm,
+  makeCodexResponsesFetch,
+  type CodexShellResponse,
+} from "./codexLlm";
 
 function fakeShellFetch(seq: Array<{ status: number; body: unknown }>): {
   fetchFn: typeof fetch;
@@ -157,3 +162,49 @@ describe("makeCodexResponsesFetch", () => {
     expect(completedOutputFromSse(text)).toEqual([messageItem]);
   });
 });
+
+describe("makeCodexLlm", () => {
+  test("uses the fetched Codex token once and passes a per-run model provider", async () => {
+    let authCalls = 0;
+    const fetchFn = (async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/auth/codex")) {
+        authCalls += 1;
+        return new Response(JSON.stringify(validToken), { status: 200 });
+      }
+      return new Response("", { status: 200 });
+    }) as typeof fetch;
+    const providers: unknown[] = [];
+    const llm = makeCodexLlm({
+      shellUrl: "http://shell:4199",
+      shellBearer: "bearer",
+      toolNames: [],
+      toolCallable: async () => "noop",
+      fetch: fetchFn,
+      runFactory: (input) => {
+        providers.push(input.modelProvider);
+        return makeMockRun([{ kind: "final", text: "ok" }]);
+      },
+    });
+
+    const yields = [];
+    for await (const y of llm({
+      systemPrompt: "x",
+      userInput: "hi",
+      model: "gpt-5.4",
+      runId: "r-test",
+      workspacePath: "",
+    })) {
+      yields.push(y);
+    }
+
+    expect(authCalls).toBe(1);
+    expect(providers).toHaveLength(1);
+    expect(providers[0]).toBeDefined();
+    expect(yields.at(-1)).toEqual({ kind: "final", text: "ok" });
+  });
+});
+
+async function* makeMockRun(events: Array<{ kind: "final"; text: string }>) {
+  for (const e of events) yield e;
+}

@@ -2,6 +2,7 @@ import { ToolCallError, type ToolCallable } from "@vulture/agent-runtime";
 import type { PartialRunEvent } from "../domain/runStore";
 import { ApprovalTimeoutError, type ApprovalQueue } from "./approvalQueue";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+import type { SdkApprovalCallable } from "./openaiLlm";
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -17,6 +18,15 @@ export interface ShellCallbackToolsOpts {
   callerPid?: number;
   /** Maximum time to wait for user approval before failing the tool call. */
   approvalTimeoutMs?: number;
+  /**
+   * Legacy non-SDK fallback: when true/default, a Rust `ask` response emits
+   * tool.ask and blocks until /approvals resolves the in-memory queue.
+   *
+   * The OpenAI Agents SDK production path should set this to false. Approval is
+   * then handled through SDK interruptions and RunState.approve/reject before
+   * the shell callback is invoked with an approval token.
+   */
+  interactiveApprovalFallback?: boolean;
 }
 
 export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallable {
@@ -33,7 +43,7 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
       input: call.input,
     });
 
-    let approvalToken: string | undefined;
+    let approvalToken: string | undefined = call.approvalToken;
     let started = false;
     const markStarted = () => {
       if (started) return;
@@ -136,6 +146,19 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           });
           throw new ToolCallError(err.code, err.message);
         }
+        if (opts.interactiveApprovalFallback === false) {
+          const err: AppError = {
+            code: "tool.execution_failed",
+            message:
+              "tool approval must be handled by the OpenAI Agents SDK; shell returned ask without an SDK approval token",
+          };
+          opts.appendEvent(call.runId, {
+            type: "tool.failed",
+            callId: call.callId,
+            error: err,
+          });
+          throw new ToolCallError(err.code, err.message);
+        }
         opts.appendEvent(call.runId, {
           type: "tool.ask",
           callId: call.callId,
@@ -200,6 +223,55 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
             message: err instanceof Error ? err.message : String(err),
           },
         });
+      }
+      throw err;
+    }
+  };
+}
+
+export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkApprovalCallable {
+  return async (request) => {
+    opts.appendEvent(request.runId, {
+      type: "tool.ask",
+      callId: request.callId,
+      tool: request.tool,
+      reason: request.reason,
+      approvalToken: request.approvalToken,
+    });
+    const ac = opts.cancelSignals.get(request.runId);
+    if (!ac) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `no AbortController registered for run ${request.runId}`,
+      );
+    }
+    try {
+      const decision = await opts.approvalQueue.wait(request.callId, ac.signal, {
+        timeoutMs: opts.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS,
+      });
+      if (decision === "deny") {
+        opts.appendEvent(request.runId, {
+          type: "tool.failed",
+          callId: request.callId,
+          error: {
+            code: "tool.permission_denied",
+            message: `user denied ${request.tool}`,
+          },
+        });
+      }
+      return decision;
+    } catch (err) {
+      if (err instanceof ApprovalTimeoutError) {
+        const appError: AppError = {
+          code: "tool.approval_timeout",
+          message: `approval timed out for ${request.tool}`,
+        };
+        opts.appendEvent(request.runId, {
+          type: "tool.failed",
+          callId: request.callId,
+          error: appError,
+        });
+        throw new ToolCallError(appError.code, appError.message);
       }
       throw err;
     }

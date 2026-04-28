@@ -239,6 +239,59 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
+  test("sidebar chat button starts a new conversation before the next send", async () => {
+    let conversationCreates = 0;
+    const { cleanup } = setup({
+      onResponse: (path, init) => {
+        if (init?.method === "POST" && path === "/v1/conversations") {
+          conversationCreates += 1;
+        }
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    const textarea = (await waitFor(
+      () => screen.getByPlaceholderText(/输入问题/),
+    )) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "first chat" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("first chat")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "对话" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("first chat")).toBeNull();
+    });
+
+    const nextTextarea = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
+    fireEvent.change(nextTextarea, { target: { value: "second chat" } });
+    fireEvent.keyDown(nextTextarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("second chat")).toBeDefined();
+        expect(conversationCreates).toBe(2);
+      },
+      { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
   test("restores saved active conversation on remount", async () => {
     localStorage.clear();
     let restoredMessagesRequested = false;

@@ -18,6 +18,7 @@ describe("AppError", () => {
       "auth.token_invalid",
       "internal",
       "internal.gateway_restarted",
+      "internal.recovery_state_unavailable",
       "internal.shutdown",
     ];
     expect(codes.length).toBeGreaterThan(0);

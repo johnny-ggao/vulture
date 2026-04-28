@@ -1,8 +1,9 @@
 import type { DB } from "../persistence/sqlite";
-import type {
-  Run,
-  RunStatus,
-  RunEvent,
+import {
+  RunEventSchema,
+  type Run,
+  type RunStatus,
+  type RunEvent,
 } from "@vulture/protocol/src/v1/run";
 import type {
   RunId,
@@ -11,7 +12,7 @@ import type {
 } from "@vulture/protocol/src/v1/conversation";
 import type { AgentId } from "@vulture/protocol/src/v1/agent";
 import { nowIso8601, type Iso8601 } from "@vulture/protocol/src/v1/index";
-import type { AppError } from "@vulture/protocol/src/v1/error";
+import { AppErrorSchema, type AppError } from "@vulture/protocol/src/v1/error";
 import { brandId } from "@vulture/common";
 
 /** Distributive Omit — preserves the discriminated-union shape. */
@@ -35,6 +36,14 @@ interface RunRow {
   error_json: string | null;
 }
 
+function parseAppError(value: string | null): AppError | null {
+  if (!value) return null;
+  const parsed = tryParseJson(value);
+  if (!parsed.ok) return null;
+  const result = AppErrorSchema.safeParse(parsed.value);
+  return result.success ? result.data : null;
+}
+
 function rowToRun(r: RunRow): Run {
   return {
     id: r.id as RunId,
@@ -45,7 +54,7 @@ function rowToRun(r: RunRow): Run {
     resultMessageId: (r.result_message_id ?? null) as MessageId | null,
     startedAt: r.started_at as Iso8601,
     endedAt: (r.ended_at ?? null) as Iso8601 | null,
-    error: r.error_json ? (JSON.parse(r.error_json) as AppError) : null,
+    error: parseAppError(r.error_json),
   };
 }
 
@@ -57,6 +66,76 @@ export interface CreateRunInput {
   conversationId: string;
   agentId: string;
   triggeredByMessageId: string;
+}
+
+export interface RunRecoveryMetadata {
+  runId: string;
+  conversationId: string;
+  agentId: string;
+  model: string;
+  systemPrompt: string;
+  userInput: string;
+  workspacePath: string;
+  providerKind: "codex" | "api_key" | "stub";
+  updatedAt: string;
+}
+
+export interface ActiveToolRecovery {
+  callId: string;
+  tool: string;
+  input: unknown;
+  approvalToken?: string;
+  startedSeq: number;
+}
+
+export interface RunRecoveryState {
+  schemaVersion: number;
+  sdkState: string | null;
+  metadata: RunRecoveryMetadata;
+  checkpointSeq: number;
+  activeTool: ActiveToolRecovery | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecoveryProviderKind(value: unknown): value is RunRecoveryMetadata["providerKind"] {
+  return value === "codex" || value === "api_key" || value === "stub";
+}
+
+function isRunRecoveryMetadata(value: unknown): value is RunRecoveryMetadata {
+  return (
+    isRecord(value) &&
+    typeof value.runId === "string" &&
+    typeof value.conversationId === "string" &&
+    typeof value.agentId === "string" &&
+    typeof value.model === "string" &&
+    typeof value.systemPrompt === "string" &&
+    typeof value.userInput === "string" &&
+    typeof value.workspacePath === "string" &&
+    isRecoveryProviderKind(value.providerKind) &&
+    typeof value.updatedAt === "string"
+  );
+}
+
+function isActiveToolRecovery(value: unknown): value is ActiveToolRecovery {
+  return (
+    isRecord(value) &&
+    typeof value.callId === "string" &&
+    typeof value.tool === "string" &&
+    Object.prototype.hasOwnProperty.call(value, "input") &&
+    typeof value.startedSeq === "number" &&
+    (value.approvalToken === undefined || typeof value.approvalToken === "string")
+  );
+}
+
+function tryParseJson(value: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(value) as unknown };
+  } catch {
+    return { ok: false };
+  }
 }
 
 export class RunStore {
@@ -110,7 +189,7 @@ export class RunStore {
     const rows = filter.status === "active"
       ? this.db
         .query(
-          "SELECT * FROM runs WHERE conversation_id = ? AND status IN ('queued', 'running') ORDER BY started_at DESC, rowid DESC",
+          "SELECT * FROM runs WHERE conversation_id = ? AND status IN ('queued', 'running', 'recoverable') ORDER BY started_at DESC, rowid DESC",
         )
         .all(conversationId)
       : filter.status
@@ -127,6 +206,17 @@ export class RunStore {
 
   markRunning(id: string): void {
     this.db.query("UPDATE runs SET status = 'running' WHERE id = ?").run(id);
+  }
+
+  markRecoverable(id: string): void {
+    this.db.query("UPDATE runs SET status = 'recoverable' WHERE id = ?").run(id);
+  }
+
+  claimRecoverable(id: string): boolean {
+    const result = this.db
+      .query("UPDATE runs SET status = 'running' WHERE id = ? AND status = 'recoverable'")
+      .run(id) as { changes: number };
+    return result.changes === 1;
   }
 
   markSucceeded(id: string, resultMessageId: string): void {
@@ -165,6 +255,81 @@ export class RunStore {
     return result.changes;
   }
 
+  listInflight(): Run[] {
+    const rows = this.db
+      .query(
+        "SELECT * FROM runs WHERE status IN ('queued', 'running') ORDER BY started_at ASC, rowid ASC",
+      )
+      .all() as RunRow[];
+    return rows.map(rowToRun);
+  }
+
+  saveRecoveryState(runId: string, state: RunRecoveryState): void {
+    this.db
+      .query(
+        `INSERT INTO run_recovery_state(
+           run_id, schema_version, sdk_state, metadata_json, checkpoint_seq, active_tool_json, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(run_id) DO UPDATE SET
+           schema_version = excluded.schema_version,
+           sdk_state = excluded.sdk_state,
+           metadata_json = excluded.metadata_json,
+           checkpoint_seq = excluded.checkpoint_seq,
+           active_tool_json = excluded.active_tool_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        runId,
+        state.schemaVersion,
+        state.sdkState,
+        JSON.stringify(state.metadata),
+        state.checkpointSeq,
+        state.activeTool ? JSON.stringify(state.activeTool) : null,
+        nowIso8601(),
+      );
+  }
+
+  getRecoveryState(runId: string): RunRecoveryState | null {
+    const row = this.db
+      .query("SELECT * FROM run_recovery_state WHERE run_id = ?")
+      .get(runId) as
+      | {
+          schema_version: number;
+          sdk_state: string | null;
+          metadata_json: string;
+          checkpoint_seq: number;
+          active_tool_json: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    if (
+      typeof row.schema_version !== "number" ||
+      (row.sdk_state !== null && typeof row.sdk_state !== "string") ||
+      typeof row.checkpoint_seq !== "number"
+    ) {
+      return null;
+    }
+    const metadataJson = tryParseJson(row.metadata_json);
+    if (!metadataJson.ok || !isRunRecoveryMetadata(metadataJson.value)) return null;
+    let activeTool: ActiveToolRecovery | null = null;
+    if (row.active_tool_json !== null) {
+      const activeToolJson = tryParseJson(row.active_tool_json);
+      if (!activeToolJson.ok || !isActiveToolRecovery(activeToolJson.value)) return null;
+      activeTool = activeToolJson.value;
+    }
+    return {
+      schemaVersion: row.schema_version,
+      sdkState: row.sdk_state,
+      metadata: metadataJson.value,
+      checkpointSeq: row.checkpoint_seq,
+      activeTool,
+    };
+  }
+
+  clearRecoveryState(runId: string): void {
+    this.db.query("DELETE FROM run_recovery_state WHERE run_id = ?").run(runId);
+  }
+
   appendEvent(runId: string, partial: PartialRunEvent): RunEvent {
     const seq = this.nextSeq(runId);
     const now = nowIso8601();
@@ -184,7 +349,30 @@ export class RunStore {
         "SELECT payload_json FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC",
       )
       .all(runId, afterSeq) as { payload_json: string }[];
-    return rows.map((r) => JSON.parse(r.payload_json) as RunEvent);
+    const events: RunEvent[] = [];
+    for (const row of rows) {
+      const parsed = tryParseJson(row.payload_json);
+      if (!parsed.ok) continue;
+      const event = RunEventSchema.safeParse(parsed.value);
+      if (event.success) events.push(event.data);
+    }
+    return events;
+  }
+
+  latestSeq(runId: string): number {
+    const row = this.db
+      .query("SELECT MAX(seq) AS s FROM run_events WHERE run_id = ?")
+      .get(runId) as { s: number | null };
+    return row.s ?? -1;
+  }
+
+  hasTerminalToolEvent(runId: string, callId: string): boolean {
+    const row = this.db
+      .query(
+        "SELECT 1 FROM run_events WHERE run_id = ? AND type IN ('tool.completed', 'tool.failed') AND json_valid(payload_json) AND json_extract(payload_json, '$.callId') = ? LIMIT 1",
+      )
+      .get(runId, callId);
+    return Boolean(row);
   }
 
   private nextSeq(runId: string): number {
