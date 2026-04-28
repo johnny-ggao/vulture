@@ -13,19 +13,22 @@ export interface ComposerProps {
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
   running: boolean;
-  onSend: (input: string) => void;
+  onSend: (input: string, files: File[]) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
 }
 
 export function Composer(props: ComposerProps) {
   const [value, setValue] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   const [thinking, setThinking] = useState<ThinkingMode>("low");
 
-  function send() {
+  async function send() {
     const trimmed = value.trim();
     if (!trimmed || props.running || !props.selectedAgentId) return;
-    props.onSend(trimmed);
+    const result = await props.onSend(trimmed, files);
+    if (result === false) return;
     setValue("");
+    setFiles([]);
   }
 
   function cycleThinking() {
@@ -49,6 +52,15 @@ export function Composer(props: ComposerProps) {
           }
         }}
       />
+      {files.length > 0 ? (
+        <div className="composer-attachments">
+          {files.map((file) => (
+            <span key={`${file.name}-${file.size}`} className="composer-attachment">
+              {file.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="composer-controls">
         <select
           className="agent-select"
@@ -75,6 +87,17 @@ export function Composer(props: ComposerProps) {
           </svg>
           <span>{thinkingLabel}</span>
         </button>
+        <label className="composer-attach" title="添加附件">
+          <input
+            type="file"
+            multiple
+            aria-label="添加附件"
+            onChange={(e) => setFiles(Array.from(e.currentTarget.files ?? []))}
+          />
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
+            <path d="M13.5 7.5 8.1 12.9a3.2 3.2 0 0 1-4.5-4.5l5.8-5.8a2.2 2.2 0 0 1 3.1 3.1L6.6 11.6a1.2 1.2 0 0 1-1.7-1.7l5.4-5.4" />
+          </svg>
+        </label>
         <span className="spacer" />
         {props.running ? (
           <button

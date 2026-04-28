@@ -1,5 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Composer } from "./Composer";
 
 const agents = [
@@ -24,11 +24,65 @@ describe("Composer", () => {
     const ta = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
     fireEvent.change(ta, { target: { value: "hello" } });
     fireEvent.keyDown(ta, { key: "Enter", shiftKey: false });
-    expect(onSend).toHaveBeenCalledWith("hello");
+    expect(onSend).toHaveBeenCalledWith("hello", []);
 
     fireEvent.change(ta, { target: { value: "next" } });
     fireEvent.keyDown(ta, { key: "Enter", shiftKey: true });
     expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  test("attaches selected files when sending", async () => {
+    const onSend = mock(() => {});
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={onSend}
+        onCancel={() => {}}
+      />,
+    );
+    const file = new File(["hello"], "note.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("添加附件"), {
+      target: { files: [file] },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), {
+      target: { value: "read this" },
+    });
+    fireEvent.click(screen.getByLabelText("发送"));
+
+    expect(onSend).toHaveBeenCalledWith("read this", [file]);
+    await waitFor(() => {
+      expect(screen.queryByText("note.txt")).toBeNull();
+    });
+  });
+
+  test("keeps draft and attachments when send reports failure", async () => {
+    const onSend = mock(async () => false);
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={onSend}
+        onCancel={() => {}}
+      />,
+    );
+    const file = new File(["hello"], "note.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("添加附件"), {
+      target: { files: [file] },
+    });
+    const ta = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: "read this" } });
+    fireEvent.click(screen.getByLabelText("发送"));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalled();
+    });
+    expect(ta.value).toBe("read this");
+    expect(screen.getByText("note.txt")).toBeDefined();
   });
 
   test("running shows ⏹ cancel button", () => {

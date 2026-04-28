@@ -17,10 +17,11 @@ export interface ChatViewProps {
   runEvents: ReadonlyArray<AnyRunEvent>;
   runStatus: RunStreamStatus;
   runError: string | null;
+  sendError?: string | null;
 
   submittingApprovals: ReadonlySet<string>;
   resumingRun: boolean;
-  onSend: (input: string) => void;
+  onSend: (input: string, files: File[]) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
   onResume: () => void;
   onDecide: (callId: string, decision: ApprovalDecision) => void;
@@ -43,6 +44,7 @@ export function ChatView(props: ChatViewProps) {
       {props.runStatus === "reconnecting" ? (
         <div className="reconnect-chip">重连中…（{props.runError ?? ""}）</div>
       ) : null}
+      {props.sendError ? <div className="send-error">{props.sendError}</div> : null}
 
       <section className={`chat-stage ${hasContent ? "has-messages" : ""}`}>
         {hasContent ? (
@@ -52,6 +54,7 @@ export function ChatView(props: ChatViewProps) {
                 key={m.id}
                 role={m.role}
                 content={m.content}
+                attachments={m.attachments}
                 usage={m.runId ? props.messageUsages?.get(m.runId) : null}
               />
             ))}

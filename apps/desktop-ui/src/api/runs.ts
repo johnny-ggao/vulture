@@ -42,7 +42,11 @@ export interface ApprovalRequest {
 }
 
 export const runsApi = {
-  create: (client: ApiClient, conversationId: string, body: { input: string }) =>
+  create: (
+    client: ApiClient,
+    conversationId: string,
+    body: { input: string; attachmentIds?: string[] },
+  ) =>
     client.post<CreateRunResponse>(`/v1/conversations/${conversationId}/runs`, body),
 
   get: (client: ApiClient, runId: string) => client.get<RunDto>(`/v1/runs/${runId}`),

@@ -191,6 +191,42 @@ describe("runConversation", () => {
     expect(checkpoints).toEqual([checkpoint]);
   });
 
+  test("passes attachments through to llm", async () => {
+    let seen: unknown;
+    const llm: LlmCallable = mock(async function* (
+      input: Parameters<LlmCallable>[0],
+    ): AsyncGenerator<LlmYield, void, unknown> {
+      seen = input.attachments;
+      yield { kind: "final", text: "ok" };
+    });
+    const attachments = [
+      {
+        id: "att-1",
+        kind: "image" as const,
+        displayName: "image.png",
+        mimeType: "image/png",
+        sizeBytes: 4,
+        dataBase64: "aW1n",
+      },
+    ];
+
+    const result = await runConversation({
+      runId: "r-attachments",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      systemPrompt: "ignored",
+      userInput: "describe",
+      attachments,
+      workspacePath: "",
+      llm,
+      tools: async () => ({}),
+      onEvent: () => undefined,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(seen).toEqual(attachments);
+  });
+
   test("fails when the LLM stream is idle past the timeout", async () => {
     const events: Array<{ type: string; error?: { message: string } }> = [];
     const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {

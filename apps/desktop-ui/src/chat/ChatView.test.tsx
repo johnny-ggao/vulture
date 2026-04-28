@@ -90,6 +90,28 @@ describe("ChatView", () => {
     expect(screen.getByText(/重连中/)).toBeDefined();
   });
 
+  test("shows send error", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        sendError="attachment.file_required"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByText("attachment.file_required")).toBeDefined();
+  });
+
   test("shows empty state when no messages and idle", () => {
     render(
       <ChatView

@@ -35,6 +35,15 @@ export interface LlmRecoveryInput {
   retryToolCallId: string | null;
 }
 
+export interface LlmAttachment {
+  id: string;
+  kind: "image" | "file";
+  displayName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataBase64: string;
+}
+
 export interface LlmCheckpoint {
   sdkState: string | null;
   activeTool: {
@@ -51,6 +60,7 @@ export type LlmCallable = (input: {
   model: string;
   runId: string;
   workspacePath: string;
+  attachments?: LlmAttachment[];
   recovery?: LlmRecoveryInput;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
 }) => AsyncGenerator<LlmYield, void, unknown>;
@@ -70,6 +80,7 @@ export interface RunConversationArgs {
   model: string;
   systemPrompt: string;
   userInput: string;
+  attachments?: LlmAttachment[];
   workspacePath: string;
   llm: LlmCallable;
   tools: ToolCallable;
@@ -108,6 +119,7 @@ export async function runConversation(
       model: args.model,
       runId: args.runId,
       workspacePath: args.workspacePath,
+      attachments: args.attachments,
       recovery: args.recovery,
       onCheckpoint: args.onCheckpoint,
     });

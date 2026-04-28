@@ -3,6 +3,7 @@ import type { MessageStore } from "../domain/messageStore";
 import type { ConversationStore } from "../domain/conversationStore";
 import {
   runConversation,
+  type LlmAttachment,
   type LlmCallable,
   type LlmRecoveryInput,
   type ToolCallable,
@@ -26,6 +27,7 @@ export interface OrchestrateArgs {
   systemPrompt: string;
   conversationId: string;
   userInput: string;
+  attachments?: LlmAttachment[];
   workspacePath: string;
   recovery?: LlmRecoveryInput;
   providerKind?: RunRecoveryMetadata["providerKind"];
@@ -63,6 +65,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       model: args.model,
       systemPrompt: args.systemPrompt,
       userInput: args.userInput,
+      attachments: args.attachments,
       workspacePath: args.workspacePath,
       llm: deps.llm,
       tools: deps.tools,

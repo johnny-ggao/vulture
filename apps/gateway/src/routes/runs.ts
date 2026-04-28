@@ -3,7 +3,11 @@ import { streamSSE } from "hono/streaming";
 import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
-import { PostMessageRequestSchema } from "@vulture/protocol/src/v1/conversation";
+import { AttachmentStore } from "../domain/attachmentStore";
+import {
+  PostMessageRequestSchema,
+  type MessageAttachment,
+} from "@vulture/protocol/src/v1/conversation";
 import { ApprovalRequestSchema } from "@vulture/protocol/src/v1/approval";
 import type { RunStatus } from "@vulture/protocol/src/v1/run";
 import {
@@ -11,7 +15,7 @@ import {
   idempotencyCache,
 } from "../middleware/idempotency";
 import { orchestrateRun } from "../runtime/runOrchestrator";
-import type { LlmCallable, ToolCallable } from "@vulture/agent-runtime";
+import type { LlmAttachment, LlmCallable, ToolCallable } from "@vulture/agent-runtime";
 import type { ApprovalQueue } from "../runtime/approvalQueue";
 
 export type ResumeRunResult =
@@ -22,6 +26,7 @@ export type ResumeRunResult =
 export interface RunsDeps {
   conversations: ConversationStore;
   messages: MessageStore;
+  attachments: AttachmentStore;
   runs: RunStore;
   llm: LlmCallable;
   tools: ToolCallable;
@@ -146,12 +151,26 @@ export function runsRouter(deps: RunsDeps): Hono {
       if (!parsed.success) {
         return c.json({ code: "internal", message: parsed.error.message }, 400);
       }
-      const userMsg = deps.messages.append({
+      const appendedUserMsg = deps.messages.append({
         conversationId: cid,
         role: "user",
         content: parsed.data.input,
         runId: null,
       });
+      try {
+        deps.attachments.linkToMessage(parsed.data.attachmentIds ?? [], appendedUserMsg.id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === "attachment.not_found") {
+          return c.json({ code: "attachment.not_found", message }, 404);
+        }
+        if (message === "attachment.already_used") {
+          return c.json({ code: "attachment.already_used", message }, 409);
+        }
+        return c.json({ code: "internal", message }, 400);
+      }
+      const userMsg = deps.messages.get(appendedUserMsg.id) ?? appendedUserMsg;
+      const runtimeAttachments = toRuntimeAttachments(deps.attachments, userMsg.attachments);
       const run = deps.runs.create({
         conversationId: cid,
         agentId: conv.agentId,
@@ -176,6 +195,7 @@ export function runsRouter(deps: RunsDeps): Hono {
           workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
           conversationId: cid,
           userInput: parsed.data.input,
+          attachments: runtimeAttachments,
         },
       ).catch((err) => {
         deps.runs.markFailed(run.id, {
@@ -290,4 +310,22 @@ export function runsRouter(deps: RunsDeps): Hono {
   });
 
   return app;
+}
+
+function toRuntimeAttachments(
+  store: AttachmentStore,
+  attachments: MessageAttachment[],
+): LlmAttachment[] {
+  return attachments.map((attachment) => {
+    const content = store.getContent(attachment.id);
+    if (!content) throw new Error(`attachment content missing: ${attachment.id}`);
+    return {
+      id: attachment.id,
+      kind: attachment.kind,
+      displayName: attachment.displayName,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      dataBase64: content.bytes.toString("base64"),
+    };
+  });
 }

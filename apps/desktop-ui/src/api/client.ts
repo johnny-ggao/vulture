@@ -19,6 +19,7 @@ export interface ApiClient {
   readonly token: string;
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
+  postForm<T>(path: string, form: FormData): Promise<T>;
   patch<T>(path: string, body: unknown): Promise<T>;
   delete(path: string): Promise<void>;
 }
@@ -49,7 +50,7 @@ export function createApiClient(rt: RuntimeBase, opts: ApiClientOptions = {}): A
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       const err: ApiError = Object.assign(
-        new Error(errBody?.message ?? `HTTP ${res.status}`),
+        new Error(errBody?.message ?? `${method} ${path} -> HTTP ${res.status}`),
         {
           code: errBody?.code ?? "internal",
           status: res.status,
@@ -62,11 +63,38 @@ export function createApiClient(rt: RuntimeBase, opts: ApiClientOptions = {}): A
     return (await res.json()) as T;
   }
 
+  async function requestForm<T>(path: string, form: FormData): Promise<T> {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${rt.token}`,
+      "X-Request-Id": newId(),
+      "Idempotency-Key": newId(),
+    };
+    const res = await f(`${base}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      const err: ApiError = Object.assign(
+        new Error(errBody?.message ?? `POST ${path} -> HTTP ${res.status}`),
+        {
+          code: errBody?.code ?? "internal",
+          status: res.status,
+          details: errBody?.details,
+        },
+      );
+      throw err;
+    }
+    return (await res.json()) as T;
+  }
+
   return {
     base,
     token: rt.token,
     get: <T>(path: string) => request<T>("GET", path),
     post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
+    postForm: <T>(path: string, form: FormData) => requestForm<T>(path, form),
     patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
     delete: (path: string) => request<void>("DELETE", path),
   };

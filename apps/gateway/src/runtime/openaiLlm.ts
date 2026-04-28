@@ -2,12 +2,14 @@ import OpenAI from "openai";
 import { Agent, OpenAIProvider, RunContext, Runner, RunState } from "@openai/agents";
 import type {
   ModelProvider,
+  AgentInputItem,
   RunStreamEvent,
   RunToolApprovalItem,
   StreamedRunResult,
 } from "@openai/agents";
 import type {
   LlmCallable,
+  LlmAttachment,
   LlmCheckpoint,
   LlmRecoveryInput,
   LlmYield,
@@ -48,6 +50,7 @@ export type SdkApprovalCallable = (request: {
 export interface RunFactoryInput {
   systemPrompt: string;
   userInput: string;
+  attachments?: LlmAttachment[];
   model: string;
   apiKey: string;
   toolNames: readonly string[];
@@ -83,6 +86,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
     const stream = factory({
       systemPrompt: input.systemPrompt,
       userInput: input.userInput,
+      attachments: input.attachments,
       model: input.model,
       apiKey: opts.apiKey,
       toolNames: opts.toolNames,
@@ -141,7 +145,13 @@ async function* defaultRunFactory(
     onCheckpoint: input.onCheckpoint,
   };
   const runContext = new RunContext(context);
-  let runInput = await resolveSdkRunInput(agent, input.userInput, input.recovery, runContext);
+  let runInput = await resolveSdkRunInput(
+    agent,
+    buildSdkUserInput(input.userInput, input.attachments),
+    input.recovery,
+    runContext,
+  );
+  const textDeltaDeduper = new SdkTextDeltaDeduper();
 
   while (true) {
     const stream = (await runner.run(agent, runInput, {
@@ -150,9 +160,9 @@ async function* defaultRunFactory(
     })) as StreamedRunResult<SdkRunContext, Agent<SdkRunContext, any>>;
 
     for await (const event of stream) {
-      const delta = extractTextDeltaFromRunStreamEvent(event);
-      if (delta) {
-        yield { kind: "text.delta", text: delta };
+      const delta = extractTextDeltaFromRunStreamEventDetails(event);
+      if (delta && textDeltaDeduper.shouldEmit(delta)) {
+        yield { kind: "text.delta", text: delta.text };
       }
       // run_item_stream_event covers tool lifecycle. We DO NOT yield tool.plan /
       // await.tool here because the SDK invokes Tool.execute internally — the
@@ -220,11 +230,11 @@ export function tokenUsageFromSdkUsage(usage: unknown): TokenUsage | null {
 
 export async function resolveSdkRunInput(
   agent: Agent<any, any>,
-  userInput: string,
+  userInput: string | AgentInputItem[],
   recovery: LlmRecoveryInput | undefined,
   runContext: RunContext<any>,
   fromStringWithContext: typeof RunState.fromStringWithContext = RunState.fromStringWithContext,
-): Promise<string | RunState<any, Agent<any, any>>> {
+): Promise<string | AgentInputItem[] | RunState<any, Agent<any, any>>> {
   if (!recovery?.sdkState) return userInput;
   try {
     return await fromStringWithContext(agent, recovery.sdkState, runContext);
@@ -232,6 +242,55 @@ export async function resolveSdkRunInput(
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`internal.recovery_state_invalid: ${message}`);
   }
+}
+
+export function buildSdkUserInput(userInput: string, attachments: LlmAttachment[] = []): string | AgentInputItem[] {
+  if (attachments.length === 0) return userInput;
+  return [{
+    type: "message" as const,
+    role: "user" as const,
+    content: [
+      { type: "input_text" as const, text: userInput },
+      ...attachments.map((attachment) => {
+        const dataUrl = `data:${attachment.mimeType};base64,${attachment.dataBase64}`;
+        if (attachment.kind === "image") {
+          return {
+            type: "input_image" as const,
+            image: dataUrl,
+            detail: "auto",
+          };
+        }
+        if (isTextAttachment(attachment)) {
+          return {
+            type: "input_text" as const,
+            text: [
+              `Attached file: ${attachment.displayName}`,
+              `MIME type: ${attachment.mimeType}`,
+              "Content:",
+              decodeAttachmentText(attachment.dataBase64),
+            ].join("\n"),
+          };
+        }
+        return {
+          type: "input_file" as const,
+          file: dataUrl,
+          filename: attachment.displayName,
+        };
+      }),
+    ],
+  }];
+}
+
+function isTextAttachment(attachment: LlmAttachment): boolean {
+  return (
+    attachment.mimeType.startsWith("text/") ||
+    attachment.mimeType === "application/json" ||
+    attachment.mimeType.endsWith("+json")
+  );
+}
+
+function decodeAttachmentText(dataBase64: string): string {
+  return Buffer.from(dataBase64, "base64").toString("utf8");
 }
 
 export async function sdkStateHasInterruptions(
@@ -267,22 +326,96 @@ export function makeResponsesModelProvider(opts:
   });
 }
 
+type TextDeltaSource = "normalized" | "raw-response" | "legacy";
+
+export interface ExtractedTextDelta {
+  text: string;
+  source: TextDeltaSource;
+  dedupeKey?: string;
+}
+
+export class SdkTextDeltaDeduper {
+  #lastNormalizedDedupeKey: string | null = null;
+
+  shouldEmit(delta: ExtractedTextDelta): boolean {
+    if (delta.source === "raw-response" && delta.dedupeKey === this.#lastNormalizedDedupeKey) {
+      return false;
+    }
+    if (delta.source === "normalized") {
+      this.#lastNormalizedDedupeKey = delta.dedupeKey ?? null;
+    }
+    return true;
+  }
+}
+
 export function extractTextDeltaFromRunStreamEvent(event: unknown): string | undefined {
+  return extractTextDeltaFromRunStreamEventDetails(event)?.text;
+}
+
+export function extractTextDeltaFromRunStreamEventDetails(event: unknown): ExtractedTextDelta | undefined {
   const streamEvent = event as Partial<RunStreamEvent> | undefined;
   if (streamEvent?.type !== "raw_model_stream_event") return undefined;
   const data = streamEvent.data as
-    | { type?: string; delta?: string; event?: { type?: string; delta?: string }; choices?: unknown }
+    | {
+        type?: string;
+        delta?: string;
+        event?: { type?: string; delta?: string };
+        choices?: unknown;
+        providerData?: unknown;
+      }
     | undefined;
+  if (data?.type === "output_text_delta" && typeof data.delta === "string") {
+    return {
+      text: data.delta,
+      source: "normalized",
+      dedupeKey: responseTextDeltaDedupeKey(data.providerData, data.delta),
+    };
+  }
   const raw = data?.event ?? data;
   if (
-    (raw?.type === "response.output_text.delta" || raw?.type === "output_text_delta") &&
+    raw?.type === "response.output_text.delta" &&
     typeof raw.delta === "string"
   ) {
-    return raw.delta;
+    return {
+      text: raw.delta,
+      source: "raw-response",
+      dedupeKey: responseTextDeltaDedupeKey(raw, raw.delta),
+    };
   }
   const choice = Array.isArray(data?.choices) ? data.choices[0] : undefined;
   const content = (choice as { delta?: { content?: unknown } } | undefined)?.delta?.content;
-  return typeof content === "string" ? content : undefined;
+  return typeof content === "string"
+    ? { text: content, source: "legacy" }
+    : undefined;
+}
+
+function responseTextDeltaDedupeKey(event: unknown, delta: string): string | undefined {
+  const value = event as
+    | {
+        type?: unknown;
+        item_id?: unknown;
+        itemId?: unknown;
+        output_index?: unknown;
+        outputIndex?: unknown;
+        content_index?: unknown;
+        contentIndex?: unknown;
+        sequence_number?: unknown;
+        sequenceNumber?: unknown;
+      }
+    | undefined;
+  if (value?.type !== "response.output_text.delta") return undefined;
+  return [
+    value.type,
+    scalarKey(value.item_id ?? value.itemId),
+    scalarKey(value.output_index ?? value.outputIndex),
+    scalarKey(value.content_index ?? value.contentIndex),
+    scalarKey(value.sequence_number ?? value.sequenceNumber),
+    delta,
+  ].join("|");
+}
+
+function scalarKey(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
 
 function approvalRequestFromInterruption(

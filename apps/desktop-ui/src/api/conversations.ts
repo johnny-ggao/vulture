@@ -15,6 +15,18 @@ export interface MessageDto {
   content: string;
   runId: string | null;
   createdAt: string;
+  attachments?: MessageAttachmentDto[];
+}
+
+export interface MessageAttachmentDto {
+  id: string;
+  blobId: string;
+  kind: "image" | "file";
+  displayName: string;
+  mimeType: string;
+  sizeBytes: number;
+  contentUrl: string;
+  createdAt: string;
 }
 
 export interface CreateConversationRequest {

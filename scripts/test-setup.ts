@@ -9,6 +9,9 @@ if (!(globalThis as { document?: unknown }).document) {
   const nativeHeaders = globalThis.Headers;
   const nativeResponse = globalThis.Response;
   const nativeFetch = globalThis.fetch;
+  const nativeBlob = globalThis.Blob;
+  const nativeFile = globalThis.File;
+  const nativeFormData = globalThis.FormData;
   const nativeReadableStream = globalThis.ReadableStream;
   const nativeWritableStream = globalThis.WritableStream;
   const nativeTransformStream = globalThis.TransformStream;
@@ -30,6 +33,9 @@ if (!(globalThis as { document?: unknown }).document) {
   globalThis.Headers = nativeHeaders;
   globalThis.Response = nativeResponse;
   globalThis.fetch = nativeFetch;
+  globalThis.Blob = nativeBlob;
+  globalThis.File = nativeFile;
+  globalThis.FormData = nativeFormData;
   globalThis.ReadableStream = nativeReadableStream;
   globalThis.WritableStream = nativeWritableStream;
   globalThis.TransformStream = nativeTransformStream;

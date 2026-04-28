@@ -13,12 +13,14 @@ import { WorkspaceStore } from "./domain/workspaceStore";
 import { AgentStore } from "./domain/agentStore";
 import { ConversationStore } from "./domain/conversationStore";
 import { MessageStore } from "./domain/messageStore";
+import { AttachmentStore } from "./domain/attachmentStore";
 import { RunStore } from "./domain/runStore";
 import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
 import { conversationsRouter } from "./routes/conversations";
 import { runsRouter, type ResumeRunResult } from "./routes/runs";
+import { attachmentsRouter } from "./routes/attachments";
 import {
   assembleAgentInstructions,
   type ToolCallable,
@@ -50,6 +52,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const agentStore = new AgentStore(db, cfg.profileDir, cfg.defaultWorkspace);
   const conversationStore = new ConversationStore(db);
   const messageStore = new MessageStore(db);
+  const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
 
   // Ensure every agent's workspace directory exists. shell.exec sets cwd to
@@ -343,6 +346,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", profileRouter(profileStore));
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
+  app.route("/", attachmentsRouter(attachmentStore));
   app.route(
     "/",
     conversationsRouter({
@@ -355,6 +359,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     runsRouter({
       conversations: conversationStore,
       messages: messageStore,
+      attachments: attachmentStore,
       runs: runStore,
       llm,
       tools,

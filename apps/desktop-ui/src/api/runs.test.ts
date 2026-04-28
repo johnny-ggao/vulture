@@ -48,6 +48,29 @@ describe("runsApi", () => {
     expect(await runsApi.create(client, "c-1", { input: "hi" })).toEqual(expected);
   });
 
+  test("create includes attachment ids when provided", async () => {
+    const expected: CreateRunResponse = {
+      run: sampleRun,
+      message: {
+        id: "m-1",
+        conversationId: "c-1",
+        role: "user",
+        content: "hi",
+        runId: null,
+        createdAt: "2026-04-27T00:00:00.000Z",
+        attachments: [],
+      },
+      eventStreamUrl: "/v1/runs/r-1/events",
+    };
+    const client = fakeClient({
+      post: async <T>(_path: string, body: unknown) => {
+        expect(body).toEqual({ input: "hi", attachmentIds: ["att-1"] });
+        return expected as T;
+      },
+    });
+    await runsApi.create(client, "c-1", { input: "hi", attachmentIds: ["att-1"] });
+  });
+
   test("get fetches the run", async () => {
     const client = fakeClient({
       get: async <T>(path: string) => {

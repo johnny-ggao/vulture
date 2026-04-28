@@ -22,12 +22,14 @@ let tauriProfiles = [
 ];
 let activeTauriProfileId = "default";
 let createProfileServer: ((profile: { id: string; name: string; activeAgentId: string }) => void) | null = null;
+let restartGatewayCalls = 0;
 
 function resetTauriProfiles() {
   tauriProfiles = [
     { id: "default", name: "Default", activeAgentId: "local-work-agent" },
   ];
   activeTauriProfileId = "default";
+  restartGatewayCalls = 0;
 }
 
 mock.module("@tauri-apps/api/core", () => ({
@@ -88,6 +90,10 @@ mock.module("@tauri-apps/api/core", () => ({
     if (cmd === "clear_openai_api_key") {
       return { configured: false, source: "missing" };
     }
+    if (cmd === "restart_gateway") {
+      restartGatewayCalls += 1;
+      return undefined;
+    }
     throw new Error(`unmocked invoke: ${cmd}`);
   },
 }));
@@ -108,6 +114,7 @@ function setup(
   opts: {
     onRequest?: (path: string, init?: RequestInit) => void;
     onResponse?: (path: string, init: RequestInit | undefined) => void;
+    respond?: (path: string, init?: RequestInit) => Response | null | undefined;
   } = {},
 ) {
   localStorage.clear();
@@ -153,6 +160,8 @@ function setup(
           : input.url;
     const path = url.replace(/^https?:\/\/[^/]+/, "");
     opts.onRequest?.(path, init);
+    const mocked = opts.respond?.(path, init);
+    if (mocked) return mocked;
     const activeApp = profileApps.get(activeTauriProfileId) ?? app;
     const res = await activeApp.request(path, init as RequestInit);
     opts.onResponse?.(path, init);
@@ -238,6 +247,97 @@ describe("App integration", () => {
       { timeout: 5000 },
     );
 
+    cleanup();
+  }, 15_000);
+
+  test("send message with attachment → user message and attachment appear", async () => {
+    const { cleanup } = setup();
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    const file = new File(["hello multimodal"], "case1.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("添加附件"), {
+      target: { files: [file] },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), {
+      target: { value: "读取这个附件的内容" },
+    });
+    fireEvent.click(screen.getByLabelText("发送"));
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("读取这个附件的内容")).toBeDefined();
+        expect(screen.getByText("case1.txt")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent ?? "").toContain("OPENAI_API_KEY not configured");
+      },
+      { timeout: 10_000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
+  test("attachment route 404 restarts gateway and retries upload once gateway is ready", async () => {
+    let attachmentAttempts = 0;
+    let healthChecks = 0;
+    const { cleanup } = setup({
+      respond: (path, init) => {
+        if (path === "/healthz") {
+          healthChecks += 1;
+          return new Response(JSON.stringify({ ok: healthChecks >= 3 }), {
+            status: healthChecks >= 3 ? 200 : 503,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (path === "/v1/attachments" && init?.method === "POST") {
+          attachmentAttempts += 1;
+          if (attachmentAttempts === 1) {
+            return new Response("not found", { status: 404 });
+          }
+          if (healthChecks < 3) {
+            return new Response("gateway restarting", { status: 503 });
+          }
+        }
+        return null;
+      },
+    });
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.change(screen.getByLabelText("添加附件"), {
+      target: { files: [new File(["hello"], "retry.txt", { type: "text/plain" })] },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/输入问题/), {
+      target: { value: "读取附件" },
+    });
+    fireEvent.click(screen.getByLabelText("发送"));
+
+    await waitFor(
+      () => {
+        expect(attachmentAttempts).toBe(2);
+        expect(screen.getByText("读取附件")).toBeDefined();
+        expect(screen.getByText("retry.txt")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    expect(restartGatewayCalls).toBe(1);
+    expect(healthChecks).toBeGreaterThanOrEqual(3);
     cleanup();
   }, 15_000);
 

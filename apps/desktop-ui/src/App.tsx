@@ -12,6 +12,7 @@ import { agentsApi, type Agent } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
+import { attachmentsApi } from "./api/attachments";
 import { AgentsPage } from "./chat/AgentsPage";
 import { ChatView } from "./chat/ChatView";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
@@ -61,6 +62,20 @@ function authLabel(status: AuthStatusView | null): string {
   return "未认证";
 }
 
+function isMissingAttachmentRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("POST /v1/attachments -> HTTP 404")
+  );
+}
+
+function isGatewayRestarting(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    (cause.message.includes("HTTP 503") || cause.message.includes("Failed to fetch"))
+  );
+}
+
 export function App() {
   const runtime = useRuntimeDescriptor();
   const apiClient = useMemo(
@@ -89,6 +104,7 @@ export function App() {
   const [conversationRuns, setConversationRuns] = useState<RunDto[]>([]);
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const sendingRunRef = useRef(false);
   const [view, setView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -350,10 +366,11 @@ export function App() {
     }
   }
 
-  async function handleSend(input: string) {
+  async function handleSend(input: string, files: File[] = []): Promise<boolean> {
     if (!apiClient || !selectedAgentId || runStream.status === "recoverable" || resumingRun) {
-      return;
+      return false;
     }
+    setSendError(null);
     setRetainedRunEvents({ conversationId: null, events: [] });
     sendingRunRef.current = true;
     try {
@@ -366,13 +383,23 @@ export function App() {
         cid = created.id;
         setActiveConversationId(cid);
       }
-      const result = await runsApi.create(apiClient, cid, { input });
+      const uploaded = await uploadAttachmentsWithGatewayRestartFallback(files);
+      const result = await runsApi.create(apiClient, cid, {
+        input,
+        attachmentIds: uploaded.map((attachment) => attachment.id),
+      });
       setActiveRunId(result.run.id);
       messages.append(result.message);
       setConversationRuns((items) => [
         result.run,
         ...items.filter((run) => run.id !== result.run.id),
       ]);
+      return true;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error("Send failed", cause);
+      setSendError(message);
+      return false;
     } finally {
       sendingRunRef.current = false;
     }
@@ -384,6 +411,36 @@ export function App() {
       await runsApi.cancel(apiClient, activeRunId);
     } catch {
       // ignore — UI will see run.cancelled via SSE
+    }
+  }
+
+  async function uploadAttachmentsWithGatewayRestartFallback(files: File[]) {
+    if (!apiClient || files.length === 0) return [];
+    try {
+      return await Promise.all(files.map((file) => attachmentsApi.upload(apiClient, file)));
+    } catch (cause) {
+      if (!isMissingAttachmentRoute(cause)) throw cause;
+      await invoke("restart_gateway");
+      let lastError: unknown = cause;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await delay(200);
+        try {
+          await apiClient.get<{ ok: boolean }>("/healthz");
+        } catch (healthCause) {
+          lastError = healthCause;
+          continue;
+        }
+        try {
+          return await Promise.all(files.map((file) => attachmentsApi.upload(apiClient, file)));
+        } catch (retryCause) {
+          lastError = retryCause;
+          if (isMissingAttachmentRoute(retryCause) || isGatewayRestarting(retryCause)) {
+            continue;
+          }
+          throw retryCause;
+        }
+      }
+      throw lastError;
     }
   }
 
@@ -527,6 +584,7 @@ export function App() {
               runEvents={visibleRunEvents}
               runStatus={runStream.status}
               runError={runStream.error}
+              sendError={sendError}
               submittingApprovals={approvals.submitting}
               resumingRun={resumingRun}
               onSend={handleSend}

@@ -23,6 +23,7 @@ describe("Conversation + Message schemas", () => {
     content: "Hi",
     runId: null,
     createdAt: "2026-04-26T00:00:00.000Z" as Message["createdAt"],
+    attachments: [],
   };
 
   test("ConversationSchema parses sample", () => {

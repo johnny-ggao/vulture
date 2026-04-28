@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extractTextDeltaFromRunStreamEvent,
+  extractTextDeltaFromRunStreamEventDetails,
   tokenUsageFromSdkUsage,
   makeOpenAILlm,
   makeSdkTool,
@@ -8,6 +9,8 @@ import {
   resolveSdkRunInput,
   sdkStateHasInterruptions,
   sdkApprovalDecision,
+  buildSdkUserInput,
+  SdkTextDeltaDeduper,
   type SdkRunEvent,
   type SdkRunContext,
 } from "./openaiLlm";
@@ -22,6 +25,69 @@ type TestFunctionTool = {
 };
 
 describe("makeOpenAILlm", () => {
+  test("builds Agents SDK multimodal user input from attachments", () => {
+    expect(
+      buildSdkUserInput("describe", [
+        {
+          id: "att-image",
+          kind: "image",
+          displayName: "chart.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+          dataBase64: "aW1n",
+        },
+        {
+          id: "att-file",
+          kind: "file",
+          displayName: "note.txt",
+          mimeType: "text/plain",
+          sizeBytes: 4,
+          dataBase64: "bm90ZQ==",
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "describe" },
+          { type: "input_image", image: "data:image/png;base64,aW1n", detail: "auto" },
+        {
+          type: "input_text",
+          text: "Attached file: note.txt\nMIME type: text/plain\nContent:\nnote",
+        },
+        ],
+      },
+    ]);
+  });
+
+  test("inlines text attachment contents as input_text for file-reading prompts", () => {
+    expect(
+      buildSdkUserInput("读取文件内容", [
+        {
+          id: "att-text",
+          kind: "file",
+          displayName: "1.txt",
+          mimeType: "text/plain",
+          sizeBytes: 18,
+          dataBase64: "SGVsbG8gZnJvbSBmaWxlIQ==",
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "读取文件内容" },
+          {
+            type: "input_text",
+            text: "Attached file: 1.txt\nMIME type: text/plain\nContent:\nHello from file!",
+          },
+        ],
+      },
+    ]);
+  });
+
   test("passes a per-run model provider into the SDK run factory", async () => {
     const providers: unknown[] = [];
     const llm = makeOpenAILlm({
@@ -160,6 +226,72 @@ describe("makeOpenAILlm", () => {
 });
 
 describe("extractTextDeltaFromRunStreamEvent", () => {
+  test("deduplicates normalized Responses deltas and their matching raw model events", () => {
+    const deduper = new SdkTextDeltaDeduper();
+    const normalized = {
+      type: "raw_model_stream_event",
+      data: {
+        type: "output_text_delta",
+        delta: "hello",
+        providerData: {
+          type: "response.output_text.delta",
+          item_id: "msg-1",
+          output_index: 0,
+          content_index: 0,
+          sequence_number: 7,
+        },
+      },
+    };
+    const raw = {
+      type: "raw_model_stream_event",
+      data: {
+        type: "model",
+        event: {
+          type: "response.output_text.delta",
+          delta: "hello",
+          item_id: "msg-1",
+          output_index: 0,
+          content_index: 0,
+          sequence_number: 7,
+        },
+        providerData: {
+          rawModelEventSource: "openai-responses",
+        },
+      },
+    };
+
+    const first = extractTextDeltaFromRunStreamEventDetails(normalized);
+    const duplicate = extractTextDeltaFromRunStreamEventDetails(raw);
+
+    expect(first?.text).toBe("hello");
+    expect(duplicate?.text).toBe("hello");
+    expect(deduper.shouldEmit(first!)).toBe(true);
+    expect(deduper.shouldEmit(duplicate!)).toBe(false);
+  });
+
+  test("keeps raw Responses deltas as a fallback when no normalized delta preceded them", () => {
+    const deduper = new SdkTextDeltaDeduper();
+    const raw = {
+      type: "raw_model_stream_event",
+      data: {
+        type: "model",
+        event: {
+          type: "response.output_text.delta",
+          delta: "fallback",
+          item_id: "msg-1",
+          output_index: 0,
+          content_index: 0,
+          sequence_number: 8,
+        },
+      },
+    };
+
+    const delta = extractTextDeltaFromRunStreamEventDetails(raw);
+
+    expect(delta?.text).toBe("fallback");
+    expect(deduper.shouldEmit(delta!)).toBe(true);
+  });
+
   test("extracts Responses API deltas from the current Agents SDK raw event wrapper", () => {
     const event = {
       type: "raw_model_stream_event",

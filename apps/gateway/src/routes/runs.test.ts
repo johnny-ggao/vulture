@@ -7,6 +7,7 @@ import { applyMigrations } from "../persistence/migrate";
 import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
+import { AttachmentStore } from "../domain/attachmentStore";
 import { runsRouter, writeRunEventStream, type ResumeRunResult } from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { ApprovalQueue } from "../runtime/approvalQueue";
@@ -23,6 +24,7 @@ function fresh(
   resumeRun: (runId: string, mode: "auto" | "manual") => ResumeRunResult = mock((_runId: string, _mode: "auto" | "manual") => ({
     status: "scheduled" as const,
   })),
+  llm: LlmCallable = fakeLlm,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
@@ -30,12 +32,14 @@ function fresh(
   const convs = new ConversationStore(db);
   const msgs = new MessageStore(db);
   const runs = new RunStore(db);
+  const attachments = new AttachmentStore(db, dir);
   const c = convs.create({ agentId: "local-work-agent" });
   const app = runsRouter({
     conversations: convs,
     messages: msgs,
+    attachments,
     runs,
-    llm: fakeLlm,
+    llm,
     tools: async () => "noop",
     approvalQueue: new ApprovalQueue(),
     cancelSignals: new Map<string, AbortController>(),
@@ -49,6 +53,7 @@ function fresh(
     c,
     runs,
     msgs,
+    attachments,
     resumeRun,
     cleanup: () => { db.close(); rmSync(dir, { recursive: true }); },
   };
@@ -102,6 +107,78 @@ describe("/v1/runs", () => {
       if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
     }
     expect(final.status).toBe("succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs links uploaded attachments to the user message", async () => {
+    const { app, c, msgs, attachments, cleanup } = fresh();
+    const draft = await attachments.createDraft({
+      bytes: new TextEncoder().encode("route attachment"),
+      originalName: "route.txt",
+      mimeType: "text/plain",
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "k-attachments" },
+      body: JSON.stringify({ input: "read this", attachmentIds: [draft.id] }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.message.attachments.map((a: { id: string }) => a.id)).toEqual([draft.id]);
+    expect(msgs.get(body.message.id)?.attachments.map((a) => a.displayName)).toEqual(["route.txt"]);
+
+    for (let i = 0; i < 50; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+      const run = await app.request(`/v1/runs/${body.run.id}`, { headers: auth });
+      const status = ((await run.json()) as { status: string }).status;
+      if (["succeeded", "failed", "cancelled"].includes(status)) break;
+    }
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs passes uploaded attachment bytes to the LLM", async () => {
+    const seen: unknown[] = [];
+    const llm: LlmCallable = mock(async function* (
+      input: Parameters<LlmCallable>[0],
+    ): AsyncGenerator<LlmYield, void, unknown> {
+      seen.push(input.attachments);
+      yield { kind: "final", text: "ok" };
+    });
+    const { app, c, attachments, cleanup } = fresh(undefined, llm);
+    const draft = await attachments.createDraft({
+      bytes: new TextEncoder().encode("hello llm"),
+      originalName: "llm.txt",
+      mimeType: "text/plain",
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "k-llm-attachments" },
+      body: JSON.stringify({ input: "read this", attachmentIds: [draft.id] }),
+    });
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    for (let i = 0; i < 50; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+      const run = await app.request(`/v1/runs/${body.run.id}`, { headers: auth });
+      const status = ((await run.json()) as { status: string }).status;
+      if (["succeeded", "failed", "cancelled"].includes(status)) break;
+    }
+
+    expect(seen).toEqual([
+      [
+        {
+          id: draft.id,
+          kind: "file",
+          displayName: "llm.txt",
+          mimeType: "text/plain",
+          sizeBytes: 9,
+          dataBase64: "aGVsbG8gbGxt",
+        },
+      ],
+    ]);
     cleanup();
   });
 
@@ -172,6 +249,7 @@ describe("/v1/runs", () => {
     const convs = new ConversationStore(db);
     const msgs = new MessageStore(db);
     const runs = new RunStore(db);
+    const attachments = new AttachmentStore(db, dir);
     const c = convs.create({ agentId: "local-work-agent" });
 
     const toolLlm: LlmCallable = async function* (): AsyncGenerator<LlmYield, void, unknown> {
@@ -184,6 +262,7 @@ describe("/v1/runs", () => {
     const app = runsRouter({
       conversations: convs,
       messages: msgs,
+      attachments,
       runs,
       llm: toolLlm,
       tools: async () => {
@@ -372,6 +451,7 @@ describe("/v1/runs", () => {
     const convs = new ConversationStore(db);
     const msgs = new MessageStore(db);
     const runs = new RunStore(db);
+    const attachments = new AttachmentStore(db, dir);
     const c = convs.create({ agentId: "local-work-agent" });
 
     const approvalQueue = new ApprovalQueue();
@@ -418,6 +498,7 @@ describe("/v1/runs", () => {
     const app = runsRouter({
       conversations: convs,
       messages: msgs,
+      attachments,
       runs,
       llm: toolLlm,
       tools: fakeShellTools,
@@ -467,6 +548,7 @@ describe("/v1/runs", () => {
     const convs = new ConversationStore(db);
     const msgs = new MessageStore(db);
     const runs = new RunStore(db);
+    const attachments = new AttachmentStore(db, dir);
     const c = convs.create({ agentId: "local-work-agent" });
     const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
     const run = runs.create({
@@ -481,6 +563,7 @@ describe("/v1/runs", () => {
     const app = runsRouter({
       conversations: convs,
       messages: msgs,
+      attachments,
       runs,
       llm: fakeLlm,
       tools: async () => "noop",
@@ -528,6 +611,7 @@ describe("/v1/runs", () => {
     const convs = new ConversationStore(db);
     const msgs = new MessageStore(db);
     const runs = new RunStore(db);
+    const attachments = new AttachmentStore(db, dir);
     const c = convs.create({ agentId: "local-work-agent" });
     const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
     const run = runs.create({
@@ -546,6 +630,7 @@ describe("/v1/runs", () => {
     const app = runsRouter({
       conversations: convs,
       messages: msgs,
+      attachments,
       runs,
       llm: fakeLlm,
       tools: async () => "noop",
