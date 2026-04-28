@@ -85,6 +85,28 @@ describe("/v1/agents", () => {
     cleanup();
   });
 
+  test("PATCH clears skills allowlist with null", async () => {
+    const { app, cleanup } = freshApp();
+    await app.request("/v1/agents/local-work-agent", {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ skills: ["csv-insights"] }),
+    });
+
+    const res = await app.request("/v1/agents/local-work-agent", {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ skills: null }),
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).skills).toBeUndefined();
+
+    const get = await app.request("/v1/agents/local-work-agent", { headers: auth });
+    expect((await get.json()).skills).toBeUndefined();
+    cleanup();
+  });
+
   test("POST without Idempotency-Key → 400", async () => {
     const { app, cleanup } = freshApp();
     const res = await app.request("/v1/agents", {

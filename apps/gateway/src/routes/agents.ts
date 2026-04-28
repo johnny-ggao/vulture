@@ -34,6 +34,7 @@ export function agentsRouter(store: AgentStore): Hono {
     const existing = store.get(id);
     if (!existing) return c.json({ code: "agent.not_found", message: id }, 404);
     const raw = await c.req.json().catch(() => ({}));
+    const hasSkills = Object.prototype.hasOwnProperty.call(raw, "skills");
     const merged = {
       id,
       name: raw.name ?? existing.name,
@@ -41,7 +42,7 @@ export function agentsRouter(store: AgentStore): Hono {
       model: raw.model ?? existing.model,
       reasoning: raw.reasoning ?? existing.reasoning,
       tools: raw.tools ?? existing.tools,
-      skills: raw.skills ?? existing.skills,
+      skills: hasSkills ? (raw.skills === null ? undefined : raw.skills) : existing.skills,
       workspace:
         raw.workspace ??
         {

@@ -15,7 +15,7 @@ export interface AgentConfigPatch {
   description: string;
   model: string;
   reasoning: ReasoningLevel;
-  skills?: string[];
+  skills?: string[] | null;
   instructions: string;
 }
 
@@ -195,9 +195,9 @@ function draftFromAgent(agent: Agent | undefined): Draft {
   };
 }
 
-function parseSkills(value: string): string[] | undefined {
+function parseSkills(value: string): string[] | null {
   const trimmed = value.trim();
-  if (!trimmed) return undefined;
+  if (!trimmed) return null;
   if (trimmed.toLowerCase() === "none") return [];
   return trimmed
     .split(/[\n,]/)

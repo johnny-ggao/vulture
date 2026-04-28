@@ -14,6 +14,7 @@ export interface SkillEntry {
   description: string;
   filePath: string;
   baseDir: string;
+  source?: "profile" | "workspace";
   modelInvocationEnabled: boolean;
   userInvocable?: boolean;
   metadata?: SkillMetadata;
@@ -38,9 +39,13 @@ const DEFAULT_MAX_SKILL_FILE_BYTES = 256_000;
 export function loadSkillEntries(opts: LoadSkillEntriesOptions): SkillEntry[] {
   const maxSkillFileBytes = opts.maxSkillFileBytes ?? DEFAULT_MAX_SKILL_FILE_BYTES;
   const profileSkills = opts.profileDir
-    ? loadSkillsFromRoot(join(opts.profileDir, "skills"), maxSkillFileBytes)
+    ? loadSkillsFromRoot(join(opts.profileDir, "skills"), maxSkillFileBytes, "profile")
     : [];
-  const workspaceSkills = loadSkillsFromRoot(join(opts.workspaceDir, "skills"), maxSkillFileBytes);
+  const workspaceSkills = loadSkillsFromRoot(
+    join(opts.workspaceDir, "skills"),
+    maxSkillFileBytes,
+    "workspace",
+  );
   const merged = new Map<string, SkillEntry>();
 
   for (const skill of profileSkills) merged.set(skill.name, skill);
@@ -87,17 +92,21 @@ export function formatSkillsForPrompt(entries: readonly SkillEntry[]): string {
   return lines.join("\n");
 }
 
-function loadSkillsFromRoot(rootDir: string, maxSkillFileBytes: number): SkillEntry[] {
+function loadSkillsFromRoot(
+  rootDir: string,
+  maxSkillFileBytes: number,
+  source: "profile" | "workspace",
+): SkillEntry[] {
   const root = resolve(rootDir);
   if (!existsSync(root)) return [];
   const rootRealPath = safeRealpath(root);
   if (!rootRealPath) return [];
 
-  const rootSkill = loadSkillFromDirectory(root, rootRealPath, maxSkillFileBytes);
+  const rootSkill = loadSkillFromDirectory(root, rootRealPath, maxSkillFileBytes, source);
   if (rootSkill) return [rootSkill];
 
   return listCandidateSkillDirs(root)
-    .map((candidate) => loadSkillFromDirectory(candidate, rootRealPath, maxSkillFileBytes))
+    .map((candidate) => loadSkillFromDirectory(candidate, rootRealPath, maxSkillFileBytes, source))
     .filter((entry): entry is SkillEntry => entry !== null);
 }
 
@@ -116,6 +125,7 @@ function loadSkillFromDirectory(
   skillDir: string,
   rootRealPath: string,
   maxSkillFileBytes: number,
+  source: "profile" | "workspace",
 ): SkillEntry | null {
   const skillDirRealPath = safeRealpath(skillDir);
   if (!skillDirRealPath || !isPathInside(rootRealPath, skillDirRealPath)) return null;
@@ -149,6 +159,7 @@ function loadSkillFromDirectory(
     description,
     filePath: skillFileRealPath,
     baseDir: skillDirRealPath,
+    source,
     modelInvocationEnabled: parseBoolean(frontmatter["disable-model-invocation"]) !== true,
     userInvocable: parseBoolean(frontmatter["user-invocable"]) ?? true,
     metadata: parseSkillMetadata(frontmatter["metadata.openclaw"]),

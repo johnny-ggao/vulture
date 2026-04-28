@@ -41,7 +41,7 @@ export interface SaveAgentRequest {
   model: string;
   reasoning: ReasoningLevel;
   tools: AgentToolName[];
-  skills?: string[];
+  skills?: string[] | null;
   workspace?: Pick<Workspace, "id" | "name" | "path">;
   instructions: string;
 }

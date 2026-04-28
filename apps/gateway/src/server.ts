@@ -18,6 +18,7 @@ import { RunStore } from "./domain/runStore";
 import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
+import { skillsRouter } from "./routes/skills";
 import { conversationsRouter } from "./routes/conversations";
 import { runsRouter, type ResumeRunResult } from "./routes/runs";
 import { attachmentsRouter } from "./routes/attachments";
@@ -367,6 +368,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", profileRouter(profileStore));
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
+  app.route("/", skillsRouter(agentStore, cfg.profileDir));
   app.route("/", attachmentsRouter(attachmentStore));
   app.route(
     "/",

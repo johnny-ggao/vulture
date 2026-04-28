@@ -1,6 +1,6 @@
 import { describe, expect, test, mock } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -126,6 +126,7 @@ function setup(
     shellCallbackUrl: "http://127.0.0.1:4199",
     shellPid: process.pid,
     profileDir: dir,
+    privateWorkspaceHomeDir: join(dir, "private-workspaces"),
   };
   const app = buildServer(cfg);
   const profileApps = new Map<string, ReturnType<typeof buildServer>>([["default", app]]);
@@ -752,6 +753,116 @@ describe("App integration", () => {
     await waitFor(
       () => {
         expect(readActiveChatState()).toEqual({ conversationId: null, runId: null });
+      },
+      { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
+  test("skills page lists skills and saves agent skill policy", async () => {
+    const patches: unknown[] = [];
+    const { dir, cleanup } = setup({
+      onRequest: (path, init) => {
+        if (path === "/v1/agents/local-work-agent" && init?.method === "PATCH") {
+          patches.push(JSON.parse(String(init.body)));
+        }
+      },
+    });
+    mkdirSync(join(dir, "skills", "csv"), { recursive: true });
+    writeFileSync(
+      join(dir, "skills", "csv", "SKILL.md"),
+      [
+        "---",
+        "name: csv-insights",
+        "description: Summarize CSV reports.",
+        "---",
+        "",
+        "# csv-insights",
+        "",
+      ].join("\n"),
+    );
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByText("技能"));
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("csv-insights")).toBeDefined();
+        expect(screen.getByText("Summarize CSV reports.")).toBeDefined();
+        expect(screen.getByText("profile")).toBeDefined();
+        expect(screen.getByText("已启用")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "全部禁用" }));
+    await waitFor(() => {
+      expect(patches).toContainEqual({ skills: [] });
+      expect(screen.getByText("已禁用")).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "全部启用" }));
+    await waitFor(() => {
+      expect(patches).toContainEqual({ skills: null });
+      expect(screen.getByText("已启用")).toBeDefined();
+    });
+
+    cleanup();
+  }, 15_000);
+
+  test("skills page restarts gateway and retries when skills route is missing", async () => {
+    let skillsRequests = 0;
+    const { dir, cleanup } = setup({
+      respond: (path, init) => {
+        if (path === "/v1/skills?agentId=local-work-agent" && (init?.method ?? "GET") === "GET") {
+          skillsRequests += 1;
+          if (skillsRequests === 1) {
+            return new Response(JSON.stringify({ code: "not_found" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+        return null;
+      },
+    });
+    mkdirSync(join(dir, "skills", "csv"), { recursive: true });
+    writeFileSync(
+      join(dir, "skills", "csv", "SKILL.md"),
+      [
+        "---",
+        "name: csv-insights",
+        "description: Summarize CSV reports.",
+        "---",
+        "",
+        "# csv-insights",
+        "",
+      ].join("\n"),
+    );
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByText("技能"));
+
+    await waitFor(
+      () => {
+        expect(restartGatewayCalls).toBe(1);
+        expect(skillsRequests).toBeGreaterThanOrEqual(2);
+        expect(screen.getByText("csv-insights")).toBeDefined();
       },
       { timeout: 5000 },
     );

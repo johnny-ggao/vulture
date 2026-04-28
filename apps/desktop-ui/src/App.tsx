@@ -13,7 +13,9 @@ import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
+import { skillsApi, type SkillListResponse } from "./api/skills";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
+import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
 import { NewAgentModal } from "./chat/NewAgentModal";
@@ -66,6 +68,14 @@ function isMissingAttachmentRoute(cause: unknown): boolean {
   return (
     cause instanceof Error &&
     cause.message.includes("POST /v1/attachments -> HTTP 404")
+  );
+}
+
+function isMissingSkillsRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("GET /v1/skills") &&
+    cause.message.includes("HTTP 404")
   );
 }
 
@@ -444,6 +454,36 @@ export function App() {
     }
   }
 
+  async function loadSkillsWithGatewayRestartFallback(agentId: string): Promise<SkillListResponse> {
+    if (!apiClient) throw new Error("API client is not ready");
+    try {
+      return await skillsApi.list(apiClient, agentId);
+    } catch (cause) {
+      if (!isMissingSkillsRoute(cause)) throw cause;
+      await invoke("restart_gateway");
+      let lastError: unknown = cause;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await delay(200);
+        try {
+          await apiClient.get<{ ok: boolean }>("/healthz");
+        } catch (healthCause) {
+          lastError = healthCause;
+          continue;
+        }
+        try {
+          return await skillsApi.list(apiClient, agentId);
+        } catch (retryCause) {
+          lastError = retryCause;
+          if (isMissingSkillsRoute(retryCause) || isGatewayRestarting(retryCause)) {
+            continue;
+          }
+          throw retryCause;
+        }
+      }
+      throw lastError;
+    }
+  }
+
   async function handleResume() {
     if (!apiClient || !activeRunId || resumingRun) return;
     const runId = activeRunId;
@@ -558,6 +598,13 @@ export function App() {
     if (selectedAgentId === id) setSelectedAgentId(saved.id);
   }
 
+  async function handleSaveAgentSkills(id: string, skills: string[] | null) {
+    if (!apiClient) return;
+    const saved = await agentsApi.update(apiClient, id, { skills });
+    setAgents((prev) => prev.map((agent) => (agent.id === saved.id ? saved : agent)));
+    if (selectedAgentId === id) setSelectedAgentId(saved.id);
+  }
+
   return (
     <div className="app-shell">
       <Titlebar />
@@ -614,9 +661,12 @@ export function App() {
             />
           ) : null}
           {view === "skills" ? (
-            <PlaceholderPage
-              title="技能"
-              description="可复用的提示词与工作流。安装后可被任何智能体启用。"
+            <SkillsPage
+              agents={agents}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={setSelectedAgentId}
+              onLoadSkills={loadSkillsWithGatewayRestartFallback}
+              onSaveAgentSkills={handleSaveAgentSkills}
             />
           ) : null}
           {view === "plugins" ? (
