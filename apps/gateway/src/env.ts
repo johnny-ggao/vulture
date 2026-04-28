@@ -51,6 +51,6 @@ export function parseGatewayEnv(
     shellPid,
     profileDir: required(env, "VULTURE_PROFILE_DIR"),
     defaultWorkspace: env.VULTURE_DEFAULT_WORKSPACE,
-    memorySuggestionsEnabled: env.VULTURE_MEMORY_SUGGESTIONS !== "0",
+    memorySuggestionsEnabled: env.VULTURE_MEMORY_SUGGESTIONS === "1",
   };
 }

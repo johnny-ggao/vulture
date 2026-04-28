@@ -514,66 +514,6 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
-  test("settings memory tab can accept pending memory suggestions", async () => {
-    let suggestionPending = true;
-    let acceptCalls = 0;
-    const suggestion = {
-      id: "memsug-test",
-      agentId: "local-work-agent",
-      runId: "run-test",
-      conversationId: "conv-test",
-      content: "Project codename is Vulture.",
-      reason: "User confirmed the project codename.",
-      targetPath: "MEMORY.md",
-      status: "pending",
-      createdAt: "2026-04-28T00:00:00.000Z",
-      updatedAt: "2026-04-28T00:00:00.000Z",
-    };
-    const { cleanup } = setup({
-      respond: (path, init) => {
-        const method = init?.method ?? "GET";
-        if (method === "GET" && path === "/v1/agents/local-work-agent/memory-suggestions") {
-          return Response.json({ items: suggestionPending ? [suggestion] : [] });
-        }
-        if (
-          method === "POST" &&
-          path === "/v1/agents/local-work-agent/memory-suggestions/memsug-test/accept"
-        ) {
-          acceptCalls += 1;
-          suggestionPending = false;
-          return Response.json({ ...suggestion, status: "accepted" });
-        }
-        return null;
-      },
-    });
-
-    render(<App />);
-
-    await waitFor(
-      () => {
-        expect(screen.getByText("Local Work Agent")).toBeDefined();
-      },
-      { timeout: 5000 },
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    fireEvent.click(within(screen.getByLabelText("设置分区")).getByText("记忆"));
-
-    await waitFor(() => {
-      expect(screen.getByText("待确认记忆")).toBeDefined();
-      expect(screen.getByText("Project codename is Vulture.")).toBeDefined();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "接受" }));
-
-    await waitFor(() => {
-      expect(acceptCalls).toBe(1);
-      expect(screen.queryByText("Project codename is Vulture.")).toBeNull();
-    });
-
-    cleanup();
-  }, 15_000);
-
   test("agents page exposes editable agent configuration", async () => {
     let savedPatch: unknown = null;
     const { cleanup } = setup({

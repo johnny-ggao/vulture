@@ -266,21 +266,20 @@ Suggestions are stored as pending. They are not injected into future runs until 
 
 Acceptance appends the content to `targetPath`, marks the suggestion accepted, and reindexes the file. Dismissal marks it dismissed.
 
-The first implementation should make automatic extraction optional behind a config flag or conservative default, while the suggestion table/API/UI can exist immediately.
+The first implementation should make automatic extraction an explicit opt-in operator feature. Suggestion storage and API can exist, but ordinary user-facing settings should not expose pending suggestion review until Vulture has a dedicated advanced/operator mode.
 
 ## UI
 
-The Settings Memory section becomes an operator console:
+The regular Settings Memory section should stay understandable as file-backed memory management:
 
 - Show active agent and memory root.
 - Show whether `MEMORY.md` exists.
 - Show index status, indexed file count, indexed chunk count, and last indexed time.
 - Provide a reindex button.
 - Show indexed memory chunks with path, heading, snippet, and timestamp.
-- Show pending suggestions with accept/dismiss actions.
 - Keep manual add behavior by appending to `MEMORY.md` instead of writing DB-only memory.
 
-The UI does not need to hide Markdown paths or config details. It should make file-backed state obvious.
+Pending suggestions with accept/dismiss actions belong in a future advanced/operator console, not the ordinary user-facing Settings page.
 
 ## Migration
 
@@ -314,6 +313,7 @@ For the first implementation, defaults are enough:
 - memory enabled for all agents.
 - tools available through the existing tool allowlist when selected.
 - memory root is the agent workspace.
+- auto suggestion extraction is disabled unless `VULTURE_MEMORY_SUGGESTIONS=1`.
 - append targets are restricted to `MEMORY.md` and today's daily note.
 
 ## Security and Trust Boundary
@@ -360,7 +360,7 @@ Desktop UI tests:
 - Memory page displays memory root and index status.
 - Manual add appends to `MEMORY.md` through the compatibility API.
 - Reindex refreshes visible chunks.
-- Pending suggestions can be accepted and dismissed.
+- Ordinary Settings does not expose pending suggestions.
 
 Regression tests:
 
@@ -375,7 +375,7 @@ Regression tests:
 - Asking about a known memory can trigger `memory_search` and `memory_get`.
 - Manual memory add persists as Markdown and appears in indexed results.
 - `memory_append` cannot write outside the agent memory root.
-- The Memory settings page shows file-backed memory state and pending suggestions.
+- The Memory settings page shows file-backed memory state without exposing pending suggestion review to ordinary users.
 - Runs remain functional when embeddings are unavailable.
 - Existing tests pass after updating expected memory prompt behavior.
 
@@ -410,4 +410,3 @@ Phase 4: later OpenClaw-style upgrades.
 - Session snapshots.
 - Active-memory recall sub-agent.
 - Background consolidation/dreaming.
-

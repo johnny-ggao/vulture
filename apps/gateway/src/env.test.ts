@@ -16,6 +16,15 @@ describe("parseGatewayEnv", () => {
     expect(cfg.token).toHaveLength(43);
     expect(cfg.shellPid).toBe(1234);
     expect(cfg.defaultWorkspace).toBeUndefined();
+    expect(cfg.memorySuggestionsEnabled).toBe(false);
+  });
+
+  test("enables memory suggestions only with an explicit opt-in", () => {
+    const cfg = parseGatewayEnv({
+      ...valid,
+      VULTURE_MEMORY_SUGGESTIONS: "1",
+    });
+    expect(cfg.memorySuggestionsEnabled).toBe(true);
   });
 
   test("parses optional default workspace", () => {
