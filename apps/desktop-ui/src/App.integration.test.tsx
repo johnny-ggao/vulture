@@ -475,6 +475,42 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
+  test("settings memory tab can add and delete agent memories", async () => {
+    const { cleanup } = setup();
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    fireEvent.click(within(screen.getByLabelText("设置分区")).getByText("记忆"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent 记忆")).toBeDefined();
+    });
+
+    const textarea = screen.getByLabelText("新增记忆") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "Project codename is Vulture." } });
+    fireEvent.click(screen.getByRole("button", { name: "添加记忆" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Project codename is Vulture.")).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "删除记忆" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Project codename is Vulture.")).toBeNull();
+      expect(screen.getByText("当前智能体没有记忆。")).toBeDefined();
+    });
+
+    cleanup();
+  }, 15_000);
+
   test("agents page exposes editable agent configuration", async () => {
     let savedPatch: unknown = null;
     const { cleanup } = setup({

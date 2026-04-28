@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AuthStatusView, BrowserRelayStatus } from "../commandCenterTypes";
+import type { Agent } from "../api/agents";
+import type { Memory } from "../api/memories";
 
 const SECTIONS = [
   { key: "general",  label: "通用",       icon: <DotIcon /> },
@@ -15,9 +17,15 @@ type SectionKey = (typeof SECTIONS)[number]["key"];
 export interface SettingsPageProps {
   authStatus: AuthStatusView | null;
   browserStatus: BrowserRelayStatus | null;
+  agents: ReadonlyArray<Agent>;
+  selectedAgentId: string;
   profiles: Array<{ id: string; name: string; activeAgentId: string }>;
   activeProfileId: string | null;
   switchingProfileId: string | null;
+  onSelectAgent: (agentId: string) => void;
+  onListMemories: (agentId: string) => Promise<Memory[]>;
+  onCreateMemory: (agentId: string, content: string) => Promise<Memory>;
+  onDeleteMemory: (agentId: string, memoryId: string) => Promise<void>;
   onCreateProfile: (name: string) => Promise<void>;
   onSwitchProfile: (profileId: string) => Promise<void>;
   onSignInWithChatGPT: () => Promise<void>;
@@ -34,7 +42,7 @@ export function SettingsPage(props: SettingsPageProps) {
       <header className="page-header">
         <div>
           <h1>设置</h1>
-          <p>偏好、模型与连接器。仅 通用 / 模型 / 浏览器 已对接后端，其余分区为 Phase 4 预留。</p>
+          <p>偏好、模型、记忆与连接器。MCP / 消息渠道分区仍为后续预留。</p>
         </div>
       </header>
       <div className="settings-layout">
@@ -61,11 +69,148 @@ function renderSection(section: SectionKey, props: SettingsPageProps): ReactNode
   switch (section) {
     case "general":  return <GeneralSection {...props} />;
     case "model":    return <ModelSection {...props} />;
-    case "memory":   return <Stub title="记忆" body="为对话自动汇总长期记忆。Phase 4 启用。" />;
+    case "memory":   return <MemorySection {...props} />;
     case "mcp":      return <Stub title="MCP 服务器" body="挂载 Model Context Protocol 服务器。Phase 4 启用。" />;
     case "browser":  return <BrowserSection {...props} />;
     case "channels": return <Stub title="消息渠道" body="向微信、飞书等渠道转发会话事件。Phase 4 启用。" />;
   }
+}
+
+function MemorySection(props: SettingsPageProps) {
+  const activeAgent = useMemo(
+    () => props.agents.find((agent) => agent.id === props.selectedAgentId) ?? props.agents[0],
+    [props.agents, props.selectedAgentId],
+  );
+  const [items, setItems] = useState<Memory[]>([]);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load(agentId: string) {
+    setError(null);
+    try {
+      setItems(await props.onListMemories(agentId));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  useEffect(() => {
+    if (!activeAgent) {
+      setItems([]);
+      return;
+    }
+    void load(activeAgent.id);
+  }, [activeAgent?.id]);
+
+  async function create() {
+    const content = draft.trim();
+    if (!activeAgent || !content || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await props.onCreateMemory(activeAgent.id, content);
+      setItems((prev) => [created, ...prev]);
+      setDraft("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(memory: Memory) {
+    if (!activeAgent || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await props.onDeleteMemory(activeAgent.id, memory.id);
+      setItems((prev) => prev.filter((item) => item.id !== memory.id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="page-card">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "end", marginBottom: 14 }}>
+        <div>
+          <h3>Agent 记忆</h3>
+          <p style={{ color: "var(--text-secondary)", marginTop: 4 }}>手动维护会注入到相关对话的长期记忆。</p>
+        </div>
+        <label style={{ display: "grid", gap: 6, minWidth: 220, color: "var(--text-secondary)", fontSize: 12 }}>
+          <span>智能体</span>
+          <select
+            aria-label="记忆智能体"
+            value={activeAgent?.id ?? ""}
+            onChange={(event) => props.onSelectAgent(event.target.value)}
+          >
+            {props.agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+        <textarea
+          aria-label="新增记忆"
+          rows={3}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="例如：用户喜欢简洁中文回答"
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy || !draft.trim() || !activeAgent}
+            onClick={create}
+          >
+            {busy ? "处理中..." : "添加记忆"}
+          </button>
+        </div>
+      </div>
+
+      {error ? <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div> : null}
+
+      {items.length === 0 ? (
+        <div className="placeholder" style={{ minHeight: 120 }}>
+          <span>当前智能体没有记忆。</span>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {items.map((memory) => (
+            <article
+              key={memory.id}
+              style={{
+                border: "1px solid rgba(15, 15, 15, 0.08)",
+                borderRadius: "var(--radius-md)",
+                padding: 12,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>{memory.content}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>{new Date(memory.updatedAt).toLocaleString()}</span>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={() => remove(memory)}
+                >
+                  删除记忆
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function GeneralSection(props: SettingsPageProps) {

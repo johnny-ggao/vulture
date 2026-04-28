@@ -26,6 +26,7 @@ function fresh(
   })),
   llm: LlmCallable = fakeLlm,
   skillsPromptForAgent?: () => string,
+  memoryPromptForRun?: (input: { agentId: string; input: string }) => Promise<string> | string,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
@@ -47,6 +48,7 @@ function fresh(
     resumeRun,
     systemPromptForAgent: () => "system",
     skillsPromptForAgent,
+    memoryPromptForRun,
     modelForAgent: () => "gpt-5.4",
     workspacePathForAgent: () => "",
   });
@@ -135,6 +137,41 @@ describe("/v1/runs", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(seenContextPrompts).toHaveLength(1);
+    expect(seenContextPrompts[0]).toContain("<available_skills>");
+    expect(seenContextPrompts[0]).toContain("csv-insights");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs combines memory and skills context", async () => {
+    const seenContextPrompts: Array<string | undefined> = [];
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      seenContextPrompts.push(input.contextPrompt);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, cleanup } = fresh(
+      undefined,
+      llm,
+      () => "\n\n<available_skills><skill><name>csv-insights</name></skill></available_skills>",
+      async ({ agentId, input }) => {
+        expect(agentId).toBe("local-work-agent");
+        expect(input).toBe("remember project codename");
+        return "\n\n<memories><memory id=\"mem-1\">Project codename is Vulture.</memory></memories>";
+      },
+    );
+
+    const response = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "memory-skills" },
+      body: JSON.stringify({ input: "remember project codename" }),
+    });
+    expect(response.status).toBe(202);
+
+    for (let i = 0; i < 50 && seenContextPrompts.length === 0; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(seenContextPrompts).toHaveLength(1);
+    expect(seenContextPrompts[0]).toContain("<memories>");
+    expect(seenContextPrompts[0]).toContain("Project codename is Vulture.");
     expect(seenContextPrompts[0]).toContain("<available_skills>");
     expect(seenContextPrompts[0]).toContain("csv-insights");
     cleanup();

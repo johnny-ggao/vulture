@@ -14,6 +14,7 @@ import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
 import { skillsApi, type SkillListResponse } from "./api/skills";
+import { memoriesApi, type Memory } from "./api/memories";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -75,6 +76,14 @@ function isMissingSkillsRoute(cause: unknown): boolean {
   return (
     cause instanceof Error &&
     cause.message.includes("GET /v1/skills") &&
+    cause.message.includes("HTTP 404")
+  );
+}
+
+function isMissingMemoriesRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("/memories") &&
     cause.message.includes("HTTP 404")
   );
 }
@@ -484,6 +493,60 @@ export function App() {
     }
   }
 
+  async function withGatewayRestartForMissingRoute<T>(
+    run: () => Promise<T>,
+    isMissingRoute: (cause: unknown) => boolean,
+  ): Promise<T> {
+    try {
+      return await run();
+    } catch (cause) {
+      if (!isMissingRoute(cause) || !apiClient) throw cause;
+      await invoke("restart_gateway");
+      let lastError: unknown = cause;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await delay(200);
+        try {
+          await apiClient.get<{ ok: boolean }>("/healthz");
+        } catch (healthCause) {
+          lastError = healthCause;
+          continue;
+        }
+        try {
+          return await run();
+        } catch (retryCause) {
+          lastError = retryCause;
+          if (isMissingRoute(retryCause) || isGatewayRestarting(retryCause)) continue;
+          throw retryCause;
+        }
+      }
+      throw lastError;
+    }
+  }
+
+  async function loadMemories(agentId: string): Promise<Memory[]> {
+    if (!apiClient) return [];
+    return withGatewayRestartForMissingRoute(
+      () => memoriesApi.list(apiClient, agentId),
+      isMissingMemoriesRoute,
+    );
+  }
+
+  async function createMemory(agentId: string, content: string): Promise<Memory> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return withGatewayRestartForMissingRoute(
+      () => memoriesApi.create(apiClient, agentId, content),
+      isMissingMemoriesRoute,
+    );
+  }
+
+  async function deleteMemory(agentId: string, memoryId: string): Promise<void> {
+    if (!apiClient) return;
+    await withGatewayRestartForMissingRoute(
+      () => memoriesApi.delete(apiClient, agentId, memoryId),
+      isMissingMemoriesRoute,
+    );
+  }
+
   async function handleResume() {
     if (!apiClient || !activeRunId || resumingRun) return;
     const runId = activeRunId;
@@ -685,9 +748,15 @@ export function App() {
             <SettingsPage
               authStatus={authStatus}
               browserStatus={browserStatus}
+              agents={agents}
+              selectedAgentId={selectedAgentId}
               profiles={profiles}
               activeProfileId={profile?.id ?? null}
               switchingProfileId={switchingProfileId}
+              onSelectAgent={setSelectedAgentId}
+              onListMemories={loadMemories}
+              onCreateMemory={createMemory}
+              onDeleteMemory={deleteMemory}
               onCreateProfile={handleCreateProfile}
               onSwitchProfile={handleSwitchProfile}
               onSignInWithChatGPT={handleSignInWithChatGPT}

@@ -19,6 +19,7 @@ import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
 import { skillsRouter } from "./routes/skills";
+import { memoriesRouter } from "./routes/memories";
 import { conversationsRouter } from "./routes/conversations";
 import { runsRouter, type ResumeRunResult } from "./routes/runs";
 import { attachmentsRouter } from "./routes/attachments";
@@ -34,8 +35,17 @@ import { makeGatewayLocalTools } from "./runtime/gatewayLocalTools";
 import { makeLazyLlm } from "./runtime/resolveLlm";
 import { orchestrateRun } from "./runtime/runOrchestrator";
 import { recoverInflightRuns } from "./runtime/runRecovery";
-import { makeSdkTool, sdkStateHasInterruptions, type SdkRunContext } from "./runtime/openaiLlm";
+import {
+  composeSystemPromptWithContext,
+  makeSdkTool,
+  sdkStateHasInterruptions,
+  type SdkRunContext,
+} from "./runtime/openaiLlm";
 import { filterSkillEntries, formatSkillsForPrompt, loadSkillEntries } from "./runtime/skills";
+import { MemoryStore } from "./domain/memoryStore";
+import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
+import { formatMemoriesForPrompt, retrieveRelevantMemories } from "./runtime/memoryRetrieval";
+import { combineContextPrompts } from "./routes/runs";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -65,6 +75,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const messageStore = new MessageStore(db);
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
+  const memoryStore = new MemoryStore(db);
+  const embedMemoryText = makeOpenAIEmbeddingProvider();
 
   // Ensure every agent's workspace directory exists. shell.exec sets cwd to
   // workspace.path; if that path is missing the spawn fails with a misleading
@@ -129,7 +141,20 @@ export function buildServer(cfg: GatewayConfig): Hono {
     });
     return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
   };
-  const startConversationRun = (conversationId: string, input: string) => {
+  const memoryPromptForRun = async ({ agentId, input }: { agentId: string; input: string }): Promise<string> => {
+    const results = await retrieveRelevantMemories({
+      input,
+      memories: memoryStore.list(agentId),
+      embed: embedMemoryText,
+    });
+    return formatMemoriesForPrompt(results);
+  };
+  const contextPromptForRun = async (agentId: string, input: string): Promise<string | undefined> =>
+    combineContextPrompts(
+      await memoryPromptForRun({ agentId, input }),
+      skillsPromptForAgent({ id: agentId }),
+    );
+  const startConversationRun = async (conversationId: string, input: string) => {
     const conv = conversationStore.get(conversationId);
     if (!conv) throw new Error(`conversation not found: ${conversationId}`);
     const userMsg = messageStore.append({
@@ -157,7 +182,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         agentId: conv.agentId,
         model: modelForAgent({ id: conv.agentId }),
         systemPrompt: systemPromptForAgent({ id: conv.agentId }),
-        contextPrompt: skillsPromptForAgent({ id: conv.agentId }),
+        contextPrompt: await contextPromptForRun(conv.agentId, input),
         workspacePath: workspacePathForAgent({ id: conv.agentId }),
         conversationId,
         userInput: input,
@@ -215,7 +240,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
           title: typeof value.title === "string" ? value.title : "",
         });
         if (typeof value.message === "string" && value.message.length > 0) {
-          return { ...startConversationRun(conversation.id, value.message), conversation };
+          return { ...(await startConversationRun(conversation.id, value.message)), conversation };
         }
         return { conversation, runId: null };
       },
@@ -320,7 +345,10 @@ export function buildServer(cfg: GatewayConfig): Hono {
       try {
         const agent = new Agent<SdkRunContext>({
           name: "local-work",
-          instructions: state.metadata.systemPrompt,
+          instructions: composeSystemPromptWithContext(
+            state.metadata.systemPrompt,
+            state.metadata.contextPrompt,
+          ),
           model: state.metadata.model,
           tools: AGENT_TOOL_NAMES.map((toolName) => makeSdkTool(toolName)),
           modelSettings: { store: false },
@@ -369,6 +397,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
+  app.route("/", memoriesRouter({ agents: agentStore, memories: memoryStore, embed: embedMemoryText }));
   app.route("/", attachmentsRouter(attachmentStore));
   app.route(
     "/",
@@ -391,6 +420,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
       resumeRun,
       systemPromptForAgent,
       skillsPromptForAgent,
+      memoryPromptForRun,
       modelForAgent,
       workspacePathForAgent,
     }),

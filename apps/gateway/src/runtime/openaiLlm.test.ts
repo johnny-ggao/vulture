@@ -10,6 +10,8 @@ import {
   sdkStateHasInterruptions,
   sdkApprovalDecision,
   buildSdkUserInput,
+  composeSystemPromptWithContext,
+  composeUserInputWithContext,
   SdkTextDeltaDeduper,
   type SdkRunEvent,
   type SdkRunContext,
@@ -86,6 +88,23 @@ describe("makeOpenAILlm", () => {
         ],
       },
     ]);
+  });
+
+  test("keeps run context in agent instructions instead of rewriting the user message", () => {
+    const context = [
+      "<memories>",
+      '  <memory id="mem-1">项目代号是 Vulture。</memory>',
+      "</memories>",
+    ].join("\n");
+
+    expect(composeSystemPromptWithContext("system", context)).toBe([
+      "system",
+      "",
+      context,
+    ].join("\n"));
+    expect(composeUserInputWithContext("项目代号是什么？请简单回答", context)).toBe(
+      "项目代号是什么？请简单回答",
+    );
   });
 
   test("passes a per-run model provider into the SDK run factory", async () => {

@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 6;
+const LATEST_SCHEMA_VERSION = 7;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -151,6 +151,29 @@ describe("migrate", () => {
       .all() as { name: string; notnull: number }[];
     expect(columns.map((c) => c.name)).toContain("skills");
     expect(columns.find((c) => c.name === "skills")?.notnull).toBe(0);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("007 adds memories table", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v7-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(memories)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toEqual([
+      "id",
+      "agent_id",
+      "content",
+      "embedding_json",
+      "keywords_json",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(columns.find((c) => c.name === "agent_id")?.notnull).toBe(1);
+    expect(columns.find((c) => c.name === "embedding_json")?.notnull).toBe(0);
     db.close();
     rmSync(dir, { recursive: true });
   });

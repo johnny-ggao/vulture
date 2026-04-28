@@ -35,6 +35,7 @@ export interface RunsDeps {
   resumeRun(runId: string, mode: "auto" | "manual"): ResumeRunResult;
   systemPromptForAgent(a: { id: string }): string;
   skillsPromptForAgent?: (a: { id: string }) => string;
+  memoryPromptForRun?: (a: { agentId: string; input: string }) => Promise<string> | string;
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
 }
@@ -177,6 +178,10 @@ export function runsRouter(deps: RunsDeps): Hono {
         agentId: conv.agentId,
         triggeredByMessageId: userMsg.id,
       });
+      const contextPrompt = combineContextPrompts(
+        await safeMemoryPrompt(deps, { agentId: conv.agentId, input: parsed.data.input }),
+        deps.skillsPromptForAgent?.({ id: conv.agentId }),
+      );
 
       // Fire-and-forget orchestrator; SSE consumers see appended events.
       orchestrateRun(
@@ -193,7 +198,7 @@ export function runsRouter(deps: RunsDeps): Hono {
           agentId: conv.agentId,
           model: deps.modelForAgent({ id: conv.agentId }),
           systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
-          contextPrompt: deps.skillsPromptForAgent?.({ id: conv.agentId }),
+          contextPrompt,
           workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
           conversationId: cid,
           userInput: parsed.data.input,
@@ -312,6 +317,26 @@ export function runsRouter(deps: RunsDeps): Hono {
   });
 
   return app;
+}
+
+export function combineContextPrompts(...parts: Array<string | undefined | null>): string | undefined {
+  const joined = parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+  return joined.length > 0 ? `\n\n${joined}` : undefined;
+}
+
+async function safeMemoryPrompt(
+  deps: Pick<RunsDeps, "memoryPromptForRun">,
+  input: { agentId: string; input: string },
+): Promise<string> {
+  if (!deps.memoryPromptForRun) return "";
+  try {
+    return await deps.memoryPromptForRun(input);
+  } catch {
+    return "";
+  }
 }
 
 function toRuntimeAttachments(

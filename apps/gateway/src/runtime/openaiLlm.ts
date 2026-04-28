@@ -126,7 +126,7 @@ async function* defaultRunFactory(
   const tools = resolveEffectiveTools(registry, { allow: input.toolNames }).map(toSdkTool);
   const agent = new Agent<SdkRunContext>({
     name: "local-work",
-    instructions: input.systemPrompt,
+    instructions: composeSystemPromptWithContext(input.systemPrompt, input.contextPrompt),
     model: input.model,
     tools,
     // chatgpt.com/backend-api/codex rejects `store: true` with 400. Setting
@@ -284,9 +284,15 @@ export function buildSdkUserInput(userInput: string, attachments: LlmAttachment[
 }
 
 export function composeUserInputWithContext(userInput: string, contextPrompt?: string): string {
+  void contextPrompt;
+  return userInput;
+}
+
+export function composeSystemPromptWithContext(systemPrompt: string, contextPrompt?: string): string {
   const context = contextPrompt?.trim();
-  if (!context) return userInput;
-  return [context, "", "User message:", userInput].join("\n");
+  if (!context) return systemPrompt;
+  const system = systemPrompt.trim();
+  return system ? [system, "", context].join("\n") : context;
 }
 
 function isTextAttachment(attachment: LlmAttachment): boolean {
