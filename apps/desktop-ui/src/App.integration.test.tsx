@@ -1,6 +1,6 @@
 import { describe, expect, test, mock } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,9 +17,41 @@ const FAKE_RUNTIME = {
   shellVersion: "0.1.0",
 };
 
+let tauriProfiles = [
+  { id: "default", name: "Default", activeAgentId: "local-work-agent" },
+];
+let activeTauriProfileId = "default";
+let createProfileServer: ((profile: { id: string; name: string; activeAgentId: string }) => void) | null = null;
+
+function resetTauriProfiles() {
+  tauriProfiles = [
+    { id: "default", name: "Default", activeAgentId: "local-work-agent" },
+  ];
+  activeTauriProfileId = "default";
+}
+
 mock.module("@tauri-apps/api/core", () => ({
-  invoke: async (cmd: string) => {
+  invoke: async (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "get_runtime_info") return FAKE_RUNTIME;
+    if (cmd === "list_profiles") {
+      return {
+        profiles: tauriProfiles,
+        activeProfileId: activeTauriProfileId,
+      };
+    }
+    if (cmd === "create_profile") {
+      const request = args?.request as { name: string };
+      const id = request.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      const profile = { id, name: request.name.trim(), activeAgentId: "local-work-agent" };
+      tauriProfiles = [...tauriProfiles, profile];
+      createProfileServer?.(profile);
+      return profile;
+    }
+    if (cmd === "switch_profile") {
+      const request = args?.request as { profileId: string };
+      activeTauriProfileId = request.profileId;
+      return tauriProfiles.find((profile) => profile.id === request.profileId);
+    }
     if (cmd === "get_auth_status") {
       return {
         active: "none",
@@ -79,6 +111,7 @@ function setup(
   } = {},
 ) {
   localStorage.clear();
+  resetTauriProfiles();
   const dir = mkdtempSync(join(tmpdir(), "vulture-app-int-"));
   const cfg = {
     port: 4099,
@@ -88,6 +121,22 @@ function setup(
     profileDir: dir,
   };
   const app = buildServer(cfg);
+  const profileApps = new Map<string, ReturnType<typeof buildServer>>([["default", app]]);
+  const profileDirs = [dir];
+  createProfileServer = (profile) => {
+    const profileDir = mkdtempSync(join(tmpdir(), `vulture-app-int-${profile.id}-`));
+    profileDirs.push(profileDir);
+    writeFileSync(
+      join(profileDir, "profile.json"),
+      JSON.stringify({
+        id: profile.id,
+        name: profile.name,
+        openai_secret_ref: `vulture:profile:${profile.id}:openai`,
+        active_agent_id: profile.activeAgentId,
+      }),
+    );
+    profileApps.set(profile.id, buildServer({ ...cfg, profileDir }));
+  };
 
   // Replace global fetch with a proxy that routes into the in-process Hono
   // server. Save the previous fetch so we can restore it after.
@@ -104,7 +153,8 @@ function setup(
           : input.url;
     const path = url.replace(/^https?:\/\/[^/]+/, "");
     opts.onRequest?.(path, init);
-    const res = await app.request(path, init as RequestInit);
+    const activeApp = profileApps.get(activeTauriProfileId) ?? app;
+    const res = await activeApp.request(path, init as RequestInit);
     opts.onResponse?.(path, init);
     return res;
   }) as typeof fetch;
@@ -114,8 +164,9 @@ function setup(
     dir,
     cleanup: () => {
       globalThis.fetch = realFetch;
+      createProfileServer = null;
       localStorage.clear();
-      rmSync(dir, { recursive: true });
+      for (const profileDir of profileDirs) rmSync(profileDir, { recursive: true });
     },
   };
 }
@@ -287,6 +338,84 @@ describe("App integration", () => {
         expect(conversationCreates).toBe(2);
       },
       { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
+  test("settings can create and switch to a new profile", async () => {
+    const { cleanup } = setup();
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    await waitFor(() => {
+      expect(screen.getByText("Profiles")).toBeDefined();
+    });
+
+    const input = screen.getByPlaceholderText("Profile name") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Work" } });
+    fireEvent.click(screen.getByRole("button", { name: "新建并切换" }));
+
+    await waitFor(
+      () => {
+        expect(document.body.textContent ?? "").toContain("profile:Work");
+      },
+      { timeout: 5000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
+  test("can send a message after creating and switching profile", async () => {
+    const { cleanup } = setup();
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    const input = (await waitFor(
+      () => screen.getByPlaceholderText("Profile name"),
+    )) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Work" } });
+    fireEvent.click(screen.getByRole("button", { name: "新建并切换" }));
+
+    await waitFor(
+      () => {
+        expect(document.body.textContent ?? "").toContain("profile:Work");
+        expect(screen.getByDisplayValue("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    const textarea = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "work hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("work hello")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    await waitFor(
+      () => {
+        expect(document.body.textContent ?? "").toContain("OPENAI_API_KEY not configured");
+      },
+      { timeout: 10_000 },
     );
 
     cleanup();

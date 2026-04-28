@@ -1,6 +1,6 @@
 use std::path::Path;
 #[cfg(test)]
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 
 use anyhow::{anyhow, Result};
 use keyring::{Entry, Error as KeyringError};
@@ -116,31 +116,31 @@ impl SecretStore for KeychainSecretStore {
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub struct MemorySecretStore {
-    value: Mutex<Option<String>>,
+    values: Mutex<HashMap<String, String>>,
 }
 
 #[cfg(test)]
 impl SecretStore for MemorySecretStore {
-    fn get(&self, _secret_ref: &str) -> Result<Option<String>> {
-        self.value
+    fn get(&self, secret_ref: &str) -> Result<Option<String>> {
+        self.values
             .lock()
             .map_err(|_| anyhow!("memory secret store lock poisoned"))
-            .map(|value| value.clone())
+            .map(|values| values.get(secret_ref).cloned())
     }
 
-    fn set(&self, _secret_ref: &str, value: &str) -> Result<()> {
-        *self
-            .value
+    fn set(&self, secret_ref: &str, value: &str) -> Result<()> {
+        self.values
             .lock()
-            .map_err(|_| anyhow!("memory secret store lock poisoned"))? = Some(value.to_string());
+            .map_err(|_| anyhow!("memory secret store lock poisoned"))?
+            .insert(secret_ref.to_string(), value.to_string());
         Ok(())
     }
 
-    fn clear(&self, _secret_ref: &str) -> Result<()> {
-        *self
-            .value
+    fn clear(&self, secret_ref: &str) -> Result<()> {
+        self.values
             .lock()
-            .map_err(|_| anyhow!("memory secret store lock poisoned"))? = None;
+            .map_err(|_| anyhow!("memory secret store lock poisoned"))?
+            .remove(secret_ref);
         Ok(())
     }
 }

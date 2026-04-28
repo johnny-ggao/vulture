@@ -7,8 +7,8 @@ use std::{
 use tokio::sync::Notify;
 
 use anyhow::{anyhow, Context, Result};
-use serde::Serialize;
-use vulture_core::{AppPaths, Profile, RuntimeDescriptor, StorageLayout};
+use serde::{Deserialize, Serialize};
+use vulture_core::{AppPaths, Profile, ProfileId, RuntimeDescriptor, StorageLayout};
 
 use crate::{
     auth::{
@@ -28,11 +28,24 @@ pub struct ProfileView {
     pub active_agent_id: String,
 }
 
-pub struct AppState {
-    #[allow(dead_code)]
-    profile: ProfileView,
+#[derive(Clone, Debug)]
+struct ActiveProfile {
+    view: ProfileView,
     profile_dir: PathBuf,
     openai_secret_ref: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActiveProfileMarker {
+    active_profile_id: String,
+}
+
+pub struct AppState {
+    root: PathBuf,
+    profile: RwLock<ActiveProfile>,
+    profile_dir_handle: Arc<RwLock<PathBuf>>,
+    audit_db_path_handle: Arc<RwLock<PathBuf>>,
     secret_store: Box<dyn SecretStore>,
     browser_relay: Arc<Mutex<BrowserRelayState>>,
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
@@ -78,28 +91,38 @@ impl AppState {
         root: impl AsRef<Path>,
         secret_store: Box<dyn SecretStore>,
     ) -> Result<Self> {
-        let profile = Profile::default_profile();
-        let paths = AppPaths::new(root.as_ref());
+        let root = root.as_ref().to_path_buf();
+        let default_profile = Profile::default_profile();
+        let paths = AppPaths::new(&root);
         let layout = StorageLayout::new(paths);
-        let profile_dir = layout
-            .ensure_profile(&profile)
+        layout
+            .ensure_profile(&default_profile)
             .context("failed to initialize default profile storage")?;
-        let profile_path = profile_dir.join("profile.json");
-        let profile: Profile =
-            serde_json::from_str(&fs::read_to_string(&profile_path).with_context(|| {
-                format!("failed to read profile at {}", profile_path.display())
-            })?)
-            .with_context(|| format!("failed to parse profile at {}", profile_path.display()))?;
-        let openai_secret_ref = profile.openai_secret_ref.clone();
+        let active_profile_id =
+            read_active_profile_id(&root).unwrap_or_else(|| default_profile.id.0.clone());
+        let active = load_profile(&root, &active_profile_id)
+            .or_else(|_| load_profile(&root, &default_profile.id.0))
+            .context("failed to load active profile")?;
+        let profile_dir = layout
+            .ensure_profile(&active)
+            .context("failed to initialize active profile storage")?;
+        write_active_profile_id(&root, &active.id.0)?;
+        let current = ActiveProfile {
+            view: ProfileView {
+                id: active.id.0,
+                name: active.name,
+                active_agent_id: active.active_agent_id,
+            },
+            profile_dir: profile_dir.clone(),
+            openai_secret_ref: active.openai_secret_ref,
+        };
+        let audit_db_path = audit_db_path_for_profile(&current.profile_dir);
 
         Ok(Self {
-            profile: ProfileView {
-                id: profile.id.0,
-                name: profile.name,
-                active_agent_id: profile.active_agent_id,
-            },
-            profile_dir,
-            openai_secret_ref,
+            root,
+            profile: RwLock::new(current),
+            profile_dir_handle: Arc::new(RwLock::new(profile_dir)),
+            audit_db_path_handle: Arc::new(RwLock::new(audit_db_path)),
             secret_store,
             browser_relay: Arc::new(Mutex::new(BrowserRelayState::default())),
             runtime_descriptor: RwLock::new(None),
@@ -114,12 +137,129 @@ impl AppState {
     }
 
     #[allow(dead_code)]
-    pub fn profile(&self) -> &ProfileView {
-        &self.profile
+    pub fn profile(&self) -> ProfileView {
+        self.profile
+            .read()
+            .expect("profile lock poisoned")
+            .view
+            .clone()
+    }
+
+    #[allow(dead_code)]
+    pub fn list_profiles(&self) -> Result<Vec<ProfileView>> {
+        let profiles_dir = self.root.join("profiles");
+        let mut profiles = Vec::new();
+        for entry in fs::read_dir(&profiles_dir)
+            .with_context(|| format!("read profiles dir {}", profiles_dir.display()))?
+        {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let profile_path = entry.path().join("profile.json");
+            if !profile_path.is_file() {
+                continue;
+            }
+            let profile: Profile = serde_json::from_str(
+                &fs::read_to_string(&profile_path)
+                    .with_context(|| format!("read profile {}", profile_path.display()))?,
+            )
+            .with_context(|| format!("parse profile {}", profile_path.display()))?;
+            profiles.push(ProfileView {
+                id: profile.id.0,
+                name: profile.name,
+                active_agent_id: profile.active_agent_id,
+            });
+        }
+        profiles.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+        Ok(profiles)
+    }
+
+    #[allow(dead_code)]
+    pub fn create_profile(&self, name: String) -> Result<ProfileView> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(anyhow!("profile name must not be empty"));
+        }
+        let id = self.next_profile_id(name)?;
+        let profile = Profile {
+            id: ProfileId(id.clone()),
+            name: name.to_string(),
+            openai_secret_ref: format!("vulture:profile:{id}:openai"),
+            active_agent_id: "local-work-agent".to_string(),
+        };
+        StorageLayout::new(AppPaths::new(&self.root))
+            .ensure_profile(&profile)
+            .with_context(|| format!("create profile {id}"))?;
+        Ok(ProfileView {
+            id,
+            name: profile.name,
+            active_agent_id: profile.active_agent_id,
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn switch_profile(&self, profile_id: &str) -> Result<ProfileView> {
+        let profile = load_profile(&self.root, profile_id)?;
+        let profile_dir = StorageLayout::new(AppPaths::new(&self.root))
+            .ensure_profile(&profile)
+            .with_context(|| format!("initialize profile {}", profile.id.0))?;
+        write_active_profile_id(&self.root, &profile.id.0)?;
+        let view = ProfileView {
+            id: profile.id.0,
+            name: profile.name,
+            active_agent_id: profile.active_agent_id,
+        };
+        let next = ActiveProfile {
+            view: view.clone(),
+            profile_dir: profile_dir.clone(),
+            openai_secret_ref: profile.openai_secret_ref,
+        };
+        let audit_db_path = audit_db_path_for_profile(&next.profile_dir);
+        *self.profile.write().expect("profile lock poisoned") = next;
+        *self
+            .profile_dir_handle
+            .write()
+            .expect("profile dir lock poisoned") = profile_dir;
+        *self
+            .audit_db_path_handle
+            .write()
+            .expect("audit db path lock poisoned") = audit_db_path;
+        Ok(view)
+    }
+
+    fn next_profile_id(&self, name: &str) -> Result<String> {
+        let mut base = String::new();
+        let mut prev_dash = false;
+        for ch in name.chars().flat_map(char::to_lowercase) {
+            if ch.is_ascii_alphanumeric() {
+                base.push(ch);
+                prev_dash = false;
+            } else if !prev_dash {
+                base.push('-');
+                prev_dash = true;
+            }
+        }
+        let base = base.trim_matches('-');
+        let base = if base.is_empty() { "profile" } else { base };
+        let paths = AppPaths::new(&self.root);
+        for idx in 0..1000 {
+            let candidate = if idx == 0 {
+                base.to_string()
+            } else {
+                format!("{base}-{idx}")
+            };
+            let dir = paths.profile_dir(&ProfileId(candidate.clone()))?;
+            if !dir.exists() {
+                return Ok(candidate);
+            }
+        }
+        Ok(format!("profile-{}", uuid::Uuid::new_v4()))
     }
 
     pub fn openai_auth_status(&self) -> Result<OpenAiAuthStatus> {
-        auth_status(self.secret_store.as_ref(), &self.openai_secret_ref)
+        let secret_ref = self.openai_secret_ref();
+        auth_status(self.secret_store.as_ref(), &secret_ref)
     }
 
     pub fn set_openai_api_key(&self, request: SetOpenAiApiKeyRequest) -> Result<OpenAiAuthStatus> {
@@ -128,18 +268,21 @@ impl AppState {
             return Err(anyhow!("OpenAI API key must not be empty"));
         }
 
-        self.secret_store.set(&self.openai_secret_ref, api_key)?;
+        let secret_ref = self.openai_secret_ref();
+        self.secret_store.set(&secret_ref, api_key)?;
         let _resolved_key = self.resolve_openai_api_key()?;
         self.openai_auth_status()
     }
 
     pub fn clear_openai_api_key(&self) -> Result<OpenAiAuthStatus> {
-        self.secret_store.clear(&self.openai_secret_ref)?;
+        let secret_ref = self.openai_secret_ref();
+        self.secret_store.clear(&secret_ref)?;
         self.openai_auth_status()
     }
 
     pub fn resolve_openai_api_key(&self) -> Result<String> {
-        resolve_openai_api_key(self.secret_store.as_ref(), &self.openai_secret_ref)
+        let secret_ref = self.openai_secret_ref();
+        resolve_openai_api_key(self.secret_store.as_ref(), &secret_ref)
     }
 
     pub fn browser_status(&self) -> Result<BrowserRelayStatus> {
@@ -187,7 +330,19 @@ impl AppState {
     }
 
     pub fn profile_dir(&self) -> PathBuf {
-        self.profile_dir.clone()
+        self.profile
+            .read()
+            .expect("profile lock poisoned")
+            .profile_dir
+            .clone()
+    }
+
+    pub fn profile_dir_handle(&self) -> Arc<RwLock<PathBuf>> {
+        self.profile_dir_handle.clone()
+    }
+
+    pub fn audit_db_path_handle(&self) -> Arc<RwLock<PathBuf>> {
+        self.audit_db_path_handle.clone()
     }
 
     pub fn browser_relay_handle(&self) -> Arc<Mutex<BrowserRelayState>> {
@@ -198,8 +353,12 @@ impl AppState {
         self.secret_store.as_ref()
     }
 
-    pub fn openai_secret_ref(&self) -> &str {
-        &self.openai_secret_ref
+    pub fn openai_secret_ref(&self) -> String {
+        self.profile
+            .read()
+            .expect("profile lock poisoned")
+            .openai_secret_ref
+            .clone()
     }
 
     pub fn request_supervisor_restart(&self) {
@@ -213,6 +372,40 @@ impl AppState {
     pub fn shutdown_signal(&self) -> Arc<Notify> {
         self.shutdown_signal.clone()
     }
+}
+
+fn load_profile(root: &Path, profile_id: &str) -> Result<Profile> {
+    let profile_dir = AppPaths::new(root).profile_dir(&ProfileId(profile_id.to_string()))?;
+    let profile_path = profile_dir.join("profile.json");
+    let profile: Profile = serde_json::from_str(
+        &fs::read_to_string(&profile_path)
+            .with_context(|| format!("failed to read profile at {}", profile_path.display()))?,
+    )
+    .with_context(|| format!("failed to parse profile at {}", profile_path.display()))?;
+    Ok(profile)
+}
+
+fn read_active_profile_id(root: &Path) -> Option<String> {
+    let path = root.join("profiles").join("active_profile.json");
+    let marker: ActiveProfileMarker = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    Some(marker.active_profile_id)
+}
+
+fn write_active_profile_id(root: &Path, profile_id: &str) -> Result<()> {
+    let profiles_dir = root.join("profiles");
+    fs::create_dir_all(&profiles_dir)?;
+    let marker = ActiveProfileMarker {
+        active_profile_id: profile_id.to_string(),
+    };
+    fs::write(
+        profiles_dir.join("active_profile.json"),
+        serde_json::to_string_pretty(&marker)?,
+    )?;
+    Ok(())
+}
+
+fn audit_db_path_for_profile(profile_dir: &Path) -> PathBuf {
+    profile_dir.join("permissions").join("audit.sqlite")
 }
 
 #[cfg(test)]
@@ -299,6 +492,106 @@ mod tests {
                 .expect("api key should resolve"),
             "sk-test"
         );
+
+        fs::remove_dir_all(root).expect("test root should be removable");
+    }
+
+    #[test]
+    fn new_for_root_restores_active_profile_marker() {
+        let root = temp_root();
+        let profiles_dir = root.join("profiles");
+        let work_dir = profiles_dir.join("work");
+        fs::create_dir_all(&work_dir).expect("profile dir should be created");
+        let profile = Profile {
+            id: vulture_core::ProfileId("work".to_string()),
+            name: "Work".to_string(),
+            openai_secret_ref: "vulture:profile:work:openai".to_string(),
+            active_agent_id: "local-work-agent".to_string(),
+        };
+        fs::write(
+            work_dir.join("profile.json"),
+            serde_json::to_string_pretty(&profile).expect("profile should serialize"),
+        )
+        .expect("profile json should be seeded");
+        fs::write(
+            profiles_dir.join("active_profile.json"),
+            serde_json::json!({ "activeProfileId": "work" }).to_string(),
+        )
+        .expect("active profile marker should be seeded");
+
+        let state = AppState::new_for_root(&root).expect("app state should initialize");
+
+        assert_eq!(state.profile().id, "work");
+        assert_eq!(state.profile().name, "Work");
+        assert_eq!(state.profile_dir(), work_dir);
+
+        fs::remove_dir_all(root).expect("test root should be removable");
+    }
+
+    #[test]
+    fn profile_switch_updates_directory_and_keeps_api_keys_isolated() {
+        let root = temp_root();
+        let state =
+            AppState::new_for_root_with_secret_store(&root, Box::new(MemorySecretStore::default()))
+                .expect("app state should initialize");
+
+        state
+            .set_openai_api_key(SetOpenAiApiKeyRequest {
+                api_key: "sk-default".to_string(),
+            })
+            .expect("default key should save");
+        let created = state
+            .create_profile("Work".to_string())
+            .expect("profile should be created");
+
+        state
+            .switch_profile(&created.id)
+            .expect("switch should succeed");
+        assert_eq!(state.profile().id, created.id);
+        assert_eq!(state.profile_dir(), root.join("profiles").join(&created.id));
+        assert_eq!(
+            *state
+                .audit_db_path_handle()
+                .read()
+                .expect("audit db path lock should not be poisoned"),
+            root.join("profiles")
+                .join(&created.id)
+                .join("permissions/audit.sqlite")
+        );
+        assert!(matches!(
+            state
+                .openai_auth_status()
+                .expect("status should resolve")
+                .source,
+            AuthSource::Missing | AuthSource::Codex
+        ));
+
+        state
+            .set_openai_api_key(SetOpenAiApiKeyRequest {
+                api_key: "sk-work".to_string(),
+            })
+            .expect("work key should save");
+        assert_eq!(
+            state
+                .resolve_openai_api_key()
+                .expect("work key should resolve"),
+            "sk-work"
+        );
+
+        state
+            .switch_profile("default")
+            .expect("switch back should succeed");
+        assert_eq!(state.profile().id, "default");
+        assert_eq!(
+            state
+                .resolve_openai_api_key()
+                .expect("default key should resolve"),
+            "sk-default"
+        );
+
+        let active_marker = fs::read_to_string(root.join("profiles/active_profile.json"))
+            .expect("active marker should exist");
+        assert!(active_marker.contains("\"default\""));
 
         fs::remove_dir_all(root).expect("test root should be removable");
     }

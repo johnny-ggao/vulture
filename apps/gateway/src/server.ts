@@ -45,7 +45,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     );
   }
 
-  const profileStore = new ProfileStore(db);
+  const profileStore = new ProfileStore(db, cfg.profileDir);
   const workspaceStore = new WorkspaceStore(db);
   const agentStore = new AgentStore(db, cfg.profileDir, cfg.defaultWorkspace);
   const conversationStore = new ConversationStore(db);

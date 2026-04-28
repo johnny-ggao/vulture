@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use serde::Serialize;
 use tauri::State;
 use tokio::sync::oneshot;
@@ -6,11 +7,11 @@ use vulture_core::RuntimeDescriptor;
 use crate::{
     auth::{unified_auth_status, AuthStatusView, OpenAiAuthStatus, SetOpenAiApiKeyRequest},
     codex_auth::{
-        creds_from_token_response, delete_store, exchange_authorization_code, open_browser,
-        read_store, start_callback_server, write_store, CallbackResult, Pkce, AUTHORIZE_URL,
-        CLIENT_ID, SCOPE, TOKEN_URL,
+        creds_from_token_response, delete_store, ensure_store_with_import,
+        exchange_authorization_code, open_browser, read_store, start_callback_server, write_store,
+        CallbackResult, Pkce, AUTHORIZE_URL, CLIENT_ID, SCOPE, TOKEN_URL,
     },
-    state::AppState,
+    state::{AppState, ProfileView},
 };
 
 #[tauri::command]
@@ -86,6 +87,59 @@ pub fn get_supervisor_status(
 pub fn restart_gateway(state: State<'_, AppState>) -> Result<(), String> {
     state.request_supervisor_restart();
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileListResponse {
+    pub profiles: Vec<ProfileView>,
+    pub active_profile_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProfileRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchProfileRequest {
+    pub profile_id: String,
+}
+
+#[tauri::command]
+pub fn list_profiles(state: State<'_, AppState>) -> Result<ProfileListResponse, String> {
+    let profiles = state.list_profiles().map_err(|error| error.to_string())?;
+    let active_profile_id = state.profile().id;
+    Ok(ProfileListResponse {
+        profiles,
+        active_profile_id,
+    })
+}
+
+#[tauri::command]
+pub fn create_profile(
+    state: State<'_, AppState>,
+    request: CreateProfileRequest,
+) -> Result<ProfileView, String> {
+    state
+        .create_profile(request.name)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn switch_profile(
+    state: State<'_, AppState>,
+    request: SwitchProfileRequest,
+) -> Result<ProfileView, String> {
+    let profile = state
+        .switch_profile(&request.profile_id)
+        .map_err(|error| error.to_string())?;
+    ensure_store_with_import(&state.profile_dir())
+        .map_err(|error| format!("import existing codex credentials: {error:#}"))?;
+    state.request_supervisor_restart();
+    Ok(profile)
 }
 
 fn open_in_finder(path: &std::path::Path) -> Result<(), String> {
@@ -176,10 +230,7 @@ pub fn sign_out_chatgpt(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_auth_status(state: State<'_, AppState>) -> Result<AuthStatusView, String> {
-    unified_auth_status(
-        state.secret_store(),
-        state.openai_secret_ref(),
-        &state.profile_dir(),
-    )
-    .map_err(|e| format!("auth status: {e:#}"))
+    let secret_ref = state.openai_secret_ref();
+    unified_auth_status(state.secret_store(), &secret_ref, &state.profile_dir())
+        .map_err(|e| format!("auth status: {e:#}"))
 }

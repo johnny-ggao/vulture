@@ -80,4 +80,24 @@ describe("Composer", () => {
     fireEvent.keyDown(ta, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  test("does not clear draft when no agent is selected", () => {
+    const onSend = mock(() => {});
+    render(
+      <Composer
+        agents={[]}
+        selectedAgentId=""
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={onSend}
+        onCancel={() => {}}
+      />,
+    );
+    const ta = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: "hello after switch" } });
+    fireEvent.keyDown(ta, { key: "Enter", shiftKey: false });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(ta.value).toBe("hello after switch");
+  });
 });

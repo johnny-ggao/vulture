@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use anyhow::{Context, Result};
@@ -88,7 +88,7 @@ struct AppError {
 #[derive(Clone)]
 struct ShellState {
     token: Arc<String>,
-    audit_store: Arc<Mutex<AuditStore>>,
+    audit_db_path: Arc<RwLock<PathBuf>>,
     cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
     browser_relay: Arc<Mutex<BrowserRelayState>>,
 }
@@ -195,17 +195,16 @@ async fn invoke_handler(
     Json(req): Json<InvokeRequest>,
 ) -> impl IntoResponse {
     if let Some(token) = req.approval_token.as_ref() {
-        if let Ok(store) = state.audit_store.lock() {
-            let _ = store.append(
-                "tool.approval_used",
-                &json!({
-                    "callId": req.call_id,
-                    "runId": req.run_id,
-                    "tool": req.tool,
-                    "token": token,
-                }),
-            );
-        }
+        append_audit(
+            &state,
+            "tool.approval_used",
+            &json!({
+                "callId": req.call_id,
+                "runId": req.run_id,
+                "tool": req.tool,
+                "token": token,
+            }),
+        );
         return execute(&state, &req).await.into_response();
     }
 
@@ -218,30 +217,28 @@ async fn invoke_handler(
     let decision = policy.decide(&request);
 
     // Audit: tool.requested
-    if let Ok(store) = state.audit_store.lock() {
-        let _ = store.append(
-            "tool.requested",
-            &json!({
-                "runId": req.run_id,
-                "tool": req.tool,
-                "input": req.input,
-                "decision": format!("{decision:?}"),
-            }),
-        );
-    }
+    append_audit(
+        &state,
+        "tool.requested",
+        &json!({
+            "runId": req.run_id,
+            "tool": req.tool,
+            "input": req.input,
+            "decision": format!("{decision:?}"),
+        }),
+    );
 
     match decision {
         PolicyDecision::Deny { reason } => {
-            if let Ok(store) = state.audit_store.lock() {
-                let _ = store.append(
-                    "tool.completed",
-                    &json!({
-                        "runId": req.run_id,
-                        "tool": req.tool,
-                        "status": "denied",
-                    }),
-                );
-            }
+            append_audit(
+                &state,
+                "tool.completed",
+                &json!({
+                    "runId": req.run_id,
+                    "tool": req.tool,
+                    "status": "denied",
+                }),
+            );
             (
                 StatusCode::OK,
                 Json(InvokeResponse::Denied {
@@ -255,16 +252,15 @@ async fn invoke_handler(
                 .into_response()
         }
         PolicyDecision::Ask { reason } => {
-            if let Ok(store) = state.audit_store.lock() {
-                let _ = store.append(
-                    "tool.completed",
-                    &json!({
-                        "runId": req.run_id,
-                        "tool": req.tool,
-                        "status": "ask",
-                    }),
-                );
-            }
+            append_audit(
+                &state,
+                "tool.completed",
+                &json!({
+                    "runId": req.run_id,
+                    "tool": req.tool,
+                    "status": "ask",
+                }),
+            );
             (
                 StatusCode::OK,
                 Json(InvokeResponse::Ask {
@@ -277,18 +273,26 @@ async fn invoke_handler(
         }
         PolicyDecision::Allow => {
             let result = execute(&state, &req).await;
-            if let Ok(store) = state.audit_store.lock() {
-                let _ = store.append(
-                    "tool.completed",
-                    &json!({
-                        "runId": req.run_id,
-                        "tool": req.tool,
-                        "status": "executed",
-                    }),
-                );
-            }
+            append_audit(
+                &state,
+                "tool.completed",
+                &json!({
+                    "runId": req.run_id,
+                    "tool": req.tool,
+                    "status": "executed",
+                }),
+            );
             result.into_response()
         }
+    }
+}
+
+fn append_audit(state: &ShellState, event_type: &str, payload: &Value) {
+    let Ok(path) = state.audit_db_path.read().map(|path| path.clone()) else {
+        return;
+    };
+    if let Ok(store) = AuditStore::open(&path) {
+        let _ = store.append(event_type, payload);
     }
 }
 
@@ -330,7 +334,10 @@ async fn execute(state: &ShellState, req: &InvokeRequest) -> impl IntoResponse {
         }
     } else if matches!(req.tool.as_str(), "browser.snapshot" | "browser.click") {
         let receiver = {
-            let mut relay = state.browser_relay.lock().expect("browser relay lock poisoned");
+            let mut relay = state
+                .browser_relay
+                .lock()
+                .expect("browser relay lock poisoned");
             match relay.enqueue_action(req.tool.clone(), req.input.clone()) {
                 Ok((_request, receiver)) => receiver,
                 Err(err) => {
@@ -537,8 +544,8 @@ pub async fn serve(port: u16, token: String, audit_db_path: PathBuf) -> Result<T
     serve_with_codex_and_browser_relay(
         port,
         token,
-        audit_db_path,
-        std::env::temp_dir(),
+        Arc::new(RwLock::new(audit_db_path)),
+        Arc::new(RwLock::new(std::env::temp_dir())),
         RefreshSingleton::default(),
         Arc::new(Mutex::new(BrowserRelayState::default())),
     )
@@ -567,8 +574,8 @@ pub async fn serve_with_codex(
     serve_with_codex_and_browser_relay(
         port,
         token,
-        audit_db_path,
-        profile_dir,
+        Arc::new(RwLock::new(audit_db_path)),
+        Arc::new(RwLock::new(profile_dir)),
         refresh,
         Arc::new(Mutex::new(BrowserRelayState::default())),
     )
@@ -578,17 +585,14 @@ pub async fn serve_with_codex(
 pub async fn serve_with_codex_and_browser_relay(
     port: u16,
     token: String,
-    audit_db_path: PathBuf,
-    profile_dir: PathBuf,
+    audit_db_path: Arc<RwLock<PathBuf>>,
+    profile_dir: Arc<RwLock<PathBuf>>,
     refresh: RefreshSingleton,
     browser_relay: Arc<Mutex<BrowserRelayState>>,
 ) -> Result<ToolCallbackHandle> {
-    let audit_store = AuditStore::open(&audit_db_path)
-        .with_context(|| format!("open audit db at {}", audit_db_path.display()))?;
-
     let state = ShellState {
         token: Arc::new(token),
-        audit_store: Arc::new(Mutex::new(audit_store)),
+        audit_db_path,
         cancel_signals: Arc::new(Mutex::new(HashMap::new())),
         browser_relay,
     };
@@ -817,7 +821,9 @@ mod tests {
 
     #[tokio::test]
     async fn browser_snapshot_waits_for_extension_result() {
-        let relay = Arc::new(Mutex::new(crate::browser::relay::BrowserRelayState::default()));
+        let relay = Arc::new(Mutex::new(
+            crate::browser::relay::BrowserRelayState::default(),
+        ));
         let pairing_token = {
             let mut relay_state = relay.lock().expect("relay lock");
             relay_state
@@ -833,8 +839,8 @@ mod tests {
         let handle = serve_with_codex_and_browser_relay(
             0,
             token.clone(),
-            audit_path,
-            std::env::temp_dir(),
+            Arc::new(RwLock::new(audit_path)),
+            Arc::new(RwLock::new(std::env::temp_dir())),
             RefreshSingleton::default(),
             relay,
         )

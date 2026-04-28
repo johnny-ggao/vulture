@@ -66,20 +66,17 @@ async fn main() -> Result<()> {
     crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
         .context("import existing codex credentials")?;
     app_state.set_runtime_descriptor(descriptor.clone());
+    let profile_dir_handle = app_state.profile_dir_handle();
+    let audit_db_path_handle = app_state.audit_db_path_handle();
 
     // 5. Shell HTTP callback server (held for the run; Drop on exit).
     //    The audit DB is owned exclusively by tool_callback::serve(); the path
     //    is derived from the profile dir for convenience.
-    let audit_db_path = root
-        .join("profiles")
-        .join("default")
-        .join("permissions")
-        .join("audit.sqlite");
     let _shell_server = tool_callback::serve_with_codex_and_browser_relay(
         shell_port,
         token.clone(),
-        audit_db_path,
-        app_state.profile_dir(),
+        audit_db_path_handle,
+        profile_dir_handle.clone(),
         app_state.codex_refresh.clone(),
         app_state.browser_relay_handle(),
     )
@@ -100,7 +97,7 @@ async fn main() -> Result<()> {
         shell_port,
         token,
         shell_pid: std::process::id(),
-        profile_dir: root.join("profiles").join("default"),
+        profile_dir: profile_dir_handle,
     };
     let restart_signal = app_state.restart_signal();
     let shutdown_signal = app_state.shutdown_signal();
@@ -123,6 +120,9 @@ async fn main() -> Result<()> {
             commands::start_chatgpt_login,
             commands::sign_out_chatgpt,
             commands::get_auth_status,
+            commands::list_profiles,
+            commands::create_profile,
+            commands::switch_profile,
             // Browser pairing (system-level):
             commands::get_browser_status,
             commands::start_browser_pairing,

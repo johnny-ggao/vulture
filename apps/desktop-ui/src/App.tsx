@@ -41,6 +41,15 @@ interface ProfileView {
   activeAgentId: string;
 }
 
+interface ProfileListResponse {
+  profiles: ProfileView[];
+  activeProfileId: string;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function authLabel(status: AuthStatusView | null): string {
   if (!status) return "loading";
   if (status.active === "codex") {
@@ -60,6 +69,8 @@ export function App() {
   );
 
   const [profile, setProfile] = useState<ProfileView | null>(null);
+  const [profiles, setProfiles] = useState<ProfileView[]>([]);
+  const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
@@ -139,11 +150,24 @@ export function App() {
     [],
   );
 
+  const refreshProfiles = useMemo(
+    () => async () => {
+      try {
+        const result = await invoke<ProfileListResponse>("list_profiles");
+        setProfiles(result.profiles);
+      } catch {
+        setProfiles([{ id: "default", name: "Default", activeAgentId: "local-work-agent" }]);
+      }
+    },
+    [],
+  );
+
   // Bootstrap auth status once on mount (independent of gateway availability).
   useEffect(() => {
     void refreshAuthStatus();
     void refreshBrowserStatus();
-  }, [refreshAuthStatus, refreshBrowserStatus]);
+    void refreshProfiles();
+  }, [refreshAuthStatus, refreshBrowserStatus, refreshProfiles]);
 
   // When a run reaches a terminal status, refetch the conversation so the
   // assistant message persisted by the gateway appears in the chronological
@@ -239,17 +263,18 @@ export function App() {
     };
   }, [apiClient, activeConversationId]);
 
-  // Bootstrap profile + agents once when apiClient becomes available.
-  useEffect(() => {
-    if (!apiClient) return;
-    let mounted = true;
-    (async () => {
+  async function loadGatewayState(expectedProfileId?: string): Promise<boolean> {
+    if (!apiClient) return false;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       try {
         const [profileResult, agentList] = await Promise.all([
           profileApi.get(apiClient),
           agentsApi.list(apiClient),
         ]);
-        if (!mounted) return;
+        if (expectedProfileId && profileResult.id !== expectedProfileId) {
+          throw new Error(`gateway still on profile ${profileResult.id}`);
+        }
         setProfile({
           id: profileResult.id,
           name: profileResult.name,
@@ -257,11 +282,26 @@ export function App() {
         });
         setAgents(agentList);
         setSelectedAgentId(
-          (cur) => cur || profileResult.activeAgentId || agentList[0]?.id || "",
+          profileResult.activeAgentId || agentList[0]?.id || "",
         );
-      } catch {
-        // surfaced via runtime.error or hook errors
+        void conversations.refetch();
+        return true;
+      } catch (cause) {
+        lastError = cause;
+        await delay(200);
       }
+    }
+    console.error("Failed to load gateway state", lastError);
+    return false;
+  }
+
+  // Bootstrap profile + agents once when apiClient becomes available.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!apiClient) return;
+      await loadGatewayState();
+      if (!mounted) return;
     })();
     return () => {
       mounted = false;
@@ -373,6 +413,45 @@ export function App() {
     handleNew();
     setView("chat");
     setHistoryOpen(false);
+  }
+
+  async function handleSwitchProfile(profileId: string) {
+    if (!apiClient || profileId === profile?.id || switchingProfileId) return;
+    setSwitchingProfileId(profileId);
+    try {
+      const switched = await invoke<ProfileView>("switch_profile", {
+        request: { profileId },
+      });
+      setProfile(switched);
+      setAgents([]);
+      setSelectedAgentId("");
+      setConversationRuns([]);
+      handleNew();
+      setView("chat");
+      await Promise.all([refreshProfiles(), refreshAuthStatus()]);
+      await loadGatewayState(switched.id);
+    } catch (cause) {
+      console.error("Profile switch failed", cause);
+    } finally {
+      setSwitchingProfileId(null);
+    }
+  }
+
+  async function handleCreateProfile(name: string) {
+    if (!apiClient || switchingProfileId) return;
+    setSwitchingProfileId("__create__");
+    try {
+      const created = await invoke<ProfileView>("create_profile", {
+        request: { name },
+      });
+      setProfiles((items) => [...items, created]);
+      setSwitchingProfileId(null);
+      await handleSwitchProfile(created.id);
+    } catch (cause) {
+      console.error("Profile create failed", cause);
+    } finally {
+      setSwitchingProfileId(null);
+    }
   }
 
   const onboardingCard =
@@ -489,6 +568,11 @@ export function App() {
             <SettingsPage
               authStatus={authStatus}
               browserStatus={browserStatus}
+              profiles={profiles}
+              activeProfileId={profile?.id ?? null}
+              switchingProfileId={switchingProfileId}
+              onCreateProfile={handleCreateProfile}
+              onSwitchProfile={handleSwitchProfile}
               onSignInWithChatGPT={handleSignInWithChatGPT}
               onSignOutCodex={handleSignOutCodex}
               onSaveApiKey={handleSaveApiKey}

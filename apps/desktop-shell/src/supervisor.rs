@@ -1,6 +1,7 @@
 use std::{
     path::PathBuf,
     process::Stdio,
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
@@ -93,7 +94,7 @@ pub struct SpawnSpec {
     pub shell_port: u16,
     pub token: String,
     pub shell_pid: u32,
-    pub profile_dir: PathBuf,
+    pub profile_dir: Arc<RwLock<PathBuf>>,
 }
 
 #[derive(Debug)]
@@ -103,6 +104,11 @@ pub struct RunningGateway {
 }
 
 pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
+    let profile_dir = spec
+        .profile_dir
+        .read()
+        .map_err(|_| anyhow!("profile dir lock poisoned"))?
+        .clone();
     let mut cmd = Command::new(&spec.bun_bin);
     cmd.arg(&spec.gateway_entry)
         .current_dir(&spec.workdir)
@@ -113,7 +119,7 @@ pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
             format!("http://127.0.0.1:{}", spec.shell_port),
         )
         .env("VULTURE_SHELL_PID", spec.shell_pid.to_string())
-        .env("VULTURE_PROFILE_DIR", &spec.profile_dir)
+        .env("VULTURE_PROFILE_DIR", profile_dir)
         .env("VULTURE_DEFAULT_WORKSPACE", &spec.workdir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -218,7 +224,7 @@ mod tests {
             shell_port: 12346,
             token: "x".repeat(43),
             shell_pid: std::process::id(),
-            profile_dir: dir.clone(),
+            profile_dir: Arc::new(RwLock::new(dir.clone())),
         };
 
         let mut running = spawn_gateway(&spec).await.expect("spawn ready");
@@ -246,7 +252,7 @@ mod tests {
             shell_port: 0,
             token: "x".repeat(43),
             shell_pid: std::process::id(),
-            profile_dir: dir.clone(),
+            profile_dir: Arc::new(RwLock::new(dir.clone())),
         };
 
         let err = spawn_gateway(&spec).await.expect_err("should time out");

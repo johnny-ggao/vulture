@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
 
 use axum::{
     extract::State,
@@ -15,7 +18,7 @@ use crate::codex_auth::{
 
 #[derive(Clone, Default)]
 pub struct CodexState {
-    pub profile_dir: PathBuf,
+    pub profile_dir: Arc<RwLock<PathBuf>>,
     pub refresh: RefreshSingleton,
 }
 
@@ -37,7 +40,17 @@ fn err_response(status: StatusCode, code: &str, message: impl Into<String>) -> R
 }
 
 pub async fn auth_codex_handler(State(state): State<CodexState>) -> Response {
-    let creds = match read_store(&state.profile_dir) {
+    let profile_dir = match current_profile_dir(&state) {
+        Some(dir) => dir,
+        None => {
+            return err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "profile dir lock poisoned",
+            );
+        }
+    };
+    let creds = match read_store(&profile_dir) {
         Ok(Some(c)) => c,
         Ok(None) => {
             return err_response(
@@ -71,7 +84,17 @@ pub async fn auth_codex_handler(State(state): State<CodexState>) -> Response {
 }
 
 pub async fn auth_codex_refresh_handler(State(state): State<CodexState>) -> Response {
-    let creds = match read_store(&state.profile_dir) {
+    let profile_dir = match current_profile_dir(&state) {
+        Some(dir) => dir,
+        None => {
+            return err_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal",
+                "profile dir lock poisoned",
+            );
+        }
+    };
+    let creds = match read_store(&profile_dir) {
         Ok(Some(c)) => c,
         Ok(None) => {
             return err_response(
@@ -112,7 +135,7 @@ pub async fn auth_codex_refresh_handler(State(state): State<CodexState>) -> Resp
             );
         }
     };
-    if let Err(e) = write_store(&state.profile_dir, &new_creds) {
+    if let Err(e) = write_store(&profile_dir, &new_creds) {
         return err_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal",
@@ -126,6 +149,10 @@ pub async fn auth_codex_refresh_handler(State(state): State<CodexState>) -> Resp
         email: new_creds.email,
     })
     .into_response()
+}
+
+fn current_profile_dir(state: &CodexState) -> Option<PathBuf> {
+    state.profile_dir.read().map(|dir| dir.clone()).ok()
 }
 
 #[cfg(test)]
