@@ -21,6 +21,7 @@ import type { ApprovalQueue } from "../runtime/approvalQueue";
 import { VultureConversationSession } from "../runtime/conversationSession";
 import {
   buildConversationSessionInputCallback,
+  messageIdFromItem,
   shouldCompactConversation,
   textFromItem,
 } from "../runtime/conversationContext";
@@ -463,10 +464,12 @@ function addAssistantSessionItemIfMissing(
   conversationId: string,
   input: { messageId: string; finalText: string },
 ): void {
-  const finalText = input.finalText.trim();
   const existing = contexts
     .listSessionItems(conversationId)
-    .some((item) => item.role === "assistant" && textFromItem(item.item).trim() === finalText);
+    .some((item) =>
+      item.role === "assistant" &&
+      (item.messageId === input.messageId || messageIdFromItem(item.item) === input.messageId)
+    );
   if (existing) return;
 
   contexts.addSessionItems(conversationId, [

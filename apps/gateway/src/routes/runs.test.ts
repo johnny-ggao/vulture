@@ -8,7 +8,10 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { AttachmentStore } from "../domain/attachmentStore";
-import { ConversationContextStore } from "../domain/conversationContextStore";
+import {
+  ConversationContextStore,
+  type AddSessionItemInput,
+} from "../domain/conversationContextStore";
 import { runsRouter, writeRunEventStream, type ResumeRunResult, type RunsDeps } from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { ApprovalQueue } from "../runtime/approvalQueue";
@@ -31,6 +34,7 @@ function fresh(
   memoryPromptForRun?: (input: { agentId: string; input: string }) => Promise<string> | string,
   afterRunSucceeded?: RunsDeps["afterRunSucceeded"],
   noToolsLlm?: LlmCallable,
+  contextFactory?: (db: ReturnType<typeof openDatabase>) => ConversationContextStore,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
@@ -39,7 +43,7 @@ function fresh(
   const msgs = new MessageStore(db);
   const runs = new RunStore(db);
   const attachments = new AttachmentStore(db, dir);
-  const contexts = new ConversationContextStore(db);
+  const contexts = contextFactory?.(db) ?? new ConversationContextStore(db);
   const c = convs.create({ agentId: "local-work-agent" });
   const app = runsRouter({
     conversations: convs,
@@ -253,6 +257,68 @@ describe("/v1/runs", () => {
       providerData: { messageId: finalRun?.resultMessageId },
     });
     expect(JSON.stringify(assistantItem?.item)).toContain("ok");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs stores repeated assistant replies with distinct message ids", async () => {
+    const { app, c, runs, contexts, cleanup } = fresh();
+
+    const first = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "repeat-assistant-1" },
+      body: JSON.stringify({ input: "first" }),
+    });
+    expect(first.status).toBe(202);
+    const firstBody = await first.json();
+    await waitFor(() => runs.get(firstBody.run.id), (run) => run?.status === "succeeded");
+
+    const second = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "repeat-assistant-2" },
+      body: JSON.stringify({ input: "second" }),
+    });
+    expect(second.status).toBe(202);
+    const secondBody = await second.json();
+    await waitFor(() => runs.get(secondBody.run.id), (run) => run?.status === "succeeded");
+
+    const assistantItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "assistant" && JSON.stringify(item.item).includes("ok"));
+    expect(assistantItems).toHaveLength(2);
+    expect(new Set(assistantItems.map((item) => item.messageId)).size).toBe(2);
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs returns 500 and creates no run when user session persistence fails", async () => {
+    const { app, c, runs, cleanup } = fresh(
+      undefined,
+      fakeLlm,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (db) => new class extends ConversationContextStore {
+        override addSessionItems(conversationId: string, items: AddSessionItemInput[]): void {
+          if (items.some((item) => item.role === "user")) {
+            throw new Error("session write failed");
+          }
+          super.addSessionItems(conversationId, items);
+        }
+      }(db),
+    );
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-user-fail" },
+      body: JSON.stringify({ input: "cannot persist me" }),
+    });
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.code).toBe("internal");
+    expect(body.message).toContain("failed to persist conversation context session item");
+    expect(body.message).toContain("session write failed");
+    expect(runs.listForConversation(c.id)).toEqual([]);
     cleanup();
   });
 
