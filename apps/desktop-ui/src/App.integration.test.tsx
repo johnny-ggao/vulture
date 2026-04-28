@@ -422,6 +422,9 @@ describe("App integration", () => {
       },
       { timeout: 5000 },
     );
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "对话" }));
 
@@ -475,7 +478,7 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
-  test("settings memory tab can add and delete agent memories", async () => {
+  test("settings memory tab can add file-backed agent memories", async () => {
     const { cleanup } = setup();
 
     render(<App />);
@@ -499,13 +502,13 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加记忆" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Project codename is Vulture.")).toBeDefined();
+      expect(screen.getByRole("button", { name: "删除记忆" })).toBeDefined();
+      expect(screen.getByText("MEMORY.md # Memory")).toBeDefined();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "删除记忆" }));
     await waitFor(() => {
-      expect(screen.queryByText("Project codename is Vulture.")).toBeNull();
-      expect(screen.getByText("当前智能体没有记忆。")).toBeDefined();
+      expect(screen.getByText("File-backed memories must be edited in Markdown.")).toBeDefined();
     });
 
     cleanup();

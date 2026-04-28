@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 7;
+const LATEST_SCHEMA_VERSION = 8;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -174,6 +174,27 @@ describe("migrate", () => {
     ]);
     expect(columns.find((c) => c.name === "agent_id")?.notnull).toBe(1);
     expect(columns.find((c) => c.name === "embedding_json")?.notnull).toBe(0);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("008 adds file-first memory index tables", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v8-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const memoryFilesColumns = db
+      .query("PRAGMA table_info(memory_files)")
+      .all() as { name: string }[];
+    const memoryChunksColumns = db
+      .query("PRAGMA table_info(memory_chunks)")
+      .all() as { name: string }[];
+    const memorySuggestionsColumns = db
+      .query("PRAGMA table_info(memory_suggestions)")
+      .all() as { name: string }[];
+    expect(memoryFilesColumns.map((c) => c.name)).toContain("content_hash");
+    expect(memoryChunksColumns.map((c) => c.name)).toContain("embedding_json");
+    expect(memorySuggestionsColumns.map((c) => c.name)).toContain("status");
     db.close();
     rmSync(dir, { recursive: true });
   });

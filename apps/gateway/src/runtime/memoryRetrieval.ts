@@ -93,6 +93,23 @@ export function formatMemoriesForPrompt(results: readonly RetrievedMemory[]): st
   return lines.join("\n");
 }
 
+export function formatMemoryToolPrompt(summary: string): string {
+  const lines = [
+    "",
+    "",
+    "Memory is available for this agent.",
+    "",
+    "Use memory_search when durable user/project context may help.",
+    "Use memory_get to inspect full memory entries before relying on details.",
+    "Use memory_append only for approved durable memory updates.",
+  ];
+  const trimmed = summary.trim();
+  if (trimmed) {
+    lines.push("", "Memory summary:", truncateSummary(trimmed, 2_000));
+  }
+  return lines.join("\n");
+}
+
 async function tryEmbed(
   embed: ((input: string) => Promise<number[] | null>) | undefined,
   input: string,
@@ -163,4 +180,8 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function truncateSummary(value: string, maxChars: number): string {
+  return value.length <= maxChars ? value : `${value.slice(0, maxChars)}\n[truncated]`;
 }

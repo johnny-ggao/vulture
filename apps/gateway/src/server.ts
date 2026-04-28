@@ -43,8 +43,8 @@ import {
 } from "./runtime/openaiLlm";
 import { filterSkillEntries, formatSkillsForPrompt, loadSkillEntries } from "./runtime/skills";
 import { MemoryStore } from "./domain/memoryStore";
+import { MemoryFileStore } from "./domain/memoryFileStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
-import { formatMemoriesForPrompt, retrieveRelevantMemories } from "./runtime/memoryRetrieval";
 import { combineContextPrompts } from "./routes/runs";
 
 export function buildServer(cfg: GatewayConfig): Hono {
@@ -77,6 +77,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const runStore = new RunStore(db);
   const memoryStore = new MemoryStore(db);
   const embedMemoryText = makeOpenAIEmbeddingProvider();
+  const memoryFileStore = new MemoryFileStore({ db, legacy: memoryStore, embed: embedMemoryText });
 
   // Ensure every agent's workspace directory exists. shell.exec sets cwd to
   // workspace.path; if that path is missing the spawn fails with a misleading
@@ -141,13 +142,9 @@ export function buildServer(cfg: GatewayConfig): Hono {
     });
     return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
   };
-  const memoryPromptForRun = async ({ agentId, input }: { agentId: string; input: string }): Promise<string> => {
-    const results = await retrieveRelevantMemories({
-      input,
-      memories: memoryStore.list(agentId),
-      embed: embedMemoryText,
-    });
-    return formatMemoriesForPrompt(results);
+  const memoryPromptForRun = async ({ agentId }: { agentId: string; input: string }): Promise<string> => {
+    const agent = agentStore.get(agentId);
+    return agent ? memoryFileStore.contextPrompt(agent) : "";
   };
   const contextPromptForRun = async (agentId: string, input: string): Promise<string | undefined> =>
     combineContextPrompts(
@@ -249,6 +246,65 @@ export function buildServer(cfg: GatewayConfig): Hono {
           .list()
           .flatMap((conversation) => runStore.listForConversation(conversation.id, { status: "active" })),
       }),
+    },
+    memory: {
+      search: async (call) => {
+        const agent = agentForWorkspace(call.workspacePath);
+        const value = call.input as { query?: unknown; limit?: unknown };
+        if (typeof value.query !== "string" || value.query.trim().length === 0) {
+          throw new Error("memory_search missing query");
+        }
+        const limit = typeof value.limit === "number" ? value.limit : 5;
+        const results = await memoryFileStore.search(agent, value.query, limit);
+        return {
+          items: results.map((result) => ({
+            id: result.memory.id,
+            path: "path" in result.memory ? result.memory.path : "MEMORY.md",
+            heading: "heading" in result.memory ? result.memory.heading : null,
+            score: result.score,
+            source: result.source,
+            snippet: truncateMemorySnippet(result.memory.content),
+          })),
+        };
+      },
+      get: async (call) => {
+        const agent = agentForWorkspace(call.workspacePath);
+        const value = call.input as { id?: unknown; path?: unknown };
+        if (typeof value.id === "string" && value.id.length > 0) {
+          const chunk = memoryFileStore.getChunk(agent.id, value.id);
+          if (!chunk) throw new Error(`memory chunk not found: ${value.id}`);
+          return {
+            id: chunk.id,
+            path: chunk.path,
+            heading: chunk.heading,
+            startLine: chunk.startLine,
+            endLine: chunk.endLine,
+            content: chunk.content,
+          };
+        }
+        if (typeof value.path === "string" && value.path.length > 0) {
+          return memoryFileStore.getFile(agent, value.path);
+        }
+        throw new Error("memory_get requires id or path");
+      },
+      append: async (call) => {
+        const agent = agentForWorkspace(call.workspacePath);
+        const value = call.input as { path?: unknown; content?: unknown };
+        if (typeof value.path !== "string" || typeof value.content !== "string") {
+          throw new Error("memory_append missing path/content");
+        }
+        const chunks = await memoryFileStore.append(agent, value.path, value.content);
+        return {
+          path: value.path,
+          items: chunks.map((chunk) => ({
+            id: chunk.id,
+            path: chunk.path,
+            heading: chunk.heading,
+            startLine: chunk.startLine,
+            endLine: chunk.endLine,
+          })),
+        };
+      },
     },
   });
   const approvalCallable = makeShellApprovalHandler({
@@ -397,7 +453,10 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
-  app.route("/", memoriesRouter({ agents: agentStore, memories: memoryStore, embed: embedMemoryText }));
+  app.route(
+    "/",
+    memoriesRouter({ agents: agentStore, memories: memoryStore, memoryFiles: memoryFileStore, embed: embedMemoryText }),
+  );
   app.route("/", attachmentsRouter(attachmentStore));
   app.route(
     "/",
@@ -427,4 +486,15 @@ export function buildServer(cfg: GatewayConfig): Hono {
   );
 
   return app;
+
+  function agentForWorkspace(workspacePath: string) {
+    const agent = agentStore.list().find((candidate) => candidate.workspace.path === workspacePath);
+    if (!agent) throw new Error(`agent not found for workspace: ${workspacePath}`);
+    return agent;
+  }
+}
+
+function truncateMemorySnippet(content: string): string {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  return normalized.length <= 240 ? normalized : `${normalized.slice(0, 240)}...`;
 }

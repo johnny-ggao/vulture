@@ -74,6 +74,18 @@ const updatePlanParameters = z.object({
     }),
   ),
 });
+const memorySearchParameters = z.object({
+  query: z.string(),
+  limit: z.number().int().positive().nullable(),
+});
+const memoryGetParameters = z.object({
+  id: z.string().nullable(),
+  path: z.string().nullable(),
+});
+const memoryAppendParameters = z.object({
+  path: z.string(),
+  content: z.string(),
+});
 const browserSnapshotParameters = z.object({});
 const browserClickParameters = z.object({ selector: z.string() });
 
@@ -93,6 +105,9 @@ export function createCoreToolRegistry(): ToolRegistry {
     sessionsSpawnTool(),
     sessionsYieldTool(),
     updatePlanTool(),
+    memorySearchTool(),
+    memoryGetTool(),
+    memoryAppendTool(),
     browserSnapshotTool(),
     browserClickTool(),
   ]);
@@ -309,6 +324,51 @@ function updatePlanTool(): GatewayToolSpec {
   };
 }
 
+function memorySearchTool(): GatewayToolSpec {
+  return {
+    id: "memory_search",
+    sdkName: "memory_search",
+    label: "Memory Search",
+    description: "Search durable Markdown memory for the active agent.",
+    parameters: memorySearchParameters,
+    source: "core",
+    category: "memory",
+    risk: "safe",
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "memory_search", input),
+  };
+}
+
+function memoryGetTool(): GatewayToolSpec {
+  return {
+    id: "memory_get",
+    sdkName: "memory_get",
+    label: "Memory Get",
+    description: "Read a durable memory chunk or memory Markdown file for the active agent.",
+    parameters: memoryGetParameters,
+    source: "core",
+    category: "memory",
+    risk: "safe",
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "memory_get", input),
+  };
+}
+
+function memoryAppendTool(): GatewayToolSpec {
+  return {
+    id: "memory_append",
+    sdkName: "memory_append",
+    label: "Memory Append",
+    description: "Append approved durable memory to MEMORY.md or memory/YYYY-MM-DD.md.",
+    parameters: memoryAppendParameters,
+    source: "core",
+    category: "memory",
+    risk: "approval",
+    needsApproval: () => ({ needsApproval: true, reason: "memory_append requires approval" }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "memory_append", input),
+  };
+}
+
 function browserSnapshotTool(): GatewayToolSpec {
   return {
     id: "browser.snapshot",
@@ -382,6 +442,8 @@ export function coreToolApprovalDecision(
       return { needsApproval: true, reason: "sessions_send requires approval" };
     case "sessions_spawn":
       return { needsApproval: true, reason: "sessions_spawn requires approval" };
+    case "memory_append":
+      return { needsApproval: true, reason: "memory_append requires approval" };
     case "browser.snapshot":
     case "browser.click":
       return {

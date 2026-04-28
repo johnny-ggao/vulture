@@ -10,6 +10,7 @@ export type GatewayToolCategory =
   | "workspace"
   | "web"
   | "sessions"
+  | "memory"
   | "agents";
 
 export interface GatewayToolRunContext {

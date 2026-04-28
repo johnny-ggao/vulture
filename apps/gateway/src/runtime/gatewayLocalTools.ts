@@ -21,6 +21,9 @@ const LOCAL_TOOL_NAMES = new Set([
   "sessions_spawn",
   "sessions_yield",
   "update_plan",
+  "memory_search",
+  "memory_get",
+  "memory_append",
 ]);
 const MAX_TEXT_BYTES = 256_000;
 const MAX_PROCESS_BUFFER = 64_000;
@@ -33,11 +36,18 @@ export interface GatewaySessionsTools {
   yield(input: unknown): unknown;
 }
 
+export interface GatewayMemoryTools {
+  search(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+  get(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+  append(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+}
+
 export interface GatewayLocalToolsOptions {
   shellTools: ToolCallable;
   appendEvent?: (runId: string, partial: PartialRunEvent) => void;
   fetch?: FetchLike;
   sessions?: GatewaySessionsTools;
+  memory?: GatewayMemoryTools;
 }
 
 interface ManagedProcess {
@@ -67,7 +77,12 @@ export function makeGatewayLocalTools(opts: GatewayLocalToolsOptions): ToolCalla
     });
     opts.appendEvent?.(call.runId, { type: "tool.started", callId: call.callId });
     try {
-      const output = await executeLocalTool(call, { processStore, fetch: f, sessions: opts.sessions });
+      const output = await executeLocalTool(call, {
+        processStore,
+        fetch: f,
+        sessions: opts.sessions,
+        memory: opts.memory,
+      });
       opts.appendEvent?.(call.runId, {
         type: "tool.completed",
         callId: call.callId,
@@ -94,6 +109,7 @@ async function executeLocalTool(
     processStore: Map<string, ManagedProcess>;
     fetch: FetchLike;
     sessions?: GatewaySessionsTools;
+    memory?: GatewayMemoryTools;
   },
 ): Promise<unknown> {
   switch (call.tool) {
@@ -128,6 +144,13 @@ async function executeLocalTool(
       return requireSessions(deps).yield(call.input);
     case "update_plan":
       return updatePlanTool(call);
+    case "memory_search":
+      return requireMemory(deps).search(call);
+    case "memory_get":
+      return requireMemory(deps).get(call);
+    case "memory_append":
+      requireApproval(call, "memory_append requires approval");
+      return requireMemory(deps).append(call);
     default:
       throw new ToolCallError("tool.execution_failed", `unknown local tool ${call.tool}`);
   }
@@ -337,6 +360,13 @@ function requireSessions(deps: { sessions?: GatewaySessionsTools }): GatewaySess
     throw new ToolCallError("tool.execution_failed", "sessions tools are not configured");
   }
   return deps.sessions;
+}
+
+function requireMemory(deps: { memory?: GatewayMemoryTools }): GatewayMemoryTools {
+  if (!deps.memory) {
+    throw new ToolCallError("tool.execution_failed", "memory tools are not configured");
+  }
+  return deps.memory;
 }
 
 function requireApproval(call: Parameters<ToolCallable>[0], message: string): void {

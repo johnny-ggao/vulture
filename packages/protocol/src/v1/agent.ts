@@ -20,6 +20,9 @@ export const AGENT_TOOL_NAMES = [
   "sessions_spawn",
   "sessions_yield",
   "update_plan",
+  "memory_search",
+  "memory_get",
+  "memory_append",
   "browser.snapshot",
   "browser.click",
 ] as const;

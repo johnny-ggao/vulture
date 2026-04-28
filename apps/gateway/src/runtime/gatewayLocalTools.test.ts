@@ -214,4 +214,73 @@ describe("gateway local tools", () => {
       }),
     ).resolves.toMatchObject({ items: [{ step: "Implement tools", status: "in_progress" }] });
   });
+
+  test("memory tools use gateway memory service and require approval for append", async () => {
+    const workspacePath = await tempWorkspace();
+    const calls: string[] = [];
+    const tools = makeGatewayLocalTools({
+      shellTools: async () => "shell",
+      memory: {
+        search: async (call) => {
+          calls.push(`search:${call.workspacePath}`);
+          return { items: [{ id: "memchunk-1", path: "MEMORY.md", snippet: "Project codename is Vulture." }] };
+        },
+        get: async (call) => {
+          calls.push(`get:${call.workspacePath}`);
+          return { path: "MEMORY.md", content: "Project codename is Vulture." };
+        },
+        append: async (call) => {
+          calls.push(`append:${call.workspacePath}`);
+          return { path: "MEMORY.md", bytes: 21 };
+        },
+      },
+    });
+
+    await expect(
+      tools({
+        callId: "c-memory-search",
+        runId: "r",
+        tool: "memory_search",
+        workspacePath,
+        input: { query: "codename", limit: null },
+      }),
+    ).resolves.toMatchObject({ items: [{ id: "memchunk-1" }] });
+
+    await expect(
+      tools({
+        callId: "c-memory-get",
+        runId: "r",
+        tool: "memory_get",
+        workspacePath,
+        input: { id: "memchunk-1", path: null },
+      }),
+    ).resolves.toMatchObject({ content: "Project codename is Vulture." });
+
+    await expect(
+      tools({
+        callId: "c-memory-append-denied",
+        runId: "r",
+        tool: "memory_append",
+        workspacePath,
+        input: { path: "MEMORY.md", content: "- Remember this." },
+      }),
+    ).rejects.toThrow("memory_append requires approval");
+
+    await expect(
+      tools({
+        callId: "c-memory-append",
+        runId: "r",
+        tool: "memory_append",
+        workspacePath,
+        approvalToken: "approved",
+        input: { path: "MEMORY.md", content: "- Remember this." },
+      }),
+    ).resolves.toMatchObject({ path: "MEMORY.md" });
+
+    expect(calls).toEqual([
+      `search:${workspacePath}`,
+      `get:${workspacePath}`,
+      `append:${workspacePath}`,
+    ]);
+  });
 });

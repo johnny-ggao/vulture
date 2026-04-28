@@ -138,7 +138,7 @@ function MemorySection(props: SettingsPageProps) {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "end", marginBottom: 14 }}>
         <div>
           <h3>Agent 记忆</h3>
-          <p style={{ color: "var(--text-secondary)", marginTop: 4 }}>手动维护会注入到相关对话的长期记忆。</p>
+          <p style={{ color: "var(--text-secondary)", marginTop: 4 }}>Markdown 文件是长期记忆源，索引用于检索与工具读取。</p>
         </div>
         <label style={{ display: "grid", gap: 6, minWidth: 220, color: "var(--text-secondary)", fontSize: 12 }}>
           <span>智能体</span>
@@ -195,7 +195,9 @@ function MemorySection(props: SettingsPageProps) {
             >
               <div style={{ color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>{memory.content}</div>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>{new Date(memory.updatedAt).toLocaleString()}</span>
+                <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>
+                  {memory.path ? `${memory.path}${memory.heading ? ` # ${memory.heading}` : ""}` : new Date(memory.updatedAt).toLocaleString()}
+                </span>
                 <button
                   type="button"
                   className="btn-secondary"

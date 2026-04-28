@@ -4,6 +4,11 @@ export interface Memory {
   id: string;
   agentId: string;
   content: string;
+  path?: string;
+  heading?: string | null;
+  startLine?: number;
+  endLine?: number;
+  source?: "legacy" | "file";
   createdAt: string;
   updatedAt: string;
 }
