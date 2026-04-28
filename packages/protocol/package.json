@@ -5,6 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "test": "bun test src",
+    "openapi": "bun src/openapi/generate.ts",
+    "openapi:check": "bun src/openapi/generate.ts --check",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },

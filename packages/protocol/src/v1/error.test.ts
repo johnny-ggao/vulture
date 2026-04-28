@@ -20,6 +20,11 @@ describe("AppError", () => {
       "internal.gateway_restarted",
       "internal.recovery_state_unavailable",
       "internal.shutdown",
+      "attachment.file_required",
+      "attachment.too_large",
+      "attachment.not_found",
+      "attachment.already_used",
+      "run.not_recoverable",
     ];
     expect(codes.length).toBeGreaterThan(0);
   });

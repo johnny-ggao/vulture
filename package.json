@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "bun --filter @vulture/desktop-ui dev",
     "test": "bun test packages/protocol/src",
+    "protocol:openapi": "bun --filter @vulture/protocol openapi",
+    "protocol:openapi:check": "bun --filter @vulture/protocol openapi:check",
     "typecheck": "bun --filter '*' typecheck",
     "build": "bun --filter '*' build",
     "verify:browser": "node -e \"JSON.parse(require('fs').readFileSync('extensions/browser/manifest.json','utf8')); console.log('manifest ok')\" && node --check extensions/browser/src/background.js && node --check extensions/browser/src/content.js && node --check extensions/browser/src/popup.js && node --check extensions/browser/src/relay-client.js && bun --filter '*' typecheck && cargo test -p vulture-tool-gateway browser && cargo test -p vulture-desktop-shell browser && cargo test -p vulture-desktop-shell audits_browser_tool_requests_through_policy && cargo clippy --workspace -- -D warnings",

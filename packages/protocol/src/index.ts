@@ -1,4 +1,5 @@
 import { z } from "zod";
+export { buildOpenApiV1 } from "./openapi";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type Json = JsonPrimitive | Json[] | { [key: string]: Json };
