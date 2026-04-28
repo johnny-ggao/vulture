@@ -60,24 +60,45 @@ docs/superpowers     Specs, plans, reports, roadmap
 - [Bun](https://bun.sh) ≥ 1.1
 - Node 22+ (only needed for some tooling)
 - Xcode Command Line Tools
+- Tauri CLI v2: `cargo install tauri-cli --version '^2.0' --locked`
 
 ## Getting started
 
 ```bash
 # install JS workspace deps
 bun install
+```
 
-# launch the desktop UI in dev mode
+### Run the desktop app (full stack)
+
+```bash
+cd apps/desktop-shell
+cargo tauri dev
+```
+
+Tauri's `beforeDevCommand` automatically starts the React UI's Vite server (`http://127.0.0.1:5174`), then launches the Rust shell window against it. Use this for end-to-end work that touches the Rust core, IPC, or the agent sidecar.
+
+### UI-only iteration
+
+```bash
+# Vite dev server only — no Rust shell, no Tauri IPC
 bun run dev
+```
 
+Useful for pure frontend work, but anything that calls into the Rust core needs `cargo tauri dev`.
+
+### Other common commands
+
+```bash
 # typecheck the whole workspace
 bun run typecheck
 
 # run the protocol unit tests
 bun run test
-```
 
-To build a desktop bundle, drive the Tauri app from `apps/desktop-shell` (see its `tauri.conf.json`).
+# package a release bundle (.app / .dmg) — from apps/desktop-shell
+cargo tauri build
+```
 
 ## Verification
 

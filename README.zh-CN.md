@@ -60,24 +60,45 @@ docs/superpowers     设计稿、计划、报告与路线图
 - [Bun](https://bun.sh) ≥ 1.1
 - Node 22+(仅部分工具需要)
 - Xcode Command Line Tools
+- Tauri CLI v2:`cargo install tauri-cli --version '^2.0' --locked`
 
 ## 快速开始
 
 ```bash
 # 安装 JS workspace 依赖
 bun install
+```
 
-# 以 dev 模式启动桌面 UI
+### 启动完整桌面应用
+
+```bash
+cd apps/desktop-shell
+cargo tauri dev
+```
+
+Tauri 的 `beforeDevCommand` 会自动拉起 React 前端的 Vite 服务(`http://127.0.0.1:5174`),然后启动 Rust 壳子窗口。涉及 Rust 内核、IPC 或 agent sidecar 的端到端开发请用这条命令。
+
+### 仅前端迭代
+
+```bash
+# 只起 Vite —— 没有 Rust 壳,也没有 Tauri IPC
 bun run dev
+```
 
+适合纯前端调样式或调组件;任何需要调用 Rust 内核的功能都必须走 `cargo tauri dev`。
+
+### 其它常用命令
+
+```bash
 # 对整个 workspace 进行类型检查
 bun run typecheck
 
 # 运行 protocol 单测
 bun run test
-```
 
-如需打桌面安装包,请从 `apps/desktop-shell` 中驱动 Tauri(参见其 `tauri.conf.json`)。
+# 打 release 安装包(.app / .dmg)—— 在 apps/desktop-shell 下执行
+cargo tauri build
+```
 
 ## 验证脚本
 
