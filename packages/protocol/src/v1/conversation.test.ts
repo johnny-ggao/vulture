@@ -35,6 +35,27 @@ describe("Conversation + Message schemas", () => {
     expect(MessageSchema.parse({ ...msg, role: "system" }).role).toBe("system");
   });
 
+  test("MessageSchema accepts persisted attachments", () => {
+    const parsed = MessageSchema.parse({
+      ...msg,
+      attachments: [
+        {
+          id: "att-01",
+          blobId: "blob-01",
+          kind: "image",
+          displayName: "screenshot.png",
+          mimeType: "image/png",
+          sizeBytes: 123,
+          contentUrl: "/v1/attachments/att-01/content",
+          createdAt: "2026-04-26T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(parsed.attachments).toHaveLength(1);
+    expect(parsed.attachments[0].kind).toBe("image");
+  });
+
   test("MessageSchema rejects 'tool' role", () => {
     expect(() => MessageSchema.parse({ ...msg, role: "tool" })).toThrow();
   });
@@ -48,5 +69,18 @@ describe("Conversation + Message schemas", () => {
   test("PostMessageRequest requires non-empty input", () => {
     expect(PostMessageRequestSchema.parse({ input: "hi" }).input).toBe("hi");
     expect(() => PostMessageRequestSchema.parse({ input: "" })).toThrow();
+  });
+
+  test("PostMessageRequest accepts up to 10 attachment ids", () => {
+    const attachmentIds = Array.from({ length: 10 }, (_, i) => `att-${i}`);
+    expect(PostMessageRequestSchema.parse({ input: "hi", attachmentIds }).attachmentIds).toEqual(
+      attachmentIds,
+    );
+    expect(() =>
+      PostMessageRequestSchema.parse({
+        input: "hi",
+        attachmentIds: Array.from({ length: 11 }, (_, i) => `att-${i}`),
+      }),
+    ).toThrow();
   });
 });

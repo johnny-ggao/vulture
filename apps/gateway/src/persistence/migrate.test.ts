@@ -15,7 +15,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(4);
+    expect(currentSchemaVersion(db)).toBe(5);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -33,7 +33,7 @@ describe("migrate", () => {
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(4);
+    expect(currentSchemaVersion(db)).toBe(5);
     db.close();
     rmSync(dir, { recursive: true });
   });
@@ -42,7 +42,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v2-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(4);
+    expect(currentSchemaVersion(db)).toBe(5);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -59,7 +59,7 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v3-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(4);
+    expect(currentSchemaVersion(db)).toBe(5);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -88,7 +88,7 @@ describe("migrate", () => {
     db.exec(init002);
     expect(currentSchemaVersion(db)).toBe(2);
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(4);
+    expect(currentSchemaVersion(db)).toBe(5);
     const tables = db
       .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all() as { name: string }[];
@@ -102,13 +102,40 @@ describe("migrate", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v4-"));
     const db = openDatabase(join(dir, "data.sqlite"));
     applyMigrations(db);
-    expect(currentSchemaVersion(db)).toBe(4);
+    expect(currentSchemaVersion(db)).toBe(5);
     const columns = db
       .query("PRAGMA table_info(runs)")
       .all() as { name: string }[];
     expect(columns.map((c) => c.name)).toContain("input_tokens");
     expect(columns.map((c) => c.name)).toContain("output_tokens");
     expect(columns.map((c) => c.name)).toContain("total_tokens");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("005 adds attachment metadata tables", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v5-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(5);
+    const tables = db
+      .query("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as { name: string }[];
+    const names = tables.map((t) => t.name);
+    expect(names).toContain("blobs");
+    expect(names).toContain("message_attachments");
+    const attachmentColumns = db
+      .query("PRAGMA table_info(message_attachments)")
+      .all() as { name: string; notnull: number }[];
+    expect(attachmentColumns.map((c) => c.name)).toEqual([
+      "id",
+      "message_id",
+      "blob_id",
+      "kind",
+      "display_name",
+      "created_at",
+    ]);
+    expect(attachmentColumns.find((c) => c.name === "message_id")?.notnull).toBe(0);
     db.close();
     rmSync(dir, { recursive: true });
   });

@@ -28,6 +28,27 @@ export type Conversation = Omit<
 export const MessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export type MessageRole = z.infer<typeof MessageRoleSchema>;
 
+export const AttachmentKindSchema = z.enum(["image", "file"]);
+export type AttachmentKind = z.infer<typeof AttachmentKindSchema>;
+
+export const MessageAttachmentSchema = z.object({
+  id: z.string().min(1),
+  blobId: z.string().min(1),
+  kind: AttachmentKindSchema,
+  displayName: z.string().min(1),
+  mimeType: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  contentUrl: z.string().min(1),
+  createdAt: Iso8601Schema,
+});
+
+export type MessageAttachment = Omit<
+  z.infer<typeof MessageAttachmentSchema>,
+  "createdAt"
+> & {
+  createdAt: Iso8601;
+};
+
 export const MessageSchema = z.object({
   id: z.string().min(1),
   conversationId: z.string().min(1),
@@ -35,6 +56,7 @@ export const MessageSchema = z.object({
   content: z.string(),
   runId: z.string().min(1).nullable(),
   createdAt: Iso8601Schema,
+  attachments: z.array(MessageAttachmentSchema).default([]),
 });
 
 export type Message = Omit<
@@ -45,6 +67,7 @@ export type Message = Omit<
   conversationId: ConversationId;
   runId: RunId | null;
   createdAt: Iso8601;
+  attachments: MessageAttachment[];
 };
 
 export const CreateConversationRequestSchema = z
@@ -56,6 +79,9 @@ export const CreateConversationRequestSchema = z
 export type CreateConversationRequest = z.infer<typeof CreateConversationRequestSchema>;
 
 export const PostMessageRequestSchema = z
-  .object({ input: z.string().min(1) })
+  .object({
+    input: z.string().min(1),
+    attachmentIds: z.array(z.string().min(1)).max(10).optional(),
+  })
   .strict();
 export type PostMessageRequest = z.infer<typeof PostMessageRequestSchema>;
