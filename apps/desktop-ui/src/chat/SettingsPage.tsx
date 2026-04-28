@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AuthStatusView, BrowserRelayStatus } from "../commandCenterTypes";
 import type { Agent } from "../api/agents";
-import type { Memory } from "../api/memories";
+import type { Memory, MemoryStatus } from "../api/memories";
 
 const SECTIONS = [
   { key: "general",  label: "通用",       icon: <DotIcon /> },
@@ -24,6 +24,8 @@ export interface SettingsPageProps {
   switchingProfileId: string | null;
   onSelectAgent: (agentId: string) => void;
   onListMemories: (agentId: string) => Promise<Memory[]>;
+  onGetMemoryStatus: (agentId: string) => Promise<MemoryStatus | null>;
+  onReindexMemory: (agentId: string) => Promise<MemoryStatus>;
   onCreateMemory: (agentId: string, content: string) => Promise<Memory>;
   onDeleteMemory: (agentId: string, memoryId: string) => Promise<void>;
   onCreateProfile: (name: string) => Promise<void>;
@@ -82,6 +84,7 @@ function MemorySection(props: SettingsPageProps) {
     [props.agents, props.selectedAgentId],
   );
   const [items, setItems] = useState<Memory[]>([]);
+  const [status, setStatus] = useState<MemoryStatus | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +92,12 @@ function MemorySection(props: SettingsPageProps) {
   async function load(agentId: string) {
     setError(null);
     try {
-      setItems(await props.onListMemories(agentId));
+      const [nextStatus, nextItems] = await Promise.all([
+        props.onGetMemoryStatus(agentId),
+        props.onListMemories(agentId),
+      ]);
+      setStatus(nextStatus);
+      setItems(nextItems);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -98,6 +106,7 @@ function MemorySection(props: SettingsPageProps) {
   useEffect(() => {
     if (!activeAgent) {
       setItems([]);
+      setStatus(null);
       return;
     }
     void load(activeAgent.id);
@@ -112,6 +121,20 @@ function MemorySection(props: SettingsPageProps) {
       await props.onCreateMemory(activeAgent.id, content);
       await load(activeAgent.id);
       setDraft("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reindex() {
+    if (!activeAgent || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setStatus(await props.onReindexMemory(activeAgent.id));
+      setItems(await props.onListMemories(activeAgent.id));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -153,6 +176,40 @@ function MemorySection(props: SettingsPageProps) {
           </select>
         </label>
       </div>
+
+      {status ? (
+        <div
+          style={{
+            border: "1px solid rgba(15, 15, 15, 0.08)",
+            borderRadius: "var(--radius-md)",
+            padding: 12,
+            display: "grid",
+            gap: 10,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ display: "grid", gap: 4 }}>
+            <span style={{ color: "var(--text-tertiary)", fontSize: 12 }}>记忆根目录</span>
+            <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+              {status.rootPath}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <StatusPill label={`文件 ${status.fileCount}`} />
+            <StatusPill label={`索引块 ${status.chunkCount}`} />
+            <StatusPill label={`最近索引 ${status.indexedAt ? new Date(status.indexedAt).toLocaleString() : "-"}`} />
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy || !activeAgent}
+              onClick={reindex}
+              style={{ marginLeft: "auto" }}
+            >
+              重新索引
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
         <textarea
@@ -495,6 +552,22 @@ function Row({ label, value }: { label: string; value: string }) {
       <span style={{ color: "var(--text-secondary)" }}>{label}</span>
       <span style={{ color: "var(--text-primary)", fontWeight: 500, fontFamily: value.length > 20 ? "var(--font-mono)" : "inherit", wordBreak: "break-all", textAlign: "right" }}>{value}</span>
     </div>
+  );
+}
+
+function StatusPill({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        border: "1px solid var(--fill-tertiary)",
+        borderRadius: "var(--radius-sm)",
+        color: "var(--text-secondary)",
+        fontSize: 12,
+        padding: "4px 8px",
+      }}
+    >
+      {label}
+    </span>
   );
 }
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { AgentStore } from "../domain/agentStore";
 import { MemoryStore, type Memory } from "../domain/memoryStore";
-import { MemoryFileStore, type MemoryChunk } from "../domain/memoryFileStore";
+import { MemoryFileStore, memoryRoot, type MemoryChunk, type MemoryFile } from "../domain/memoryFileStore";
 import type { MemorySuggestion } from "../domain/memoryFileStore";
 import { requireIdempotencyKey, idempotencyCache } from "../middleware/idempotency";
 import { normalizeMemoryKeywords } from "../runtime/memoryRetrieval";
@@ -33,6 +33,22 @@ export interface MemorySuggestionView {
   updatedAt: string;
 }
 
+export interface MemoryFileStatusView {
+  path: string;
+  status: "indexed" | "failed";
+  indexedAt: string;
+  errorMessage: string | null;
+}
+
+export interface MemoryStatusView {
+  agentId: string;
+  rootPath: string;
+  fileCount: number;
+  chunkCount: number;
+  indexedAt: string | null;
+  files: MemoryFileStatusView[];
+}
+
 export interface MemoriesDeps {
   agents: AgentStore;
   memories: MemoryStore;
@@ -61,6 +77,48 @@ export function memoriesRouter(deps: MemoriesDeps): Hono {
       return c.json({ items: deps.memoryFiles.listChunks(agentId).map(chunkToView) });
     }
     return c.json({ items: deps.memories.list(agentId).map(toView) });
+  });
+
+  app.get("/v1/agents/:agentId/memories/status", async (c) => {
+    const agentId = c.req.param("agentId");
+    const agent = deps.agents.get(agentId);
+    if (!agent) {
+      return c.json({ code: "agent.not_found", message: agentId }, 404);
+    }
+    if (!deps.memoryFiles) {
+      return c.json({
+        agentId,
+        rootPath: agent.workspace.path,
+        fileCount: 0,
+        chunkCount: deps.memories.list(agentId).length,
+        indexedAt: null,
+        files: [],
+      } satisfies MemoryStatusView);
+    }
+    await deps.memoryFiles.migrateLegacy(agent);
+    await deps.memoryFiles.reindexAgent(agent);
+    return c.json(memoryStatusToView(agentId, memoryRoot(agent), deps.memoryFiles));
+  });
+
+  app.post("/v1/agents/:agentId/memories/reindex", async (c) => {
+    const agentId = c.req.param("agentId");
+    const agent = deps.agents.get(agentId);
+    if (!agent) {
+      return c.json({ code: "agent.not_found", message: agentId }, 404);
+    }
+    if (!deps.memoryFiles) {
+      return c.json({
+        agentId,
+        rootPath: agent.workspace.path,
+        fileCount: 0,
+        chunkCount: deps.memories.list(agentId).length,
+        indexedAt: null,
+        files: [],
+      } satisfies MemoryStatusView);
+    }
+    await deps.memoryFiles.migrateLegacy(agent);
+    await deps.memoryFiles.reindexAgent(agent);
+    return c.json(memoryStatusToView(agentId, memoryRoot(agent), deps.memoryFiles));
   });
 
   app.post(
@@ -197,6 +255,40 @@ function suggestionToView(suggestion: MemorySuggestion): MemorySuggestionView {
     createdAt: suggestion.createdAt,
     updatedAt: suggestion.updatedAt,
   };
+}
+
+function memoryStatusToView(
+  agentId: string,
+  rootPath: string,
+  memoryFiles: MemoryFileStore,
+): MemoryStatusView {
+  const files = memoryFiles.listFiles(agentId);
+  const chunks = memoryFiles.listChunks(agentId);
+  return {
+    agentId,
+    rootPath,
+    fileCount: files.length,
+    chunkCount: chunks.length,
+    indexedAt: latestIndexedAt(files),
+    files: files.map(fileToStatusView),
+  };
+}
+
+function fileToStatusView(file: MemoryFile): MemoryFileStatusView {
+  return {
+    path: file.path,
+    status: file.status,
+    indexedAt: file.indexedAt,
+    errorMessage: file.errorMessage,
+  };
+}
+
+function latestIndexedAt(files: MemoryFile[]): string | null {
+  const latest = files
+    .map((file) => file.indexedAt)
+    .sort()
+    .at(-1);
+  return latest ?? null;
 }
 
 function toView(memory: Memory): MemoryView {

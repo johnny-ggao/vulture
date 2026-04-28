@@ -74,6 +74,43 @@ describe("/v1/agents/:agentId/memories", () => {
     cleanup();
   });
 
+  test("status reports file-backed memory root and POST reindex refreshes chunks", async () => {
+    const { app, agents, cleanup } = freshApp();
+    const initial = await app.request("/v1/agents/local-work-agent/memories/status");
+
+    expect(initial.status).toBe(200);
+    const initialBody = await initial.json();
+    expect(initialBody).toMatchObject({
+      agentId: "local-work-agent",
+      rootPath: agents.get("local-work-agent")!.workspace.path,
+      fileCount: 1,
+      chunkCount: 0,
+      indexedAt: expect.any(String),
+    });
+    expect(initialBody.files).toEqual([
+      expect.objectContaining({
+        path: "MEMORY.md",
+        status: "indexed",
+      }),
+    ]);
+
+    const memoryPath = join(agents.get("local-work-agent")!.workspace.path, "MEMORY.md");
+    await Bun.write(memoryPath, "# Memory\n\nProject codename is Vulture.\n");
+
+    const reindexed = await app.request("/v1/agents/local-work-agent/memories/reindex", {
+      method: "POST",
+    });
+
+    expect(reindexed.status).toBe(200);
+    const body = await reindexed.json();
+    expect(body.chunkCount).toBe(1);
+    expect(body.files[0]).toMatchObject({
+      path: "MEMORY.md",
+      status: "indexed",
+    });
+    cleanup();
+  });
+
   test("DELETE returns conflict for file-backed memory chunks", async () => {
     const { app, cleanup } = freshApp();
     const created = await app.request("/v1/agents/local-work-agent/memories", {

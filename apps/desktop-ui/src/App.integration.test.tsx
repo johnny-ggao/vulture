@@ -495,6 +495,9 @@ describe("App integration", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Agent 记忆")).toBeDefined();
+      expect(screen.getByText("记忆根目录")).toBeDefined();
+      expect(screen.getByText("文件 1")).toBeDefined();
+      expect(screen.getByText("索引块 0")).toBeDefined();
     });
 
     const textarea = screen.getByLabelText("新增记忆") as HTMLTextAreaElement;
@@ -504,6 +507,13 @@ describe("App integration", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "删除记忆" })).toBeDefined();
       expect(screen.getByText("MEMORY.md # Memory")).toBeDefined();
+      expect(screen.getByText("索引块 1")).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "重新索引" }));
+    await waitFor(() => {
+      expect(screen.getByText("索引块 1")).toBeDefined();
+      expect((screen.getByRole("button", { name: "重新索引" }) as HTMLButtonElement).disabled).toBe(false);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "删除记忆" }));

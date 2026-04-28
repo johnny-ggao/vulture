@@ -14,7 +14,7 @@ import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
 import { skillsApi, type SkillListResponse } from "./api/skills";
-import { memoriesApi, type Memory } from "./api/memories";
+import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -531,6 +531,22 @@ export function App() {
     );
   }
 
+  async function loadMemoryStatus(agentId: string): Promise<MemoryStatus | null> {
+    if (!apiClient) return null;
+    return withGatewayRestartForMissingRoute(
+      () => memoriesApi.status(apiClient, agentId),
+      isMissingMemoriesRoute,
+    );
+  }
+
+  async function reindexMemory(agentId: string): Promise<MemoryStatus> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return withGatewayRestartForMissingRoute(
+      () => memoriesApi.reindex(apiClient, agentId),
+      isMissingMemoriesRoute,
+    );
+  }
+
   async function createMemory(agentId: string, content: string): Promise<Memory> {
     if (!apiClient) throw new Error("API client is not ready");
     return withGatewayRestartForMissingRoute(
@@ -755,6 +771,8 @@ export function App() {
               switchingProfileId={switchingProfileId}
               onSelectAgent={setSelectedAgentId}
               onListMemories={loadMemories}
+              onGetMemoryStatus={loadMemoryStatus}
+              onReindexMemory={reindexMemory}
               onCreateMemory={createMemory}
               onDeleteMemory={deleteMemory}
               onCreateProfile={handleCreateProfile}
