@@ -54,6 +54,12 @@ describe("gateway tool sdk adapter", () => {
     ).toThrow("unknown allowed tool: missing.tool");
   });
 
+  test("treats an empty allowlist as no tools", () => {
+    const registry = createCoreToolRegistry();
+
+    expect(resolveEffectiveTools(registry, { allow: [] })).toEqual([]);
+  });
+
   test("uses registry approval policy for shell workspace checks", async () => {
     const registry = createCoreToolRegistry();
     const shell = registry.get("shell.exec");

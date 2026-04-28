@@ -36,6 +36,7 @@ export interface RunsDeps {
   systemPromptForAgent(a: { id: string }): string;
   skillsPromptForAgent?: (a: { id: string }) => string;
   memoryPromptForRun?: (a: { agentId: string; input: string }) => Promise<string> | string;
+  afterRunSucceeded?: Parameters<typeof orchestrateRun>[0]["afterRunSucceeded"];
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
 }
@@ -192,6 +193,7 @@ export function runsRouter(deps: RunsDeps): Hono {
           llm: deps.llm,
           tools: deps.tools,
           cancelSignals: deps.cancelSignals,
+          afterRunSucceeded: deps.afterRunSucceeded,
         },
         {
           runId: run.id,

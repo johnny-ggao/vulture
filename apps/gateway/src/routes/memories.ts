@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AgentStore } from "../domain/agentStore";
 import { MemoryStore, type Memory } from "../domain/memoryStore";
 import { MemoryFileStore, type MemoryChunk } from "../domain/memoryFileStore";
+import type { MemorySuggestion } from "../domain/memoryFileStore";
 import { requireIdempotencyKey, idempotencyCache } from "../middleware/idempotency";
 import { normalizeMemoryKeywords } from "../runtime/memoryRetrieval";
 
@@ -15,6 +16,19 @@ export interface MemoryView {
   startLine?: number;
   endLine?: number;
   source?: "legacy" | "file";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemorySuggestionView {
+  id: string;
+  agentId: string;
+  runId: string | null;
+  conversationId: string | null;
+  content: string;
+  reason: string;
+  targetPath: string;
+  status: "pending" | "accepted" | "dismissed";
   createdAt: string;
   updatedAt: string;
 }
@@ -104,6 +118,54 @@ export function memoriesRouter(deps: MemoriesDeps): Hono {
     return c.body(null, 204);
   });
 
+  app.get("/v1/agents/:agentId/memory-suggestions", (c) => {
+    const agentId = c.req.param("agentId");
+    if (!deps.agents.get(agentId)) {
+      return c.json({ code: "agent.not_found", message: agentId }, 404);
+    }
+    if (!deps.memoryFiles) return c.json({ items: [] });
+    const status = c.req.query("status");
+    const normalized = status === "all" || status === "accepted" || status === "dismissed"
+      ? status
+      : "pending";
+    return c.json({ items: deps.memoryFiles.listSuggestions(agentId, normalized).map(suggestionToView) });
+  });
+
+  app.post("/v1/agents/:agentId/memory-suggestions/:suggestionId/accept", async (c) => {
+    const agentId = c.req.param("agentId");
+    const agent = deps.agents.get(agentId);
+    if (!agent) return c.json({ code: "agent.not_found", message: agentId }, 404);
+    if (!deps.memoryFiles) {
+      return c.json({ code: "memory.not_found", message: c.req.param("suggestionId") }, 404);
+    }
+    try {
+      return c.json(suggestionToView(await deps.memoryFiles.acceptSuggestion(agent, c.req.param("suggestionId"))));
+    } catch (err) {
+      return c.json({
+        code: "memory.not_found",
+        message: err instanceof Error ? err.message : String(err),
+      }, 404);
+    }
+  });
+
+  app.post("/v1/agents/:agentId/memory-suggestions/:suggestionId/dismiss", (c) => {
+    const agentId = c.req.param("agentId");
+    if (!deps.agents.get(agentId)) {
+      return c.json({ code: "agent.not_found", message: agentId }, 404);
+    }
+    if (!deps.memoryFiles) {
+      return c.json({ code: "memory.not_found", message: c.req.param("suggestionId") }, 404);
+    }
+    try {
+      return c.json(suggestionToView(deps.memoryFiles.dismissSuggestion(agentId, c.req.param("suggestionId"))));
+    } catch (err) {
+      return c.json({
+        code: "memory.not_found",
+        message: err instanceof Error ? err.message : String(err),
+      }, 404);
+    }
+  });
+
   return app;
 }
 
@@ -119,6 +181,21 @@ function chunkToView(memory: MemoryChunk): MemoryView {
     source: "file",
     createdAt: memory.updatedAt,
     updatedAt: memory.updatedAt,
+  };
+}
+
+function suggestionToView(suggestion: MemorySuggestion): MemorySuggestionView {
+  return {
+    id: suggestion.id,
+    agentId: suggestion.agentId,
+    runId: suggestion.runId,
+    conversationId: suggestion.conversationId,
+    content: suggestion.content,
+    reason: suggestion.reason,
+    targetPath: suggestion.targetPath,
+    status: suggestion.status,
+    createdAt: suggestion.createdAt,
+    updatedAt: suggestion.updatedAt,
   };
 }
 

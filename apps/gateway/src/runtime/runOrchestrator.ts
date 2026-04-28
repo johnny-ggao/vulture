@@ -18,6 +18,15 @@ export interface OrchestratorDeps {
   llm: LlmCallable;
   tools: ToolCallable;
   cancelSignals: Map<string, AbortController>;
+  afterRunSucceeded?: (input: {
+    runId: string;
+    conversationId: string;
+    agentId: string;
+    model: string;
+    userInput: string;
+    finalText: string;
+    workspacePath: string;
+  }) => Promise<void> | void;
 }
 
 export interface OrchestrateArgs {
@@ -121,6 +130,22 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         type: "run.completed",
         resultMessageId: assistantMsg.id,
         finalText: completedFinalText ?? result.finalText,
+      });
+      void Promise.resolve(
+        deps.afterRunSucceeded?.({
+          runId: args.runId,
+          conversationId: args.conversationId,
+          agentId: args.agentId,
+          model: args.model,
+          userInput: args.userInput,
+          finalText: result.finalText,
+          workspacePath: args.workspacePath,
+        }),
+      ).catch((err) => {
+        console.warn(
+          "[gateway] memory suggestion extraction failed",
+          err instanceof Error ? err.message : String(err),
+        );
       });
     } else {
       const error = result.error ?? fallbackRunError("run failed without error");

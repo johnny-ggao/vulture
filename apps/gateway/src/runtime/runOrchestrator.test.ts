@@ -66,6 +66,13 @@ function observeRecoveryWrites(runs: RunStore) {
   return { saved, cleared };
 }
 
+async function waitForCondition(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe("orchestrateRun recovery persistence", () => {
   test("saves recovery metadata, records LLM checkpoints, and clears recovery on success", async () => {
     const deps = freshDeps();
@@ -171,6 +178,46 @@ describe("orchestrateRun recovery persistence", () => {
       expect(
         deps.runs.listEventsAfter(run.id, -1).some((event) => event.type === "run.usage"),
       ).toBe(true);
+    } finally {
+      deps.cleanup();
+    }
+  });
+
+  test("fires afterRunSucceeded after success without blocking run completion", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const calls: Array<{ runId: string; finalText: string }> = [];
+      const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+        yield { kind: "final", text: "final answer" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools: async () => ({}),
+          cancelSignals: new Map(),
+          afterRunSucceeded: async (input) => {
+            calls.push({ runId: input.runId, finalText: input.finalText });
+          },
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+        },
+      );
+
+      await waitForCondition(() => calls.length === 1);
+      expect(calls).toEqual([{ runId: run.id, finalText: "final answer" }]);
+      expect(deps.runs.get(run.id)?.status).toBe("succeeded");
     } finally {
       deps.cleanup();
     }

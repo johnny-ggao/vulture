@@ -81,4 +81,39 @@ describe("MemoryFileStore", () => {
     expect(chunks.some((chunk) => chunk.content.includes("concise Chinese"))).toBe(true);
     cleanup();
   });
+
+  test("suggestions can be accepted into MEMORY.md or dismissed", async () => {
+    const { agent, files, cleanup } = fresh();
+    const suggestion = files.createSuggestion({
+      agentId: agent.id,
+      runId: "r-1",
+      conversationId: "c-1",
+      content: "User prefers answers in Chinese.",
+      reason: "The user explicitly requested Chinese replies.",
+      targetPath: "MEMORY.md",
+    });
+
+    expect(files.listSuggestions(agent.id, "pending").map((item) => item.id)).toEqual([
+      suggestion.id,
+    ]);
+
+    const accepted = await files.acceptSuggestion(agent, suggestion.id);
+    expect(accepted.status).toBe("accepted");
+    expect(readFileSync(join(agent.workspace.path, "MEMORY.md"), "utf8")).toContain(
+      "User prefers answers in Chinese.",
+    );
+    expect(files.search(agent, "Chinese replies", 5)).resolves.toHaveLength(1);
+
+    const dismissed = files.createSuggestion({
+      agentId: agent.id,
+      runId: "r-2",
+      conversationId: "c-1",
+      content: "Temporary note.",
+      reason: "Only for this turn.",
+      targetPath: "MEMORY.md",
+    });
+    expect(files.dismissSuggestion(agent.id, dismissed.id).status).toBe("dismissed");
+    expect(files.listSuggestions(agent.id, "pending")).toEqual([]);
+    cleanup();
+  });
 });

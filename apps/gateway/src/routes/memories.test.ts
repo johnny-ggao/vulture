@@ -112,4 +112,53 @@ describe("/v1/agents/:agentId/memories", () => {
     expect(res.status).toBe(400);
     cleanup();
   });
+
+  test("suggestions can be listed, accepted, and dismissed", async () => {
+    const { app, agents, memoryFiles, cleanup } = freshApp();
+    const agent = agents.get("local-work-agent")!;
+    const accept = memoryFiles.createSuggestion({
+      agentId: agent.id,
+      runId: "r-accept",
+      conversationId: "c-1",
+      content: "Project codename is Vulture.",
+      reason: "User confirmed the project codename.",
+      targetPath: "MEMORY.md",
+    });
+    const dismiss = memoryFiles.createSuggestion({
+      agentId: agent.id,
+      runId: "r-dismiss",
+      conversationId: "c-1",
+      content: "Temporary detail.",
+      reason: "Not durable.",
+      targetPath: "MEMORY.md",
+    });
+
+    const listed = await app.request("/v1/agents/local-work-agent/memory-suggestions");
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).items.map((item: { id: string }) => item.id)).toEqual([
+      dismiss.id,
+      accept.id,
+    ]);
+
+    const accepted = await app.request(
+      `/v1/agents/local-work-agent/memory-suggestions/${accept.id}/accept`,
+      { method: "POST" },
+    );
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json()).status).toBe("accepted");
+    expect(readFileSync(join(agent.workspace.path, "MEMORY.md"), "utf8")).toContain(
+      "Project codename is Vulture.",
+    );
+
+    const dismissed = await app.request(
+      `/v1/agents/local-work-agent/memory-suggestions/${dismiss.id}/dismiss`,
+      { method: "POST" },
+    );
+    expect(dismissed.status).toBe(200);
+    expect((await dismissed.json()).status).toBe("dismissed");
+
+    const pending = await app.request("/v1/agents/local-work-agent/memory-suggestions");
+    expect((await pending.json()).items).toEqual([]);
+    cleanup();
+  });
 });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { AuthStatusView, BrowserRelayStatus } from "../commandCenterTypes";
 import type { Agent } from "../api/agents";
-import type { Memory } from "../api/memories";
+import type { Memory, MemorySuggestion } from "../api/memories";
 
 const SECTIONS = [
   { key: "general",  label: "通用",       icon: <DotIcon /> },
@@ -26,6 +26,9 @@ export interface SettingsPageProps {
   onListMemories: (agentId: string) => Promise<Memory[]>;
   onCreateMemory: (agentId: string, content: string) => Promise<Memory>;
   onDeleteMemory: (agentId: string, memoryId: string) => Promise<void>;
+  onListMemorySuggestions: (agentId: string) => Promise<MemorySuggestion[]>;
+  onAcceptMemorySuggestion: (agentId: string, suggestionId: string) => Promise<MemorySuggestion>;
+  onDismissMemorySuggestion: (agentId: string, suggestionId: string) => Promise<MemorySuggestion>;
   onCreateProfile: (name: string) => Promise<void>;
   onSwitchProfile: (profileId: string) => Promise<void>;
   onSignInWithChatGPT: () => Promise<void>;
@@ -82,6 +85,7 @@ function MemorySection(props: SettingsPageProps) {
     [props.agents, props.selectedAgentId],
   );
   const [items, setItems] = useState<Memory[]>([]);
+  const [suggestions, setSuggestions] = useState<MemorySuggestion[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +94,7 @@ function MemorySection(props: SettingsPageProps) {
     setError(null);
     try {
       setItems(await props.onListMemories(agentId));
+      setSuggestions(await props.onListMemorySuggestions(agentId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -98,6 +103,7 @@ function MemorySection(props: SettingsPageProps) {
   useEffect(() => {
     if (!activeAgent) {
       setItems([]);
+      setSuggestions([]);
       return;
     }
     void load(activeAgent.id);
@@ -109,9 +115,38 @@ function MemorySection(props: SettingsPageProps) {
     setBusy(true);
     setError(null);
     try {
-      const created = await props.onCreateMemory(activeAgent.id, content);
-      setItems((prev) => [created, ...prev]);
+      await props.onCreateMemory(activeAgent.id, content);
+      await load(activeAgent.id);
       setDraft("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function acceptSuggestion(suggestion: MemorySuggestion) {
+    if (!activeAgent || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await props.onAcceptMemorySuggestion(activeAgent.id, suggestion.id);
+      setSuggestions((prev) => prev.filter((item) => item.id !== suggestion.id));
+      await load(activeAgent.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dismissSuggestion(suggestion: MemorySuggestion) {
+    if (!activeAgent || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await props.onDismissMemorySuggestion(activeAgent.id, suggestion.id);
+      setSuggestions((prev) => prev.filter((item) => item.id !== suggestion.id));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -175,6 +210,31 @@ function MemorySection(props: SettingsPageProps) {
       </div>
 
       {error ? <div style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div> : null}
+
+      {suggestions.length > 0 ? (
+        <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+          <h4 style={{ margin: 0, fontSize: 14 }}>待确认记忆</h4>
+          {suggestions.map((suggestion) => (
+            <article
+              key={suggestion.id}
+              style={{
+                border: "1px solid rgba(15, 15, 15, 0.08)",
+                borderRadius: "var(--radius-md)",
+                padding: 12,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>{suggestion.content}</div>
+              <div style={{ color: "var(--text-tertiary)", fontSize: 12 }}>{suggestion.targetPath} · {suggestion.reason}</div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button type="button" className="btn-secondary" disabled={busy} onClick={() => dismissSuggestion(suggestion)}>忽略</button>
+                <button type="button" className="btn-primary" disabled={busy} onClick={() => acceptSuggestion(suggestion)}>接受</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
 
       {items.length === 0 ? (
         <div className="placeholder" style={{ minHeight: 120 }}>

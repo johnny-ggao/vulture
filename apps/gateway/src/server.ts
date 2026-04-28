@@ -35,6 +35,7 @@ import { makeGatewayLocalTools } from "./runtime/gatewayLocalTools";
 import { makeLazyLlm } from "./runtime/resolveLlm";
 import { orchestrateRun } from "./runtime/runOrchestrator";
 import { recoverInflightRuns } from "./runtime/runRecovery";
+import { extractMemorySuggestions } from "./runtime/memorySuggestionExtractor";
 import {
   composeSystemPromptWithContext,
   makeSdkTool,
@@ -78,6 +79,14 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const memoryStore = new MemoryStore(db);
   const embedMemoryText = makeOpenAIEmbeddingProvider();
   const memoryFileStore = new MemoryFileStore({ db, legacy: memoryStore, embed: embedMemoryText });
+  const memoryExtractionLlm = makeLazyLlm({
+    toolNames: [],
+    toolCallable: async () => {
+      throw new Error("memory extraction does not allow tools");
+    },
+    shellCallbackUrl: cfg.shellCallbackUrl,
+    shellToken: cfg.token,
+  });
 
   // Ensure every agent's workspace directory exists. shell.exec sets cwd to
   // workspace.path; if that path is missing the spawn fails with a misleading
@@ -151,6 +160,43 @@ export function buildServer(cfg: GatewayConfig): Hono {
       await memoryPromptForRun({ agentId, input }),
       skillsPromptForAgent({ id: agentId }),
     );
+  const afterRunSucceeded = async (input: {
+    runId: string;
+    conversationId: string;
+    agentId: string;
+    model: string;
+    userInput: string;
+    finalText: string;
+    workspacePath: string;
+  }) => {
+    if (cfg.memorySuggestionsEnabled === false) return;
+    const agent = agentStore.get(input.agentId);
+    if (!agent) return;
+    const memorySummary = memoryFileStore
+      .listChunks(input.agentId)
+      .slice(0, 8)
+      .map((chunk) => chunk.content)
+      .join("\n\n");
+    const suggestions = await extractMemorySuggestions({
+      llm: memoryExtractionLlm,
+      model: input.model,
+      workspacePath: input.workspacePath,
+      runId: input.runId,
+      userInput: input.userInput,
+      assistantOutput: input.finalText,
+      memorySummary,
+    });
+    for (const suggestion of suggestions) {
+      memoryFileStore.createSuggestion({
+        agentId: input.agentId,
+        runId: input.runId,
+        conversationId: input.conversationId,
+        content: suggestion.content,
+        reason: suggestion.reason,
+        targetPath: suggestion.targetPath,
+      });
+    }
+  };
   const startConversationRun = async (conversationId: string, input: string) => {
     const conv = conversationStore.get(conversationId);
     if (!conv) throw new Error(`conversation not found: ${conversationId}`);
@@ -173,6 +219,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         llm,
         tools,
         cancelSignals,
+        afterRunSucceeded,
       },
       {
         runId: run.id,
@@ -480,6 +527,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
       systemPromptForAgent,
       skillsPromptForAgent,
       memoryPromptForRun,
+      afterRunSucceeded,
       modelForAgent,
       workspacePathForAgent,
     }),

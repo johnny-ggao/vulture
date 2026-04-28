@@ -14,7 +14,7 @@ import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
 import { skillsApi, type SkillListResponse } from "./api/skills";
-import { memoriesApi, type Memory } from "./api/memories";
+import { memoriesApi, type Memory, type MemorySuggestion } from "./api/memories";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -547,6 +547,21 @@ export function App() {
     );
   }
 
+  async function loadMemorySuggestions(agentId: string): Promise<MemorySuggestion[]> {
+    if (!apiClient) return [];
+    return memoriesApi.listSuggestions(apiClient, agentId);
+  }
+
+  async function acceptMemorySuggestion(agentId: string, suggestionId: string): Promise<MemorySuggestion> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return memoriesApi.acceptSuggestion(apiClient, agentId, suggestionId);
+  }
+
+  async function dismissMemorySuggestion(agentId: string, suggestionId: string): Promise<MemorySuggestion> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return memoriesApi.dismissSuggestion(apiClient, agentId, suggestionId);
+  }
+
   async function handleResume() {
     if (!apiClient || !activeRunId || resumingRun) return;
     const runId = activeRunId;
@@ -757,6 +772,9 @@ export function App() {
               onListMemories={loadMemories}
               onCreateMemory={createMemory}
               onDeleteMemory={deleteMemory}
+              onListMemorySuggestions={loadMemorySuggestions}
+              onAcceptMemorySuggestion={acceptMemorySuggestion}
+              onDismissMemorySuggestion={dismissMemorySuggestion}
               onCreateProfile={handleCreateProfile}
               onSwitchProfile={handleSwitchProfile}
               onSignInWithChatGPT={handleSignInWithChatGPT}

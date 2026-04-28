@@ -39,6 +39,28 @@ export interface MemoryFile {
   errorMessage: string | null;
 }
 
+export interface MemorySuggestion {
+  id: string;
+  agentId: string;
+  runId: string | null;
+  conversationId: string | null;
+  content: string;
+  reason: string;
+  targetPath: string;
+  status: "pending" | "accepted" | "dismissed";
+  createdAt: Iso8601;
+  updatedAt: Iso8601;
+}
+
+export interface CreateMemorySuggestionInput {
+  agentId: string;
+  runId?: string | null;
+  conversationId?: string | null;
+  content: string;
+  reason: string;
+  targetPath: string;
+}
+
 interface MemoryFileRow {
   id: string;
   agent_id: string;
@@ -61,6 +83,19 @@ interface MemoryChunkRow {
   embedding_json: string | null;
   start_line: number;
   end_line: number;
+  updated_at: string;
+}
+
+interface MemorySuggestionRow {
+  id: string;
+  agent_id: string;
+  run_id: string | null;
+  conversation_id: string | null;
+  content: string;
+  reason: string;
+  target_path: string;
+  status: string;
+  created_at: string;
   updated_at: string;
 }
 
@@ -172,6 +207,84 @@ export class MemoryFileStore {
     return formatMemoryToolPrompt(summary);
   }
 
+  createSuggestion(input: CreateMemorySuggestionInput): MemorySuggestion {
+    const content = input.content.trim();
+    if (!content) throw new Error("memory suggestion missing content");
+    const targetPath = normalizeAppendPath(input.targetPath);
+    const id = brandId(`memsug-${crypto.randomUUID()}`);
+    const now = nowIso8601();
+    this.opts.db
+      .query(
+        `INSERT INTO memory_suggestions(
+          id, agent_id, run_id, conversation_id, content, reason, target_path,
+          status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      )
+      .run(
+        id,
+        input.agentId,
+        input.runId ?? null,
+        input.conversationId ?? null,
+        content,
+        input.reason.trim() || "Durable memory candidate.",
+        targetPath,
+        now,
+        now,
+      );
+    return this.getSuggestion(input.agentId, id) as MemorySuggestion;
+  }
+
+  listSuggestions(
+    agentId: string,
+    status: MemorySuggestion["status"] | "all" = "pending",
+  ): MemorySuggestion[] {
+    const rows =
+      status === "all"
+        ? (this.opts.db
+            .query(
+              "SELECT * FROM memory_suggestions WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC",
+            )
+            .all(agentId) as MemorySuggestionRow[])
+        : (this.opts.db
+            .query(
+              "SELECT * FROM memory_suggestions WHERE agent_id = ? AND status = ? ORDER BY created_at DESC, rowid DESC",
+            )
+            .all(agentId, status) as MemorySuggestionRow[]);
+    return rows.map(rowToSuggestion);
+  }
+
+  getSuggestion(agentId: string, id: string): MemorySuggestion | null {
+    const row = this.opts.db
+      .query("SELECT * FROM memory_suggestions WHERE agent_id = ? AND id = ?")
+      .get(agentId, id) as MemorySuggestionRow | undefined;
+    return row ? rowToSuggestion(row) : null;
+  }
+
+  async acceptSuggestion(agent: Agent, id: string): Promise<MemorySuggestion> {
+    const suggestion = this.getSuggestion(agent.id, id);
+    if (!suggestion) throw new Error(`memory suggestion not found: ${id}`);
+    if (suggestion.status !== "pending") return suggestion;
+    await this.append(agent, suggestion.targetPath, suggestion.content);
+    return this.updateSuggestionStatus(agent.id, id, "accepted");
+  }
+
+  dismissSuggestion(agentId: string, id: string): MemorySuggestion {
+    return this.updateSuggestionStatus(agentId, id, "dismissed");
+  }
+
+  private updateSuggestionStatus(
+    agentId: string,
+    id: string,
+    status: "accepted" | "dismissed",
+  ): MemorySuggestion {
+    this.opts.db
+      .query("UPDATE memory_suggestions SET status = ?, updated_at = ? WHERE agent_id = ? AND id = ?")
+      .run(status, nowIso8601(), agentId, id);
+    const updated = this.getSuggestion(agentId, id);
+    if (!updated) throw new Error(`memory suggestion not found: ${id}`);
+    return updated;
+  }
+
   private isLegacyMigrated(agentId: string): boolean {
     const row = this.opts.db
       .query("SELECT agent_id FROM memory_legacy_migrations WHERE agent_id = ?")
@@ -260,6 +373,23 @@ export class MemoryFileStore {
     }
     return chunks;
   }
+}
+
+function rowToSuggestion(row: MemorySuggestionRow): MemorySuggestion {
+  const status =
+    row.status === "accepted" || row.status === "dismissed" ? row.status : "pending";
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    runId: row.run_id,
+    conversationId: row.conversation_id,
+    content: row.content,
+    reason: row.reason,
+    targetPath: row.target_path,
+    status,
+    createdAt: row.created_at as Iso8601,
+    updatedAt: row.updated_at as Iso8601,
+  };
 }
 
 export function memoryRoot(agent: Agent): string {

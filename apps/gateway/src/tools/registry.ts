@@ -35,7 +35,7 @@ export function resolveEffectiveTools(
   policy: ToolPolicy = {},
 ): GatewayToolSpec[] {
   const deny = new Set(policy.deny ?? []);
-  const allow = policy.allow && policy.allow.length > 0 ? new Set(policy.allow) : null;
+  const allow = policy.allow ? new Set(policy.allow) : null;
   if (allow) {
     for (const toolId of allow) {
       if (!registry.get(toolId)) {
