@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "../persistence/sqlite";
@@ -79,6 +79,23 @@ describe("MemoryFileStore", () => {
       "- User prefers concise Chinese answers.",
     );
     expect(chunks.some((chunk) => chunk.content.includes("concise Chinese"))).toBe(true);
+    cleanup();
+  });
+
+  test("reindexAgent records a failed file status instead of throwing", async () => {
+    const { agent, files, cleanup } = fresh();
+    mkdirSync(join(agent.workspace.path, "MEMORY.md"), { recursive: true });
+
+    await expect(files.reindexAgent(agent)).resolves.toBeUndefined();
+
+    expect(files.listFiles(agent.id)).toEqual([
+      expect.objectContaining({
+        path: "MEMORY.md",
+        status: "failed",
+        errorMessage: expect.any(String),
+      }),
+    ]);
+    expect(files.listChunks(agent.id)).toEqual([]);
     cleanup();
   });
 

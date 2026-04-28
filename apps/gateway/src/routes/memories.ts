@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { Agent } from "@vulture/protocol/src/v1/agent";
 import { AgentStore } from "../domain/agentStore";
 import { MemoryStore, type Memory } from "../domain/memoryStore";
 import { MemoryFileStore, memoryRoot, type MemoryChunk, type MemoryFile } from "../domain/memoryFileStore";
@@ -72,8 +73,7 @@ export function memoriesRouter(deps: MemoriesDeps): Hono {
       return c.json({ code: "agent.not_found", message: agentId }, 404);
     }
     if (deps.memoryFiles) {
-      await deps.memoryFiles.migrateLegacy(agent);
-      await deps.memoryFiles.reindexAgent(agent);
+      await refreshMemoryIndex(deps.memoryFiles, agent);
       return c.json({ items: deps.memoryFiles.listChunks(agentId).map(chunkToView) });
     }
     return c.json({ items: deps.memories.list(agentId).map(toView) });
@@ -95,8 +95,7 @@ export function memoriesRouter(deps: MemoriesDeps): Hono {
         files: [],
       } satisfies MemoryStatusView);
     }
-    await deps.memoryFiles.migrateLegacy(agent);
-    await deps.memoryFiles.reindexAgent(agent);
+    await refreshMemoryIndex(deps.memoryFiles, agent);
     return c.json(memoryStatusToView(agentId, memoryRoot(agent), deps.memoryFiles));
   });
 
@@ -116,8 +115,7 @@ export function memoriesRouter(deps: MemoriesDeps): Hono {
         files: [],
       } satisfies MemoryStatusView);
     }
-    await deps.memoryFiles.migrateLegacy(agent);
-    await deps.memoryFiles.reindexAgent(agent);
+    await refreshMemoryIndex(deps.memoryFiles, agent);
     return c.json(memoryStatusToView(agentId, memoryRoot(agent), deps.memoryFiles));
   });
 
@@ -274,6 +272,15 @@ function memoryStatusToView(
   };
 }
 
+async function refreshMemoryIndex(memoryFiles: MemoryFileStore, agent: Agent): Promise<void> {
+  try {
+    await memoryFiles.migrateLegacy(agent);
+  } catch (cause) {
+    console.warn("[gateway] memory legacy migration failed", errorMessage(cause));
+  }
+  await memoryFiles.reindexAgent(agent);
+}
+
 function fileToStatusView(file: MemoryFile): MemoryFileStatusView {
   return {
     path: file.path,
@@ -311,4 +318,8 @@ async function safeEmbed(
   } catch {
     return null;
   }
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

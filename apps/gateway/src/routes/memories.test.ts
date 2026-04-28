@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -108,6 +108,31 @@ describe("/v1/agents/:agentId/memories", () => {
       path: "MEMORY.md",
       status: "indexed",
     });
+    cleanup();
+  });
+
+  test("status and list return file failure state instead of 500 when indexing fails", async () => {
+    const { app, agents, memories, cleanup } = freshApp();
+    const agent = agents.get("local-work-agent")!;
+    memories.create({
+      agentId: agent.id,
+      content: "Legacy memory cannot migrate into a directory.",
+      keywords: ["legacy"],
+      embedding: null,
+    });
+    mkdirSync(join(agent.workspace.path, "MEMORY.md"), { recursive: true });
+
+    const status = await app.request("/v1/agents/local-work-agent/memories/status");
+    expect(status.status).toBe(200);
+    expect((await status.json()).files[0]).toMatchObject({
+      path: "MEMORY.md",
+      status: "failed",
+      errorMessage: expect.any(String),
+    });
+
+    const listed = await app.request("/v1/agents/local-work-agent/memories");
+    expect(listed.status).toBe(200);
+    expect((await listed.json()).items).toEqual([]);
     cleanup();
   });
 

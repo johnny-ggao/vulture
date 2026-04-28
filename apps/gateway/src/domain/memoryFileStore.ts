@@ -296,10 +296,18 @@ export class MemoryFileStore {
     const safePath = normalizeMemoryPath(path);
     const absolutePath = absoluteMemoryPath(agent, safePath);
     assertInsideWorkspace(agent, absolutePath);
-    const content = await readFile(absolutePath, "utf8");
-    const stats = await stat(absolutePath);
-    const fileHash = hash(content);
     const now = nowIso8601();
+    let content: string;
+    let mtimeMs = 0;
+    try {
+      const stats = await stat(absolutePath);
+      mtimeMs = Math.floor(stats.mtimeMs);
+      content = await readFile(absolutePath, "utf8");
+    } catch (cause) {
+      this.markFileFailed(agent.id, safePath, mtimeMs, errorMessage(cause), now);
+      return;
+    }
+    const fileHash = hash(content);
     const fileId = brandId(`memfile-${agent.id}-${fileHash.slice(0, 16)}`);
     const chunks = await this.buildChunks(agent, fileId, safePath, content, now);
 
@@ -308,7 +316,7 @@ export class MemoryFileStore {
         .query(
           `INSERT INTO memory_files(id, agent_id, path, mtime_ms, content_hash, indexed_at, status, error_message)
            VALUES (?, ?, ?, ?, ?, ?, 'indexed', NULL)
-           ON CONFLICT(agent_id, path) DO UPDATE SET
+          ON CONFLICT(agent_id, path) DO UPDATE SET
              id = excluded.id,
              mtime_ms = excluded.mtime_ms,
              content_hash = excluded.content_hash,
@@ -316,7 +324,7 @@ export class MemoryFileStore {
              status = excluded.status,
              error_message = NULL`,
         )
-        .run(fileId, agent.id, safePath, Math.floor(stats.mtimeMs), fileHash, now);
+        .run(fileId, agent.id, safePath, mtimeMs, fileHash, now);
       this.opts.db
         .query("DELETE FROM memory_chunks WHERE agent_id = ? AND path = ?")
         .run(agent.id, safePath);
@@ -343,6 +351,34 @@ export class MemoryFileStore {
             chunk.updatedAt,
           );
       }
+    })();
+  }
+
+  private markFileFailed(
+    agentId: string,
+    path: string,
+    mtimeMs: number,
+    message: string,
+    now: Iso8601,
+  ): void {
+    const fileId = brandId(`memfile-${agentId}-${hash(`${path}:failed`).slice(0, 16)}`);
+    this.opts.db.transaction(() => {
+      this.opts.db
+        .query(
+          `INSERT INTO memory_files(id, agent_id, path, mtime_ms, content_hash, indexed_at, status, error_message)
+           VALUES (?, ?, ?, ?, '', ?, 'failed', ?)
+           ON CONFLICT(agent_id, path) DO UPDATE SET
+             id = excluded.id,
+             mtime_ms = excluded.mtime_ms,
+             content_hash = excluded.content_hash,
+             indexed_at = excluded.indexed_at,
+             status = excluded.status,
+             error_message = excluded.error_message`,
+        )
+        .run(fileId, agentId, path, mtimeMs, now, message);
+      this.opts.db
+        .query("DELETE FROM memory_chunks WHERE agent_id = ? AND path = ?")
+        .run(agentId, path);
     })();
   }
 
@@ -534,6 +570,10 @@ async function safeEmbed(
   } catch {
     return null;
   }
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function hash(value: string): string {
