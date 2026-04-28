@@ -1,5 +1,6 @@
 import type { AgentInputItem, Session } from "@openai/agents";
 import type { ConversationContextStore } from "../domain/conversationContextStore";
+import { messageIdFromItem, textFromItem } from "./conversationContext";
 
 export class VultureConversationSession implements Session {
   constructor(
@@ -18,13 +19,22 @@ export class VultureConversationSession implements Session {
   }
 
   async addItems(items: AgentInputItem[]): Promise<void> {
+    const sessionItems = items.flatMap((item) => {
+      const role = roleFromItem(item);
+      if (role !== "user" && role !== "assistant") return [];
+      const text = textFromItem(item).trim();
+      if (!text) return [];
+      return [{
+        messageId: messageIdFromItem(item),
+        role,
+        item: textMessageSessionItem(role, text, messageIdFromItem(item)),
+      }];
+    });
+    if (sessionItems.length === 0) return;
+
     this.store.addSessionItems(
       this.conversationId,
-      items.map((item) => ({
-        messageId: null,
-        role: roleFromItem(item),
-        item,
-      })),
+      sessionItems,
     );
   }
 
@@ -42,4 +52,22 @@ function roleFromItem(item: AgentInputItem): string {
     return item.role;
   }
   return "unknown";
+}
+
+function textMessageSessionItem(
+  role: "user" | "assistant",
+  text: string,
+  messageId: string | null,
+): AgentInputItem {
+  return {
+    type: "message",
+    role,
+    ...(messageId ? { providerData: { messageId } } : {}),
+    content: [
+      {
+        type: role === "user" ? "input_text" : "output_text",
+        text,
+      },
+    ],
+  } as AgentInputItem;
 }

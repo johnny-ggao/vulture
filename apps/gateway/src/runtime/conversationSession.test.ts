@@ -41,9 +41,9 @@ describe("VultureConversationSession", () => {
 
     await session.addItems([userItem, unknownRoleItem]);
 
-    expect(await session.getItems()).toEqual([userItem, unknownRoleItem]);
-    expect(await session.getItems(1)).toEqual([unknownRoleItem]);
-    expect(await session.popItem()).toEqual(unknownRoleItem);
+    expect(await session.getItems()).toEqual([userItem]);
+    expect(await session.getItems(1)).toEqual([userItem]);
+    expect(await session.popItem()).toEqual(userItem);
     await session.clearSession();
 
     expect(store.listSessionItems).toHaveBeenLastCalledWith("c-1", 1);
@@ -51,7 +51,6 @@ describe("VultureConversationSession", () => {
     expect(store.clearSession).toHaveBeenCalledWith("c-1");
     expect(store.addSessionItems).toHaveBeenCalledWith("c-1", [
       { messageId: null, role: "user", item: userItem },
-      { messageId: null, role: "unknown", item: unknownRoleItem },
     ]);
   });
 });

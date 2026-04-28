@@ -160,6 +160,12 @@ export class ConversationContextStore {
       .run(conversationId);
   }
 
+  deleteSessionItemsForMessage(conversationId: string, messageId: string): void {
+    this.db
+      .query("DELETE FROM conversation_session_items WHERE conversation_id = ? AND message_id = ?")
+      .run(conversationId, messageId);
+  }
+
   getContext(conversationId: string): ConversationContext | null {
     const row = this.db
       .query("SELECT * FROM conversation_contexts WHERE conversation_id = ?")

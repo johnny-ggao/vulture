@@ -22,7 +22,11 @@ import { agentsRouter } from "./routes/agents";
 import { skillsRouter } from "./routes/skills";
 import { memoriesRouter } from "./routes/memories";
 import { conversationsRouter } from "./routes/conversations";
-import { runsRouter, type ResumeRunResult } from "./routes/runs";
+import {
+  runsRouter,
+  startConversationRun as startConversationRunWithContext,
+  type ResumeRunResult,
+} from "./routes/runs";
 import { attachmentsRouter } from "./routes/attachments";
 import { mcpServersRouter } from "./routes/mcpServers";
 import {
@@ -50,7 +54,6 @@ import { MemoryFileStore } from "./domain/memoryFileStore";
 import { McpServerStore } from "./domain/mcpServerStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
 import { McpClientManager } from "./runtime/mcpClientManager";
-import { combineContextPrompts } from "./routes/runs";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -170,11 +173,6 @@ export function buildServer(cfg: GatewayConfig): Hono {
     const agent = agentStore.get(agentId);
     return agent ? memoryFileStore.contextPrompt(agent) : "";
   };
-  const contextPromptForRun = async (agentId: string, input: string): Promise<string | undefined> =>
-    combineContextPrompts(
-      await memoryPromptForRun({ agentId, input }),
-      skillsPromptForAgent({ id: agentId }),
-    );
   const afterRunSucceeded = async (input: {
     runId: string;
     conversationId: string;
@@ -213,46 +211,29 @@ export function buildServer(cfg: GatewayConfig): Hono {
     }
   };
   const startConversationRun = async (conversationId: string, input: string) => {
-    const conv = conversationStore.get(conversationId);
-    if (!conv) throw new Error(`conversation not found: ${conversationId}`);
-    const userMsg = messageStore.append({
-      conversationId,
-      role: "user",
-      content: input,
-      runId: null,
-    });
-    const run = runStore.create({
-      conversationId,
-      agentId: conv.agentId,
-      triggeredByMessageId: userMsg.id,
-    });
-    orchestrateRun(
+    const result = await startConversationRunWithContext(
       {
-        runs: runStore,
-        messages: messageStore,
         conversations: conversationStore,
+        messages: messageStore,
+        attachments: attachmentStore,
+        runs: runStore,
         llm,
+        noToolsLlm: contextCompactionLlm,
         tools,
+        approvalQueue,
         cancelSignals,
+        contexts: conversationContextStore,
+        resumeRun,
+        systemPromptForAgent,
+        skillsPromptForAgent,
+        memoryPromptForRun,
         afterRunSucceeded,
+        modelForAgent,
+        workspacePathForAgent,
       },
-      {
-        runId: run.id,
-        agentId: conv.agentId,
-        model: modelForAgent({ id: conv.agentId }),
-        systemPrompt: systemPromptForAgent({ id: conv.agentId }),
-        contextPrompt: await contextPromptForRun(conv.agentId, input),
-        workspacePath: workspacePathForAgent({ id: conv.agentId }),
-        conversationId,
-        userInput: input,
-      },
-    ).catch((err) => {
-      runStore.markFailed(run.id, {
-        code: "internal",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    });
-    return { conversationId, runId: run.id, messageId: userMsg.id };
+      { conversationId, input },
+    );
+    return { conversationId, runId: result.run.id, messageId: result.message.id };
   };
   tools = makeGatewayLocalTools({
     shellTools,
