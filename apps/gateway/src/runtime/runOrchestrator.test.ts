@@ -8,6 +8,7 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore, type RunRecoveryState } from "../domain/runStore";
 import { orchestrateRun } from "./runOrchestrator";
+import type { AgentInputItem, Session, SessionInputCallback } from "@openai/agents";
 import type { LlmCallable, LlmRecoveryInput, LlmYield, ToolCallable } from "@vulture/agent-runtime";
 
 function freshDeps() {
@@ -218,6 +219,69 @@ describe("orchestrateRun recovery persistence", () => {
       await waitForCondition(() => calls.length === 1);
       expect(calls).toEqual([{ runId: run.id, finalText: "final answer" }]);
       expect(deps.runs.get(run.id)?.status).toBe("succeeded");
+    } finally {
+      deps.cleanup();
+    }
+  });
+
+  test("passes session data to the LLM and reports resultMessageId to success hook", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const session: Session = {
+        getSessionId: async () => conv.id,
+        getItems: async () => [],
+        addItems: async () => undefined,
+        popItem: async () => undefined,
+        clearSession: async () => undefined,
+      };
+      const sessionInputCallback: SessionInputCallback = (
+        historyItems: AgentInputItem[],
+        newItems: AgentInputItem[],
+      ) => [...historyItems, ...newItems];
+      const seen: unknown[] = [];
+      const hookCalls: Array<{ resultMessageId: string }> = [];
+      const llm: LlmCallable = mock(async function* (
+        input: Parameters<LlmCallable>[0],
+      ): AsyncGenerator<LlmYield, void, unknown> {
+        seen.push({
+          session: input.session,
+          sessionInputCallback: input.sessionInputCallback,
+        });
+        yield { kind: "final", text: "ok" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools: async () => ({}),
+          cancelSignals: new Map(),
+          afterRunSucceeded: async (input) => {
+            hookCalls.push({ resultMessageId: input.resultMessageId });
+          },
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+          session,
+          sessionInputCallback,
+        },
+      );
+
+      await waitForCondition(() => hookCalls.length === 1);
+      const persistedMessageId = deps.runs.get(run.id)?.resultMessageId;
+      if (!persistedMessageId) throw new Error("expected run resultMessageId");
+      expect(seen).toEqual([{ session, sessionInputCallback }]);
+      expect(hookCalls[0]?.resultMessageId).toBe(persistedMessageId);
+      expect(hookCalls[0]?.resultMessageId).toMatch(/^m-/);
     } finally {
       deps.cleanup();
     }

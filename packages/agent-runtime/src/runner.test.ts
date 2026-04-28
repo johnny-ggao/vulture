@@ -1,4 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
+import type { AgentInputItem, Session, SessionInputCallback } from "@openai/agents";
 import {
   runConversation,
   ToolCallError,
@@ -189,6 +190,47 @@ describe("runConversation", () => {
     expect(result.status).toBe("succeeded");
     expect(seen).toEqual(recovery);
     expect(checkpoints).toEqual([checkpoint]);
+  });
+
+  test("passes session and sessionInputCallback through to llm", async () => {
+    const session: Session = {
+      getSessionId: async () => "c-1",
+      getItems: async () => [],
+      addItems: async () => undefined,
+      popItem: async () => undefined,
+      clearSession: async () => undefined,
+    };
+    const sessionInputCallback: SessionInputCallback = (
+      historyItems: AgentInputItem[],
+      newItems: AgentInputItem[],
+    ) => [...historyItems, ...newItems];
+    let seen: Pick<Parameters<LlmCallable>[0], "session" | "sessionInputCallback"> | undefined;
+    const llm: LlmCallable = mock(async function* (
+      input: Parameters<LlmCallable>[0],
+    ): AsyncGenerator<LlmYield, void, unknown> {
+      seen = {
+        session: input.session,
+        sessionInputCallback: input.sessionInputCallback,
+      };
+      yield { kind: "final", text: "ok" };
+    });
+
+    const result = await runConversation({
+      runId: "r-session",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      systemPrompt: "ignored",
+      userInput: "continue",
+      workspacePath: "",
+      llm,
+      tools: async () => ({}),
+      onEvent: () => undefined,
+      session,
+      sessionInputCallback,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(seen).toEqual({ session, sessionInputCallback });
   });
 
   test("passes attachments through to llm", async () => {

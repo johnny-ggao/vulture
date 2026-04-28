@@ -1,6 +1,7 @@
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { TokenUsage } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+import type { Session, SessionInputCallback } from "@openai/agents";
 import { nowIso8601 } from "@vulture/protocol/src/v1/index";
 
 export class ToolCallError extends Error {
@@ -64,6 +65,8 @@ export type LlmCallable = (input: {
   attachments?: LlmAttachment[];
   recovery?: LlmRecoveryInput;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
+  session?: Session;
+  sessionInputCallback?: SessionInputCallback;
 }) => AsyncGenerator<LlmYield, void, unknown>;
 
 export type ToolCallable = (call: {
@@ -89,6 +92,8 @@ export interface RunConversationArgs {
   onEvent: (e: RunEvent) => void;
   recovery?: LlmRecoveryInput;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
+  session?: Session;
+  sessionInputCallback?: SessionInputCallback;
   idleTimeoutMs?: number;
 }
 
@@ -125,6 +130,8 @@ export async function runConversation(
       attachments: args.attachments,
       recovery: args.recovery,
       onCheckpoint: args.onCheckpoint,
+      session: args.session,
+      sessionInputCallback: args.sessionInputCallback,
     });
 
     let next: IteratorResult<LlmYield, void> | null = await withIdleTimeout(

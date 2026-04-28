@@ -1,6 +1,7 @@
 import type { RunStore, PartialRunEvent, RunRecoveryMetadata } from "../domain/runStore";
 import type { MessageStore } from "../domain/messageStore";
 import type { ConversationStore } from "../domain/conversationStore";
+import type { Session, SessionInputCallback } from "@openai/agents";
 import {
   runConversation,
   type LlmAttachment,
@@ -26,6 +27,7 @@ export interface OrchestratorDeps {
     userInput: string;
     finalText: string;
     workspacePath: string;
+    resultMessageId: string;
   }) => Promise<void> | void;
 }
 
@@ -40,6 +42,8 @@ export interface OrchestrateArgs {
   attachments?: LlmAttachment[];
   workspacePath: string;
   recovery?: LlmRecoveryInput;
+  session?: Session;
+  sessionInputCallback?: SessionInputCallback;
   providerKind?: RunRecoveryMetadata["providerKind"];
   recoveryFailureMode?: "recoverable";
 }
@@ -82,6 +86,8 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       llm: deps.llm,
       tools: deps.tools,
       recovery: args.recovery,
+      session: args.session,
+      sessionInputCallback: args.sessionInputCallback,
       onCheckpoint: (checkpoint) => {
         const previous = deps.runs.getRecoveryState(args.runId);
         const latestSeq = deps.runs.latestSeq(args.runId);
@@ -140,6 +146,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
           userInput: args.userInput,
           finalText: result.finalText,
           workspacePath: args.workspacePath,
+          resultMessageId: assistantMsg.id,
         }),
       ).catch((err) => {
         console.warn(
