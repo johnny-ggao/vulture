@@ -4,6 +4,7 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { AttachmentStore } from "../domain/attachmentStore";
+import { ConversationContextStore } from "../domain/conversationContextStore";
 import {
   PostMessageRequestSchema,
   type MessageAttachment,
@@ -17,6 +18,14 @@ import {
 import { orchestrateRun } from "../runtime/runOrchestrator";
 import type { LlmAttachment, LlmCallable, ToolCallable } from "@vulture/agent-runtime";
 import type { ApprovalQueue } from "../runtime/approvalQueue";
+import { VultureConversationSession } from "../runtime/conversationSession";
+import {
+  buildConversationSessionInputCallback,
+  shouldCompactConversation,
+  textFromItem,
+} from "../runtime/conversationContext";
+import { compactConversationContext } from "../runtime/conversationCompactor";
+import type { AgentInputItem, Session } from "@openai/agents";
 
 export type ResumeRunResult =
   | { status: "scheduled" }
@@ -29,9 +38,11 @@ export interface RunsDeps {
   attachments: AttachmentStore;
   runs: RunStore;
   llm: LlmCallable;
+  noToolsLlm?: LlmCallable;
   tools: ToolCallable;
   approvalQueue: ApprovalQueue;
   cancelSignals: Map<string, AbortController>;
+  contexts?: ConversationContextStore;
   resumeRun(runId: string, mode: "auto" | "manual"): ResumeRunResult;
   systemPromptForAgent(a: { id: string }): string;
   skillsPromptForAgent?: (a: { id: string }) => string;
@@ -205,6 +216,26 @@ export function runsRouter(deps: RunsDeps): Hono {
       }
       const userMsg = deps.messages.get(appendedUserMsg.id) ?? appendedUserMsg;
       const runtimeAttachments = toRuntimeAttachments(deps.attachments, userMsg.attachments);
+      const userSessionText = textWithAttachmentMetadata(parsed.data.input, userMsg.attachments);
+      if (deps.contexts) {
+        try {
+          deps.contexts.addSessionItems(cid, [
+            {
+              messageId: userMsg.id,
+              role: "user",
+              item: messageSessionItem("user", userSessionText, userMsg.id),
+            },
+          ]);
+        } catch (err) {
+          return c.json(
+            {
+              code: "internal",
+              message: `failed to persist conversation context session item: ${err instanceof Error ? err.message : String(err)}`,
+            },
+            500,
+          );
+        }
+      }
       const run = deps.runs.create({
         conversationId: cid,
         agentId: conv.agentId,
@@ -214,6 +245,18 @@ export function runsRouter(deps: RunsDeps): Hono {
         await safeMemoryPrompt(deps, { agentId: conv.agentId, input: parsed.data.input }),
         deps.skillsPromptForAgent?.({ id: conv.agentId }),
       );
+      const baseSession = deps.contexts
+        ? new VultureConversationSession(deps.contexts, cid)
+        : undefined;
+      const session = baseSession
+        ? new CurrentTurnSession(baseSession, { userText: userSessionText })
+        : undefined;
+      const sessionInputCallback = deps.contexts
+        ? buildConversationSessionInputCallback({
+            getContext: () => deps.contexts?.getContext(cid) ?? null,
+          })
+        : undefined;
+      const afterRunSucceeded = buildAfterRunSucceeded(deps);
 
       // Fire-and-forget orchestrator; SSE consumers see appended events.
       orchestrateRun(
@@ -224,7 +267,7 @@ export function runsRouter(deps: RunsDeps): Hono {
           llm: deps.llm,
           tools: deps.tools,
           cancelSignals: deps.cancelSignals,
-          afterRunSucceeded: deps.afterRunSucceeded,
+          afterRunSucceeded,
         },
         {
           runId: run.id,
@@ -236,6 +279,8 @@ export function runsRouter(deps: RunsDeps): Hono {
           conversationId: cid,
           userInput: parsed.data.input,
           attachments: runtimeAttachments,
+          session,
+          sessionInputCallback,
         },
       ).catch((err) => {
         deps.runs.markFailed(run.id, {
@@ -388,4 +433,153 @@ function toRuntimeAttachments(
       dataBase64: content.bytes.toString("base64"),
     };
   });
+}
+
+function buildAfterRunSucceeded(deps: RunsDeps): RunsDeps["afterRunSucceeded"] {
+  if (!deps.contexts && !deps.afterRunSucceeded) return undefined;
+
+  return async (input) => {
+    if (deps.contexts) {
+      try {
+        addAssistantSessionItemIfMissing(deps.contexts, input.conversationId, {
+          messageId: input.resultMessageId,
+          finalText: input.finalText,
+        });
+        scheduleCompactionIfNeeded(deps, input);
+      } catch (err) {
+        console.warn(
+          "[gateway] conversation context persistence failed",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
+
+    await deps.afterRunSucceeded?.(input);
+  };
+}
+
+function addAssistantSessionItemIfMissing(
+  contexts: ConversationContextStore,
+  conversationId: string,
+  input: { messageId: string; finalText: string },
+): void {
+  const finalText = input.finalText.trim();
+  const existing = contexts
+    .listSessionItems(conversationId)
+    .some((item) => item.role === "assistant" && textFromItem(item.item).trim() === finalText);
+  if (existing) return;
+
+  contexts.addSessionItems(conversationId, [
+    {
+      messageId: input.messageId,
+      role: "assistant",
+      item: messageSessionItem("assistant", input.finalText, input.messageId),
+    },
+  ]);
+}
+
+function scheduleCompactionIfNeeded(
+  deps: RunsDeps,
+  input: {
+    conversationId: string;
+    agentId: string;
+    model: string;
+    workspacePath: string;
+  },
+): void {
+  if (!deps.contexts || !deps.noToolsLlm) return;
+  const items = deps.contexts
+    .listSessionItems(input.conversationId)
+    .map((item) => item.item);
+  if (!shouldCompactConversation({ items })) return;
+
+  const existing = deps.contexts.getContext(input.conversationId);
+  void compactConversationContext({
+    conversationId: input.conversationId,
+    agentId: input.agentId,
+    model: input.model,
+    workspacePath: input.workspacePath,
+    items,
+    existingSummary: existing?.summary ?? null,
+    llm: deps.noToolsLlm,
+    upsertContext: (context) => {
+      deps.contexts?.upsertContext(context);
+    },
+  }).catch((err) => {
+    console.warn(
+      "[gateway] conversation context compaction failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+}
+
+function messageSessionItem(
+  role: "user" | "assistant",
+  text: string,
+  messageId: string,
+): AgentInputItem {
+  return {
+    type: "message",
+    role,
+    providerData: { messageId },
+    content: [
+      {
+        type: role === "user" ? "input_text" : "output_text",
+        text,
+      },
+    ],
+  } as AgentInputItem;
+}
+
+function textWithAttachmentMetadata(input: string, attachments: MessageAttachment[]): string {
+  if (attachments.length === 0) return input;
+  const attachmentLines = attachments.map((attachment) =>
+    [
+      "- ",
+      attachment.displayName,
+      ` (id: ${attachment.id}, kind: ${attachment.kind}, mime: ${attachment.mimeType}, size: ${attachment.sizeBytes} bytes)`,
+    ].join(""),
+  );
+  return [input, "", "Attachments:", ...attachmentLines].join("\n");
+}
+
+class CurrentTurnSession implements Session {
+  constructor(
+    private readonly delegate: VultureConversationSession,
+    private readonly currentTurn: { userText: string },
+  ) {}
+
+  getSessionId(): Promise<string> {
+    return this.delegate.getSessionId();
+  }
+
+  getItems(limit?: number): Promise<AgentInputItem[]> {
+    return this.delegate.getItems(limit);
+  }
+
+  async addItems(items: AgentInputItem[]): Promise<void> {
+    const filtered = items.filter((item) => !this.isDuplicateCurrentUserItem(item));
+    if (filtered.length === 0) return;
+    await this.delegate.addItems(filtered);
+  }
+
+  popItem(): Promise<AgentInputItem | undefined> {
+    return this.delegate.popItem();
+  }
+
+  clearSession(): Promise<void> {
+    return this.delegate.clearSession();
+  }
+
+  private isDuplicateCurrentUserItem(item: AgentInputItem): boolean {
+    return roleFromItem(item) === "user" &&
+      textFromItem(item).trim() === this.currentTurn.userText.trim();
+  }
+}
+
+function roleFromItem(item: AgentInputItem): string {
+  if (typeof item === "object" && item !== null && "role" in item && typeof item.role === "string") {
+    return item.role;
+  }
+  return "unknown";
 }

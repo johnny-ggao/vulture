@@ -8,9 +8,11 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { AttachmentStore } from "../domain/attachmentStore";
-import { runsRouter, writeRunEventStream, type ResumeRunResult } from "./runs";
+import { ConversationContextStore } from "../domain/conversationContextStore";
+import { runsRouter, writeRunEventStream, type ResumeRunResult, type RunsDeps } from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { ApprovalQueue } from "../runtime/approvalQueue";
+import type { AgentInputItem } from "@openai/agents";
 
 const TOKEN = "x".repeat(43);
 const auth = { Authorization: `Bearer ${TOKEN}` };
@@ -27,6 +29,8 @@ function fresh(
   llm: LlmCallable = fakeLlm,
   skillsPromptForAgent?: () => string,
   memoryPromptForRun?: (input: { agentId: string; input: string }) => Promise<string> | string,
+  afterRunSucceeded?: RunsDeps["afterRunSucceeded"],
+  noToolsLlm?: LlmCallable,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
@@ -35,6 +39,7 @@ function fresh(
   const msgs = new MessageStore(db);
   const runs = new RunStore(db);
   const attachments = new AttachmentStore(db, dir);
+  const contexts = new ConversationContextStore(db);
   const c = convs.create({ agentId: "local-work-agent" });
   const app = runsRouter({
     conversations: convs,
@@ -46,9 +51,12 @@ function fresh(
     approvalQueue: new ApprovalQueue(),
     cancelSignals: new Map<string, AbortController>(),
     resumeRun,
+    contexts,
+    noToolsLlm,
     systemPromptForAgent: () => "system",
     skillsPromptForAgent,
     memoryPromptForRun,
+    afterRunSucceeded,
     modelForAgent: () => "gpt-5.4",
     workspacePathForAgent: () => "",
   });
@@ -58,9 +66,24 @@ function fresh(
     runs,
     msgs,
     attachments,
+    contexts,
     resumeRun,
     cleanup: () => { db.close(); rmSync(dir, { recursive: true }); },
   };
+}
+
+async function waitFor<T>(
+  read: () => T,
+  done: (value: T) => boolean,
+  attempts = 50,
+): Promise<T> {
+  let value = read();
+  for (let i = 0; i < attempts; i += 1) {
+    if (done(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    value = read();
+  }
+  return value;
 }
 
 describe("/v1/runs", () => {
@@ -143,6 +166,179 @@ describe("/v1/runs", () => {
       if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
     }
     expect(final.status).toBe("succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs stores user session item and passes session inputs", async () => {
+    const seen: Parameters<LlmCallable>[0][] = [];
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      seen.push(input);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, runs, contexts, cleanup } = fresh(undefined, llm);
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-user" },
+      body: JSON.stringify({ input: "remember this turn" }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    await waitFor(() => seen.length, (length) => length > 0);
+    const userItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "user");
+    expect(userItems).toHaveLength(1);
+    expect(userItems[0].messageId).toBe(body.message.id);
+    expect(userItems[0].item).toMatchObject({
+      type: "message",
+      role: "user",
+      providerData: { messageId: body.message.id },
+    });
+    expect(seen[0].session).toBeTruthy();
+    expect(typeof seen[0].sessionInputCallback).toBe("function");
+    await waitFor(() => runs.get(body.run.id), (run) => run?.status === "succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs includes attachment metadata in user session text", async () => {
+    const { app, c, runs, attachments, contexts, cleanup } = fresh();
+    const draft = await attachments.createDraft({
+      bytes: new TextEncoder().encode("attachment notes"),
+      originalName: "notes.txt",
+      mimeType: "text/plain",
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-attachment" },
+      body: JSON.stringify({ input: "read this", attachmentIds: [draft.id] }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    const userItem = contexts
+      .listSessionItems(c.id)
+      .find((item) => item.messageId === body.message.id);
+    expect(JSON.stringify(userItem?.item)).toContain("read this");
+    expect(JSON.stringify(userItem?.item)).toContain(draft.id);
+    expect(JSON.stringify(userItem?.item)).toContain("notes.txt");
+    expect(JSON.stringify(userItem?.item)).toContain("text/plain");
+    await waitFor(() => runs.get(body.run.id), (run) => run?.status === "succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs stores assistant session item after success", async () => {
+    const { app, c, runs, contexts, cleanup } = fresh();
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-assistant" },
+      body: JSON.stringify({ input: "answer me" }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    const finalRun = await waitFor(
+      () => runs.get(body.run.id),
+      (run) => run?.status === "succeeded",
+    );
+    const assistantItem = contexts
+      .listSessionItems(c.id)
+      .find((item) => item.role === "assistant" && item.messageId === finalRun?.resultMessageId);
+    expect(assistantItem?.item).toMatchObject({
+      type: "message",
+      role: "assistant",
+      providerData: { messageId: finalRun?.resultMessageId },
+    });
+    expect(JSON.stringify(assistantItem?.item)).toContain("ok");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs schedules compaction and preserves success hook", async () => {
+    const afterRunSucceeded = mock(async () => {});
+    const compactionCalls: Parameters<LlmCallable>[0][] = [];
+    const noToolsLlm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      compactionCalls.push(input);
+      yield { kind: "final", text: "Earlier turns summarized." };
+    };
+    const { app, c, contexts, cleanup } = fresh(
+      undefined,
+      fakeLlm,
+      undefined,
+      undefined,
+      afterRunSucceeded,
+      noToolsLlm,
+    );
+    contexts.addSessionItems(c.id, Array.from({ length: 11 }, (_, index) => {
+      const role = index % 2 === 0 ? "user" : "assistant";
+      const item = {
+        type: "message",
+        role,
+        ...(role === "assistant" ? { status: "completed" as const } : {}),
+        providerData: { messageId: `m-seed-${index}` },
+        content: [
+          {
+            type: role === "user" ? "input_text" : "output_text",
+            text: `seed ${index}`,
+          },
+        ],
+      } as AgentInputItem;
+      return {
+        messageId: `m-seed-${index}`,
+        role,
+        item,
+      };
+    }));
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-compact" },
+      body: JSON.stringify({ input: "new turn" }),
+    });
+
+    expect(res.status).toBe(202);
+    await waitFor(() => afterRunSucceeded.mock.calls.length, (length) => length > 0);
+    await waitFor(() => contexts.getContext(c.id), (context) => context !== null);
+    expect(compactionCalls).toHaveLength(1);
+    expect(contexts.getContext(c.id)).toMatchObject({
+      conversationId: c.id,
+      summary: "Earlier turns summarized.",
+    });
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs does not duplicate the current user session item when SDK stores it", async () => {
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      await input.session?.addItems([
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "dedupe me" }],
+        } as AgentInputItem,
+      ]);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, contexts, cleanup } = fresh(undefined, llm);
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-dedupe" },
+      body: JSON.stringify({ input: "dedupe me" }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    await waitFor(
+      () => contexts.listSessionItems(c.id).filter((item) => item.role === "assistant").length,
+      (length) => length > 0,
+    );
+    const matchingUserItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "user" && JSON.stringify(item.item).includes("dedupe me"));
+    expect(matchingUserItems).toHaveLength(1);
+    expect(matchingUserItems[0].messageId).toBe(body.message.id);
     cleanup();
   });
 

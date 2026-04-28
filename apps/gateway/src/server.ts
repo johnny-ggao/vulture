@@ -15,6 +15,7 @@ import { ConversationStore } from "./domain/conversationStore";
 import { MessageStore } from "./domain/messageStore";
 import { AttachmentStore } from "./domain/attachmentStore";
 import { RunStore } from "./domain/runStore";
+import { ConversationContextStore } from "./domain/conversationContextStore";
 import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
@@ -79,6 +80,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const messageStore = new MessageStore(db);
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
+  const conversationContextStore = new ConversationContextStore(db);
   const memoryStore = new MemoryStore(db);
   const mcpServerStore = new McpServerStore(db);
   const mcpClientManager = new McpClientManager(mcpServerStore);
@@ -88,6 +90,14 @@ export function buildServer(cfg: GatewayConfig): Hono {
     toolNames: [],
     toolCallable: async () => {
       throw new Error("memory extraction does not allow tools");
+    },
+    shellCallbackUrl: cfg.shellCallbackUrl,
+    shellToken: cfg.token,
+  });
+  const contextCompactionLlm = makeLazyLlm({
+    toolNames: [],
+    toolCallable: async () => {
+      throw new Error("conversation context compaction does not allow tools");
     },
     shellCallbackUrl: cfg.shellCallbackUrl,
     shellToken: cfg.token,
@@ -534,6 +544,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     conversationsRouter({
       conversations: conversationStore,
       messages: messageStore,
+      contexts: conversationContextStore,
     }),
   );
   app.route(
@@ -544,9 +555,11 @@ export function buildServer(cfg: GatewayConfig): Hono {
       attachments: attachmentStore,
       runs: runStore,
       llm,
+      noToolsLlm: contextCompactionLlm,
       tools,
       approvalQueue,
       cancelSignals,
+      contexts: conversationContextStore,
       resumeRun,
       systemPromptForAgent,
       skillsPromptForAgent,
