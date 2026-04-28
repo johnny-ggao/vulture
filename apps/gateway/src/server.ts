@@ -23,6 +23,7 @@ import { memoriesRouter } from "./routes/memories";
 import { conversationsRouter } from "./routes/conversations";
 import { runsRouter, type ResumeRunResult } from "./routes/runs";
 import { attachmentsRouter } from "./routes/attachments";
+import { mcpServersRouter } from "./routes/mcpServers";
 import {
   assembleAgentInstructions,
   type ToolCallable,
@@ -45,7 +46,9 @@ import {
 import { filterSkillEntries, formatSkillsForPrompt, loadSkillEntries } from "./runtime/skills";
 import { MemoryStore } from "./domain/memoryStore";
 import { MemoryFileStore } from "./domain/memoryFileStore";
+import { McpServerStore } from "./domain/mcpServerStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
+import { McpClientManager } from "./runtime/mcpClientManager";
 import { combineContextPrompts } from "./routes/runs";
 
 export function buildServer(cfg: GatewayConfig): Hono {
@@ -77,6 +80,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
   const memoryStore = new MemoryStore(db);
+  const mcpServerStore = new McpServerStore(db);
+  const mcpClientManager = new McpClientManager(mcpServerStore);
   const embedMemoryText = makeOpenAIEmbeddingProvider();
   const memoryFileStore = new MemoryFileStore({ db, legacy: memoryStore, embed: embedMemoryText });
   const memoryExtractionLlm = makeLazyLlm({
@@ -242,6 +247,10 @@ export function buildServer(cfg: GatewayConfig): Hono {
   tools = makeGatewayLocalTools({
     shellTools,
     appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
+    mcp: {
+      canHandle: (toolName) => mcpClientManager.canHandle(toolName),
+      execute: (call) => mcpClientManager.executeToolCall(call),
+    },
     sessions: {
       list: (input) => {
         const limit = typeof (input as { limit?: unknown }).limit === "number"
@@ -366,8 +375,12 @@ export function buildServer(cfg: GatewayConfig): Hono {
     toolNames: AGENT_TOOL_NAMES,
     toolCallable: tools,
     approvalCallable,
+    mcpToolProvider: () => mcpClientManager.getSdkToolsForRun(),
     shellCallbackUrl: cfg.shellCallbackUrl,
     shellToken: cfg.token,
+  });
+  void mcpClientManager.getSdkToolsForRun().catch((err) => {
+    console.warn("[gateway] MCP startup discovery failed", err instanceof Error ? err.message : String(err));
   });
 
   const resumeRun = (runId: string, mode: "auto" | "manual"): ResumeRunResult => {
@@ -500,6 +513,17 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
+  app.route(
+    "/",
+    mcpServersRouter({
+      store: mcpServerStore,
+      runtime: {
+        status: (serverId) => mcpClientManager.status(serverId),
+        reconnect: (serverId) => mcpClientManager.reconnect(serverId),
+        tools: (serverId) => mcpClientManager.listTools(serverId),
+      },
+    }),
+  );
   app.route(
     "/",
     memoriesRouter({ agents: agentStore, memories: memoryStore, memoryFiles: memoryFileStore, embed: embedMemoryText }),

@@ -42,12 +42,18 @@ export interface GatewayMemoryTools {
   append(call: Parameters<ToolCallable>[0]): Promise<unknown>;
 }
 
+export interface GatewayMcpTools {
+  canHandle(toolName: string): boolean;
+  execute(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+}
+
 export interface GatewayLocalToolsOptions {
   shellTools: ToolCallable;
   appendEvent?: (runId: string, partial: PartialRunEvent) => void;
   fetch?: FetchLike;
   sessions?: GatewaySessionsTools;
   memory?: GatewayMemoryTools;
+  mcp?: GatewayMcpTools;
 }
 
 interface ManagedProcess {
@@ -68,7 +74,8 @@ export function makeGatewayLocalTools(opts: GatewayLocalToolsOptions): ToolCalla
   const f = opts.fetch ?? fetch;
 
   return async (call) => {
-    if (!LOCAL_TOOL_NAMES.has(call.tool)) return opts.shellTools(call);
+    const isMcpTool = opts.mcp?.canHandle(call.tool) ?? false;
+    if (!LOCAL_TOOL_NAMES.has(call.tool) && !isMcpTool) return opts.shellTools(call);
     opts.appendEvent?.(call.runId, {
       type: "tool.planned",
       callId: call.callId,
@@ -82,6 +89,7 @@ export function makeGatewayLocalTools(opts: GatewayLocalToolsOptions): ToolCalla
         fetch: f,
         sessions: opts.sessions,
         memory: opts.memory,
+        mcp: opts.mcp,
       });
       opts.appendEvent?.(call.runId, {
         type: "tool.completed",
@@ -110,8 +118,12 @@ async function executeLocalTool(
     fetch: FetchLike;
     sessions?: GatewaySessionsTools;
     memory?: GatewayMemoryTools;
+    mcp?: GatewayMcpTools;
   },
 ): Promise<unknown> {
+  if (deps.mcp?.canHandle(call.tool)) {
+    return deps.mcp.execute(call);
+  }
   switch (call.tool) {
     case "read":
       return readTool(call);

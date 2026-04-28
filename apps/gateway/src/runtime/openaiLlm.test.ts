@@ -10,13 +10,14 @@ import {
   sdkStateHasInterruptions,
   sdkApprovalDecision,
   buildSdkUserInput,
+  buildSdkToolsForRun,
   composeSystemPromptWithContext,
   composeUserInputWithContext,
   SdkTextDeltaDeduper,
   type SdkRunEvent,
   type SdkRunContext,
 } from "./openaiLlm";
-import { RunContext } from "@openai/agents";
+import { RunContext, tool } from "@openai/agents";
 import type { LlmYield } from "@vulture/agent-runtime";
 import type { ToolCallable } from "@vulture/agent-runtime";
 
@@ -27,6 +28,33 @@ type TestFunctionTool = {
 };
 
 describe("makeOpenAILlm", () => {
+  test("builds run tools from core tools plus MCP provider tools", async () => {
+    const mcpTool = tool({
+      name: "mcp_echo_server_echo",
+      description: "Echo",
+      parameters: { type: "object", properties: {}, required: [], additionalProperties: false } as never,
+      execute: async () => "ok",
+    });
+
+    const tools = await buildSdkToolsForRun({
+      toolNames: ["read"],
+      mcpToolProvider: async () => [mcpTool],
+    });
+
+    expect(tools.map((item) => item.name)).toEqual(["read", "mcp_echo_server_echo"]);
+  });
+
+  test("keeps core tools when MCP tool discovery fails", async () => {
+    const tools = await buildSdkToolsForRun({
+      toolNames: ["read"],
+      mcpToolProvider: async () => {
+        throw new Error("mcp down");
+      },
+    });
+
+    expect(tools.map((item) => item.name)).toEqual(["read"]);
+  });
+
   test("builds Agents SDK multimodal user input from attachments", () => {
     expect(
       buildSdkUserInput("describe", [

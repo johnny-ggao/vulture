@@ -71,6 +71,7 @@ export interface CodexLlmOptions {
   codexToken?: CodexShellResponse;
   runFactory?: OpenAILlmOptions["runFactory"];
   approvalCallable?: OpenAILlmOptions["approvalCallable"];
+  mcpToolProvider?: OpenAILlmOptions["mcpToolProvider"];
 }
 
 /**
@@ -218,6 +219,7 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
       modelProvider: makeResponsesModelProvider({ openAIClient: client }),
       runFactory: opts.runFactory,
       approvalCallable: opts.approvalCallable,
+      mcpToolProvider: opts.mcpToolProvider,
     });
     yield* inner(input);
   };

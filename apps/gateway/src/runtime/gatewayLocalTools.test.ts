@@ -283,4 +283,52 @@ describe("gateway local tools", () => {
       `append:${workspacePath}`,
     ]);
   });
+
+  test("MCP tools execute through injected MCP service and emit normal tool events", async () => {
+    const workspacePath = await tempWorkspace();
+    const events: unknown[] = [];
+    const tools = makeGatewayLocalTools({
+      shellTools: async () => "shell",
+      appendEvent: (_runId, event) => events.push(event),
+      mcp: {
+        canHandle: (toolName) => toolName === "mcp_echo_server_echo",
+        execute: async (call) => ({
+          echoed: call.input,
+          approvalToken: call.approvalToken,
+        }),
+      },
+    });
+
+    await expect(
+      tools({
+        callId: "c-mcp",
+        runId: "r",
+        tool: "mcp_echo_server_echo",
+        workspacePath,
+        approvalToken: "approved",
+        input: { text: "hello" },
+      }),
+    ).resolves.toEqual({
+      echoed: { text: "hello" },
+      approvalToken: "approved",
+    });
+
+    expect(events).toEqual([
+      {
+        type: "tool.planned",
+        callId: "c-mcp",
+        tool: "mcp_echo_server_echo",
+        input: { text: "hello" },
+      },
+      { type: "tool.started", callId: "c-mcp" },
+      {
+        type: "tool.completed",
+        callId: "c-mcp",
+        output: {
+          echoed: { text: "hello" },
+          approvalToken: "approved",
+        },
+      },
+    ]);
+  });
 });

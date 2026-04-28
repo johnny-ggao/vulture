@@ -90,6 +90,38 @@ describe("/v1/runs", () => {
     cleanup();
   });
 
+  test("writeRunEventStream replays terminal event when reconnect is caught up", async () => {
+    const { c, runs, msgs, cleanup } = fresh();
+    const userMsg = msgs.append({ conversationId: c.id, role: "user", content: "x", runId: null });
+    const run = runs.create({
+      conversationId: c.id,
+      agentId: c.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    runs.appendEvent(run.id, { type: "run.started", agentId: c.agentId, model: "gpt-5.4" });
+    runs.markFailed(run.id, { code: "internal", message: "boom" });
+    const failed = runs.appendEvent(run.id, {
+      type: "run.failed",
+      error: { code: "internal", message: "boom" },
+    });
+
+    const writes: Array<{ event?: string; data: string }> = [];
+    const stream = {
+      aborted: false,
+      closed: false,
+      async writeSSE(message: { event?: string; data: string }) {
+        writes.push(message);
+      },
+    };
+
+    await writeRunEventStream({ runs }, run.id, failed.seq, stream, { heartbeatMs: 10 });
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0].event).toBe("run.failed");
+    expect(JSON.parse(writes[0].data).seq).toBe(failed.seq);
+    cleanup();
+  });
+
   test("POST /v1/conversations/:cid/runs returns 202 + run + message + eventStreamUrl", async () => {
     const { app, c, cleanup } = fresh();
     const res = await app.request(`/v1/conversations/${c.id}/runs`, {

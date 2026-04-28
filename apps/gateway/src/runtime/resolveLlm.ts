@@ -3,6 +3,7 @@ import {
   makeOpenAILlm,
   makeStubLlmFallback,
   type OpenAILlmOptions,
+  type McpToolProvider,
   type SdkApprovalCallable,
 } from "./openaiLlm";
 import {
@@ -19,6 +20,7 @@ export interface ResolveLlmDeps {
   shellCallbackUrl: string;
   shellToken: string;
   approvalCallable?: SdkApprovalCallable;
+  mcpToolProvider?: McpToolProvider;
   runFactory?: OpenAILlmOptions["runFactory"];
   /** Test injection point. Defaults to global fetch. */
   fetch?: typeof fetch;
@@ -66,6 +68,7 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
         fetch: deps.fetch,
         codexToken,
         approvalCallable: deps.approvalCallable,
+        mcpToolProvider: deps.mcpToolProvider,
         runFactory: deps.runFactory,
       });
       yield* inner(input);
@@ -91,6 +94,7 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
         toolNames: deps.toolNames,
         toolCallable: deps.toolCallable,
         approvalCallable: deps.approvalCallable,
+        mcpToolProvider: deps.mcpToolProvider,
         runFactory: deps.runFactory,
       });
       yield* inner(input);

@@ -6,6 +6,7 @@ import type {
   RunStreamEvent,
   RunToolApprovalItem,
   StreamedRunResult,
+  Tool,
 } from "@openai/agents";
 import type {
   LlmCallable,
@@ -47,6 +48,8 @@ export type SdkApprovalCallable = (request: {
   approvalToken: string;
 }) => Promise<"allow" | "deny">;
 
+export type McpToolProvider = () => Promise<Tool<SdkRunContext>[]>;
+
 export interface RunFactoryInput {
   systemPrompt: string;
   contextPrompt?: string;
@@ -61,6 +64,7 @@ export interface RunFactoryInput {
   modelProvider: ModelProvider;
   tracingDisabled: boolean;
   approvalCallable?: SdkApprovalCallable;
+  mcpToolProvider?: McpToolProvider;
   recovery?: LlmRecoveryInput;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
 }
@@ -72,6 +76,7 @@ export interface OpenAILlmOptions {
   modelProvider?: ModelProvider;
   tracingDisabled?: boolean;
   approvalCallable?: SdkApprovalCallable;
+  mcpToolProvider?: McpToolProvider;
   /**
    * Factory that returns an async iterable of SDK events for one run. Default
    * uses the real @openai/agents Run; tests inject a deterministic stream so
@@ -98,6 +103,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
       modelProvider,
       tracingDisabled: opts.tracingDisabled ?? true,
       approvalCallable: opts.approvalCallable,
+      mcpToolProvider: opts.mcpToolProvider,
       recovery: input.recovery,
       onCheckpoint: input.onCheckpoint,
     });
@@ -122,8 +128,7 @@ export type SdkRunContext = GatewayToolRunContext;
 async function* defaultRunFactory(
   input: RunFactoryInput,
 ): AsyncIterable<SdkRunEvent> {
-  const registry = createCoreToolRegistry();
-  const tools = resolveEffectiveTools(registry, { allow: input.toolNames }).map(toSdkTool);
+  const tools = await buildSdkToolsForRun(input);
   const agent = new Agent<SdkRunContext>({
     name: "local-work",
     instructions: composeSystemPromptWithContext(input.systemPrompt, input.contextPrompt),
@@ -203,6 +208,21 @@ async function* defaultRunFactory(
     }
     runInput = stream.state;
   }
+}
+
+export async function buildSdkToolsForRun(input: Pick<RunFactoryInput, "toolNames" | "mcpToolProvider">): Promise<Tool<SdkRunContext>[]> {
+  const registry = createCoreToolRegistry();
+  const tools = resolveEffectiveTools(registry, { allow: input.toolNames }).map(toSdkTool);
+  if (!input.mcpToolProvider) return tools;
+  try {
+    tools.push(...await input.mcpToolProvider());
+  } catch (err) {
+    console.warn(
+      "[gateway] MCP tool discovery failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  return tools;
 }
 
 export function tokenUsageFromSdkUsage(usage: unknown): TokenUsage | null {

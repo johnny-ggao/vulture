@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef } from "react";
 import type { ApiClient } from "../api/client";
+import type { RunDto, RunStatus } from "../api/runs";
 import { sseStream, type SseFrame } from "../api/sse";
 import { readRunLastSeq, writeRunLastSeq } from "../chat/recoveryState";
 
@@ -51,6 +52,14 @@ function isTerminal(s: RunStreamStatus): boolean {
   return TERMINAL.includes(s);
 }
 
+function terminalStatusForEvent(type: string): RunStreamStatus | null {
+  if (type === "run.completed") return "succeeded";
+  if (type === "run.failed") return "failed";
+  if (type === "run.cancelled") return "cancelled";
+  if (type === "run.recoverable") return "recoverable";
+  return null;
+}
+
 export function parseRunEventFrame(frame: SseFrame): AnyRunEvent | null {
   if (frame.event === "ping" || frame.data.trim().length === 0) return null;
   return JSON.parse(frame.data) as AnyRunEvent;
@@ -70,13 +79,12 @@ export function runStreamReducer(state: RunStreamState, action: RunStreamAction)
       return { ...state, status: "streaming", error: null };
     case "frame": {
       if (isTerminal(state.status)) return state;
-      if (action.event.seq <= state.lastSeq) return state;
+      const terminalStatus = terminalStatusForEvent(action.event.type);
+      if (action.event.seq <= state.lastSeq) {
+        return terminalStatus ? { ...state, status: terminalStatus, error: null } : state;
+      }
       const events = [...state.events, action.event];
-      let status: RunStreamStatus = "streaming";
-      if (action.event.type === "run.completed") status = "succeeded";
-      else if (action.event.type === "run.failed") status = "failed";
-      else if (action.event.type === "run.cancelled") status = "cancelled";
-      else if (action.event.type === "run.recoverable") status = "recoverable";
+      const status: RunStreamStatus = terminalStatus ?? "streaming";
       return { ...state, events, lastSeq: action.event.seq, status };
     }
     case "error":
@@ -160,6 +168,12 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
             }
           }
           if (sawTerminal || isTerminal(stateRef.current.status)) return;
+          const terminal = await terminalEventFromRun(opts.client!, runId, stateRef.current.lastSeq);
+          if (terminal) {
+            dispatch({ type: "frame", event: terminal });
+            sawTerminal = true;
+            return;
+          }
           // stream ended cleanly without terminal event
           dispatch({ type: "error", error: "stream ended unexpectedly" });
         } catch (cause) {
@@ -180,4 +194,32 @@ export function useRunStream(opts: UseRunStreamOptions): RunStreamState {
   }, [opts.client, opts.runId, opts.fetch, opts.reconnectKey]);
 
   return state;
+}
+
+async function terminalEventFromRun(
+  client: ApiClient,
+  runId: string,
+  lastSeq: number,
+): Promise<AnyRunEvent | null> {
+  const run = await client.get<RunDto>(`/v1/runs/${runId}`);
+  const type = eventTypeForRunStatus(run.status);
+  if (!type) return null;
+  return {
+    type,
+    runId,
+    seq: Math.max(lastSeq, 0),
+    createdAt: run.endedAt ?? new Date().toISOString(),
+    ...(type === "run.completed"
+      ? { resultMessageId: run.resultMessageId ?? "", finalText: "" }
+      : {}),
+    ...(type === "run.failed" ? { error: run.error } : {}),
+  };
+}
+
+function eventTypeForRunStatus(status: RunStatus): string | null {
+  if (status === "succeeded") return "run.completed";
+  if (status === "failed") return "run.failed";
+  if (status === "cancelled") return "run.cancelled";
+  if (status === "recoverable") return "run.recoverable";
+  return null;
 }

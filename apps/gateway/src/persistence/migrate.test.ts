@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 8;
+const LATEST_SCHEMA_VERSION = 10;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -195,6 +195,51 @@ describe("migrate", () => {
     expect(memoryFilesColumns.map((c) => c.name)).toContain("content_hash");
     expect(memoryChunksColumns.map((c) => c.name)).toContain("embedding_json");
     expect(memorySuggestionsColumns.map((c) => c.name)).toContain("status");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("009 adds MCP server config table", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v9-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(mcp_servers)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toEqual([
+      "id",
+      "profile_id",
+      "name",
+      "transport",
+      "command",
+      "args_json",
+      "cwd",
+      "env_json",
+      "trust",
+      "enabled",
+      "created_at",
+      "updated_at",
+      "enabled_tools_json",
+      "disabled_tools_json",
+    ]);
+    expect(columns.find((c) => c.name === "profile_id")?.notnull).toBe(1);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("010 adds MCP tool visibility policy columns", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v10-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(mcp_servers)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toContain("enabled_tools_json");
+    expect(columns.map((c) => c.name)).toContain("disabled_tools_json");
+    expect(columns.find((c) => c.name === "enabled_tools_json")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "disabled_tools_json")?.notnull).toBe(1);
     db.close();
     rmSync(dir, { recursive: true });
   });

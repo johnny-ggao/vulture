@@ -15,6 +15,13 @@ import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
 import { skillsApi, type SkillListResponse } from "./api/skills";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
+import {
+  mcpServersApi,
+  type McpServer,
+  type McpToolSummary,
+  type SaveMcpServer,
+  type UpdateMcpServer,
+} from "./api/mcpServers";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -84,6 +91,14 @@ function isMissingMemoriesRoute(cause: unknown): boolean {
   return (
     cause instanceof Error &&
     cause.message.includes("/memories") &&
+    cause.message.includes("HTTP 404")
+  );
+}
+
+function isMissingMcpRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("/v1/mcp/servers") &&
     cause.message.includes("HTTP 404")
   );
 }
@@ -563,6 +578,54 @@ export function App() {
     );
   }
 
+  async function loadMcpServers(): Promise<McpServer[]> {
+    if (!apiClient) return [];
+    return await withGatewayRestartForMissingRoute(
+      () => mcpServersApi.list(apiClient),
+      isMissingMcpRoute,
+    );
+  }
+
+  async function createMcpServer(input: SaveMcpServer): Promise<McpServer> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return await withGatewayRestartForMissingRoute(
+      () => mcpServersApi.create(apiClient, input),
+      isMissingMcpRoute,
+    );
+  }
+
+  async function updateMcpServer(id: string, patch: UpdateMcpServer): Promise<McpServer> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return await withGatewayRestartForMissingRoute(
+      () => mcpServersApi.update(apiClient, id, patch),
+      isMissingMcpRoute,
+    );
+  }
+
+  async function deleteMcpServer(id: string): Promise<void> {
+    if (!apiClient) return;
+    await withGatewayRestartForMissingRoute(
+      () => mcpServersApi.delete(apiClient, id),
+      isMissingMcpRoute,
+    );
+  }
+
+  async function reconnectMcpServer(id: string): Promise<McpServer> {
+    if (!apiClient) throw new Error("API client is not ready");
+    return await withGatewayRestartForMissingRoute(
+      () => mcpServersApi.reconnect(apiClient, id),
+      isMissingMcpRoute,
+    );
+  }
+
+  async function listMcpServerTools(id: string): Promise<McpToolSummary[]> {
+    if (!apiClient) return [];
+    return await withGatewayRestartForMissingRoute(
+      () => mcpServersApi.tools(apiClient, id),
+      isMissingMcpRoute,
+    );
+  }
+
   async function handleResume() {
     if (!apiClient || !activeRunId || resumingRun) return;
     const runId = activeRunId;
@@ -775,6 +838,12 @@ export function App() {
               onReindexMemory={reindexMemory}
               onCreateMemory={createMemory}
               onDeleteMemory={deleteMemory}
+              onListMcpServers={loadMcpServers}
+              onCreateMcpServer={createMcpServer}
+              onUpdateMcpServer={updateMcpServer}
+              onDeleteMcpServer={deleteMcpServer}
+              onReconnectMcpServer={reconnectMcpServer}
+              onListMcpServerTools={listMcpServerTools}
               onCreateProfile={handleCreateProfile}
               onSwitchProfile={handleSwitchProfile}
               onSignInWithChatGPT={handleSignInWithChatGPT}

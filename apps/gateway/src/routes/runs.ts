@@ -90,6 +90,23 @@ export async function writeRunEventStream(
     sentSeq = ev.seq;
   }
 
+  const current = deps.runs.get(rid);
+  const isTerminalRun =
+    current?.status === "succeeded" ||
+    current?.status === "failed" ||
+    current?.status === "cancelled";
+  if (missed.length === 0 && isTerminalRun) {
+    const terminalEvent = latestTerminalEvent(deps.runs.listEventsAfter(rid, -1));
+    if (terminalEvent) {
+      await stream.writeSSE({
+        id: String(terminalEvent.seq),
+        event: terminalEvent.type,
+        data: JSON.stringify(terminalEvent),
+      });
+    }
+    return;
+  }
+
   // If the reconnect is already caught up, flush a lightweight frame so
   // browser fetch/read loops can observe that the SSE connection recovered.
   if (missed.length === 0) {
@@ -136,6 +153,20 @@ export async function writeRunEventStream(
   } finally {
     unsubscribe();
   }
+}
+
+function latestTerminalEvent(events: ReturnType<RunStore["listEventsAfter"]>) {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (
+      event.type === "run.completed" ||
+      event.type === "run.failed" ||
+      event.type === "run.cancelled"
+    ) {
+      return event;
+    }
+  }
+  return null;
 }
 
 export function runsRouter(deps: RunsDeps): Hono {

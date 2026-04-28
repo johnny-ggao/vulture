@@ -14,7 +14,8 @@ type Event =
   | { type: "run.started"; runId: string; seq: number; createdAt: string; agentId: string; model: string }
   | { type: "text.delta"; runId: string; seq: number; createdAt: string; text: string }
   | { type: "run.recoverable"; runId: string; seq: number; createdAt: string; reason: string; message: string }
-  | { type: "run.completed"; runId: string; seq: number; createdAt: string; resultMessageId: string; finalText: string };
+  | { type: "run.completed"; runId: string; seq: number; createdAt: string; resultMessageId: string; finalText: string }
+  | { type: "run.failed"; runId: string; seq: number; createdAt: string; error: { code: string; message: string } };
 
 const initial: RunStreamState = { status: "idle", events: [], lastSeq: -1, error: null };
 
@@ -61,6 +62,23 @@ describe("runStreamReducer", () => {
     const s2 = runStreamReducer(s1, { type: "frame", event: evB as never });
     expect(s2.events).toHaveLength(1);
     expect(s2.lastSeq).toBe(5);
+  });
+
+  test("duplicate terminal event flips status without appending", () => {
+    const ev: Event = {
+      type: "run.failed",
+      runId: "r",
+      seq: 5,
+      createdAt: "2026-04-27T00:00:00.000Z",
+      error: { code: "internal", message: "boom" },
+    };
+    const s = runStreamReducer(
+      { ...initial, status: "streaming", lastSeq: 5 },
+      { type: "frame", event: ev as never },
+    );
+    expect(s.status).toBe("failed");
+    expect(s.events).toEqual([]);
+    expect(s.lastSeq).toBe(5);
   });
 
   test("error -> reconnecting; status terminal stays terminal", () => {
@@ -219,6 +237,51 @@ describe("useRunStream recovery", () => {
 
     await waitFor(() => {
       expect(observed?.status).toBe("recoverable");
+      expect(fetchCount).toBe(1);
+    });
+  });
+
+  test("stops reconnect loop when a caught-up stream closes for an already failed run", async () => {
+    localStorage.clear();
+    writeRunLastSeq("r-failed", 3);
+    let fetchCount = 0;
+    let observed: RunStreamState | null = null;
+    const fetchFn = (async () => {
+      fetchCount += 1;
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("event: ping\ndata: {}\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200 });
+    }) as typeof fetch;
+    const client = {
+      base: "http://127.0.0.1:4099",
+      token: "x".repeat(43),
+      get: async () => ({
+        id: "r-failed",
+        conversationId: "c",
+        agentId: "a",
+        status: "failed",
+        triggeredByMessageId: "m-user",
+        resultMessageId: null,
+        startedAt: "2026-04-27T00:00:00.000Z",
+        endedAt: "2026-04-27T00:00:01.000Z",
+        error: { code: "internal", message: "boom" },
+        usage: null,
+      }),
+    } as ApiClient;
+
+    function Probe() {
+      observed = useRunStream({ client, runId: "r-failed", fetch: fetchFn });
+      return createElement("div", null, "probe");
+    }
+
+    render(createElement(Probe));
+
+    await waitFor(() => {
+      expect(observed?.status).toBe("failed");
       expect(fetchCount).toBe(1);
     });
   });
