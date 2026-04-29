@@ -31,9 +31,12 @@ export function SkillDetailModal({
   // through a ref so the listener doesn't rebind on every parent render
   // where the handler arrives as an inline arrow. Esc, overlay-click, and
   // the close button ALL gate on `saving` so a mid-toggle dismiss can't
-  // strand the request.
+  // strand the request. Ref is committed in an effect, not during render,
+  // to stay safe under StrictMode / concurrent rendering.
   const escDepsRef = useRef({ onClose, saving });
-  escDepsRef.current = { onClose, saving };
+  useEffect(() => {
+    escDepsRef.current = { onClose, saving };
+  });
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {

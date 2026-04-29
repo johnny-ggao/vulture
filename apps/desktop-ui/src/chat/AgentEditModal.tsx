@@ -197,9 +197,13 @@ export function AgentEditModal(props: AgentEditModalProps) {
   //
   // The handler reads `saving` and `onClose` through a ref so the listener
   // is bound once per open/close cycle rather than on every parent re-render
-  // (where `onClose` is typically a fresh inline arrow).
+  // (where `onClose` is typically a fresh inline arrow). The ref is written
+  // in a layout effect (commit phase) rather than during render to stay
+  // safe under React 18 StrictMode double-render and concurrent rendering.
   const escDepsRef = useRef({ saving, onClose: props.onClose });
-  escDepsRef.current = { saving, onClose: props.onClose };
+  useEffect(() => {
+    escDepsRef.current = { saving, onClose: props.onClose };
+  });
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
