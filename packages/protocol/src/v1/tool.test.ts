@@ -12,8 +12,23 @@ describe("Tool", () => {
       description: "run a command",
       inputSchema: { type: "object" },
       requiresApproval: true,
+      idempotent: false,
     };
-    expect(ToolSchema.parse(t).name).toBe("shell.exec");
+    expect(ToolSchema.parse(t)).toMatchObject({
+      name: "shell.exec",
+      idempotent: false,
+    });
+  });
+
+  test("ToolSchema requires an explicit idempotent marker", () => {
+    expect(() =>
+      ToolSchema.parse({
+        name: "read",
+        description: "read a file",
+        inputSchema: { type: "object" },
+        requiresApproval: false,
+      }),
+    ).toThrow();
   });
 
   test("ApprovalDecision is allow|deny", () => {

@@ -45,6 +45,7 @@ async function executeToolWithCheckpoint(
       tool: spec.id,
       input,
       approvalToken,
+      idempotent: spec.idempotent,
     },
   });
   try {

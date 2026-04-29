@@ -49,6 +49,22 @@ describe("classifyInflightRun", () => {
     });
   });
 
+  test("incomplete idempotent active tool can auto resume", () => {
+    expect(
+      classifyInflightRun(
+        base({
+          activeTool: {
+            callId: "c1",
+            tool: "read",
+            input: { path: "README.md" },
+            idempotent: true,
+            startedSeq: 3,
+          },
+        }),
+      ),
+    ).toEqual({ kind: "auto_resume" });
+  });
+
   test("active tool takes precedence over approval interruption", () => {
     expect(
       classifyInflightRun(
@@ -151,6 +167,39 @@ describe("recoverInflightRuns", () => {
         ],
       },
     ]);
+  });
+
+  test("auto resumes incomplete idempotent active tool", async () => {
+    const { runs, calls } = makeRuns({
+      state: {
+        schemaVersion: 1,
+        sdkState: "sdk",
+        metadata: {
+          runId: "r-1",
+          conversationId: "c-1",
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "system",
+          userInput: "hi",
+          workspacePath: "/tmp/work",
+          providerKind: "api_key",
+          updatedAt: "2026-04-27T00:00:00.000Z",
+        },
+        checkpointSeq: 3,
+        activeTool: {
+          callId: "tc-1",
+          tool: "read",
+          input: { path: "README.md" },
+          idempotent: true,
+          startedSeq: 3,
+        },
+      },
+    });
+
+    await expect(recoverInflightRuns({ runs })).resolves.toEqual([
+      { kind: "auto_resume", runId: "r-1" },
+    ]);
+    expect(calls).toEqual([{ method: "markRecoverable", args: ["r-1"] }]);
   });
 
   test("returns auto resume action for model checkpoint", async () => {

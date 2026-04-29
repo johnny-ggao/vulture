@@ -42,6 +42,8 @@ export interface GatewayToolSpec {
   source: GatewayToolSource;
   category: GatewayToolCategory;
   risk: GatewayToolRisk;
+  /** True only when replaying the same call after an unknown interruption is safe. */
+  idempotent: boolean;
   needsApproval: (
     ctx: GatewayToolApprovalContext,
     input: unknown,

@@ -101,6 +101,7 @@ export interface ActiveToolRecovery {
   tool: string;
   input: unknown;
   approvalToken?: string;
+  idempotent?: boolean;
   startedSeq: number;
 }
 
@@ -143,7 +144,8 @@ function isActiveToolRecovery(value: unknown): value is ActiveToolRecovery {
     typeof value.tool === "string" &&
     Object.prototype.hasOwnProperty.call(value, "input") &&
     typeof value.startedSeq === "number" &&
-    (value.approvalToken === undefined || typeof value.approvalToken === "string")
+    (value.approvalToken === undefined || typeof value.approvalToken === "string") &&
+    (value.idempotent === undefined || typeof value.idempotent === "boolean")
   );
 }
 

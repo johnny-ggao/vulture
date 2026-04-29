@@ -52,6 +52,7 @@ export interface LlmCheckpoint {
     tool: string;
     input: unknown;
     approvalToken?: string;
+    idempotent?: boolean;
   } | null;
 }
 

@@ -163,6 +163,7 @@ export class McpClientManager {
             tool: binding.internalName,
             input,
             approvalToken,
+            idempotent: false,
           },
         });
         try {
