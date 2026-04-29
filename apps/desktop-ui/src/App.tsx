@@ -1078,6 +1078,7 @@ export function App() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         items={conversations.items}
+        agents={agents}
         activeId={activeConversationId}
         onSelect={(id) => {
           setActiveConversationId(id);

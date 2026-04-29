@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import * as React from "react";
+import { useRef, type ReactNode } from "react";
 
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
@@ -47,22 +48,48 @@ export function ChatView(props: ChatViewProps) {
   const activeAgent = props.agents.find((a) => a.id === props.selectedAgentId)
     ?? props.agents[0]
     ?? null;
-  const showAgentHeader = hasContent && activeAgent && !props.onboardingCard;
+  const showAgentHeader = hasContent && activeAgent;
+  const statusLabel = runStatusLabel(props.runStatus, props.resumingRun);
+
+  // Mirror the AgentCard cursor-tracked spotlight on the chat header so the
+  // identity strip feels alive, not just a static label. Direct DOM
+  // mutation through a ref keeps mousemove cheap (no React re-render); the
+  // bounding rect is cached on enter and invalidated on leave.
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const headerRectRef = useRef<DOMRect | null>(null);
+  function handleHeaderEnter() {
+    headerRectRef.current = headerRef.current?.getBoundingClientRect() ?? null;
+  }
+  function handleHeaderMove(event: React.MouseEvent<HTMLDivElement>) {
+    const node = headerRef.current;
+    const rect = headerRectRef.current;
+    if (!node || !rect) return;
+    const x = ((event.clientX - rect.left) / rect.width).toFixed(3);
+    const y = ((event.clientY - rect.top) / rect.height).toFixed(3);
+    node.style.setProperty("--mouse-x", x);
+    node.style.setProperty("--mouse-y", y);
+  }
+  function handleHeaderLeave() {
+    headerRectRef.current = null;
+  }
 
   return (
     <main className="chat-main">
       {showAgentHeader ? (
-        <div className="chat-agent-header">
+        <div
+          className="chat-agent-header"
+          ref={headerRef}
+          onMouseEnter={handleHeaderEnter}
+          onMouseMove={handleHeaderMove}
+          onMouseLeave={handleHeaderLeave}
+        >
           <AgentAvatar agent={activeAgent} size={28} shape="square" />
           <div className="chat-agent-meta">
             <span className="chat-agent-name">{activeAgent.name}</span>
             {running ? (
               <span className="chat-agent-status" aria-live="polite">
                 <span className="chat-agent-status-dot" aria-hidden="true" />
-                {props.runStatus === "streaming" ? "回应中" :
-                 props.runStatus === "reconnecting" ? "重连中" :
-                 props.runStatus === "recoverable" ? "等待恢复" :
-                 "处理中"}
+                {statusLabel}
               </span>
             ) : null}
           </div>
@@ -143,6 +170,37 @@ export function ChatView(props: ChatViewProps) {
       </section>
     </main>
   );
+}
+
+/**
+ * Map a `RunStreamStatus` to a Chinese label for the chat header status
+ * pill. Exhaustive over the union — adding a new status will surface a
+ * TypeScript error at the `_exhaustive` line so we don't silently fall
+ * through to "处理中".
+ */
+function runStatusLabel(
+  status: RunStreamStatus,
+  resuming: boolean,
+): string {
+  if (resuming) return "恢复中";
+  switch (status) {
+    case "streaming":    return "回应中";
+    case "reconnecting": return "重连中";
+    case "recoverable":  return "等待恢复";
+    case "connecting":   return "连接中";
+    // Terminal / quiescent states never display the indicator (the call
+    // site gates on `running`), but listing them here makes the switch
+    // exhaustive: a new RunStreamStatus value would fail to compile.
+    case "idle":
+    case "succeeded":
+    case "failed":
+    case "cancelled":
+      return "处理中";
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
 }
 
 function ReconnectIcon() {

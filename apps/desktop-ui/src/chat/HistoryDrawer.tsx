@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ConversationDto } from "../api/conversations";
+import { AgentAvatar } from "./components";
 
 export interface HistoryDrawerProps {
   open: boolean;
@@ -8,6 +9,13 @@ export interface HistoryDrawerProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  /**
+   * Optional roster of agents the conversations may reference. When
+   * provided, each row renders the originating agent's avatar so users
+   * can spot which agent owns which conversation at a glance. Rows whose
+   * `agentId` doesn't resolve fall back to a no-avatar layout.
+   */
+  agents?: ReadonlyArray<{ id: string; name: string }>;
   /**
    * Called when the user clicks the row's delete affordance. The drawer
    * dispatches immediately and lets the parent surface an undo path
@@ -29,6 +37,16 @@ function bucketFor(updatedAt: string): string {
 
 export function HistoryDrawer(props: HistoryDrawerProps) {
   const [query, setQuery] = useState("");
+
+  // O(1) agent lookup for row rendering. Memoised so the map identity is
+  // stable across re-renders when the agents array hasn't changed.
+  const agentById = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    if (props.agents) {
+      for (const agent of props.agents) map.set(agent.id, agent);
+    }
+    return map;
+  }, [props.agents]);
 
   const grouped = useMemo(() => {
     const filtered = props.items.filter((c) =>
@@ -91,7 +109,9 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
             grouped.map((g) => (
               <div key={g.label}>
                 <div className="group-heading">{g.label}</div>
-                {g.rows.map((c) => (
+                {g.rows.map((c) => {
+                  const agent = agentById.get(c.agentId);
+                  return (
                   <div
                     key={c.id}
                     className={"history-row" + (c.id === props.activeId ? " active" : "")}
@@ -101,8 +121,11 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
                       className="row-button"
                       onClick={() => pickAndClose(c.id)}
                     >
-                      <span className="row-title">{c.title || "(无标题)"}</span>
-                      <span className="row-meta">{new Date(c.updatedAt).toLocaleString()}</span>
+                      {agent ? <AgentAvatar agent={agent} size={20} shape="square" /> : null}
+                      <span className="row-text">
+                        <span className="row-title">{c.title || "(无标题)"}</span>
+                        <span className="row-meta">{new Date(c.updatedAt).toLocaleString()}</span>
+                      </span>
                     </button>
                     {props.onDelete ? (
                       <button
@@ -116,7 +139,8 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
                       </button>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ))
           )}

@@ -511,7 +511,40 @@ pre {
   -webkit-backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
+  /* Position the cursor-tracked spotlight pseudo. */
+  overflow: hidden;
+  isolation: isolate;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chat-agent-header::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at
+        calc(var(--mouse-x, 0.5) * 100%)
+        calc(var(--mouse-y, 0.5) * 100%),
+      color-mix(in oklab, var(--brand-500) 14%, transparent) 0%,
+      transparent 38%
+    );
+    opacity: 0;
+    transition: opacity var(--duration-medium) var(--ease-standard);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .chat-agent-header:hover::after { opacity: 1; }
+  @media (prefers-color-scheme: dark) {
+    .chat-agent-header::after {
+      background: radial-gradient(
+        circle at
+          calc(var(--mouse-x, 0.5) * 100%)
+          calc(var(--mouse-y, 0.5) * 100%),
+        color-mix(in oklab, var(--brand-500) 22%, transparent) 0%,
+        transparent 38%
+      );
+    }
+  }
 }
 .chat-agent-meta {
   display: inline-flex;
@@ -1409,7 +1442,7 @@ pre {
 .history-row.active { background: var(--brand-050); }
 .history-row .row-button {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  display: flex; align-items: center; gap: 10px;
   padding: 8px 8px 8px 12px;
   color: var(--text-primary);
   text-align: left;
@@ -1418,6 +1451,14 @@ pre {
   min-height: 0;
 }
 .history-row.active .row-button { color: var(--brand-600); font-weight: 600; }
+.history-row .row-button .agent-avatar { flex-shrink: 0; }
+.history-row .row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .history-row .row-title {
   width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 14px; font-weight: 500; line-height: 1.35;
@@ -1560,13 +1601,25 @@ pre {
     color            var(--duration-medium) var(--ease-standard);
 }
 .settings-rail button:hover { background: var(--fill-quaternary); color: var(--text-primary); }
+/* Hover gives the icon a tiny spring-eased forward translate so the
+ * rail feels physical — borrowed from Linear's nav idiom. */
+.settings-rail button svg {
+  transition:
+    color     var(--duration-medium) var(--ease-standard),
+    transform var(--duration-medium) var(--ease-spring);
+}
+.settings-rail button:hover svg {
+  transform: translateX(1px);
+}
 .settings-rail button.active {
   background: var(--brand-050);
   color: var(--brand-600);
   font-weight: 600;
 }
 /* Active rail item gets a 2px brand "tab indicator" on its left edge —
- * standard settings-pane idiom (Linear, Anthropic Console). */
+ * standard settings-pane idiom (Linear, Anthropic Console). The indicator
+ * scales in from 0 → 1 height with a spring overshoot when activation
+ * lands. */
 .settings-rail button.active::before {
   content: "";
   position: absolute;
@@ -1576,8 +1629,17 @@ pre {
   width: 2px;
   border-radius: 2px;
   background: var(--brand-500);
+  transform-origin: center;
+  animation: settings-rail-indicator var(--duration-medium) var(--ease-spring);
 }
-.settings-rail button.active svg { color: var(--brand-500); }
+@keyframes settings-rail-indicator {
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
+}
+.settings-rail button.active svg {
+  color: var(--brand-500);
+  transform: translateX(2px);
+}
 .settings-content { min-width: 0; }
 
 /* ============================================================
