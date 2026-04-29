@@ -1699,6 +1699,62 @@ pre {
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 16px;
 }
+.agents-shell-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.agents-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.agents-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--fill-tertiary);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 0;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.agents-back-btn:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  border-color: var(--fill-secondary);
+}
+.agents-back-btn:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.agents-edit-breadcrumb {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.agents-edit-breadcrumb strong {
+  color: var(--text-primary);
+  font-weight: 650;
+  margin-left: 2px;
+}
+
 .agents-list {
   padding: 8px;
   display: grid;
@@ -2582,6 +2638,146 @@ pre {
 }
 .agent-avatar[data-shape="square"] {
   border-radius: var(--radius-md);
+}
+
+/* AgentCard — Accio-style product tile (banner + floating avatar + meta) */
+.agent-card {
+  position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.agent-card:hover {
+  border-color: var(--fill-secondary);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+.agent-card-surface {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0 0 16px;
+  cursor: pointer;
+  color: inherit;
+  min-height: 0;
+}
+.agent-card-surface:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring) inset;
+}
+.agent-card-banner {
+  height: 64px;
+  position: relative;
+  margin-bottom: 36px; /* room for half-overlapping avatar */
+  background: var(--fill-quaternary);
+  overflow: hidden;
+}
+.agent-card-banner svg { display: block; width: 100%; height: 100%; }
+.agent-card-avatar {
+  position: absolute;
+  left: 16px;
+  top: 64px;
+  transform: translateY(-50%);
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.08);
+  z-index: 1;
+}
+.agent-card-body {
+  padding: 0 16px;
+  display: grid;
+  gap: 6px;
+}
+.agent-card-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-card-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.agent-card-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+}
+.agent-card-model {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-card-meta-sep { color: var(--fill-secondary); }
+
+.agent-card-actions {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 2;
+}
+.agent-card:hover .agent-card-actions,
+.agent-card:focus-within .agent-card-actions { opacity: 1; }
+.agent-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-height: 0;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.agent-card-action:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.agent-card-action.danger:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.agent-card-action:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+@media (prefers-color-scheme: dark) {
+  .agent-card-action {
+    background: rgba(31, 30, 28, 0.7);
+  }
+  .agent-card-action:hover {
+    background: var(--bg-primary);
+  }
 }
 
 /* ErrorAlert — inline assertive banner */

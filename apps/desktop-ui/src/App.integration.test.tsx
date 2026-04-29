@@ -591,9 +591,9 @@ describe("App integration", () => {
     );
 
     fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
+    // Browse view first — wait for the agent's card to appear.
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
-      expect(screen.getByText("Workspace")).toBeDefined();
     });
     fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
     // Step order is template → identity → persona → tools → skills (matches Accio).

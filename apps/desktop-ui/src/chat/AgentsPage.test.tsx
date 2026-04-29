@@ -38,7 +38,13 @@ const stableProps = {
   onSaveFile: async () => {},
 };
 
-describe("AgentsPage", () => {
+/** Click the agent's grid card to enter edit view. Helper kept here so the
+ *  individual test bodies stay focused on the behaviour they assert. */
+function enterEditView(agent: Agent = baseAgent) {
+  fireEvent.click(screen.getByRole("button", { name: agent.name }));
+}
+
+describe("AgentsPage — browse view", () => {
   test("renders an empty state when there are no agents", () => {
     render(
       <AgentsPage
@@ -51,7 +57,7 @@ describe("AgentsPage", () => {
     expect(screen.getByRole("button", { name: /创建第一个智能体/ })).toBeDefined();
   });
 
-  test("agent list rows include an avatar glyph", () => {
+  test("renders an agent card for each agent", () => {
     const { container } = render(
       <AgentsPage
         {...stableProps}
@@ -59,11 +65,11 @@ describe("AgentsPage", () => {
         selectedAgentId="agent-1"
       />,
     );
-    const avatars = container.querySelectorAll(".agent-list-item .agent-avatar");
-    expect(avatars.length).toBe(1);
+    expect(container.querySelectorAll(".agent-card").length).toBe(1);
+    expect(screen.getByText("Local Agent")).toBeDefined();
   });
 
-  test("editor exposes 概览 / Persona / 工具 / Agent Core tabs", () => {
+  test("clicking a card transitions to the edit view for that agent", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -71,6 +77,57 @@ describe("AgentsPage", () => {
         selectedAgentId="agent-1"
       />,
     );
+    enterEditView();
+    expect(screen.getByRole("heading", { name: /Local Agent/ })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+  });
+
+  test("card delete button calls onDelete without entering the edit view", () => {
+    const onDelete = mock((_id: string) => {});
+    render(
+      <AgentsPage
+        {...stableProps}
+        onDelete={onDelete}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "删除智能体 Local Agent" }),
+    );
+    expect(onDelete).toHaveBeenCalledWith("agent-1");
+    // Tabs only exist in the edit view — their absence proves we're still in browse.
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+
+  test("card open-chat action invokes onOpenChat without entering the edit view", () => {
+    const onOpenChat = mock((_id: string) => {});
+    render(
+      <AgentsPage
+        {...stableProps}
+        onOpenChat={onOpenChat}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开对话.*Local Agent/ }),
+    );
+    expect(onOpenChat).toHaveBeenCalledWith("agent-1");
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+});
+
+describe("AgentsPage — edit view", () => {
+  test("exposes 概览 / Persona / 工具 / Agent Core tabs", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    enterEditView();
     expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "Persona" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "工具" })).toBeDefined();
@@ -85,7 +142,7 @@ describe("AgentsPage", () => {
         selectedAgentId="agent-1"
       />,
     );
-    // Default tab: 概览 — name field is visible.
+    enterEditView();
     expect(screen.getByLabelText("名称")).toBeDefined();
 
     fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
@@ -101,6 +158,7 @@ describe("AgentsPage", () => {
         selectedAgentId="agent-1"
       />,
     );
+    enterEditView();
     expect(screen.queryByText(/未保存/)).toBeNull();
   });
 
@@ -112,6 +170,7 @@ describe("AgentsPage", () => {
         selectedAgentId="agent-1"
       />,
     );
+    enterEditView();
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "Renamed" },
     });
@@ -128,6 +187,7 @@ describe("AgentsPage", () => {
         selectedAgentId="agent-1"
       />,
     );
+    enterEditView();
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "Renamed" },
     });
@@ -137,29 +197,20 @@ describe("AgentsPage", () => {
     expect(patch.name).toBe("Renamed");
   });
 
-  test("agent list item exposes a delete button when onDelete is provided", () => {
-    const onDelete = mock((_id: string) => {});
+  test("the back button returns to the browse view", () => {
     render(
       <AgentsPage
         {...stableProps}
-        onDelete={onDelete}
         agents={[baseAgent]}
         selectedAgentId="agent-1"
       />,
     );
-    const deleteButton = screen.getByRole("button", { name: "删除智能体 Local Agent" });
-    fireEvent.click(deleteButton);
-    expect(onDelete).toHaveBeenCalledWith("agent-1");
-  });
+    enterEditView();
+    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
 
-  test("agent list does NOT render a delete button when onDelete is omitted", () => {
-    render(
-      <AgentsPage
-        {...stableProps}
-        agents={[baseAgent]}
-        selectedAgentId="agent-1"
-      />,
-    );
-    expect(screen.queryByRole("button", { name: "删除智能体 Local Agent" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /返回/ }));
+    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    // Back to grid → click target is the card root again.
+    expect(screen.getByRole("button", { name: "Local Agent" })).toBeDefined();
   });
 });

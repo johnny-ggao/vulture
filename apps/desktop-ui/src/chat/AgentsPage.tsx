@@ -3,7 +3,7 @@ import type { Agent, AgentCoreFile, AgentCoreFilesResponse, AgentToolName, Agent
 import type { ToolCatalogGroup } from "../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../api/tools";
 import { ToolGroupSelector } from "./ToolGroupSelector";
-import { AgentAvatar, Badge, Field, SectionCard } from "./components";
+import { AgentAvatar, AgentCard, Badge, Field, SectionCard } from "./components";
 
 type AgentsTab = "overview" | "persona" | "tools" | "core";
 
@@ -51,10 +51,11 @@ interface Draft {
 }
 
 export function AgentsPage(props: AgentsPageProps) {
-  const [activeId, setActiveId] = useState(props.selectedAgentId || props.agents[0]?.id || "");
-  const active = useMemo(
-    () => props.agents.find((agent) => agent.id === activeId) ?? props.agents[0],
-    [activeId, props.agents],
+  // null = grid (browse) view; an id = edit view for that agent.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const active = useMemo<Agent | undefined>(
+    () => (editingId ? props.agents.find((agent) => agent.id === editingId) : undefined),
+    [editingId, props.agents],
   );
   const [draft, setDraft] = useState<Draft>(() => draftFromAgent(active));
   const [saving, setSaving] = useState(false);
@@ -93,9 +94,14 @@ export function AgentsPage(props: AgentsPageProps) {
     };
   }, []);
 
+  // If we were editing an agent that has been deleted (e.g. a pending undo
+  // committed), drop back to the grid view rather than rendering an empty
+  // editor pane.
   useEffect(() => {
-    if (!active && props.agents[0]) setActiveId(props.agents[0].id);
-  }, [active, props.agents]);
+    if (editingId && !props.agents.some((a) => a.id === editingId)) {
+      setEditingId(null);
+    }
+  }, [editingId, props.agents]);
 
   useEffect(() => {
     setDraft(draftFromAgent(active));
@@ -216,60 +222,55 @@ export function AgentsPage(props: AgentsPageProps) {
     );
   }
 
+  // Browse view — grid of agent cards.
+  if (!active) {
+    return (
+      <div className="page">
+        <header className="page-header">
+          <div>
+            <h1>智能体</h1>
+            <p>每个智能体捆绑模型、工具权限与人格设置，用来开启不同场景的对话。</p>
+          </div>
+          <button type="button" className="btn-primary" onClick={props.onCreate}>
+            新建智能体
+          </button>
+        </header>
+
+        <div className="agents-grid">
+          {props.agents.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onOpenEdit={(id) => setEditingId(id)}
+              onOpenChat={props.onOpenChat}
+              onDelete={props.onDelete}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Edit view — full-page editor with a back-to-grid affordance.
   return (
     <div className="page">
-      <header className="page-header">
-        <div>
-          <h1>智能体</h1>
-          <p>每个智能体拥有独立 workspace、agent-core、工具权限与能力包配置。</p>
-        </div>
-        <button type="button" className="btn-primary" onClick={props.onCreate}>
-          新建智能体
+      <header className="agents-edit-header">
+        <button
+          type="button"
+          className="agents-back-btn"
+          onClick={() => setEditingId(null)}
+          aria-label="返回智能体列表"
+        >
+          <BackIcon />
+          <span>返回</span>
         </button>
+        <div className="agents-edit-breadcrumb">
+          智能体 / <strong>{active.name || "未命名智能体"}</strong>
+        </div>
       </header>
 
-      <div className="agents-shell">
-        <SectionCard className="agents-list">
-          {props.agents.map((agent) => (
-            <div key={agent.id} className="agent-list-row">
-              <button
-                type="button"
-                className="agent-list-item"
-                aria-label={agent.name || "未命名智能体"}
-                data-active={agent.id === active?.id ? "true" : undefined}
-                onClick={() => setActiveId(agent.id)}
-                aria-pressed={agent.id === active?.id}
-              >
-                <AgentAvatar agent={agent} size={32} />
-                <span className="agent-list-meta">
-                  <span className="agent-list-name">{agent.name}</span>
-                  <span className="agent-list-sub">
-                    <span className="agent-list-model">{agent.model}</span>
-                    {agent.tools.length > 0 ? (
-                      <span className="agent-list-tools">
-                        {agent.tools.length} 个工具
-                      </span>
-                    ) : null}
-                  </span>
-                </span>
-              </button>
-              {props.onDelete ? (
-                <button
-                  type="button"
-                  className="agent-list-delete"
-                  aria-label={`删除智能体 ${agent.name || "未命名"}`}
-                  title="删除"
-                  onClick={() => props.onDelete?.(agent.id)}
-                >
-                  <TrashIcon />
-                </button>
-              ) : null}
-            </div>
-          ))}
-        </SectionCard>
-
-        {active ? (
-          <SectionCard className="agent-config">
+      <div className="agents-shell agents-shell-single">
+        <SectionCard className="agent-config">
             <div className="agent-config-head">
               <div className="agent-config-title-block">
                 <AgentAvatar agent={active} size={40} shape="square" />
@@ -460,7 +461,6 @@ export function AgentsPage(props: AgentsPageProps) {
               </div>
             ) : null}
           </SectionCard>
-        ) : null}
       </div>
     </div>
   );
@@ -490,7 +490,7 @@ function sameStringSet(a: ReadonlyArray<string>, b: ReadonlyArray<string>): bool
   return true;
 }
 
-function TrashIcon() {
+function BackIcon() {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -503,7 +503,7 @@ function TrashIcon() {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M3 4.5h10M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 4.5v8a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-8" />
+      <path d="M10 3l-5 5 5 5" />
     </svg>
   );
 }
