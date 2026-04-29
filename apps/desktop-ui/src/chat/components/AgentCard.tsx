@@ -24,6 +24,11 @@ export interface AgentCardProps {
  */
 export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // Cache the card's bounding rect on enter and reuse on each move event
+  // — `getBoundingClientRect()` forces a synchronous layout pass, and
+  // mousemove fires at 60-120Hz, so reading it inside the loop turns a
+  // populated grid into a layout-thrash hot spot.
+  const cardRectRef = useRef<DOMRect | null>(null);
 
   // Cursor-tracking gloss: while the mouse is over the card, write the
   // normalised (0-1) cursor coordinates as CSS custom properties on the
@@ -31,10 +36,16 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
   // a soft spotlight, which gives the tile a subtle "alive" feel — the
   // Apple product-card pattern. Done via direct DOM mutation (not state)
   // so 60-120Hz mousemove events don't trigger React re-renders.
-  function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+  function handleMouseEnter() {
     const card = cardRef.current;
     if (!card) return;
-    const rect = card.getBoundingClientRect();
+    cardRectRef.current = card.getBoundingClientRect();
+  }
+
+  function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    const card = cardRef.current;
+    const rect = cardRectRef.current;
+    if (!card || !rect) return;
     const x = ((event.clientX - rect.left) / rect.width).toFixed(3);
     const y = ((event.clientY - rect.top) / rect.height).toFixed(3);
     card.style.setProperty("--mouse-x", x);
@@ -42,16 +53,18 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
   }
 
   function handleMouseLeave() {
-    const card = cardRef.current;
-    if (!card) return;
-    card.style.removeProperty("--mouse-x");
-    card.style.removeProperty("--mouse-y");
+    // Intentionally KEEP `--mouse-x` / `--mouse-y` at their last value on
+    // leave. The opacity transition fades the spotlight out; removing the
+    // coords would snap the gradient to (0.5, 0.5) mid-fade, producing a
+    // visible "wink" toward center.
+    cardRectRef.current = null;
   }
 
   return (
     <div
       className="agent-card"
       ref={cardRef}
+      onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >

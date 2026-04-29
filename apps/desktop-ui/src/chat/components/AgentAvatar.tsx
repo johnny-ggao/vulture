@@ -22,7 +22,10 @@ export function AgentAvatar({
   shape = "circle",
 }: AgentAvatarProps) {
   const hue = hashHue(agent.id);
-  const initial = (agent.name.trim().slice(0, 1) || "?").toUpperCase();
+  // Defensive against callers that pass `name: undefined` through type
+  // erasure or string coercion: a missing name should render `?`, never
+  // throw inside `.trim()`.
+  const initial = ((agent.name ?? "").trim().slice(0, 1) || "?").toUpperCase();
   const styles = {
     width: `${size}px`,
     height: `${size}px`,
