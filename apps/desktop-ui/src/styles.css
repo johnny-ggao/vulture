@@ -526,6 +526,21 @@ pre {
   max-width: 560px;
 }
 .suggestion-chips > li { display: contents; }
+/* The empty-state primary CTA is the textarea below — chips are scaffolding.
+ * Stagger them softly so they read as helper content instead of competing
+ * with the V mark / headline. */
+.suggestion-chips .suggestion-chip {
+  animation: chip-enter var(--duration-medium) var(--ease-out) both;
+}
+.suggestion-chips > li:nth-child(1) .suggestion-chip { animation-delay:  60ms; }
+.suggestion-chips > li:nth-child(2) .suggestion-chip { animation-delay: 100ms; }
+.suggestion-chips > li:nth-child(3) .suggestion-chip { animation-delay: 140ms; }
+.suggestion-chips > li:nth-child(4) .suggestion-chip { animation-delay: 180ms; }
+.suggestion-chips > li:nth-child(n+5) .suggestion-chip { animation-delay: 220ms; }
+@keyframes chip-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
 .suggestion-chip {
   display: inline-flex;
   align-items: center;
@@ -624,6 +639,13 @@ pre {
   grid-template-columns: 32px 1fr;
   gap: 12px;
   align-items: flex-start;
+  /* New messages slide up + fade in. Animation fires once on element mount;
+   * existing messages don't replay because React keeps their DOM identity. */
+  animation: message-enter var(--duration-medium) var(--ease-out) both;
+}
+@keyframes message-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
 .message.user { grid-template-columns: 1fr 32px; }
 .message.user .message-bubble { justify-self: end; }
@@ -1072,6 +1094,16 @@ pre {
  * ============================================================ */
 
 .run-event-stream { display: grid; gap: 12px; margin-top: 6px; }
+/* Tool blocks / approval cards / recovery cards "land" with a spring as
+ * they appear in the stream — they're the most physical-feeling elements
+ * (system actions), so a subtle bounce reads as "the agent did a thing". */
+.run-event-stream > * {
+  animation: block-enter var(--duration-slow) var(--ease-spring) both;
+}
+@keyframes block-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);     }
+}
 
 .tool-block {
   border: 1px solid var(--fill-tertiary);
@@ -1749,6 +1781,24 @@ pre {
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
+}
+/* First-paint cascade — cards stair-step in over ~280ms total, capped at
+ * 7 items so a long roster doesn't drag. The 9th+ card lands with the same
+ * delay as the 8th (no perceptible difference past that point anyway). */
+.agents-grid .agent-card {
+  animation: card-enter var(--duration-slow) var(--ease-spring) both;
+}
+.agents-grid .agent-card:nth-child(1)   { animation-delay:   0ms; }
+.agents-grid .agent-card:nth-child(2)   { animation-delay:  40ms; }
+.agents-grid .agent-card:nth-child(3)   { animation-delay:  80ms; }
+.agents-grid .agent-card:nth-child(4)   { animation-delay: 120ms; }
+.agents-grid .agent-card:nth-child(5)   { animation-delay: 160ms; }
+.agents-grid .agent-card:nth-child(6)   { animation-delay: 200ms; }
+.agents-grid .agent-card:nth-child(7)   { animation-delay: 240ms; }
+.agents-grid .agent-card:nth-child(n+8) { animation-delay: 280ms; }
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 
 /* AgentEditModal — wide, tall modal anchored under the titlebar.
