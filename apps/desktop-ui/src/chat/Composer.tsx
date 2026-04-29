@@ -123,7 +123,11 @@ function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProp
   const containerRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  // Fall back to the first available agent so the trigger always shows a
+  // concrete name once the agent list has loaded (matches the historical
+  // <select> behaviour where an empty value displayed the first option).
+  const selectedAgent =
+    agents.find((a) => a.id === selectedAgentId) ?? agents[0] ?? null;
   const triggerLabel = selectedAgent?.name ?? "选择智能体";
 
   // Close on Escape, and on outside click. Window-level so the menu closes
@@ -170,21 +174,22 @@ function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProp
       </button>
       {open ? (
         <div className="agent-picker-menu" role="menu" aria-label="智能体">
-          {agents.map((agent) => (
-            <button
-              key={agent.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={agent.id === selectedAgentId}
-              className={
-                "agent-picker-item" + (agent.id === selectedAgentId ? " active" : "")
-              }
-              onClick={() => handleSelect(agent.id)}
-            >
-              <span className="agent-picker-item-name">{agent.name}</span>
-              {agent.id === selectedAgentId ? <CheckIcon /> : null}
-            </button>
-          ))}
+          {agents.map((agent) => {
+            const isActive = agent.id === selectedAgent?.id;
+            return (
+              <button
+                key={agent.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                className={"agent-picker-item" + (isActive ? " active" : "")}
+                onClick={() => handleSelect(agent.id)}
+              >
+                <span className="agent-picker-item-name">{agent.name}</span>
+                {isActive ? <CheckIcon /> : null}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>

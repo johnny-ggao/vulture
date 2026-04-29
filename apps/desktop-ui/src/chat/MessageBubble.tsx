@@ -11,10 +11,17 @@ export interface MessageBubbleProps {
   content: string;
   attachments?: ReadonlyArray<MessageAttachmentDto>;
   usage?: TokenUsageDto | null;
+  /**
+   * When true, renders a blinking caret at the end of the rendered content
+   * to signal the assistant is still producing tokens. Only honoured for
+   * assistant role; user/system messages never display the caret.
+   */
+  streaming?: boolean;
 }
 
-export function MessageBubble({ role, content, attachments = [], usage }: MessageBubbleProps) {
+export function MessageBubble({ role, content, attachments = [], usage, streaming = false }: MessageBubbleProps) {
   const avatar = role === "user" ? "J" : "V";
+  const showCaret = streaming && role === "assistant";
   return (
     <article className={`message ${role}`}>
       <div className="message-avatar">{avatar}</div>
@@ -24,6 +31,9 @@ export function MessageBubble({ role, content, attachments = [], usage }: Messag
         ) : (
           <pre>{content}</pre>
         )}
+        {showCaret ? (
+          <span className="streaming-caret" aria-hidden="true" />
+        ) : null}
         {attachments.length > 0 ? (
           <div className="message-attachments">
             {attachments.map((attachment) => (

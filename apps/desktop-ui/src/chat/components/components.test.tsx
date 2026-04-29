@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ErrorAlert, Field, SectionCard, Toggle } from "./index";
+import { ErrorAlert, Field, SectionCard, Toast, Toggle } from "./index";
 
 describe("Field", () => {
   test("renders label and children", () => {
@@ -114,6 +114,47 @@ describe("ErrorAlert", () => {
     render(<ErrorAlert message="Server unreachable" />);
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Server unreachable");
+  });
+});
+
+describe("Toast", () => {
+  test("renders message inside role=status (polite live region)", () => {
+    render(<Toast message="已删除" onDismiss={() => {}} />);
+    const node = screen.getByRole("status");
+    expect(node.textContent).toContain("已删除");
+    expect(node.getAttribute("aria-live")).toBe("polite");
+  });
+
+  test("does not render action button when action is omitted", () => {
+    render(<Toast message="Saved" onDismiss={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  test("action click invokes handler", () => {
+    const onUndo = mock(() => {});
+    render(
+      <Toast
+        message="已删除 Project plan"
+        action={{ label: "撤销", onClick: onUndo }}
+        onDismiss={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
+  });
+
+  test("dismiss button click invokes onDismiss", () => {
+    const onDismiss = mock(() => {});
+    render(<Toast message="…" onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "关闭通知" }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  test("applies tone class", () => {
+    const { container } = render(
+      <Toast message="!" tone="danger" onDismiss={() => {}} />,
+    );
+    expect(container.querySelector(".toast-danger")).not.toBeNull();
   });
 });
 

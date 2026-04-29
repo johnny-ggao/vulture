@@ -628,7 +628,9 @@ describe("App integration", () => {
     await waitFor(
       () => {
         expect(document.body.textContent ?? "").toContain("profile:Work");
-        expect(screen.getByDisplayValue("Local Work Agent")).toBeDefined();
+        // Composer's agent picker renders the active agent name; this used
+        // to be a native <select> readable via getByDisplayValue.
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
       },
       { timeout: 5000 },
     );
@@ -887,8 +889,11 @@ describe("App integration", () => {
       () => {
         expect(screen.getByText("csv-insights")).toBeDefined();
         expect(screen.getByText("Summarize CSV reports.")).toBeDefined();
-        expect(screen.getByText("profile")).toBeDefined();
-        expect(screen.getByText("已启用")).toBeDefined();
+        // Source is shown in the group heading ("Profile (1)") rather than as
+        // a per-row badge. The toggle reflects the enabled state.
+        expect(screen.getByRole("heading", { name: /^profile/i })).toBeDefined();
+        const toggle = screen.getByRole("switch", { name: /csv-insights/ });
+        expect(toggle.getAttribute("aria-checked")).toBe("true");
       },
       { timeout: 5000 },
     );
@@ -896,13 +901,15 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "全部禁用" }));
     await waitFor(() => {
       expect(patches).toContainEqual({ skills: [] });
-      expect(screen.getByText("已禁用")).toBeDefined();
+      const toggle = screen.getByRole("switch", { name: /csv-insights/ });
+      expect(toggle.getAttribute("aria-checked")).toBe("false");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "全部启用" }));
     await waitFor(() => {
       expect(patches).toContainEqual({ skills: null });
-      expect(screen.getByText("已启用")).toBeDefined();
+      const toggle = screen.getByRole("switch", { name: /csv-insights/ });
+      expect(toggle.getAttribute("aria-checked")).toBe("true");
     });
 
     cleanup();

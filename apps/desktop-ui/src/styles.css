@@ -622,6 +622,24 @@ pre {
 .message.user .message-bubble pre { white-space: pre-wrap; }
 .message.assistant .message-bubble { padding: 0; }
 
+/* Streaming caret — visible inside an actively-being-produced assistant
+ * bubble. Sits inline with the last rendered text node so it tracks the
+ * end of the message naturally. Animation is suppressed by the global
+ * prefers-reduced-motion rule above (becomes solid). */
+.streaming-caret {
+  display: inline-block;
+  vertical-align: -2px;
+  width: 8px;
+  height: 14px;
+  margin-left: 4px;
+  background: var(--text-secondary);
+  border-radius: 1px;
+  animation: streaming-caret-blink 1s steps(2, start) infinite;
+}
+@keyframes streaming-caret-blink {
+  to { visibility: hidden; }
+}
+
 /* Inline markdown rendering inside assistant bubbles */
 .md-content { display: block; }
 .md-content > * + * { margin-top: 8px; }
@@ -2073,6 +2091,81 @@ pre {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* Toast — bottom-anchored transient notification with optional action */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-modal);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--radius-pill);
+  background: #1c1d1f;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.28),
+    0 4px 8px rgba(0, 0, 0, 0.12);
+  max-width: min(560px, calc(100vw - 48px));
+  animation: toast-slide-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.toast-danger  { background: #b91c1c; }
+.toast-success { background: #166534; }
+.toast-warning { background: #92400e; }
+.toast-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toast-action {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  min-height: 0;
+  transition: background-color 120ms ease;
+}
+.toast-action:hover { background: rgba(255, 255, 255, 0.24); }
+.toast-action:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+.toast-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  cursor: pointer;
+  min-height: 0;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.toast-dismiss:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* ErrorAlert — inline assertive banner */

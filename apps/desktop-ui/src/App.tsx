@@ -11,7 +11,7 @@ import { createApiClient } from "./api/client";
 import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName, type AgentToolPreset, type ReasoningLevel } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
-import { conversationsApi } from "./api/conversations";
+import { conversationsApi, type ConversationDto } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
 import { skillsApi, type SkillListResponse } from "./api/skills";
 import { FALLBACK_TOOL_CATALOG, toolsApi, type ToolCatalogGroup } from "./api/tools";
@@ -29,6 +29,7 @@ import { ChatView } from "./chat/ChatView";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
 import { NewAgentModal } from "./chat/NewAgentModal";
 import { OnboardingCard } from "./chat/OnboardingCard";
+import { Toast } from "./chat/components";
 import { PlaceholderPage } from "./chat/PlaceholderPage";
 import { SettingsPage } from "./chat/SettingsPage";
 import { Titlebar } from "./chat/Titlebar";
@@ -57,6 +58,17 @@ interface ProfileListResponse {
   profiles: ProfileView[];
   activeProfileId: string;
 }
+
+/**
+ * Starter prompts shown as clickable chips on the empty chat state.
+ * Kept here (rather than a separate constants file) until copy is finalised.
+ */
+const DEFAULT_CHAT_SUGGESTIONS: ReadonlyArray<string> = [
+  "帮我审查最近的代码改动",
+  "解释这个错误日志",
+  "起草一份产品方案",
+  "总结这份文档",
+];
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -153,6 +165,10 @@ export function App() {
   const [view, setView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    item: ConversationDto;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
 
   const conversations = useConversations(apiClient);
   const messages = useMessages(apiClient, activeConversationId);
@@ -718,6 +734,57 @@ export function App() {
       />
     ) : null;
 
+  const chatSuggestions = onboardingCard
+    ? undefined
+    : DEFAULT_CHAT_SUGGESTIONS;
+
+  /**
+   * One-tap delete: hide the row immediately, surface an undo toast for
+   * 5 seconds, and only call the API when the user does NOT undo.
+   * If the user navigates back to the row before commit, we restore.
+   */
+  function handleDeleteConversation(id: string) {
+    const target = conversations.items.find((c) => c.id === id);
+    if (!target) return;
+
+    // If a previous undo window is still open, commit it now so we don't
+    // pile up timers (each pending delete owns its own grace period).
+    if (pendingDelete) {
+      clearTimeout(pendingDelete.timer);
+      void conversations.commitDelete(pendingDelete.item.id);
+    }
+
+    conversations.softDelete(id);
+
+    // If the deleted row was the active one, drop it from the chat surface
+    // so the user doesn't see stale messages from a removed conversation.
+    if (id === activeConversationId) {
+      setActiveConversationId(null);
+      setActiveRunId(null);
+      setRetainedRunEvents({ conversationId: null, events: [] });
+    }
+
+    const timer = setTimeout(() => {
+      setPendingDelete(null);
+      void conversations.commitDelete(id);
+    }, 5000);
+    setPendingDelete({ item: target, timer });
+  }
+
+  function handleUndoDelete() {
+    if (!pendingDelete) return;
+    clearTimeout(pendingDelete.timer);
+    conversations.restore(pendingDelete.item);
+    setPendingDelete(null);
+  }
+
+  function handleDismissDeleteToast() {
+    if (!pendingDelete) return;
+    clearTimeout(pendingDelete.timer);
+    void conversations.commitDelete(pendingDelete.item.id);
+    setPendingDelete(null);
+  }
+
   async function handleCreateAgent(input: {
     name: string;
     description: string;
@@ -820,6 +887,7 @@ export function App() {
               onResume={handleResume}
               onDecide={approvals.decide}
               onboardingCard={onboardingCard}
+              suggestions={chatSuggestions}
             />
           ) : null}
           {view === "agents" ? (
@@ -904,7 +972,16 @@ export function App() {
           setView("chat");
         }}
         onNew={startNewConversation}
+        onDelete={handleDeleteConversation}
       />
+
+      {pendingDelete ? (
+        <Toast
+          message={`已删除"${pendingDelete.item.title || "(无标题)"}"`}
+          action={{ label: "撤销", onClick: handleUndoDelete }}
+          onDismiss={handleDismissDeleteToast}
+        />
+      ) : null}
 
       <NewAgentModal
         open={newAgentOpen}

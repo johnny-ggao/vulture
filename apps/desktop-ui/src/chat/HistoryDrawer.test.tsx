@@ -33,110 +33,29 @@ function renderDrawer(onDelete: ((id: string) => void) | undefined) {
 }
 
 describe("HistoryDrawer", () => {
-  test("first delete click does NOT immediately invoke onDelete", () => {
+  test("clicking delete invokes onDelete with the row id (parent owns confirmation)", () => {
     const onDelete = mock((_id: string) => {});
     renderDrawer(onDelete);
 
     const deleteButtons = screen.getAllByRole("button", { name: "删除" });
     fireEvent.click(deleteButtons[0]);
-
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "确认删除" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "取消删除" })).toBeDefined();
-  });
-
-  test("confirm click invokes onDelete with the row id", () => {
-    const onDelete = mock((_id: string) => {});
-    renderDrawer(onDelete);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
 
     expect(onDelete).toHaveBeenCalledTimes(1);
     expect(onDelete.mock.calls[0]?.[0]).toBe("c-1");
   });
 
-  test("cancel click clears pending state without invoking onDelete", () => {
-    const onDelete = mock((_id: string) => {});
-    renderDrawer(onDelete);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "取消删除" }));
-
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "确认删除" })).toBeNull();
-  });
-
-  test("clicking another row's delete cancels prior pending state", () => {
+  test("each row's delete button targets that row's id", () => {
     const onDelete = mock((_id: string) => {});
     renderDrawer(onDelete);
 
     const deleteButtons = screen.getAllByRole("button", { name: "删除" });
-    fireEvent.click(deleteButtons[0]);
     fireEvent.click(deleteButtons[1]);
 
-    // Only one confirm button should be visible at a time
-    expect(screen.getAllByRole("button", { name: "确认删除" }).length).toBe(1);
+    expect(onDelete.mock.calls[0]?.[0]).toBe("c-2");
   });
 
   test("does not render delete button when onDelete prop omitted", () => {
     renderDrawer(undefined);
     expect(screen.queryByRole("button", { name: "删除" })).toBeNull();
-  });
-
-  test("Escape clears pending delete state", () => {
-    const onDelete = mock((_id: string) => {});
-    renderDrawer(onDelete);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
-    expect(screen.getByRole("button", { name: "确认删除" })).toBeDefined();
-
-    fireEvent.keyDown(window, { key: "Escape" });
-
-    expect(onDelete).not.toHaveBeenCalled();
-    expect(screen.queryByRole("button", { name: "确认删除" })).toBeNull();
-  });
-
-  test("closing the drawer clears pending delete state", () => {
-    const onDelete = mock((_id: string) => {});
-    const { rerender } = render(
-      <HistoryDrawer
-        open
-        onClose={() => {}}
-        items={items}
-        activeId={null}
-        onSelect={() => {}}
-        onNew={() => {}}
-        onDelete={onDelete}
-      />,
-    );
-
-    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
-    expect(screen.getByRole("button", { name: "确认删除" })).toBeDefined();
-
-    rerender(
-      <HistoryDrawer
-        open={false}
-        onClose={() => {}}
-        items={items}
-        activeId={null}
-        onSelect={() => {}}
-        onNew={() => {}}
-        onDelete={onDelete}
-      />,
-    );
-    rerender(
-      <HistoryDrawer
-        open
-        onClose={() => {}}
-        items={items}
-        activeId={null}
-        onSelect={() => {}}
-        onNew={() => {}}
-        onDelete={onDelete}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: "确认删除" })).toBeNull();
   });
 });

@@ -92,4 +92,29 @@ describe("MessageBubble", () => {
     expect(container.querySelector(".md-content a")).toBeNull();
     expect(container.textContent ?? "").toContain("[bad](javascript:alert(1))");
   });
+
+  test("renders a streaming caret only when streaming=true on assistant role", () => {
+    const { container, rerender } = render(
+      <MessageBubble role="assistant" content="hello" streaming />,
+    );
+    expect(container.querySelector(".streaming-caret")).not.toBeNull();
+
+    rerender(<MessageBubble role="assistant" content="hello" />);
+    expect(container.querySelector(".streaming-caret")).toBeNull();
+  });
+
+  test("never renders a streaming caret on user messages even when streaming=true", () => {
+    const { container } = render(
+      <MessageBubble role="user" content="hi" streaming />,
+    );
+    expect(container.querySelector(".streaming-caret")).toBeNull();
+  });
+
+  test("streaming caret carries aria-hidden so screen readers ignore it", () => {
+    const { container } = render(
+      <MessageBubble role="assistant" content="hello" streaming />,
+    );
+    const caret = container.querySelector(".streaming-caret");
+    expect(caret?.getAttribute("aria-hidden")).toBe("true");
+  });
 });

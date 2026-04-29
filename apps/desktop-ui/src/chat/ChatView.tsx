@@ -75,6 +75,7 @@ export function ChatView(props: ChatViewProps) {
               events={props.runEvents}
               submittingApprovals={props.submittingApprovals}
               resuming={props.resumingRun}
+              streaming={props.runStatus === "streaming" || props.runStatus === "connecting"}
               onDecide={props.onDecide}
               onResume={props.onResume}
               onCancel={props.onCancel}
