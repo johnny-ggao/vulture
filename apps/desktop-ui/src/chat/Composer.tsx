@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type ThinkingMode = "low" | "medium" | "high";
 
@@ -31,12 +31,6 @@ export function Composer(props: ComposerProps) {
     setFiles([]);
   }
 
-  function cycleThinking() {
-    const idx = THINKING_OPTIONS.findIndex((o) => o.value === thinking);
-    setThinking(THINKING_OPTIONS[(idx + 1) % THINKING_OPTIONS.length].value);
-  }
-
-  const thinkingLabel = THINKING_OPTIONS.find((o) => o.value === thinking)?.label ?? "快速";
   const canSend = Boolean(value.trim() && props.selectedAgentId && !props.running);
 
   return (
@@ -62,31 +56,25 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <div className="composer-controls">
-        <select
-          className="agent-select"
-          value={props.selectedAgentId}
-          onChange={(e) => props.onSelectAgent(e.target.value)}
-          aria-label="智能体"
-        >
-          {props.agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
+        <AgentPicker
+          agents={props.agents}
+          selectedAgentId={props.selectedAgentId}
+          onSelectAgent={props.onSelectAgent}
+        />
+        <div className="thinking-segmented" role="radiogroup" aria-label="思考模式">
+          {THINKING_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={option.value === thinking}
+              className={"thinking-segment" + (option.value === thinking ? " active" : "")}
+              onClick={() => setThinking(option.value)}
+            >
+              {option.label}
+            </button>
           ))}
-        </select>
-        <button
-          type="button"
-          className="chip"
-          onClick={cycleThinking}
-          aria-label={`思考模式：${thinkingLabel}`}
-          title={`思考模式：${thinkingLabel}`}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13">
-            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4 17.5v-1A2.5 2.5 0 0 1 2 14v-1A2.5 2.5 0 0 1 4.5 10.5 2.5 2.5 0 0 1 7 8V6.5A2.5 2.5 0 0 1 9.5 4 2.5 2.5 0 0 1 9.5 2Z"/>
-            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 20 17.5v-1A2.5 2.5 0 0 0 22 14v-1a2.5 2.5 0 0 0-2.5-2.5A2.5 2.5 0 0 0 17 8V6.5A2.5 2.5 0 0 0 14.5 4Z"/>
-          </svg>
-          <span>{thinkingLabel}</span>
-        </button>
+        </div>
         <label className="composer-attach" title="添加附件">
           <input
             type="file"
@@ -121,5 +109,120 @@ export function Composer(props: ComposerProps) {
         )}
       </div>
     </div>
+  );
+}
+
+interface AgentPickerProps {
+  agents: ReadonlyArray<{ id: string; name: string }>;
+  selectedAgentId: string;
+  onSelectAgent: (id: string) => void;
+}
+
+function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const triggerLabel = selectedAgent?.name ?? "选择智能体";
+
+  // Close on Escape, and on outside click. Window-level so the menu closes
+  // when clicking elsewhere in the page (titlebar, message list, etc.).
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    function onMouseDown(event: MouseEvent) {
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(event.target as Node)) return;
+      setOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [open]);
+
+  function handleSelect(id: string) {
+    onSelectAgent(id);
+    setOpen(false);
+  }
+
+  return (
+    <div className="agent-picker" ref={containerRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="agent-picker-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`智能体: ${triggerLabel}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="agent-picker-name">{triggerLabel}</span>
+        <ChevronIcon />
+      </button>
+      {open ? (
+        <div className="agent-picker-menu" role="menu" aria-label="智能体">
+          {agents.map((agent) => (
+            <button
+              key={agent.id}
+              type="button"
+              role="menuitemradio"
+              aria-checked={agent.id === selectedAgentId}
+              className={
+                "agent-picker-item" + (agent.id === selectedAgentId ? " active" : "")
+              }
+              onClick={() => handleSelect(agent.id)}
+            >
+              <span className="agent-picker-item-name">{agent.name}</span>
+              {agent.id === selectedAgentId ? <CheckIcon /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 6l4 4 4-4" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5l3 3 7-7" />
+    </svg>
   );
 }

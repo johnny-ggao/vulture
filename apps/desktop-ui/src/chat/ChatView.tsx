@@ -21,6 +21,11 @@ export interface ChatViewProps {
 
   submittingApprovals: ReadonlySet<string>;
   resumingRun: boolean;
+  /**
+   * Optional list of starter prompts shown as clickable chips on the empty
+   * state. Click sends the chip text as the next user message.
+   */
+  suggestions?: ReadonlyArray<string>;
   onSend: (input: string, files: File[]) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
   onResume: () => void;
@@ -82,6 +87,23 @@ export function ChatView(props: ChatViewProps) {
             <div className="hero-mark">V</div>
             <h2>Vulture</h2>
             <p>选择智能体，然后直接输入任务。</p>
+            {props.suggestions && props.suggestions.length > 0 ? (
+              <ul className="suggestion-chips" aria-label="建议提问">
+                {props.suggestions.map((text) => (
+                  <li key={text}>
+                    <button
+                      type="button"
+                      className="suggestion-chip"
+                      onClick={() => {
+                        void props.onSend(text, []);
+                      }}
+                    >
+                      {text}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         )}
       </section>

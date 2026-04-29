@@ -178,6 +178,78 @@ describe("ChatView", () => {
     expect(screen.getByText(/选择智能体/)).toBeDefined();
   });
 
+  test("renders suggestion chips when provided", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        suggestions={["帮我审查代码", "解释错误日志", "起草一份方案", "总结这份文档"]}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "帮我审查代码" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "解释错误日志" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "起草一份方案" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "总结这份文档" })).toBeDefined();
+  });
+
+  test("clicking a suggestion chip sends it as the next prompt", async () => {
+    const calls: Array<{ text: string; files: number }> = [];
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        suggestions={["帮我审查代码"]}
+        onSend={(text, files) => {
+          calls.push({ text, files: files.length });
+        }}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "帮我审查代码" }));
+    expect(calls).toEqual([{ text: "帮我审查代码", files: 0 }]);
+  });
+
+  test("does not render suggestions list when suggestions prop is empty/undefined", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "帮我审查代码" })).toBeNull();
+  });
+
   test("shows recovery actions when run is recoverable", async () => {
     const calls: string[] = [];
     render(

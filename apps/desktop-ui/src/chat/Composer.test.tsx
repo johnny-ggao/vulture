@@ -101,8 +101,40 @@ describe("Composer", () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
-  test("agent select calls onSelectAgent", () => {
-    const onSelectAgent = mock(() => {});
+  test("agent picker shows current agent name", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /智能体/ });
+    expect(trigger.textContent).toContain("Agent One");
+  });
+
+  test("clicking the agent picker opens a menu listing all agents", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
+    expect(screen.getByRole("menu", { name: /智能体/ })).toBeDefined();
+    expect(screen.getByRole("menuitemradio", { name: /Agent One/ })).toBeDefined();
+    expect(screen.getByRole("menuitemradio", { name: /Agent Two/ })).toBeDefined();
+  });
+
+  test("selecting an agent from the menu calls onSelectAgent and closes the menu", () => {
+    const onSelectAgent = mock((_id: string) => {});
     render(
       <Composer
         agents={agents}
@@ -113,9 +145,29 @@ describe("Composer", () => {
         onCancel={() => {}}
       />,
     );
-    const select = screen.getByDisplayValue("Agent One") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "a2" } });
+    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent Two/ }));
     expect(onSelectAgent).toHaveBeenCalledWith("a2");
+    expect(screen.queryByRole("menu", { name: /智能体/ })).toBeNull();
+  });
+
+  test("Escape closes the agent picker without selecting", () => {
+    const onSelectAgent = mock((_id: string) => {});
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={onSelectAgent}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
+    expect(screen.getByRole("menu", { name: /智能体/ })).toBeDefined();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: /智能体/ })).toBeNull();
+    expect(onSelectAgent).not.toHaveBeenCalled();
   });
 
   test("empty input does not send on Enter", () => {
@@ -153,5 +205,54 @@ describe("Composer", () => {
 
     expect(onSend).not.toHaveBeenCalled();
     expect(ta.value).toBe("hello after switch");
+  });
+
+  test("thinking-mode segmented control shows all three options at once", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: "快速" })).toBeDefined();
+    expect(screen.getByRole("radio", { name: "标准" })).toBeDefined();
+    expect(screen.getByRole("radio", { name: "深度" })).toBeDefined();
+  });
+
+  test("thinking-mode default is 快速 with aria-checked=true", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const fast = screen.getByRole("radio", { name: "快速" });
+    expect(fast.getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "标准" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("radio", { name: "深度" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  test("clicking a thinking-mode option moves the aria-checked state", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "深度" }));
+    expect(screen.getByRole("radio", { name: "快速" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("radio", { name: "深度" }).getAttribute("aria-checked")).toBe("true");
   });
 });
