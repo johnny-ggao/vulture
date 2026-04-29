@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Row } from "./shared";
+import { SectionCard } from "../components";
 import type { SettingsPageProps } from "./types";
 
 export function BrowserSection(props: SettingsPageProps) {
@@ -16,11 +17,20 @@ export function BrowserSection(props: SettingsPageProps) {
   }
 
   return (
-    <div className="page-card">
-      <h3>浏览器中继 (Browser Relay)</h3>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 12 }}>
-        通过本地 Chrome 扩展连接桌面浏览器，供 browser.snapshot / browser.click 工具调用。
-      </p>
+    <SectionCard
+      title="浏览器中继 (Browser Relay)"
+      description="通过本地 Chrome 扩展连接桌面浏览器，供 browser.snapshot / browser.click 工具调用。"
+      actions={
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busy}
+          onClick={startPairing}
+        >
+          {busy ? "..." : "开始配对"}
+        </button>
+      }
+    >
       <Row
         label="状态"
         value={
@@ -33,15 +43,6 @@ export function BrowserSection(props: SettingsPageProps) {
       {status?.pairingToken ? (
         <Row label="配对令牌" value={status.pairingToken} />
       ) : null}
-      <button
-        type="button"
-        className="btn-secondary"
-        style={{ marginTop: 12 }}
-        disabled={busy}
-        onClick={startPairing}
-      >
-        {busy ? "..." : "开始配对"}
-      </button>
-    </div>
+    </SectionCard>
   );
 }

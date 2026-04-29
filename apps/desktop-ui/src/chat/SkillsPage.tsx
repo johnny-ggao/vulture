@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Agent } from "../api/agents";
 import type { SkillListItem, SkillListResponse } from "../api/skills";
+import { Badge, ErrorAlert, Field, SearchInput, SectionCard, Toggle } from "./components";
 
 export interface SkillsPageProps {
   agents: ReadonlyArray<Agent>;
@@ -15,9 +16,15 @@ type LoadState =
   | { status: "ready"; data: SkillListResponse; error: null }
   | { status: "error"; data: SkillListResponse | null; error: string };
 
+const SOURCE_LABEL: Record<SkillListItem["source"], string> = {
+  workspace: "Workspace",
+  profile: "Profile",
+};
+
 export function SkillsPage(props: SkillsPageProps) {
   const [state, setState] = useState<LoadState>({ status: "idle", data: null, error: null });
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
   const activeAgent = useMemo(
     () => props.agents.find((agent) => agent.id === props.selectedAgentId) ?? props.agents[0],
     [props.agents, props.selectedAgentId],
@@ -74,6 +81,8 @@ export function SkillsPage(props: SkillsPageProps) {
 
   const data = state.data;
   const items = data?.items ?? [];
+  const filtered = useMemo(() => filterSkills(items, query), [items, query]);
+  const grouped = useMemo(() => groupBySource(filtered), [filtered]);
 
   return (
     <div className="page">
@@ -84,10 +93,9 @@ export function SkillsPage(props: SkillsPageProps) {
         </div>
       </header>
 
-      <section className="page-card" style={{ padding: 18, display: "grid", gap: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-          <label style={{ display: "grid", gap: 6, minWidth: 260, color: "var(--text-secondary)", fontSize: 12 }}>
-            <span>智能体</span>
+      <section className="page-card skills-shell">
+        <div className="skills-toolbar">
+          <Field label="智能体">
             <select
               value={activeAgent?.id ?? ""}
               aria-label="选择智能体"
@@ -99,9 +107,18 @@ export function SkillsPage(props: SkillsPageProps) {
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="skills-search">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="搜索 skill…"
+              ariaLabel="搜索 skill"
+            />
+          </div>
+
+          <div className="skills-policy">
             <button
               type="button"
               className={data?.policy === "all" ? "btn-primary" : "btn-secondary"}
@@ -121,64 +138,78 @@ export function SkillsPage(props: SkillsPageProps) {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "var(--text-secondary)", fontSize: 13 }}>
+        <div className="skills-meta">
           <span>策略：{policyLabel(data?.policy)}</span>
           <span>·</span>
           <span>{items.length} 个可加载 skill</span>
-          {state.status === "loading" ? <span>刷新中...</span> : null}
-          {saving ? <span>保存中...</span> : null}
+          {state.status === "loading" ? <span>刷新中…</span> : null}
+          {saving ? <span>保存中…</span> : null}
         </div>
 
-        {state.error ? (
-          <div style={{ color: "var(--danger)", fontSize: 13 }}>{state.error}</div>
-        ) : null}
+        <ErrorAlert message={state.error} />
 
-        {items.length === 0 && state.status !== "loading" ? (
-          <div className="placeholder" style={{ minHeight: 140 }}>
-            <span>当前智能体没有可加载的 skill。</span>
+        {filtered.length === 0 && state.status !== "loading" ? (
+          <div className="placeholder placeholder-tall">
+            <span>{items.length === 0 ? "当前智能体没有可加载的 skill。" : `没有找到匹配 "${query}" 的 skill。`}</span>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {items.map((skill) => (
-              <article
-                key={skill.name}
-                style={{
-                  border: "1px solid rgba(15, 15, 15, 0.08)",
-                  borderRadius: "var(--radius-md)",
-                  padding: 14,
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) auto",
-                  gap: 12,
-                  alignItems: "start",
-                }}
-              >
-                <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <strong style={{ color: "var(--text-primary)" }}>{skill.name}</strong>
-                    <Badge>{skill.source}</Badge>
-                    <Badge>{skill.modelInvocationEnabled ? "模型可见" : "仅手动"}</Badge>
-                    <Badge>{skill.enabled ? "已启用" : "已禁用"}</Badge>
-                  </div>
-                  <div style={{ color: "var(--text-secondary)", fontSize: 13 }}>{skill.description}</div>
-                  <code style={{ color: "var(--text-tertiary)", fontSize: 12, overflowWrap: "anywhere" }}>
-                    {skill.filePath}
-                  </code>
+          <div className="skills-groups">
+            {grouped.map((group) => (
+              <div key={group.source} className="skills-group">
+                <h2 className="skills-group-heading">
+                  {`${SOURCE_LABEL[group.source]} (${group.items.length})`}
+                </h2>
+                <div className="skills-group-list">
+                  {group.items.map((skill) => (
+                    <SectionCard key={skill.name} className="skill-card">
+                      <div className="skill-card-row">
+                        <div className="skill-card-meta">
+                          <div className="skill-card-title">
+                            <strong>{skill.name}</strong>
+                            <Badge tone={skill.modelInvocationEnabled ? "info" : "neutral"}>
+                              {skill.modelInvocationEnabled ? "模型可见" : "仅手动"}
+                            </Badge>
+                            {!skill.enabled ? <Badge tone="neutral">已禁用</Badge> : null}
+                          </div>
+                          <div className="skill-card-desc">{skill.description}</div>
+                          <code className="skill-card-path">{skill.filePath}</code>
+                        </div>
+                        <Toggle
+                          ariaLabel={`${skill.enabled ? "禁用" : "启用"} ${skill.name}`}
+                          checked={skill.enabled}
+                          disabled={saving}
+                          onChange={() => void toggleSkill(skill)}
+                        />
+                      </div>
+                    </SectionCard>
+                  ))}
                 </div>
-                <button
-                  type="button"
-                  className={skill.enabled ? "btn-secondary" : "btn-primary"}
-                  disabled={saving}
-                  onClick={() => toggleSkill(skill)}
-                >
-                  {skill.enabled ? "禁用" : "启用"}
-                </button>
-              </article>
+              </div>
             ))}
           </div>
         )}
       </section>
     </div>
   );
+}
+
+function filterSkills(items: ReadonlyArray<SkillListItem>, query: string): SkillListItem[] {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return [...items];
+  return items.filter((item) =>
+    item.name.toLowerCase().includes(trimmed) ||
+    (item.description ?? "").toLowerCase().includes(trimmed),
+  );
+}
+
+function groupBySource(items: ReadonlyArray<SkillListItem>) {
+  const order: SkillListItem["source"][] = ["workspace", "profile"];
+  return order
+    .map((source) => ({
+      source,
+      items: items.filter((item) => item.source === source),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 function policyLabel(policy: SkillListResponse["policy"] | undefined): string {
@@ -188,19 +219,3 @@ function policyLabel(policy: SkillListResponse["policy"] | undefined): string {
   return "加载中";
 }
 
-function Badge(props: { children: string }) {
-  return (
-    <span
-      style={{
-        border: "1px solid rgba(15, 15, 15, 0.08)",
-        borderRadius: 999,
-        padding: "2px 7px",
-        color: "var(--text-secondary)",
-        fontSize: 12,
-        lineHeight: 1.3,
-      }}
-    >
-      {props.children}
-    </span>
-  );
-}

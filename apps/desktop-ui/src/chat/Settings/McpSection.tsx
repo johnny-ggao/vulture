@@ -6,7 +6,6 @@ import type {
   UpdateMcpServer,
 } from "../../api/mcpServers";
 import {
-  StatusPill,
   parseArgs,
   parseEnv,
   isToolEnabled,
@@ -15,6 +14,7 @@ import {
   getDisabledTools,
   toggleName,
 } from "./shared";
+import { Badge, ErrorAlert, Field, SectionCard } from "../components";
 import type { SettingsPageProps } from "./types";
 
 export function McpSection(props: SettingsPageProps) {
@@ -191,75 +191,122 @@ export function McpSection(props: SettingsPageProps) {
   const canCreate = draft.id.trim() && draft.name.trim() && draft.command.trim();
 
   return (
-    <div className="page-card">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "end", marginBottom: 14 }}>
-        <div>
-          <h3>MCP 服务器</h3>
-          <p style={{ color: "var(--text-secondary)", marginTop: 4 }}>本地 stdio MCP server 会作为 agent 工具加载，默认需要审批。</p>
-        </div>
+    <SectionCard
+      title="MCP 服务器"
+      description="本地 stdio MCP server 会作为 agent 工具加载，默认需要审批。"
+      actions={
         <button type="button" className="btn-secondary" disabled={busy !== null} onClick={load}>
           刷新
         </button>
-      </div>
-
-      <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <input aria-label="MCP ID" value={draft.id} placeholder="id: echo-server" onChange={(e) => setDraft((v) => ({ ...v, id: e.target.value }))} />
-          <input aria-label="MCP 名称" value={draft.name} placeholder="名称" onChange={(e) => setDraft((v) => ({ ...v, name: e.target.value }))} />
+      }
+    >
+      <div className="mcp-create">
+        <div className="mcp-create-grid">
+          <Field label="ID" required>
+            <input
+              aria-label="MCP ID"
+              value={draft.id}
+              placeholder="echo-server"
+              onChange={(e) => setDraft((v) => ({ ...v, id: e.target.value }))}
+            />
+          </Field>
+          <Field label="名称" required>
+            <input
+              aria-label="MCP 名称"
+              value={draft.name}
+              placeholder="Echo"
+              onChange={(e) => setDraft((v) => ({ ...v, name: e.target.value }))}
+            />
+          </Field>
         </div>
-        <input aria-label="MCP 命令" value={draft.command} placeholder="command: bun" onChange={(e) => setDraft((v) => ({ ...v, command: e.target.value }))} />
-        <input aria-label="MCP 参数" value={draft.args} placeholder="args: run server.ts" onChange={(e) => setDraft((v) => ({ ...v, args: e.target.value }))} />
-        <input aria-label="MCP 工作目录" value={draft.cwd} placeholder="cwd: /absolute/path，可空" onChange={(e) => setDraft((v) => ({ ...v, cwd: e.target.value }))} />
-        <textarea aria-label="MCP 环境变量" rows={3} value={draft.env} placeholder={"env: KEY=value\\nANOTHER=value"} onChange={(e) => setDraft((v) => ({ ...v, env: e.target.value }))} />
-        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-          <label style={{ display: "flex", gap: 6, alignItems: "center", color: "var(--text-secondary)", fontSize: 13 }}>
-            <input type="checkbox" checked={draft.enabled} onChange={(e) => setDraft((v) => ({ ...v, enabled: e.target.checked }))} />
+        <Field label="命令" required>
+          <input
+            aria-label="MCP 命令"
+            value={draft.command}
+            placeholder="bun"
+            onChange={(e) => setDraft((v) => ({ ...v, command: e.target.value }))}
+          />
+        </Field>
+        <Field label="参数" hint="空格分隔">
+          <input
+            aria-label="MCP 参数"
+            value={draft.args}
+            placeholder="run server.ts"
+            onChange={(e) => setDraft((v) => ({ ...v, args: e.target.value }))}
+          />
+        </Field>
+        <Field label="工作目录" hint="可选，绝对路径">
+          <input
+            aria-label="MCP 工作目录"
+            value={draft.cwd}
+            placeholder="/absolute/path"
+            onChange={(e) => setDraft((v) => ({ ...v, cwd: e.target.value }))}
+          />
+        </Field>
+        <Field label="环境变量" hint="每行一对 KEY=VALUE">
+          <textarea
+            aria-label="MCP 环境变量"
+            rows={3}
+            value={draft.env}
+            placeholder={"KEY=value\nANOTHER=value"}
+            onChange={(e) => setDraft((v) => ({ ...v, env: e.target.value }))}
+          />
+        </Field>
+        <div className="mcp-create-actions">
+          <label className="mcp-checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(e) => setDraft((v) => ({ ...v, enabled: e.target.checked }))}
+            />
             启用
           </label>
-          <select aria-label="MCP 信任级别" value={draft.trust} onChange={(e) => setDraft((v) => ({ ...v, trust: e.target.value as McpTrust }))}>
+          <select
+            aria-label="MCP 信任级别"
+            value={draft.trust}
+            onChange={(e) => setDraft((v) => ({ ...v, trust: e.target.value as McpTrust }))}
+          >
             <option value="ask">ask</option>
             <option value="trusted">trusted</option>
             <option value="disabled">disabled</option>
           </select>
-          <button type="button" className="btn-primary" disabled={busy !== null || !canCreate} onClick={create}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy !== null || !canCreate}
+            onClick={create}
+          >
             {busy === "create" ? "添加中..." : "添加服务器"}
           </button>
         </div>
       </div>
 
-      {error ? <div role="alert" style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div> : null}
+      <ErrorAlert message={error} />
 
       {items.length === 0 ? (
-        <div className="placeholder" style={{ minHeight: 120 }}>
+        <div className="placeholder placeholder-tall">
           <span>还没有 MCP 服务器。</span>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="mcp-server-list">
           {items.map((server) => (
-            <article
-              key={server.id}
-              style={{
-                border: "1px solid var(--fill-tertiary)",
-                borderRadius: "var(--radius-md)",
-                padding: 12,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 650 }}>{server.name}</div>
-                  <div style={{ color: "var(--text-tertiary)", fontSize: 12, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
+            <article key={server.id} className="mcp-server">
+              <div className="mcp-server-head">
+                <div className="mcp-server-meta">
+                  <div className="mcp-server-name">{server.name}</div>
+                  <div className="mcp-server-cmd">
                     {server.id} · {server.command} {server.args.join(" ")}
                   </div>
                 </div>
-                <StatusPill label={`${server.runtime.status} · tools ${server.runtime.toolCount}`} />
+                <Badge tone={runtimeTone(server.runtime.status)}>
+                  {server.runtime.status} · tools {server.runtime.toolCount}
+                </Badge>
               </div>
               {server.runtime.lastError ? (
-                <div style={{ color: "var(--danger)", fontSize: 12, wordBreak: "break-word" }}>{server.runtime.lastError}</div>
+                <div className="mcp-server-error">{server.runtime.lastError}</div>
               ) : null}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", color: "var(--text-secondary)", fontSize: 13 }}>
+              <div className="mcp-server-controls">
+                <label className="mcp-checkbox-label">
                   <input
                     type="checkbox"
                     checked={server.enabled}
@@ -278,74 +325,56 @@ export function McpSection(props: SettingsPageProps) {
                   <option value="trusted">trusted</option>
                   <option value="disabled">disabled</option>
                 </select>
-                <button type="button" className="btn-secondary" disabled={busy !== null} onClick={() => reconnect(server)}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy !== null}
+                  onClick={() => reconnect(server)}
+                >
                   {busy === server.id ? "处理中..." : "重连"}
                 </button>
-                <button type="button" className="btn-secondary" disabled={busy !== null} onClick={() => loadTools(server)}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy !== null}
+                  onClick={() => loadTools(server)}
+                >
                   工具
                 </button>
-                <button type="button" className="btn-secondary" disabled={busy !== null} onClick={() => remove(server)}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy !== null}
+                  onClick={() => remove(server)}
+                >
                   删除
                 </button>
               </div>
               {toolsByServer[server.id]?.length ? (
-                <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        setBusy(server.id);
-                        setError(null);
-                        applyToolPreset(server, toolsByServer[server.id], "all")
-                          .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
-                          .finally(() => setBusy(null));
-                      }}
-                    >
-                      全部开启
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        setBusy(server.id);
-                        setError(null);
-                        applyToolPreset(server, toolsByServer[server.id], "readonly")
-                          .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
-                          .finally(() => setBusy(null));
-                      }}
-                    >
-                      只读
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        setBusy(server.id);
-                        setError(null);
-                        applyToolPreset(server, toolsByServer[server.id], "none")
-                          .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
-                          .finally(() => setBusy(null));
-                      }}
-                    >
-                      全部关闭
-                    </button>
+                <div className="mcp-tool-list">
+                  <div className="mcp-tool-presets">
+                    {(["all", "readonly", "none"] as const).map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="btn-secondary"
+                        disabled={busy !== null}
+                        onClick={() => {
+                          setBusy(server.id);
+                          setError(null);
+                          applyToolPreset(server, toolsByServer[server.id], preset)
+                            .catch((cause) =>
+                              setError(cause instanceof Error ? cause.message : String(cause)),
+                            )
+                            .finally(() => setBusy(null));
+                        }}
+                      >
+                        {presetLabel(preset)}
+                      </button>
+                    ))}
                   </div>
                   {toolsByServer[server.id].map((tool) => (
-                    <label
-                      key={tool.name}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "auto minmax(0, 1fr)",
-                        gap: 8,
-                        alignItems: "start",
-                        color: "var(--text-secondary)",
-                        fontSize: 12,
-                      }}
-                    >
+                    <label key={tool.name} className="mcp-tool-row">
                       <input
                         type="checkbox"
                         checked={tool.enabled ?? isToolEnabled(server, tool.name)}
@@ -354,12 +383,14 @@ export function McpSection(props: SettingsPageProps) {
                           setBusy(server.id);
                           setError(null);
                           toggleTool(server, tool, e.target.checked)
-                            .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)))
+                            .catch((cause) =>
+                              setError(cause instanceof Error ? cause.message : String(cause)),
+                            )
                             .finally(() => setBusy(null));
                         }}
                       />
                       <span>
-                        <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>{tool.name}</span>
+                        <code className="mcp-tool-name">{tool.name}</code>
                         {tool.description ? ` · ${tool.description}` : ""}
                       </span>
                     </label>
@@ -370,6 +401,25 @@ export function McpSection(props: SettingsPageProps) {
           ))}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
+}
+
+function presetLabel(preset: "all" | "readonly" | "none"): string {
+  switch (preset) {
+    case "all": return "全部开启";
+    case "readonly": return "只读";
+    case "none": return "全部关闭";
+  }
+}
+
+function runtimeTone(
+  status: McpServer["runtime"]["status"],
+): "success" | "info" | "warning" | "danger" | "neutral" {
+  switch (status) {
+    case "connected":    return "success";
+    case "disconnected": return "warning";
+    case "failed":       return "danger";
+    default:             return "neutral";
+  }
 }
