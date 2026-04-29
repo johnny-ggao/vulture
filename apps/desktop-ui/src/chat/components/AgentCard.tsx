@@ -1,3 +1,4 @@
+import type * as React from "react";
 import type { Agent } from "../../api/agents";
 import { AgentAvatar } from "./AgentAvatar";
 
@@ -28,9 +29,15 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
         aria-label={agent.name || "未命名智能体"}
         onClick={() => onOpenEdit(agent.id)}
       >
-        <div className="agent-card-banner" aria-hidden="true">
-          <AgentBannerStripes hue={hashHue(agent.id)} />
-        </div>
+        <div
+          className="agent-card-banner"
+          aria-hidden="true"
+          style={
+            {
+              "--banner-hue": hashHue(agent.id).toString(),
+            } as React.CSSProperties
+          }
+        />
         <div className="agent-card-avatar">
           <AgentAvatar agent={agent} size={56} shape="square" />
         </div>
@@ -115,30 +122,6 @@ function TrashIcon() {
       aria-hidden="true"
     >
       <path d="M3 4.5h10M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 4.5v8a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-8" />
-    </svg>
-  );
-}
-
-/**
- * Subtle two-band gradient banner that picks up the agent's hashed hue.
- * Adds a hint of personality to each card without committing to bitmaps.
- */
-function AgentBannerStripes({ hue }: { hue: number }) {
-  return (
-    <svg
-      viewBox="0 0 320 64"
-      preserveAspectRatio="none"
-      width="100%"
-      height="100%"
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id={`agent-banner-${hue}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={`hsl(${hue}deg 64% 90%)`} />
-          <stop offset="100%" stopColor={`hsl(${(hue + 28) % 360}deg 50% 80%)`} />
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="320" height="64" fill={`url(#agent-banner-${hue})`} />
     </svg>
   );
 }

@@ -78,6 +78,27 @@ export function AgentEditModal(props: AgentEditModalProps) {
   const [tab, setTab] = useState<AgentsTab>("overview");
   const [savedFlash, setSavedFlash] = useState(false);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether the modal is currently mounted + open. We branch on this
+  // before any state setter that follows an awaited Promise, so a save that
+  // resolves after the user dismissed the modal doesn't poke a dead tree.
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+  // When the modal closes mid-flight, reset the flash + file status so the
+  // next open doesn't inherit stale UI from a previous session.
+  useEffect(() => {
+    if (open) return;
+    if (savedFlashTimer.current !== null) {
+      clearTimeout(savedFlashTimer.current);
+      savedFlashTimer.current = null;
+    }
+    setSavedFlash(false);
+    setFileStatus("");
+  }, [open]);
 
   // Reset the draft + scratch state every time the modal opens for a new
   // agent. This avoids leaking edits between agents and ensures the close
@@ -169,16 +190,22 @@ export function AgentEditModal(props: AgentEditModalProps) {
   // Esc closes the modal, matching the rest of the app's modal contract.
   // We don't gate on isDirty here — the overlay click stays available for
   // a confirm-style "are you sure?" UX if we ever need it.
+  //
+  // The handler reads `saving` and `onClose` through a ref so the listener
+  // is bound once per open/close cycle rather than on every parent re-render
+  // (where `onClose` is typically a fresh inline arrow).
+  const escDepsRef = useRef({ saving, onClose: props.onClose });
+  escDepsRef.current = { saving, onClose: props.onClose };
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && !saving) {
-        props.onClose();
-      }
+      if (event.key !== "Escape") return;
+      const { saving: isSaving, onClose } = escDepsRef.current;
+      if (!isSaving) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, saving, props.onClose]);
+  }, [open]);
 
   async function save() {
     if (!agent || !draft.name.trim() || !draft.instructions.trim() || saving) return;
@@ -196,11 +223,14 @@ export function AgentEditModal(props: AgentEditModalProps) {
         skills: parseSkills(draft.skillsText),
         instructions: draft.instructions.trim(),
       });
+      if (!aliveRef.current) return;
       if (savedFlashTimer.current !== null) clearTimeout(savedFlashTimer.current);
       setSavedFlash(true);
-      savedFlashTimer.current = setTimeout(() => setSavedFlash(false), 1800);
+      savedFlashTimer.current = setTimeout(() => {
+        if (aliveRef.current) setSavedFlash(false);
+      }, 1800);
     } finally {
-      setSaving(false);
+      if (aliveRef.current) setSaving(false);
     }
   }
 
@@ -211,13 +241,15 @@ export function AgentEditModal(props: AgentEditModalProps) {
     try {
       await props.onSaveFile(agent.id, selectedFile, fileContent);
       const result = await props.onListFiles(agent.id);
+      if (!aliveRef.current) return;
       setCoreFiles(result.files);
       setCorePath(result.corePath);
       setFileStatus("已保存");
     } catch (cause) {
+      if (!aliveRef.current) return;
       setFileStatus(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setFileBusy(false);
+      if (aliveRef.current) setFileBusy(false);
     }
   }
 
@@ -267,7 +299,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
               type="button"
               className="icon-btn"
               aria-label="关闭"
-              onClick={props.onClose}
+              disabled={saving}
+              onClick={() => {
+                if (!saving) props.onClose();
+              }}
             >
               <svg
                 viewBox="0 0 16 16"
