@@ -4,6 +4,7 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { AttachmentStore } from "../domain/attachmentStore";
+import { ConversationContextStore } from "../domain/conversationContextStore";
 import {
   PostMessageRequestSchema,
   type MessageAttachment,
@@ -15,8 +16,18 @@ import {
   idempotencyCache,
 } from "../middleware/idempotency";
 import { orchestrateRun } from "../runtime/runOrchestrator";
+import type { OrchestrateArgs } from "../runtime/runOrchestrator";
 import type { LlmAttachment, LlmCallable, ToolCallable } from "@vulture/agent-runtime";
 import type { ApprovalQueue } from "../runtime/approvalQueue";
+import { VultureConversationSession } from "../runtime/conversationSession";
+import {
+  buildConversationSessionInputCallback,
+  messageIdFromItem,
+  shouldCompactConversation,
+  textFromItem,
+} from "../runtime/conversationContext";
+import { compactConversationContext } from "../runtime/conversationCompactor";
+import type { AgentInputItem, Session } from "@openai/agents";
 
 export type ResumeRunResult =
   | { status: "scheduled" }
@@ -29,9 +40,11 @@ export interface RunsDeps {
   attachments: AttachmentStore;
   runs: RunStore;
   llm: LlmCallable;
+  noToolsLlm?: LlmCallable;
   tools: ToolCallable;
   approvalQueue: ApprovalQueue;
   cancelSignals: Map<string, AbortController>;
+  contexts?: ConversationContextStore;
   resumeRun(runId: string, mode: "auto" | "manual"): ResumeRunResult;
   systemPromptForAgent(a: { id: string }): string;
   skillsPromptForAgent?: (a: { id: string }) => string;
@@ -39,6 +52,29 @@ export interface RunsDeps {
   afterRunSucceeded?: Parameters<typeof orchestrateRun>[0]["afterRunSucceeded"];
   modelForAgent(a: { id: string }): string;
   workspacePathForAgent(a: { id: string }): string;
+}
+
+export interface StartConversationRunInput {
+  conversationId: string;
+  input: string;
+  attachmentIds?: string[];
+}
+
+export interface StartConversationRunResult {
+  run: ReturnType<RunStore["create"]>;
+  message: ReturnType<MessageStore["append"]>;
+  eventStreamUrl: string;
+}
+
+export class RunStartError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "RunStartError";
+  }
 }
 
 interface RunEventStream {
@@ -62,6 +98,7 @@ const RUN_STATUS_FILTERS = new Set<string>([
   "active",
 ]);
 type RunStatusFilter = RunStatus | "active";
+const compactionQueues = new Map<string, Promise<void>>();
 
 export async function writeRunEventStream(
   deps: Pick<RunsDeps, "runs">,
@@ -185,73 +222,24 @@ export function runsRouter(deps: RunsDeps): Hono {
       if (!parsed.success) {
         return c.json({ code: "internal", message: parsed.error.message }, 400);
       }
-      const appendedUserMsg = deps.messages.append({
-        conversationId: cid,
-        role: "user",
-        content: parsed.data.input,
-        runId: null,
-      });
       try {
-        deps.attachments.linkToMessage(parsed.data.attachmentIds ?? [], appendedUserMsg.id);
+        return c.json(
+          await startConversationRun(deps, {
+            conversationId: cid,
+            input: parsed.data.input,
+            attachmentIds: parsed.data.attachmentIds,
+          }),
+          202,
+        );
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message === "attachment.not_found") {
-          return c.json({ code: "attachment.not_found", message }, 404);
+        if (err instanceof RunStartError) {
+          return c.json({ code: err.code, message: err.message }, err.status as 400);
         }
-        if (message === "attachment.already_used") {
-          return c.json({ code: "attachment.already_used", message }, 409);
-        }
-        return c.json({ code: "internal", message }, 400);
+        return c.json(
+          { code: "internal", message: err instanceof Error ? err.message : String(err) },
+          500,
+        );
       }
-      const userMsg = deps.messages.get(appendedUserMsg.id) ?? appendedUserMsg;
-      const runtimeAttachments = toRuntimeAttachments(deps.attachments, userMsg.attachments);
-      const run = deps.runs.create({
-        conversationId: cid,
-        agentId: conv.agentId,
-        triggeredByMessageId: userMsg.id,
-      });
-      const contextPrompt = combineContextPrompts(
-        await safeMemoryPrompt(deps, { agentId: conv.agentId, input: parsed.data.input }),
-        deps.skillsPromptForAgent?.({ id: conv.agentId }),
-      );
-
-      // Fire-and-forget orchestrator; SSE consumers see appended events.
-      orchestrateRun(
-        {
-          runs: deps.runs,
-          messages: deps.messages,
-          conversations: deps.conversations,
-          llm: deps.llm,
-          tools: deps.tools,
-          cancelSignals: deps.cancelSignals,
-          afterRunSucceeded: deps.afterRunSucceeded,
-        },
-        {
-          runId: run.id,
-          agentId: conv.agentId,
-          model: deps.modelForAgent({ id: conv.agentId }),
-          systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
-          contextPrompt,
-          workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
-          conversationId: cid,
-          userInput: parsed.data.input,
-          attachments: runtimeAttachments,
-        },
-      ).catch((err) => {
-        deps.runs.markFailed(run.id, {
-          code: "internal",
-          message: err instanceof Error ? err.message : String(err),
-        });
-      });
-
-      return c.json(
-        {
-          run,
-          message: userMsg,
-          eventStreamUrl: `/v1/runs/${run.id}/events`,
-        },
-        202,
-      );
     },
   );
 
@@ -352,6 +340,155 @@ export function runsRouter(deps: RunsDeps): Hono {
   return app;
 }
 
+export async function startConversationRun(
+  deps: RunsDeps,
+  input: StartConversationRunInput,
+): Promise<StartConversationRunResult> {
+  const conv = deps.conversations.get(input.conversationId);
+  if (!conv) {
+    throw new RunStartError(404, "conversation.not_found", input.conversationId);
+  }
+
+  const appendedUserMsg = deps.messages.append({
+    conversationId: input.conversationId,
+    role: "user",
+    content: input.input,
+    runId: null,
+  });
+
+  try {
+    deps.attachments.linkToMessage(input.attachmentIds ?? [], appendedUserMsg.id);
+  } catch (err) {
+    rollbackPendingUserMessage(deps, appendedUserMsg.id);
+    throw attachmentRunStartError(err);
+  }
+
+  const userMsg = deps.messages.get(appendedUserMsg.id) ?? appendedUserMsg;
+  const runtimeAttachments = toRuntimeAttachments(deps.attachments, userMsg.attachments);
+  const userSessionText = textWithAttachmentMetadata(input.input, userMsg.attachments);
+  if (deps.contexts) {
+    try {
+      deps.contexts.addSessionItems(input.conversationId, [
+        {
+          messageId: userMsg.id,
+          role: "user",
+          item: messageSessionItem("user", userSessionText, userMsg.id),
+        },
+      ]);
+    } catch (err) {
+      rollbackPendingUserMessage(deps, userMsg.id);
+      throw new RunStartError(
+        500,
+        "internal",
+        `failed to persist conversation context session item: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  let run: ReturnType<RunStore["create"]>;
+  let contextPrompt: string | undefined;
+  let session: Session | undefined;
+  let sessionInputCallback: OrchestrateArgs["sessionInputCallback"];
+  let afterRunSucceeded: RunsDeps["afterRunSucceeded"];
+  try {
+    run = deps.runs.create({
+      conversationId: input.conversationId,
+      agentId: conv.agentId,
+      triggeredByMessageId: userMsg.id,
+    });
+    contextPrompt = combineContextPrompts(
+      await safeMemoryPrompt(deps, { agentId: conv.agentId, input: input.input }),
+      deps.skillsPromptForAgent?.({ id: conv.agentId }),
+    );
+    const baseSession = deps.contexts
+      ? new VultureConversationSession(deps.contexts, input.conversationId)
+      : undefined;
+    session = baseSession
+      ? new CurrentTurnSession(baseSession, {
+          messageId: userMsg.id,
+          userInput: input.input,
+          userSessionText,
+        })
+      : undefined;
+    sessionInputCallback = deps.contexts
+      ? buildConversationSessionInputCallback({
+          getContext: () => deps.contexts?.getContext(input.conversationId) ?? null,
+        })
+      : undefined;
+    afterRunSucceeded = buildAfterRunSucceeded(deps);
+  } catch (err) {
+    rollbackPendingUserMessage(deps, userMsg.id);
+    throw err;
+  }
+
+  // Fire-and-forget orchestrator; SSE consumers see appended events.
+  orchestrateRun(
+    {
+      runs: deps.runs,
+      messages: deps.messages,
+      conversations: deps.conversations,
+      llm: deps.llm,
+      tools: deps.tools,
+      cancelSignals: deps.cancelSignals,
+      afterRunSucceeded,
+    },
+    {
+      runId: run.id,
+      agentId: conv.agentId,
+      model: deps.modelForAgent({ id: conv.agentId }),
+      systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
+      contextPrompt,
+      workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
+      conversationId: input.conversationId,
+      userInput: input.input,
+      attachments: runtimeAttachments,
+      session,
+      sessionInputCallback,
+    },
+  ).catch((err) => {
+    deps.runs.markFailed(run.id, {
+      code: "internal",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
+
+  return {
+    run,
+    message: userMsg,
+    eventStreamUrl: `/v1/runs/${run.id}/events`,
+  };
+}
+
+function attachmentRunStartError(cause: unknown): RunStartError {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  if (message === "attachment.not_found") {
+    return new RunStartError(404, "attachment.not_found", message);
+  }
+  if (message === "attachment.already_used") {
+    return new RunStartError(409, "attachment.already_used", message);
+  }
+  return new RunStartError(400, "internal", message);
+}
+
+function rollbackPendingUserMessage(
+  deps: Pick<RunsDeps, "attachments" | "contexts" | "messages">,
+  messageId: string,
+): void {
+  try {
+    const message = deps.messages.get(messageId);
+    if (message) {
+      deps.contexts?.deleteSessionItemsForMessage(message.conversationId, messageId);
+    }
+    deps.attachments.unlinkFromMessage(messageId);
+    deps.messages.delete(messageId);
+  } catch (err) {
+    console.warn(
+      "[gateway] failed to rollback pending user message",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 export function combineContextPrompts(...parts: Array<string | undefined | null>): string | undefined {
   const joined = parts
     .map((part) => part?.trim())
@@ -388,4 +525,204 @@ function toRuntimeAttachments(
       dataBase64: content.bytes.toString("base64"),
     };
   });
+}
+
+function buildAfterRunSucceeded(deps: RunsDeps): RunsDeps["afterRunSucceeded"] {
+  if (!deps.contexts && !deps.afterRunSucceeded) return undefined;
+
+  return async (input) => {
+    if (deps.contexts) {
+      try {
+        addAssistantSessionItemIfMissing(deps.contexts, input.conversationId, {
+          messageId: input.resultMessageId,
+          finalText: input.finalText,
+        });
+        scheduleCompactionIfNeeded(deps, input);
+      } catch (err) {
+        console.warn(
+          "[gateway] conversation context persistence failed",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
+
+    await deps.afterRunSucceeded?.(input);
+  };
+}
+
+function addAssistantSessionItemIfMissing(
+  contexts: ConversationContextStore,
+  conversationId: string,
+  input: { messageId: string; finalText: string },
+): void {
+  const existing = contexts
+    .listSessionItems(conversationId)
+    .some((item) =>
+      item.role === "assistant" &&
+      (item.messageId === input.messageId || messageIdFromItem(item.item) === input.messageId)
+    );
+  if (existing) return;
+
+  contexts.addSessionItems(conversationId, [
+    {
+      messageId: input.messageId,
+      role: "assistant",
+      item: messageSessionItem("assistant", input.finalText, input.messageId),
+    },
+  ]);
+}
+
+function scheduleCompactionIfNeeded(
+  deps: RunsDeps,
+  input: {
+    conversationId: string;
+    agentId: string;
+    model: string;
+    workspacePath: string;
+  },
+): void {
+  if (!deps.contexts || !deps.noToolsLlm) return;
+  const items = deps.contexts
+    .listSessionItems(input.conversationId)
+    .map((item) => item.item);
+  if (!shouldCompactConversation({ items })) return;
+
+  enqueueCompaction(input.conversationId, async () => {
+    const existing = deps.contexts?.getContext(input.conversationId);
+    await compactConversationContext({
+      conversationId: input.conversationId,
+      agentId: input.agentId,
+      model: input.model,
+      workspacePath: input.workspacePath,
+      items,
+      existingSummary: existing?.summary ?? null,
+      llm: deps.noToolsLlm as LlmCallable,
+      upsertContext: (context) => {
+        if (!deps.contexts) return;
+        if (isRegressiveContextCutoff(deps.contexts, input.conversationId, context.summarizedThroughMessageId ?? null)) {
+          return;
+        }
+        deps.contexts.upsertContext(context);
+      },
+    });
+  }).catch((err) => {
+    console.warn(
+      "[gateway] conversation context compaction failed",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+}
+
+function enqueueCompaction(conversationId: string, task: () => Promise<void>): Promise<void> {
+  const previous = compactionQueues.get(conversationId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(task);
+  compactionQueues.set(conversationId, next);
+  void next.then(
+    () => {
+      if (compactionQueues.get(conversationId) === next) {
+        compactionQueues.delete(conversationId);
+      }
+    },
+    () => {
+      if (compactionQueues.get(conversationId) === next) {
+        compactionQueues.delete(conversationId);
+      }
+    },
+  );
+  return next;
+}
+
+function isRegressiveContextCutoff(
+  contexts: ConversationContextStore,
+  conversationId: string,
+  nextCutoff: string | null,
+): boolean {
+  const existingCutoff = contexts.getContext(conversationId)?.summarizedThroughMessageId ?? null;
+  if (!existingCutoff || !nextCutoff || existingCutoff === nextCutoff) return false;
+
+  const messageIds = contexts
+    .listSessionItems(conversationId)
+    .map((item) => item.messageId ?? messageIdFromItem(item.item));
+  const existingIndex = messageIds.lastIndexOf(existingCutoff);
+  const nextIndex = messageIds.lastIndexOf(nextCutoff);
+  return existingIndex >= 0 && nextIndex >= 0 && nextIndex < existingIndex;
+}
+
+function messageSessionItem(
+  role: "user" | "assistant",
+  text: string,
+  messageId: string,
+): AgentInputItem {
+  return {
+    type: "message",
+    role,
+    providerData: { messageId },
+    content: [
+      {
+        type: role === "user" ? "input_text" : "output_text",
+        text,
+      },
+    ],
+  } as AgentInputItem;
+}
+
+function textWithAttachmentMetadata(input: string, attachments: MessageAttachment[]): string {
+  if (attachments.length === 0) return input;
+  const attachmentLines = attachments.map((attachment) =>
+    [
+      "- ",
+      attachment.displayName,
+      ` (id: ${attachment.id}, kind: ${attachment.kind}, mime: ${attachment.mimeType}, size: ${attachment.sizeBytes} bytes)`,
+    ].join(""),
+  );
+  return [input, "", "Attachments:", ...attachmentLines].join("\n");
+}
+
+class CurrentTurnSession implements Session {
+  constructor(
+    private readonly delegate: VultureConversationSession,
+    private readonly currentTurn: { messageId: string; userInput: string; userSessionText: string },
+  ) {}
+
+  getSessionId(): Promise<string> {
+    return this.delegate.getSessionId();
+  }
+
+  getItems(limit?: number): Promise<AgentInputItem[]> {
+    return this.delegate.getItems(limit);
+  }
+
+  async addItems(items: AgentInputItem[]): Promise<void> {
+    const filtered = items.filter((item) => this.shouldDelegateItem(item));
+    if (filtered.length === 0) return;
+    await this.delegate.addItems(filtered);
+  }
+
+  popItem(): Promise<AgentInputItem | undefined> {
+    return this.delegate.popItem();
+  }
+
+  clearSession(): Promise<void> {
+    return this.delegate.clearSession();
+  }
+
+  private shouldDelegateItem(item: AgentInputItem): boolean {
+    const role = roleFromItem(item);
+    if (role === "assistant") return false;
+    if (role !== "user") return true;
+    if (messageIdFromItem(item) === this.currentTurn.messageId) return false;
+
+    const text = textFromItem(item).trim();
+    if (text === this.currentTurn.userInput.trim()) return false;
+    if (text === this.currentTurn.userSessionText.trim()) return false;
+    if (text.startsWith(`${this.currentTurn.userInput.trim()}\n`)) return false;
+    return true;
+  }
+}
+
+function roleFromItem(item: AgentInputItem): string {
+  if (typeof item === "object" && item !== null && "role" in item && typeof item.role === "string") {
+    return item.role;
+  }
+  return "unknown";
 }

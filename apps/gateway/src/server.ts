@@ -15,13 +15,19 @@ import { ConversationStore } from "./domain/conversationStore";
 import { MessageStore } from "./domain/messageStore";
 import { AttachmentStore } from "./domain/attachmentStore";
 import { RunStore } from "./domain/runStore";
+import { ConversationContextStore } from "./domain/conversationContextStore";
 import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
 import { skillsRouter } from "./routes/skills";
+import { toolsRouter } from "./routes/tools";
 import { memoriesRouter } from "./routes/memories";
 import { conversationsRouter } from "./routes/conversations";
-import { runsRouter, type ResumeRunResult } from "./routes/runs";
+import {
+  runsRouter,
+  startConversationRun as startConversationRunWithContext,
+  type ResumeRunResult,
+} from "./routes/runs";
 import { attachmentsRouter } from "./routes/attachments";
 import { mcpServersRouter } from "./routes/mcpServers";
 import {
@@ -49,7 +55,6 @@ import { MemoryFileStore } from "./domain/memoryFileStore";
 import { McpServerStore } from "./domain/mcpServerStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
 import { McpClientManager } from "./runtime/mcpClientManager";
-import { combineContextPrompts } from "./routes/runs";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -79,6 +84,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const messageStore = new MessageStore(db);
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
+  const conversationContextStore = new ConversationContextStore(db);
   const memoryStore = new MemoryStore(db);
   const mcpServerStore = new McpServerStore(db);
   const mcpClientManager = new McpClientManager(mcpServerStore);
@@ -88,6 +94,14 @@ export function buildServer(cfg: GatewayConfig): Hono {
     toolNames: [],
     toolCallable: async () => {
       throw new Error("memory extraction does not allow tools");
+    },
+    shellCallbackUrl: cfg.shellCallbackUrl,
+    shellToken: cfg.token,
+  });
+  const contextCompactionLlm = makeLazyLlm({
+    toolNames: [],
+    toolCallable: async () => {
+      throw new Error("conversation context compaction does not allow tools");
     },
     shellCallbackUrl: cfg.shellCallbackUrl,
     shellToken: cfg.token,
@@ -141,6 +155,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         name: agent.workspace.name,
         path: agent.workspace.path,
       },
+      agentCoreDir: agentStore.agentCorePath(agent.id),
     });
   };
   const modelForAgent = ({ id }: { id: string }): string =>
@@ -153,6 +168,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     const entries = loadSkillEntries({
       workspaceDir: agent.workspace.path,
       profileDir: cfg.profileDir,
+      agentCoreDir: agentStore.agentCorePath(agent.id),
     });
     return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
   };
@@ -160,11 +176,6 @@ export function buildServer(cfg: GatewayConfig): Hono {
     const agent = agentStore.get(agentId);
     return agent ? memoryFileStore.contextPrompt(agent) : "";
   };
-  const contextPromptForRun = async (agentId: string, input: string): Promise<string | undefined> =>
-    combineContextPrompts(
-      await memoryPromptForRun({ agentId, input }),
-      skillsPromptForAgent({ id: agentId }),
-    );
   const afterRunSucceeded = async (input: {
     runId: string;
     conversationId: string;
@@ -203,46 +214,29 @@ export function buildServer(cfg: GatewayConfig): Hono {
     }
   };
   const startConversationRun = async (conversationId: string, input: string) => {
-    const conv = conversationStore.get(conversationId);
-    if (!conv) throw new Error(`conversation not found: ${conversationId}`);
-    const userMsg = messageStore.append({
-      conversationId,
-      role: "user",
-      content: input,
-      runId: null,
-    });
-    const run = runStore.create({
-      conversationId,
-      agentId: conv.agentId,
-      triggeredByMessageId: userMsg.id,
-    });
-    orchestrateRun(
+    const result = await startConversationRunWithContext(
       {
-        runs: runStore,
-        messages: messageStore,
         conversations: conversationStore,
+        messages: messageStore,
+        attachments: attachmentStore,
+        runs: runStore,
         llm,
+        noToolsLlm: contextCompactionLlm,
         tools,
+        approvalQueue,
         cancelSignals,
+        contexts: conversationContextStore,
+        resumeRun,
+        systemPromptForAgent,
+        skillsPromptForAgent,
+        memoryPromptForRun,
         afterRunSucceeded,
+        modelForAgent,
+        workspacePathForAgent,
       },
-      {
-        runId: run.id,
-        agentId: conv.agentId,
-        model: modelForAgent({ id: conv.agentId }),
-        systemPrompt: systemPromptForAgent({ id: conv.agentId }),
-        contextPrompt: await contextPromptForRun(conv.agentId, input),
-        workspacePath: workspacePathForAgent({ id: conv.agentId }),
-        conversationId,
-        userInput: input,
-      },
-    ).catch((err) => {
-      runStore.markFailed(run.id, {
-        code: "internal",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    });
-    return { conversationId, runId: run.id, messageId: userMsg.id };
+      { conversationId, input },
+    );
+    return { conversationId, runId: result.run.id, messageId: result.message.id };
   };
   tools = makeGatewayLocalTools({
     shellTools,
@@ -512,6 +506,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", profileRouter(profileStore));
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
+  app.route("/", toolsRouter());
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
   app.route(
     "/",
@@ -534,6 +529,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     conversationsRouter({
       conversations: conversationStore,
       messages: messageStore,
+      contexts: conversationContextStore,
     }),
   );
   app.route(
@@ -544,9 +540,11 @@ export function buildServer(cfg: GatewayConfig): Hono {
       attachments: attachmentStore,
       runs: runStore,
       llm,
+      noToolsLlm: contextCompactionLlm,
       tools,
       approvalQueue,
       cancelSignals,
+      contexts: conversationContextStore,
       resumeRun,
       systemPromptForAgent,
       skillsPromptForAgent,

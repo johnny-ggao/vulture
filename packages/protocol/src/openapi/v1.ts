@@ -109,6 +109,47 @@ export function buildOpenApiV1(): JsonObject {
           },
         }),
       },
+      "/v1/agents/{id}/files": {
+        get: operation({
+          operationId: "listAgentCoreFiles",
+          tags: ["agents"],
+          parameters: [pathParam("id")],
+          responses: {
+            200: jsonResponse("AgentCoreFilesResponse"),
+            404: errorResponse(),
+          },
+        }),
+      },
+      "/v1/agents/{id}/files/{name}": {
+        get: operation({
+          operationId: "getAgentCoreFile",
+          tags: ["agents"],
+          parameters: [pathParam("id"), pathParam("name")],
+          responses: {
+            200: jsonResponse("AgentCoreFileResponse"),
+            400: errorResponse(),
+            404: errorResponse(),
+          },
+        }),
+        put: operation({
+          operationId: "putAgentCoreFile",
+          tags: ["agents"],
+          parameters: [pathParam("id"), pathParam("name")],
+          requestBody: jsonRequest("PutAgentCoreFileRequest"),
+          responses: {
+            200: jsonResponse("AgentCoreFileResponse"),
+            400: errorResponse(),
+            404: errorResponse(),
+          },
+        }),
+      },
+      "/v1/tools/catalog": {
+        get: operation({
+          operationId: "getToolCatalog",
+          tags: ["tools"],
+          responses: { 200: jsonResponse("ToolCatalog") },
+        }),
+      },
       "/v1/conversations": {
         get: operation({
           operationId: "listConversations",
@@ -280,8 +321,49 @@ export function buildOpenApiV1(): JsonObject {
       },
       schemas: {
         Agent: schema(AgentSchema),
+        AgentCoreFile: {
+          type: "object",
+          required: ["name", "path", "missing"],
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", minLength: 1 },
+            path: { type: "string", minLength: 1 },
+            missing: { type: "boolean" },
+            size: { type: "integer", minimum: 0 },
+            updatedAtMs: { type: "integer", minimum: 0 },
+            content: { type: "string" },
+          },
+        },
+        AgentCoreFilesResponse: {
+          type: "object",
+          required: ["agentId", "rootPath", "corePath", "files"],
+          additionalProperties: false,
+          properties: {
+            agentId: { type: "string", minLength: 1 },
+            rootPath: { type: "string", minLength: 1 },
+            corePath: { type: "string", minLength: 1 },
+            files: { type: "array", items: ref("AgentCoreFile") },
+          },
+        },
+        AgentCoreFileResponse: {
+          type: "object",
+          required: ["agentId", "rootPath", "corePath", "file"],
+          additionalProperties: false,
+          properties: {
+            agentId: { type: "string", minLength: 1 },
+            rootPath: { type: "string", minLength: 1 },
+            corePath: { type: "string", minLength: 1 },
+            file: ref("AgentCoreFile"),
+          },
+        },
         AgentList: listSchema("Agent"),
         SaveAgentRequest: schema(SaveAgentRequestSchema),
+        PutAgentCoreFileRequest: {
+          type: "object",
+          required: ["content"],
+          additionalProperties: false,
+          properties: { content: { type: "string" } },
+        },
         ApprovalRequest: schema(ApprovalRequestSchema),
         AppError: schema(AppErrorSchema),
         Conversation: schema(ConversationSchema),
@@ -309,6 +391,39 @@ export function buildOpenApiV1(): JsonObject {
         Workspace: schema(WorkspaceSchema),
         WorkspaceList: listSchema("Workspace"),
         SaveWorkspaceRequest: schema(SaveWorkspaceRequestSchema),
+        ToolCatalog: {
+          type: "object",
+          required: ["groups"],
+          additionalProperties: false,
+          properties: {
+            groups: { type: "array", items: ref("ToolCatalogGroup") },
+          },
+        },
+        ToolCatalogGroup: {
+          type: "object",
+          required: ["id", "label", "items"],
+          additionalProperties: false,
+          properties: {
+            id: { type: "string", minLength: 1 },
+            label: { type: "string", minLength: 1 },
+            items: { type: "array", items: ref("ToolCatalogItem") },
+          },
+        },
+        ToolCatalogItem: {
+          type: "object",
+          required: ["id", "label", "description", "source", "category", "risk", "idempotent", "sdkName"],
+          additionalProperties: false,
+          properties: {
+            id: { type: "string", minLength: 1 },
+            label: { type: "string", minLength: 1 },
+            description: { type: "string" },
+            source: { type: "string", enum: ["core", "plugin", "mcp"] },
+            category: { type: "string", enum: ["runtime", "browser", "fs", "workspace", "web", "sessions", "memory", "agents"] },
+            risk: { type: "string", enum: ["safe", "approval", "dangerous"] },
+            idempotent: { type: "boolean" },
+            sdkName: { type: "string", minLength: 1 },
+          },
+        },
       },
     },
   };

@@ -14,7 +14,7 @@ export interface SkillEntry {
   description: string;
   filePath: string;
   baseDir: string;
-  source?: "profile" | "workspace";
+  source?: "profile" | "workspace" | "agent-core";
   modelInvocationEnabled: boolean;
   userInvocable?: boolean;
   metadata?: SkillMetadata;
@@ -23,6 +23,7 @@ export interface SkillEntry {
 export interface LoadSkillEntriesOptions {
   workspaceDir: string;
   profileDir?: string;
+  agentCoreDir?: string;
   maxSkillFileBytes?: number;
 }
 
@@ -46,10 +47,14 @@ export function loadSkillEntries(opts: LoadSkillEntriesOptions): SkillEntry[] {
     maxSkillFileBytes,
     "workspace",
   );
+  const agentCoreSkills = opts.agentCoreDir
+    ? loadSkillsFromRoot(join(opts.agentCoreDir, "skills"), maxSkillFileBytes, "agent-core")
+    : [];
   const merged = new Map<string, SkillEntry>();
 
   for (const skill of profileSkills) merged.set(skill.name, skill);
   for (const skill of workspaceSkills) merged.set(skill.name, skill);
+  for (const skill of agentCoreSkills) merged.set(skill.name, skill);
 
   return Array.from(merged.values())
     .filter(isEligible)
@@ -95,7 +100,7 @@ export function formatSkillsForPrompt(entries: readonly SkillEntry[]): string {
 function loadSkillsFromRoot(
   rootDir: string,
   maxSkillFileBytes: number,
-  source: "profile" | "workspace",
+  source: "profile" | "workspace" | "agent-core",
 ): SkillEntry[] {
   const root = resolve(rootDir);
   if (!existsSync(root)) return [];
@@ -125,7 +130,7 @@ function loadSkillFromDirectory(
   skillDir: string,
   rootRealPath: string,
   maxSkillFileBytes: number,
-  source: "profile" | "workspace",
+  source: "profile" | "workspace" | "agent-core",
 ): SkillEntry | null {
   const skillDirRealPath = safeRealpath(skillDir);
   if (!skillDirRealPath || !isPathInside(rootRealPath, skillDirRealPath)) return null;

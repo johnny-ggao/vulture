@@ -5,6 +5,8 @@ import type {
   AgentInputItem,
   RunStreamEvent,
   RunToolApprovalItem,
+  Session,
+  SessionInputCallback,
   StreamedRunResult,
   Tool,
 } from "@openai/agents";
@@ -50,6 +52,10 @@ export type SdkApprovalCallable = (request: {
 
 export type McpToolProvider = () => Promise<Tool<SdkRunContext>[]>;
 
+interface RunnerLike {
+  run(agent: unknown, input: unknown, options: unknown): Promise<unknown>;
+}
+
 export interface RunFactoryInput {
   systemPrompt: string;
   contextPrompt?: string;
@@ -67,6 +73,8 @@ export interface RunFactoryInput {
   mcpToolProvider?: McpToolProvider;
   recovery?: LlmRecoveryInput;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
+  session?: Session;
+  sessionInputCallback?: SessionInputCallback;
 }
 
 export interface OpenAILlmOptions {
@@ -106,6 +114,8 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
       mcpToolProvider: opts.mcpToolProvider,
       recovery: input.recovery,
       onCheckpoint: input.onCheckpoint,
+      session: input.session,
+      sessionInputCallback: input.sessionInputCallback,
     });
     for await (const event of stream) {
       yield event as LlmYield;
@@ -125,8 +135,9 @@ export function makeStubLlmFallback(): LlmCallable {
 
 export type SdkRunContext = GatewayToolRunContext;
 
-async function* defaultRunFactory(
+export async function* defaultRunFactory(
   input: RunFactoryInput,
+  deps: { runner?: RunnerLike } = {},
 ): AsyncIterable<SdkRunEvent> {
   const tools = await buildSdkToolsForRun(input);
   const agent = new Agent<SdkRunContext>({
@@ -140,7 +151,7 @@ async function* defaultRunFactory(
     modelSettings: { store: false },
   });
 
-  const runner = new Runner({
+  const runner = deps.runner ?? new Runner({
     modelProvider: input.modelProvider,
     tracingDisabled: input.tracingDisabled,
   });
@@ -164,6 +175,8 @@ async function* defaultRunFactory(
     const stream = (await runner.run(agent, runInput, {
       stream: true,
       context: runContext,
+      session: input.session,
+      sessionInputCallback: input.sessionInputCallback,
     })) as StreamedRunResult<SdkRunContext, Agent<SdkRunContext, any>>;
 
     for await (const event of stream) {

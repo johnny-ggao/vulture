@@ -22,6 +22,9 @@ const sampleAgent: Agent = {
   model: "gpt-5.4",
   reasoning: "medium",
   tools: ["shell.exec" as Agent["tools"][number]],
+  toolPreset: "none",
+  toolInclude: ["shell.exec" as Agent["tools"][number]],
+  toolExclude: [],
   skills: ["csv-insights"],
   workspace: ws,
   instructions: "Be concise.",
@@ -71,6 +74,22 @@ describe("Agent schema", () => {
       instructions: "x",
     });
     expect(req.skills).toEqual([]);
+  });
+
+  test("SaveAgentRequest accepts tool preset policy", () => {
+    const req = SaveAgentRequestSchema.parse({
+      id: "x",
+      name: "X",
+      description: "x",
+      model: "gpt-5.4",
+      reasoning: "low",
+      toolPreset: "developer",
+      toolInclude: [],
+      toolExclude: ["browser.click"],
+      instructions: "x",
+    });
+    expect(req.toolPreset).toBe("developer");
+    expect(req.toolExclude).toEqual(["browser.click"]);
   });
 
   test("AGENT_TOOL_NAMES is non-empty", () => {

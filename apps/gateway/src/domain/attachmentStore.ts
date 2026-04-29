@@ -138,6 +138,12 @@ export class AttachmentStore {
     })();
   }
 
+  unlinkFromMessage(messageId: string): void {
+    this.db
+      .query("UPDATE message_attachments SET message_id = NULL WHERE message_id = ?")
+      .run(messageId);
+  }
+
   listForMessageIds(messageIds: string[]): MessageAttachment[] {
     if (messageIds.length === 0) return [];
     const placeholders = messageIds.map(() => "?").join(", ");

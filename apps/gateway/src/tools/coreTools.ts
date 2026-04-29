@@ -124,6 +124,7 @@ function readTool(): GatewayToolSpec {
     source: "core",
     category: "fs",
     risk: "safe",
+    idempotent: true,
     needsApproval: (ctx, input) => pathReadApprovalDecision(input, ctx.workspacePath),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "read", input),
   };
@@ -139,6 +140,7 @@ function writeTool(): GatewayToolSpec {
     source: "core",
     category: "fs",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({ needsApproval: true, reason: "write requires approval" }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "write", input),
   };
@@ -154,6 +156,7 @@ function editTool(): GatewayToolSpec {
     source: "core",
     category: "fs",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({ needsApproval: true, reason: "edit requires approval" }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "edit", input),
   };
@@ -169,6 +172,7 @@ function applyPatchTool(): GatewayToolSpec {
     source: "core",
     category: "fs",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({ needsApproval: true, reason: "apply_patch requires approval" }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "apply_patch", input),
   };
@@ -184,6 +188,7 @@ function shellExecTool(): GatewayToolSpec {
     source: "core",
     category: "runtime",
     risk: "approval",
+    idempotent: false,
     needsApproval: (ctx, input) => shellExecApprovalDecision(input, ctx.workspacePath),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "shell.exec", input),
   };
@@ -199,6 +204,7 @@ function processTool(): GatewayToolSpec {
     source: "core",
     category: "runtime",
     risk: "approval",
+    idempotent: false,
     needsApproval: (_ctx, input) => processApprovalDecision(input),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "process", input),
   };
@@ -214,6 +220,7 @@ function webSearchTool(): GatewayToolSpec {
     source: "core",
     category: "web",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "web_search", input),
   };
@@ -229,6 +236,7 @@ function webFetchTool(): GatewayToolSpec {
     source: "core",
     category: "web",
     risk: "safe",
+    idempotent: true,
     needsApproval: (_ctx, input) => webFetchApprovalDecision(input),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "web_fetch", input),
   };
@@ -244,6 +252,7 @@ function sessionsListTool(): GatewayToolSpec {
     source: "core",
     category: "sessions",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "sessions_list", input),
   };
@@ -259,6 +268,7 @@ function sessionsHistoryTool(): GatewayToolSpec {
     source: "core",
     category: "sessions",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "sessions_history", input),
   };
@@ -274,6 +284,7 @@ function sessionsSendTool(): GatewayToolSpec {
     source: "core",
     category: "sessions",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({ needsApproval: true, reason: "sessions_send requires approval" }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "sessions_send", input),
   };
@@ -289,6 +300,7 @@ function sessionsSpawnTool(): GatewayToolSpec {
     source: "core",
     category: "sessions",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({ needsApproval: true, reason: "sessions_spawn requires approval" }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "sessions_spawn", input),
   };
@@ -304,6 +316,7 @@ function sessionsYieldTool(): GatewayToolSpec {
     source: "core",
     category: "sessions",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "sessions_yield", input),
   };
@@ -319,6 +332,7 @@ function updatePlanTool(): GatewayToolSpec {
     source: "core",
     category: "agents",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "update_plan", input),
   };
@@ -334,6 +348,7 @@ function memorySearchTool(): GatewayToolSpec {
     source: "core",
     category: "memory",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "memory_search", input),
   };
@@ -349,6 +364,7 @@ function memoryGetTool(): GatewayToolSpec {
     source: "core",
     category: "memory",
     risk: "safe",
+    idempotent: true,
     needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "memory_get", input),
   };
@@ -364,6 +380,7 @@ function memoryAppendTool(): GatewayToolSpec {
     source: "core",
     category: "memory",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({ needsApproval: true, reason: "memory_append requires approval" }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "memory_append", input),
   };
@@ -379,6 +396,7 @@ function browserSnapshotTool(): GatewayToolSpec {
     source: "core",
     category: "browser",
     risk: "approval",
+    idempotent: true,
     needsApproval: () => ({
       needsApproval: true,
       reason: "browser.snapshot requires browser approval",
@@ -397,6 +415,7 @@ function browserClickTool(): GatewayToolSpec {
     source: "core",
     category: "browser",
     risk: "approval",
+    idempotent: false,
     needsApproval: () => ({
       needsApproval: true,
       reason: "browser.click requires browser approval",

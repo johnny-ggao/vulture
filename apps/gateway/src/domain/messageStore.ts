@@ -68,6 +68,10 @@ export class MessageStore {
     return this.get(id) as Message;
   }
 
+  delete(id: string): void {
+    this.db.query("DELETE FROM messages WHERE id = ?").run(id);
+  }
+
   get(id: string): Message | null {
     const row = this.db
       .query("SELECT * FROM messages WHERE id = ?")

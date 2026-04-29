@@ -24,7 +24,11 @@ export function classifyInflightRun(candidate: RecoveryCandidate): RecoveryDecis
     return { kind: "fail", error };
   }
 
-  if (candidate.activeTool && !candidate.activeToolHasTerminalEvent) {
+  if (
+    candidate.activeTool &&
+    !candidate.activeToolHasTerminalEvent &&
+    candidate.activeTool.idempotent !== true
+  ) {
     return {
       kind: "recoverable",
       reason: "incomplete_tool",

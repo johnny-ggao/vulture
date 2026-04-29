@@ -8,6 +8,7 @@ export const ToolSchema = z.object({
   description: z.string(),
   inputSchema: z.unknown(),
   requiresApproval: z.boolean(),
+  idempotent: z.boolean(),
 });
 export type Tool = Omit<z.infer<typeof ToolSchema>, "name"> & { name: ToolName };
 
@@ -20,4 +21,3 @@ export const ApprovalSchema = z.object({
   at: z.string().min(1),
 });
 export type Approval = z.infer<typeof ApprovalSchema>;
-

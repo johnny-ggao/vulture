@@ -8,12 +8,13 @@ import type {
 } from "./commandCenterTypes";
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
-import { agentsApi, type Agent } from "./api/agents";
+import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName, type AgentToolPreset, type ReasoningLevel } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi } from "./api/conversations";
 import { attachmentsApi } from "./api/attachments";
 import { skillsApi, type SkillListResponse } from "./api/skills";
+import { FALLBACK_TOOL_CATALOG, toolsApi, type ToolCatalogGroup } from "./api/tools";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
   mcpServersApi,
@@ -87,6 +88,14 @@ function isMissingSkillsRoute(cause: unknown): boolean {
   );
 }
 
+function isMissingToolsRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("GET /v1/tools/catalog") &&
+    cause.message.includes("HTTP 404")
+  );
+}
+
 function isMissingMemoriesRoute(cause: unknown): boolean {
   return (
     cause instanceof Error &&
@@ -121,6 +130,7 @@ export function App() {
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
   const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [toolCatalog, setToolCatalog] = useState<ToolCatalogGroup[]>(FALLBACK_TOOL_CATALOG);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
   const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
@@ -331,6 +341,13 @@ export function App() {
           activeAgentId: profileResult.activeAgentId ?? "",
         });
         setAgents(agentList);
+        try {
+          const catalog = await toolsApi.catalog(apiClient);
+          setToolCatalog(catalog.length > 0 ? catalog : FALLBACK_TOOL_CATALOG);
+        } catch (catalogCause) {
+          if (!isMissingToolsRoute(catalogCause)) throw catalogCause;
+          setToolCatalog(FALLBACK_TOOL_CATALOG);
+        }
         setSelectedAgentId(
           profileResult.activeAgentId || agentList[0]?.id || "",
         );
@@ -701,31 +718,31 @@ export function App() {
       />
     ) : null;
 
-  async function handleCreateAgent(input: { name: string; description: string; instructions: string }) {
+  async function handleCreateAgent(input: {
+    name: string;
+    description: string;
+    instructions: string;
+    model: string;
+    reasoning: ReasoningLevel;
+    tools: AgentToolName[];
+    toolPreset: AgentToolPreset;
+    toolInclude: AgentToolName[];
+    toolExclude: AgentToolName[];
+    skills?: string[] | null;
+  }) {
     if (!apiClient) return;
     const id = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const created = await agentsApi.save(apiClient, {
       id,
       name: input.name,
       description: input.description,
-      model: "gpt-5.5",
-      reasoning: "low",
-      tools: [
-        "read",
-        "write",
-        "edit",
-        "apply_patch",
-        "shell.exec",
-        "process",
-        "web_search",
-        "web_fetch",
-        "sessions_list",
-        "sessions_history",
-        "sessions_send",
-        "sessions_spawn",
-        "sessions_yield",
-        "update_plan",
-      ],
+      model: input.model,
+      reasoning: input.reasoning,
+      tools: input.tools,
+      toolPreset: input.toolPreset,
+      toolInclude: input.toolInclude,
+      toolExclude: input.toolExclude,
+      skills: input.skills ?? undefined,
       instructions: input.instructions,
     });
     setAgents((prev) => [...prev, created]);
@@ -745,6 +762,21 @@ export function App() {
     const saved = await agentsApi.update(apiClient, id, { skills });
     setAgents((prev) => prev.map((agent) => (agent.id === saved.id ? saved : agent)));
     if (selectedAgentId === id) setSelectedAgentId(saved.id);
+  }
+
+  async function handleListAgentFiles(id: string): Promise<AgentCoreFilesResponse> {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return agentsApi.listFiles(apiClient, id);
+  }
+
+  async function handleLoadAgentFile(id: string, name: string): Promise<string> {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return (await agentsApi.getFile(apiClient, id, name)).file.content ?? "";
+  }
+
+  async function handleSaveAgentFile(id: string, name: string, content: string): Promise<void> {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    await agentsApi.setFile(apiClient, id, name, content);
   }
 
   return (
@@ -794,12 +826,16 @@ export function App() {
             <AgentsPage
               agents={agents}
               selectedAgentId={selectedAgentId}
+              toolGroups={toolCatalog}
               onCreate={() => setNewAgentOpen(true)}
               onOpenChat={(id) => {
                 setSelectedAgentId(id);
                 setView("chat");
               }}
               onSave={handleSaveAgent}
+              onListFiles={handleListAgentFiles}
+              onLoadFile={handleLoadAgentFile}
+              onSaveFile={handleSaveAgentFile}
             />
           ) : null}
           {view === "skills" ? (
@@ -872,6 +908,7 @@ export function App() {
 
       <NewAgentModal
         open={newAgentOpen}
+        toolGroups={toolCatalog}
         onClose={() => setNewAgentOpen(false)}
         onCreate={handleCreateAgent}
       />

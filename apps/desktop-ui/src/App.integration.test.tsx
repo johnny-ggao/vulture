@@ -565,6 +565,47 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
+  test("agents page still loads agents when tools catalog route is missing", async () => {
+    const { cleanup } = setup({
+      respond: (path, init) => {
+        if ((init?.method ?? "GET") === "GET" && path === "/v1/tools/catalog") {
+          return new Response(JSON.stringify({ code: "not_found", message: "missing" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return null;
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
+    await waitFor(() => {
+      expect(screen.getByText("Agent 配置")).toBeDefined();
+      expect(screen.getByText("Workspace")).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    fireEvent.change(screen.getByPlaceholderText("例：周报助手"), { target: { value: "Test Agent" } });
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await waitFor(() => {
+      expect(screen.getAllByText("Files").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Coding").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Shell Exec").length).toBeGreaterThan(0);
+    });
+
+    cleanup();
+  }, 15_000);
+
   test("can send a message after creating and switching profile", async () => {
     const { cleanup } = setup();
 

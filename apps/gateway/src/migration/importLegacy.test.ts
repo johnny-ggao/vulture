@@ -63,7 +63,8 @@ describe("importLegacy", () => {
     const agents = new AgentStore(db, dir, undefined, dir).list();
     const importedAgent = agents.find((a) => a.id === "old-agent");
     expect(importedAgent).toBeTruthy();
-    expect(importedAgent?.workspace.path).toBe(join(dir, ".vuture", "workspace", "old-agent"));
+    expect(importedAgent?.workspace.path).toBe(join(dir, ".vuture", "workspace", "old-agent", "project"));
+    expect(existsSync(join(dir, ".vuture", "workspace", "old-agent", "agent-core", "AGENTS.md"))).toBe(true);
     const ws = new WorkspaceStore(db).list();
     expect(ws.find((w) => w.id === "ws-1")).toBeTruthy();
 

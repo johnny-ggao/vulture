@@ -8,9 +8,20 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { AttachmentStore } from "../domain/attachmentStore";
-import { runsRouter, writeRunEventStream, type ResumeRunResult } from "./runs";
+import {
+  ConversationContextStore,
+  type AddSessionItemInput,
+} from "../domain/conversationContextStore";
+import {
+  runsRouter,
+  startConversationRun,
+  writeRunEventStream,
+  type ResumeRunResult,
+  type RunsDeps,
+} from "./runs";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { ApprovalQueue } from "../runtime/approvalQueue";
+import type { AgentInputItem } from "@openai/agents";
 
 const TOKEN = "x".repeat(43);
 const auth = { Authorization: `Bearer ${TOKEN}` };
@@ -27,6 +38,9 @@ function fresh(
   llm: LlmCallable = fakeLlm,
   skillsPromptForAgent?: () => string,
   memoryPromptForRun?: (input: { agentId: string; input: string }) => Promise<string> | string,
+  afterRunSucceeded?: RunsDeps["afterRunSucceeded"],
+  noToolsLlm?: LlmCallable,
+  contextFactory?: (db: ReturnType<typeof openDatabase>) => ConversationContextStore,
 ) {
   const dir = mkdtempSync(join(tmpdir(), "vulture-runs-route-"));
   const db = openDatabase(join(dir, "data.sqlite"));
@@ -35,6 +49,7 @@ function fresh(
   const msgs = new MessageStore(db);
   const runs = new RunStore(db);
   const attachments = new AttachmentStore(db, dir);
+  const contexts = contextFactory?.(db) ?? new ConversationContextStore(db);
   const c = convs.create({ agentId: "local-work-agent" });
   const app = runsRouter({
     conversations: convs,
@@ -46,21 +61,40 @@ function fresh(
     approvalQueue: new ApprovalQueue(),
     cancelSignals: new Map<string, AbortController>(),
     resumeRun,
+    contexts,
+    noToolsLlm,
     systemPromptForAgent: () => "system",
     skillsPromptForAgent,
     memoryPromptForRun,
+    afterRunSucceeded,
     modelForAgent: () => "gpt-5.4",
     workspacePathForAgent: () => "",
   });
   return {
     app,
+    convs,
     c,
     runs,
     msgs,
     attachments,
+    contexts,
     resumeRun,
     cleanup: () => { db.close(); rmSync(dir, { recursive: true }); },
   };
+}
+
+async function waitFor<T>(
+  read: () => T,
+  done: (value: T) => boolean,
+  attempts = 50,
+): Promise<T> {
+  let value = read();
+  for (let i = 0; i < attempts; i += 1) {
+    if (done(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    value = read();
+  }
+  return value;
 }
 
 describe("/v1/runs", () => {
@@ -143,6 +177,400 @@ describe("/v1/runs", () => {
       if (["succeeded", "failed", "cancelled"].includes(final.status)) break;
     }
     expect(final.status).toBe("succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs stores user session item and passes session inputs", async () => {
+    const seen: Parameters<LlmCallable>[0][] = [];
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      seen.push(input);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, runs, contexts, cleanup } = fresh(undefined, llm);
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-user" },
+      body: JSON.stringify({ input: "remember this turn" }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    await waitFor(() => seen.length, (length) => length > 0);
+    const userItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "user");
+    expect(userItems).toHaveLength(1);
+    expect(userItems[0].messageId).toBe(body.message.id);
+    expect(userItems[0].item).toMatchObject({
+      type: "message",
+      role: "user",
+      providerData: { messageId: body.message.id },
+    });
+    expect(seen[0].session).toBeTruthy();
+    expect(typeof seen[0].sessionInputCallback).toBe("function");
+    await waitFor(() => runs.get(body.run.id), (run) => run?.status === "succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs includes attachment metadata in user session text", async () => {
+    const { app, c, runs, attachments, contexts, cleanup } = fresh();
+    const draft = await attachments.createDraft({
+      bytes: new TextEncoder().encode("attachment notes"),
+      originalName: "notes.txt",
+      mimeType: "text/plain",
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-attachment" },
+      body: JSON.stringify({ input: "read this", attachmentIds: [draft.id] }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    const userItem = contexts
+      .listSessionItems(c.id)
+      .find((item) => item.messageId === body.message.id);
+    expect(JSON.stringify(userItem?.item)).toContain("read this");
+    expect(JSON.stringify(userItem?.item)).toContain(draft.id);
+    expect(JSON.stringify(userItem?.item)).toContain("notes.txt");
+    expect(JSON.stringify(userItem?.item)).toContain("text/plain");
+    await waitFor(() => runs.get(body.run.id), (run) => run?.status === "succeeded");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs stores assistant session item after success", async () => {
+    const { app, c, runs, contexts, cleanup } = fresh();
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-assistant" },
+      body: JSON.stringify({ input: "answer me" }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    const finalRun = await waitFor(
+      () => runs.get(body.run.id),
+      (run) => run?.status === "succeeded",
+    );
+    const assistantItem = contexts
+      .listSessionItems(c.id)
+      .find((item) => item.role === "assistant" && item.messageId === finalRun?.resultMessageId);
+    expect(assistantItem?.item).toMatchObject({
+      type: "message",
+      role: "assistant",
+      providerData: { messageId: finalRun?.resultMessageId },
+    });
+    expect(JSON.stringify(assistantItem?.item)).toContain("ok");
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs stores repeated assistant replies with distinct message ids", async () => {
+    const { app, c, runs, contexts, cleanup } = fresh();
+
+    const first = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "repeat-assistant-1" },
+      body: JSON.stringify({ input: "first" }),
+    });
+    expect(first.status).toBe(202);
+    const firstBody = await first.json();
+    await waitFor(() => runs.get(firstBody.run.id), (run) => run?.status === "succeeded");
+
+    const second = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "repeat-assistant-2" },
+      body: JSON.stringify({ input: "second" }),
+    });
+    expect(second.status).toBe(202);
+    const secondBody = await second.json();
+    await waitFor(() => runs.get(secondBody.run.id), (run) => run?.status === "succeeded");
+
+    const assistantItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "assistant" && JSON.stringify(item.item).includes("ok"));
+    expect(assistantItems).toHaveLength(2);
+    expect(new Set(assistantItems.map((item) => item.messageId)).size).toBe(2);
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs returns 500 and creates no run/message when user session persistence fails", async () => {
+    const { app, c, runs, msgs, cleanup } = fresh(
+      undefined,
+      fakeLlm,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (db) => new class extends ConversationContextStore {
+        override addSessionItems(conversationId: string, items: AddSessionItemInput[]): void {
+          if (items.some((item) => item.role === "user")) {
+            throw new Error("session write failed");
+          }
+          super.addSessionItems(conversationId, items);
+        }
+      }(db),
+    );
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-user-fail" },
+      body: JSON.stringify({ input: "cannot persist me" }),
+    });
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.code).toBe("internal");
+    expect(body.message).toContain("failed to persist conversation context session item");
+    expect(body.message).toContain("session write failed");
+    expect(runs.listForConversation(c.id)).toEqual([]);
+    expect(msgs.listSince({ conversationId: c.id })).toEqual([]);
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs rolls back the user message when attachment linking fails", async () => {
+    const { app, c, msgs, cleanup } = fresh();
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-attachment-fail" },
+      body: JSON.stringify({ input: "bad attachment", attachmentIds: ["att-missing"] }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "attachment.not_found" });
+    expect(msgs.listSince({ conversationId: c.id })).toEqual([]);
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs rolls back message and context when run creation fails", async () => {
+    const { app, c, runs, msgs, contexts, cleanup } = fresh();
+    const createMock = mock((input: Parameters<typeof runs.create>[0]) => {
+      void input;
+      throw new Error("run store failed");
+    });
+    runs.create = createMock as typeof runs.create;
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-run-create-fail" },
+      body: JSON.stringify({ input: "cannot create run" }),
+    });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ code: "internal", message: "run store failed" });
+    expect(msgs.listSince({ conversationId: c.id })).toEqual([]);
+    expect(contexts.listSessionItems(c.id)).toEqual([]);
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs schedules compaction and preserves success hook", async () => {
+    const afterRunSucceeded = mock(async () => {});
+    const compactionCalls: Parameters<LlmCallable>[0][] = [];
+    const noToolsLlm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      compactionCalls.push(input);
+      yield { kind: "final", text: "Earlier turns summarized." };
+    };
+    const { app, c, contexts, cleanup } = fresh(
+      undefined,
+      fakeLlm,
+      undefined,
+      undefined,
+      afterRunSucceeded,
+      noToolsLlm,
+    );
+    contexts.addSessionItems(c.id, Array.from({ length: 11 }, (_, index) => {
+      const role = index % 2 === 0 ? "user" : "assistant";
+      const item = {
+        type: "message",
+        role,
+        ...(role === "assistant" ? { status: "completed" as const } : {}),
+        providerData: { messageId: `m-seed-${index}` },
+        content: [
+          {
+            type: role === "user" ? "input_text" : "output_text",
+            text: `seed ${index}`,
+          },
+        ],
+      } as AgentInputItem;
+      return {
+        messageId: `m-seed-${index}`,
+        role,
+        item,
+      };
+    }));
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-compact" },
+      body: JSON.stringify({ input: "new turn" }),
+    });
+
+    expect(res.status).toBe(202);
+    await waitFor(() => afterRunSucceeded.mock.calls.length, (length) => length > 0);
+    await waitFor(() => contexts.getContext(c.id), (context) => context !== null);
+    expect(compactionCalls).toHaveLength(1);
+    expect(contexts.getContext(c.id)).toMatchObject({
+      conversationId: c.id,
+      summary: "Earlier turns summarized.",
+    });
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs does not move the compaction cutoff backwards", async () => {
+    const noToolsLlm: LlmCallable = async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      yield { kind: "final", text: "Older summary." };
+    };
+    const { app, c, contexts, cleanup } = fresh(
+      undefined,
+      fakeLlm,
+      undefined,
+      undefined,
+      undefined,
+      noToolsLlm,
+    );
+    contexts.addSessionItems(c.id, Array.from({ length: 13 }, (_, index) => {
+      const role = index % 2 === 0 ? "user" : "assistant";
+      return {
+        messageId: `m-seed-${index}`,
+        role,
+        item: {
+          type: "message",
+          role,
+          providerData: { messageId: `m-seed-${index}` },
+          content: [
+            {
+              type: role === "user" ? "input_text" : "output_text",
+              text: `seed ${index}`,
+            },
+          ],
+        } as AgentInputItem,
+      };
+    }));
+    contexts.upsertContext({
+      conversationId: c.id,
+      agentId: c.agentId,
+      summary: "Newer summary.",
+      summarizedThroughMessageId: "m-seed-10",
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-compact-regressive" },
+      body: JSON.stringify({ input: "new turn" }),
+    });
+
+    expect(res.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(contexts.getContext(c.id)).toMatchObject({
+      summary: "Newer summary.",
+      summarizedThroughMessageId: "m-seed-10",
+    });
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs does not duplicate the current user session item when SDK stores it", async () => {
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      await input.session?.addItems([
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "dedupe me" }],
+        } as AgentInputItem,
+      ]);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, contexts, cleanup } = fresh(undefined, llm);
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-dedupe" },
+      body: JSON.stringify({ input: "dedupe me" }),
+    });
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    await waitFor(
+      () => contexts.listSessionItems(c.id).filter((item) => item.role === "assistant").length,
+      (length) => length > 0,
+    );
+    const matchingUserItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "user" && JSON.stringify(item.item).includes("dedupe me"));
+    expect(matchingUserItems).toHaveLength(1);
+    expect(matchingUserItems[0].messageId).toBe(body.message.id);
+    cleanup();
+  });
+
+  test("POST /v1/conversations/:cid/runs does not duplicate attachment-backed current user items from the SDK", async () => {
+    const llm: LlmCallable = async function* (input): AsyncGenerator<LlmYield, void, unknown> {
+      await input.session?.addItems([
+        {
+          type: "message",
+          role: "user",
+          content: [
+            { type: "input_text", text: "read attachment" },
+            {
+              type: "input_text",
+              text: "Attached file: note.txt\nMIME type: text/plain\nContent:\nattachment notes",
+            },
+          ],
+        } as AgentInputItem,
+      ]);
+      yield { kind: "final", text: "ok" };
+    };
+    const { app, c, attachments, contexts, cleanup } = fresh(undefined, llm);
+    const draft = await attachments.createDraft({
+      bytes: new TextEncoder().encode("attachment notes"),
+      originalName: "note.txt",
+      mimeType: "text/plain",
+    });
+
+    const res = await app.request(`/v1/conversations/${c.id}/runs`, {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "context-attachment-dedupe" },
+      body: JSON.stringify({ input: "read attachment", attachmentIds: [draft.id] }),
+    });
+
+    expect(res.status).toBe(202);
+    await waitFor(
+      () => contexts.listSessionItems(c.id).filter((item) => item.role === "assistant").length,
+      (length) => length > 0,
+    );
+    const matchingUserItems = contexts
+      .listSessionItems(c.id)
+      .filter((item) => item.role === "user" && JSON.stringify(item.item).includes("read attachment"));
+    expect(matchingUserItems).toHaveLength(1);
+    expect(JSON.stringify(matchingUserItems[0].item)).toContain(draft.id);
+    cleanup();
+  });
+
+  test("startConversationRun stores context for session tools using the shared run path", async () => {
+    const { convs, c, runs, msgs, attachments, contexts, cleanup } = fresh();
+    const result = await startConversationRun(
+      {
+        conversations: convs,
+        messages: msgs,
+        attachments,
+        runs,
+        llm: fakeLlm,
+        tools: async () => "noop",
+        approvalQueue: new ApprovalQueue(),
+        cancelSignals: new Map<string, AbortController>(),
+        resumeRun: () => ({ status: "scheduled" }),
+        contexts,
+        systemPromptForAgent: () => "system",
+        modelForAgent: () => "gpt-5.4",
+        workspacePathForAgent: () => "",
+      },
+      { conversationId: c.id, input: "session tool send" },
+    );
+
+    await waitFor(() => runs.get(result.run.id), (run) => run?.status === "succeeded");
+    expect(contexts.listSessionItems(c.id).filter((item) => item.role === "user")).toHaveLength(1);
+    expect(contexts.listSessionItems(c.id).filter((item) => item.role === "assistant")).toHaveLength(1);
     cleanup();
   });
 

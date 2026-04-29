@@ -44,7 +44,36 @@ describe("/v1/agents", () => {
       }),
     });
     expect(res.status).toBe(201);
-    expect((await res.json()).id).toBe("coder");
+    const body = await res.json();
+    expect(body.id).toBe("coder");
+    expect(body.description).toBe("x");
+    expect(body.model).toBe("gpt-5.4");
+    expect(body.reasoning).toBe("low");
+    cleanup();
+  });
+
+  test("POST accepts tool preset policy", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ka-policy" },
+      body: JSON.stringify({
+        id: "coder",
+        name: "Coder",
+        description: "x",
+        model: "gpt-5.4",
+        reasoning: "low",
+        toolPreset: "developer",
+        toolExclude: ["browser.click"],
+        instructions: "x",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.toolPreset).toBe("developer");
+    expect(body.toolExclude).toEqual(["browser.click"]);
+    expect(body.tools).toContain("shell.exec");
+    expect(body.tools).not.toContain("browser.click");
     cleanup();
   });
 
@@ -104,6 +133,38 @@ describe("/v1/agents", () => {
 
     const get = await app.request("/v1/agents/local-work-agent", { headers: auth });
     expect((await get.json()).skills).toBeUndefined();
+    cleanup();
+  });
+
+  test("agent core files can be listed, read, and updated", async () => {
+    const { app, cleanup } = freshApp();
+    const list = await app.request("/v1/agents/local-work-agent/files", { headers: auth });
+    expect(list.status).toBe(200);
+    const listed = await list.json();
+    expect(listed.files.map((file: { name: string }) => file.name)).toContain("SOUL.md");
+    expect(listed.corePath).toContain("agent-core");
+
+    const get = await app.request("/v1/agents/local-work-agent/files/SOUL.md", { headers: auth });
+    expect(get.status).toBe(200);
+    expect((await get.json()).file.content).toContain("Local Work Agent");
+
+    const put = await app.request("/v1/agents/local-work-agent/files/TOOLS.md", {
+      method: "PUT",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "# Tool notes\n" }),
+    });
+    expect(put.status).toBe(200);
+    expect((await put.json()).file.content).toBe("# Tool notes\n");
+    cleanup();
+  });
+
+  test("agent core files reject unsupported names", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents/local-work-agent/files/profile.jsonc", {
+      headers: auth,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("agent.file_unsupported");
     cleanup();
   });
 

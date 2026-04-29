@@ -21,6 +21,7 @@ export interface AssembleArgs {
   packDir: string;
   agent: PromptAgent;
   workspace: PromptWorkspace;
+  agentCoreDir?: string;
 }
 
 export interface CodexAssembleArgs extends AssembleArgs {
@@ -39,6 +40,11 @@ function loadWorkspaceAgentsMd(workspacePath: string): string {
   return readFileSync(p, "utf8").trim();
 }
 
+function readOptionalSection(dir: string | undefined, file: string): string {
+  if (!dir) return "";
+  return readSection(dir, file);
+}
+
 export function assembleAgentInstructions(args: AssembleArgs): string {
   const { packDir, agent, workspace } = args;
   const SOUL = readSection(packDir, "SOUL.md");
@@ -46,6 +52,12 @@ export function assembleAgentInstructions(args: AssembleArgs): string {
   const DEFAULT_AGENTS = readSection(packDir, "AGENTS.md");
   const TOOLS = readSection(packDir, "TOOLS.md");
   const USER = readSection(packDir, "USER.md");
+  const agentCoreSoul = readOptionalSection(args.agentCoreDir, "SOUL.md");
+  const agentCoreIdentity = readOptionalSection(args.agentCoreDir, "IDENTITY.md");
+  const agentCoreAgents = readOptionalSection(args.agentCoreDir, "AGENTS.md");
+  const agentCoreTools = readOptionalSection(args.agentCoreDir, "TOOLS.md");
+  const agentCoreUser = readOptionalSection(args.agentCoreDir, "USER.md");
+  const agentCoreHeartbeat = readOptionalSection(args.agentCoreDir, "HEARTBEAT.md");
   const workspaceAgents = loadWorkspaceAgentsMd(workspace.path);
 
   return `# Vulture Agent Pack
@@ -53,8 +65,14 @@ export function assembleAgentInstructions(args: AssembleArgs): string {
 ## SOUL.md
 ${SOUL}
 
+## Agent Core SOUL.md
+${agentCoreSoul || "No agent-core SOUL.md was found."}
+
 ## IDENTITY.md
 ${IDENTITY}
+
+## Agent Core IDENTITY.md
+${agentCoreIdentity || "No agent-core IDENTITY.md was found."}
 
 ### Selected Agent
 - id: ${agent.id}
@@ -70,15 +88,27 @@ ${agent.instructions.trim()}
 ## USER.md
 ${USER}
 
+## Agent Core USER.md
+${agentCoreUser || "No agent-core USER.md was found."}
+
 ## AGENTS.md
 ### Default Agent Rules
 ${DEFAULT_AGENTS}
+
+### Agent Core AGENTS.md
+${agentCoreAgents || "No agent-core AGENTS.md was found."}
 
 ### Workspace AGENTS.md
 ${workspaceAgents}
 
 ## TOOLS.md
 ${TOOLS}
+
+### Agent Core TOOLS.md
+${agentCoreTools || "No agent-core TOOLS.md was found."}
+
+## HEARTBEAT.md
+${agentCoreHeartbeat || "No heartbeat instructions are configured."}
 
 ### Granted Tools
 ${agent.tools.join(", ")}

@@ -6,6 +6,7 @@ import {
   makeOpenAILlm,
   makeSdkTool,
   makeStubLlmFallback,
+  defaultRunFactory,
   resolveSdkRunInput,
   sdkStateHasInterruptions,
   sdkApprovalDecision,
@@ -18,6 +19,7 @@ import {
   type SdkRunContext,
 } from "./openaiLlm";
 import { RunContext, tool } from "@openai/agents";
+import type { AgentInputItem, Session, SessionInputCallback } from "@openai/agents";
 import type { LlmYield } from "@vulture/agent-runtime";
 import type { ToolCallable } from "@vulture/agent-runtime";
 
@@ -212,6 +214,105 @@ describe("makeOpenAILlm", () => {
 
     expect(seen).toEqual([{ sdkState: "sdk-1", retryToolCallId: null }]);
     expect(checkpoints).toEqual([{ sdkState: "sdk-2", activeTool: null }]);
+  });
+
+  test("passes session and sessionInputCallback through runFactory input", async () => {
+    const seen: unknown[] = [];
+    const session: Session = {
+      getSessionId: async () => "c-1",
+      getItems: async () => [],
+      addItems: async () => undefined,
+      popItem: async () => undefined,
+      clearSession: async () => undefined,
+    };
+    const sessionInputCallback: SessionInputCallback = (
+      historyItems: AgentInputItem[],
+      newItems: AgentInputItem[],
+    ) => [...historyItems, ...newItems];
+    const llm = makeOpenAILlm({
+      apiKey: "sk-test",
+      toolNames: [],
+      toolCallable: async () => "noop",
+      runFactory: (input) => {
+        seen.push({
+          session: input.session,
+          sessionInputCallback: input.sessionInputCallback,
+        });
+        return makeMockRun([{ kind: "final", text: "ok" }]);
+      },
+    });
+
+    for await (const _ of llm({
+      systemPrompt: "s",
+      userInput: "u",
+      model: "gpt-5.4",
+      runId: "r",
+      workspacePath: "/tmp/work",
+      session,
+      sessionInputCallback,
+    })) {}
+
+    expect(seen).toEqual([{ session, sessionInputCallback }]);
+  });
+
+  test("passes session and sessionInputCallback into Runner.run options", async () => {
+    const session: Session = {
+      getSessionId: async () => "c-1",
+      getItems: async () => [],
+      addItems: async () => undefined,
+      popItem: async () => undefined,
+      clearSession: async () => undefined,
+    };
+    const sessionInputCallback: SessionInputCallback = (
+      historyItems: AgentInputItem[],
+      newItems: AgentInputItem[],
+    ) => [...historyItems, ...newItems];
+    const runOptions: unknown[] = [];
+    const fakeRunner = {
+      run: async (_agent: unknown, _input: unknown, options: unknown) => {
+        runOptions.push(options);
+        return {
+          async *[Symbol.asyncIterator]() {},
+          completed: Promise.resolve(),
+          state: {
+            usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+            toString: () => "sdk-state",
+          },
+          interruptions: [],
+          finalOutput: "ok",
+        };
+      },
+    };
+    const events: SdkRunEvent[] = [];
+
+    for await (const event of defaultRunFactory(
+      {
+        systemPrompt: "system",
+        userInput: "hello",
+        model: "gpt-5.4",
+        apiKey: "sk-test",
+        toolNames: [],
+        toolCallable: async () => "noop",
+        runId: "r",
+        workspacePath: "/tmp/work",
+        modelProvider: {} as never,
+        tracingDisabled: true,
+        session,
+        sessionInputCallback,
+      },
+      { runner: fakeRunner },
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{ kind: "final", text: "ok" }]);
+    expect(runOptions).toEqual([
+      expect.objectContaining({
+        stream: true,
+        session,
+        sessionInputCallback,
+      }),
+    ]);
   });
 
   test("passes context prompt through runFactory without changing system prompt", async () => {

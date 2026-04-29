@@ -29,6 +29,75 @@ export const AGENT_TOOL_NAMES = [
 export const AgentToolNameSchema = z.enum(AGENT_TOOL_NAMES);
 export type AgentToolName = z.infer<typeof AgentToolNameSchema>;
 
+export const AgentToolPresetSchema = z.enum([
+  "none",
+  "minimal",
+  "standard",
+  "developer",
+  "tl",
+  "full",
+]);
+export type AgentToolPreset = z.infer<typeof AgentToolPresetSchema>;
+
+export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
+  none: [],
+  minimal: ["read", "web_search", "web_fetch"],
+  standard: [
+    "read",
+    "write",
+    "edit",
+    "web_search",
+    "web_fetch",
+    "sessions_list",
+    "sessions_history",
+    "sessions_send",
+    "sessions_spawn",
+    "sessions_yield",
+    "update_plan",
+    "memory_search",
+    "memory_get",
+    "memory_append",
+  ],
+  developer: [
+    "read",
+    "write",
+    "edit",
+    "apply_patch",
+    "shell.exec",
+    "process",
+    "web_search",
+    "web_fetch",
+    "sessions_list",
+    "sessions_history",
+    "sessions_send",
+    "sessions_spawn",
+    "sessions_yield",
+    "update_plan",
+    "memory_search",
+    "memory_get",
+    "memory_append",
+    "browser.snapshot",
+    "browser.click",
+  ],
+  tl: [
+    "read",
+    "write",
+    "edit",
+    "web_search",
+    "web_fetch",
+    "sessions_list",
+    "sessions_history",
+    "sessions_send",
+    "sessions_spawn",
+    "sessions_yield",
+    "update_plan",
+    "memory_search",
+    "memory_get",
+    "memory_append",
+  ],
+  full: AGENT_TOOL_NAMES,
+};
+
 export const ReasoningLevelSchema = z.enum(["low", "medium", "high"]);
 export type ReasoningLevel = z.infer<typeof ReasoningLevelSchema>;
 
@@ -45,6 +114,9 @@ export const AgentSchema = z.object({
   model: z.string().min(1),
   reasoning: ReasoningLevelSchema,
   tools: z.array(AgentToolNameSchema),
+  toolPreset: AgentToolPresetSchema,
+  toolInclude: z.array(AgentToolNameSchema),
+  toolExclude: z.array(AgentToolNameSchema),
   skills: z.array(SkillNameSchema).optional(),
   workspace: WorkspaceSchema,
   instructions: z.string().min(1),
@@ -69,6 +141,9 @@ export const SaveAgentRequestSchema = z
     model: z.string().min(1),
     reasoning: ReasoningLevelSchema,
     tools: z.array(AgentToolNameSchema).default([]),
+    toolPreset: AgentToolPresetSchema.optional(),
+    toolInclude: z.array(AgentToolNameSchema).optional(),
+    toolExclude: z.array(AgentToolNameSchema).optional(),
     skills: z.array(SkillNameSchema).optional(),
     workspace: SaveWorkspaceRequestSchema.optional(),
     instructions: z.string().min(1),

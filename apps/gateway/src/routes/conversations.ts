@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
+import { ConversationContextStore } from "../domain/conversationContextStore";
 import { CreateConversationRequestSchema } from "@vulture/protocol/src/v1/conversation";
 import { requireIdempotencyKey, idempotencyCache } from "../middleware/idempotency";
 
 export interface ConversationsDeps {
   conversations: ConversationStore;
   messages: MessageStore;
+  contexts?: ConversationContextStore;
 }
 
 export function conversationsRouter(deps: ConversationsDeps): Hono {
@@ -47,8 +49,25 @@ export function conversationsRouter(deps: ConversationsDeps): Hono {
     });
   });
 
+  app.get("/v1/conversations/:id/context", (c) => {
+    const id = c.req.param("id");
+    const conv = deps.conversations.get(id);
+    if (!conv) return c.json({ code: "conversation.not_found", message: id }, 404);
+
+    const context = deps.contexts?.getContext(id) ?? null;
+    return c.json({
+      conversationId: id,
+      summary: context?.summary ?? "",
+      summarizedThroughMessageId: context?.summarizedThroughMessageId ?? null,
+      rawItemCount: deps.contexts?.listSessionItems(id).length ?? 0,
+      updatedAt: context?.updatedAt ?? null,
+    });
+  });
+
   app.delete("/v1/conversations/:id", (c) => {
-    deps.conversations.delete(c.req.param("id"));
+    const id = c.req.param("id");
+    deps.contexts?.deleteConversation(id);
+    deps.conversations.delete(id);
     return c.body(null, 204);
   });
 

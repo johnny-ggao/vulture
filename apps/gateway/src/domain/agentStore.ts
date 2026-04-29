@@ -1,4 +1,13 @@
-import { mkdirSync, existsSync, statSync, readdirSync, renameSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  existsSync,
+  statSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, parse } from "node:path";
 import { brandId } from "@vulture/common";
@@ -6,11 +15,12 @@ import type { DB } from "../persistence/sqlite";
 import type {
   Agent,
   AgentId,
+  AgentToolPreset,
   AgentToolName,
   ReasoningLevel,
   SaveAgentRequest,
 } from "@vulture/protocol/src/v1/agent";
-import { AGENT_TOOL_NAMES } from "@vulture/protocol/src/v1/agent";
+import { AGENT_TOOL_NAMES, AGENT_TOOL_PRESETS } from "@vulture/protocol/src/v1/agent";
 import type {
   SaveWorkspaceRequest,
   Workspace,
@@ -25,11 +35,38 @@ interface AgentRow {
   model: string;
   reasoning: string;
   tools: string;
+  tool_preset?: string | null;
+  tool_include_json?: string | null;
+  tool_exclude_json?: string | null;
   skills?: string | null;
   workspace_json: string;
   instructions: string;
   created_at: string;
   updated_at: string;
+}
+
+export const AGENT_CORE_FILE_NAMES = [
+  "AGENTS.md",
+  "SOUL.md",
+  "TOOLS.md",
+  "IDENTITY.md",
+  "USER.md",
+  "HEARTBEAT.md",
+  "BOOTSTRAP.md",
+  "MEMORY.md",
+  "tool-registry.jsonc",
+  "skills/skills.jsonc",
+] as const;
+
+export type AgentCoreFileName = (typeof AGENT_CORE_FILE_NAMES)[number];
+
+export interface AgentCoreFile {
+  name: AgentCoreFileName;
+  path: string;
+  missing: boolean;
+  size?: number;
+  updatedAtMs?: number;
+  content?: string;
 }
 
 const DEFAULT_AGENT: SaveAgentRequest = {
@@ -38,6 +75,9 @@ const DEFAULT_AGENT: SaveAgentRequest = {
   description: "General local work assistant",
   model: "gpt-5.4",
   reasoning: "medium",
+  toolPreset: "full",
+  toolInclude: [],
+  toolExclude: [],
   tools: [...AGENT_TOOL_NAMES],
   instructions: [
     "You are Vulture's local work agent.",
@@ -51,13 +91,23 @@ const DEFAULT_AGENT: SaveAgentRequest = {
 
 function rowToAgent(r: AgentRow): Agent {
   const workspace_data = JSON.parse(r.workspace_json);
+  const storedTools = parseToolArrayJson(r.tools);
+  const toolPolicy = normalizeStoredToolPolicy(
+    r.tool_preset,
+    r.tool_include_json,
+    r.tool_exclude_json,
+    storedTools,
+  );
   return {
     id: brandId<AgentId>(r.id),
     name: r.name,
     description: r.description,
     model: r.model,
     reasoning: r.reasoning as ReasoningLevel,
-    tools: JSON.parse(r.tools) as AgentToolName[],
+    tools: storedTools,
+    toolPreset: toolPolicy.toolPreset,
+    toolInclude: toolPolicy.toolInclude,
+    toolExclude: toolPolicy.toolExclude,
     skills: parseSkillsJson(r.skills),
     workspace: {
       id: brandId<WorkspaceId>(workspace_data.id),
@@ -108,12 +158,48 @@ export class AgentStore {
     this.db.query("DELETE FROM agents WHERE id = ?").run(id);
   }
 
+  agentRootPath(id: string): string {
+    const agent = this.get(id);
+    if (!agent) throw new Error(`agent not found: ${id}`);
+    return this.agentRootPathFor(agent);
+  }
+
+  agentCorePath(id: string): string {
+    return join(this.agentRootPath(id), "agent-core");
+  }
+
+  listAgentCoreFiles(id: string): AgentCoreFile[] {
+    const corePath = this.agentCorePath(id);
+    return AGENT_CORE_FILE_NAMES.map((name) => this.agentCoreFileMeta(corePath, name));
+  }
+
+  readAgentCoreFile(id: string, name: string): AgentCoreFile {
+    const fileName = normalizeAgentCoreFileName(name);
+    const corePath = this.agentCorePath(id);
+    const meta = this.agentCoreFileMeta(corePath, fileName);
+    return {
+      ...meta,
+      content: meta.missing ? "" : readFileSync(meta.path, "utf8"),
+    };
+  }
+
+  writeAgentCoreFile(id: string, name: string, content: string): AgentCoreFile {
+    const fileName = normalizeAgentCoreFileName(name);
+    const corePath = this.agentCorePath(id);
+    const filePath = join(corePath, fileName);
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, content, "utf8");
+    const meta = this.agentCoreFileMeta(corePath, fileName);
+    return { ...meta, content };
+  }
+
   private ensureDefault(): void {
     const count = (this.db.query("SELECT COUNT(*) AS c FROM agents").get() as { c: number }).c;
     if (count > 0) {
       this.ensureDefaultToolsCurrent();
       this.ensureLegacyPrivateWorkspacesCurrent();
       this.ensureDefaultWorkspaceCurrent();
+      this.ensureAgentLayoutsCurrent();
       return;
     }
     this._save(DEFAULT_AGENT);
@@ -127,9 +213,20 @@ export class AgentStore {
     const existingTools = JSON.parse(existingRow.tools) as string[];
     const merged = [...new Set([...existingTools, ...AGENT_TOOL_NAMES])];
     if (merged.length === existingTools.length) return;
+    const policy = toolPolicyFromSaveRequest({
+      ...DEFAULT_AGENT,
+      tools: merged as AgentToolName[],
+    });
     this.db
-      .query("UPDATE agents SET tools = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(merged), nowIso8601(), DEFAULT_AGENT.id);
+      .query("UPDATE agents SET tools = ?, tool_preset = ?, tool_include_json = ?, tool_exclude_json = ?, updated_at = ? WHERE id = ?")
+      .run(
+        JSON.stringify(policy.tools),
+        policy.toolPreset,
+        JSON.stringify(policy.toolInclude),
+        JSON.stringify(policy.toolExclude),
+        nowIso8601(),
+        DEFAULT_AGENT.id,
+      );
   }
 
   private ensureLegacyPrivateWorkspacesCurrent(): void {
@@ -161,17 +258,22 @@ export class AgentStore {
       existing?.workspace as Workspace | undefined,
       req.workspace,
     );
+    const toolPolicy = toolPolicyFromSaveRequest(req);
+    this.ensureAgentCoreFiles({ ...req, ...toolPolicy }, workspace);
     if (existing) {
       this.db
         .query(
-          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, skills=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
+          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, tool_preset=?, tool_include_json=?, tool_exclude_json=?, skills=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
         )
         .run(
           req.name,
           req.description,
           req.model,
           req.reasoning,
-          JSON.stringify(req.tools),
+          JSON.stringify(toolPolicy.tools),
+          toolPolicy.toolPreset,
+          JSON.stringify(toolPolicy.toolInclude),
+          JSON.stringify(toolPolicy.toolExclude),
           req.skills === undefined ? null : JSON.stringify(req.skills),
           JSON.stringify(workspace),
           req.instructions,
@@ -181,8 +283,8 @@ export class AgentStore {
     } else {
       this.db
         .query(
-          `INSERT INTO agents(id, name, description, model, reasoning, tools, skills, workspace_json, instructions, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO agents(id, name, description, model, reasoning, tools, tool_preset, tool_include_json, tool_exclude_json, skills, workspace_json, instructions, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           req.id,
@@ -190,7 +292,10 @@ export class AgentStore {
           req.description,
           req.model,
           req.reasoning,
-          JSON.stringify(req.tools),
+          JSON.stringify(toolPolicy.tools),
+          toolPolicy.toolPreset,
+          JSON.stringify(toolPolicy.toolInclude),
+          JSON.stringify(toolPolicy.toolExclude),
           req.skills === undefined ? null : JSON.stringify(req.skills),
           JSON.stringify(workspace),
           req.instructions,
@@ -229,33 +334,66 @@ export class AgentStore {
     agentName: string,
     existing: Workspace,
   ): Workspace {
-    const desiredPath = this.privateWorkspacePath(agentId, agentName);
-    if (existing.path === desiredPath) return existing;
-
-    if (existsSync(existing.path) && statSync(existing.path).isDirectory()) {
-      mkdirSync(dirname(desiredPath), { recursive: true });
-      if (existsSync(desiredPath)) {
-        if (!statSync(desiredPath).isDirectory()) {
-          throw new Error(`private workspace path is not a directory: ${desiredPath}`);
-        }
-        if (readdirSync(desiredPath).length === 0) {
-          rmSync(desiredPath, { recursive: true, force: true });
-          renameSync(existing.path, desiredPath);
-        } else {
-          this.mergeWorkspaceDirectories(existing.path, desiredPath);
-        }
-      } else {
-        renameSync(existing.path, desiredPath);
-      }
-    } else {
-      mkdirSync(desiredPath, { recursive: true });
+    const desiredRoot = this.privateWorkspacePath(agentId, agentName);
+    const desiredProjectPath = this.privateProjectPath(agentId, agentName);
+    if (existing.path === desiredProjectPath) {
+      this.ensureAgentCoreFilesForValues({
+        id: agentId,
+        name: agentName,
+        description: "",
+        model: "",
+        reasoning: "medium",
+        tools: [],
+        toolPreset: "none",
+        toolInclude: [],
+        toolExclude: [],
+        skills: undefined,
+        instructions: "",
+      }, existing);
+      return existing;
     }
 
-    return {
+    if (existsSync(existing.path) && statSync(existing.path).isDirectory()) {
+      mkdirSync(desiredRoot, { recursive: true });
+      mkdirSync(desiredProjectPath, { recursive: true });
+      if (existing.path === desiredRoot) {
+        this.moveWorkspaceEntriesIntoProject(desiredRoot, desiredProjectPath);
+      } else if (existsSync(desiredProjectPath)) {
+        if (!statSync(desiredProjectPath).isDirectory()) {
+          throw new Error(`private workspace project path is not a directory: ${desiredProjectPath}`);
+        }
+        if (readdirSync(desiredProjectPath).length === 0) {
+          rmSync(desiredProjectPath, { recursive: true, force: true });
+          renameSync(existing.path, desiredProjectPath);
+        } else {
+          this.mergeWorkspaceDirectories(existing.path, desiredProjectPath);
+        }
+      } else {
+        renameSync(existing.path, desiredProjectPath);
+      }
+    } else {
+      mkdirSync(desiredProjectPath, { recursive: true });
+    }
+
+    const migrated = {
       ...existing,
-      path: desiredPath,
+      path: desiredProjectPath,
       updatedAt: nowIso8601(),
     };
+    this.ensureAgentCoreFilesForValues({
+      id: agentId,
+      name: agentName,
+      description: "",
+      model: "",
+      reasoning: "medium",
+      tools: [],
+      toolPreset: "none",
+      toolInclude: [],
+      toolExclude: [],
+      skills: undefined,
+      instructions: "",
+    }, migrated);
+    return migrated;
   }
 
   private mergeWorkspaceDirectories(sourcePath: string, targetPath: string): void {
@@ -276,7 +414,9 @@ export class AgentStore {
     agentName: string,
     existing?: Workspace,
   ): Workspace {
-    const path = this.privateWorkspacePath(agentId, agentName);
+    const root = this.privateWorkspacePath(agentId, agentName);
+    const path = this.privateProjectPath(agentId, agentName);
+    mkdirSync(join(root, "agent-core"), { recursive: true });
     mkdirSync(path, { recursive: true });
     const now = nowIso8601();
     return {
@@ -326,13 +466,15 @@ export class AgentStore {
       throw new Error(`workspace path is not a directory: ${requested.path}`);
     }
     const now = nowIso8601();
-    return {
+    const workspace = {
       id: brandId<WorkspaceId>(requested.id),
       name: requested.name,
       path: requested.path,
       createdAt: existing?.id === requested.id ? existing.createdAt : now,
       updatedAt: now,
     };
+    mkdirSync(join(requested.path, "agent-core"), { recursive: true });
+    return workspace;
   }
 
   private defaultWorkspaceFor(agentId: string, existing?: Workspace): Workspace | null {
@@ -351,6 +493,10 @@ export class AgentStore {
 
   private privateWorkspacePath(agentId: string, agentName: string): string {
     return privateWorkspacePathForAgent(this.privateWorkspaceHomeDir, agentId, agentName);
+  }
+
+  private privateProjectPath(agentId: string, agentName: string): string {
+    return join(this.privateWorkspacePath(agentId, agentName), "project");
   }
 
   private privateWorkspaceRoot(): string {
@@ -376,20 +522,93 @@ export class AgentStore {
   ): boolean {
     return (
       this.isManagedPrivateWorkspace(agentId, workspace) &&
-      dirname(workspace.path) === this.privateWorkspaceRoot() &&
-      workspace.path !== this.privateWorkspacePath(agentId, agentName)
+      (
+        dirname(workspace.path) === this.privateWorkspaceRoot() ||
+        dirname(dirname(workspace.path)) === this.privateWorkspaceRoot()
+      ) &&
+      workspace.path !== this.privateProjectPath(agentId, agentName)
     );
   }
 
   private isEmptyPrivateWorkspace(agentId: string, agentName: string, path: string): boolean {
     if (
       path !== this.privateWorkspacePath(agentId, agentName) &&
+      path !== this.privateProjectPath(agentId, agentName) &&
       path !== this.legacyPrivateWorkspacePath(agentId)
     ) {
       return false;
     }
     if (!existsSync(path) || !statSync(path).isDirectory()) return true;
     return readdirSync(path).length === 0;
+  }
+
+  private ensureAgentLayoutsCurrent(): void {
+    const rows = this.db.query("SELECT * FROM agents").all() as AgentRow[];
+    for (const row of rows) {
+      const agent = rowToAgent(row);
+      this.ensureAgentCoreFilesForValues(agent, agent.workspace as Workspace);
+    }
+  }
+
+  private ensureAgentCoreFiles(req: SaveAgentRequest, workspace: Workspace): void {
+    this.ensureAgentCoreFilesForValues(req, workspace);
+  }
+
+  private ensureAgentCoreFilesForValues(
+    agent: Pick<SaveAgentRequest, "id" | "name" | "description" | "model" | "reasoning" | "tools" | "instructions"> & {
+      toolPreset?: AgentToolPreset;
+      toolInclude?: AgentToolName[];
+      toolExclude?: AgentToolName[];
+      skills?: string[];
+    },
+    workspace: Workspace,
+  ): void {
+    const root = this.agentRootPathForWorkspace(workspace);
+    const corePath = join(root, "agent-core");
+    mkdirSync(join(corePath, "skills"), { recursive: true });
+    const templates = agentCoreTemplates(agent, workspace);
+    for (const [name, content] of Object.entries(templates) as Array<[AgentCoreFileName, string]>) {
+      const filePath = join(corePath, name);
+      mkdirSync(dirname(filePath), { recursive: true });
+      if (!existsSync(filePath)) {
+        writeFileSync(filePath, content, "utf8");
+      }
+    }
+  }
+
+  private agentRootPathFor(agent: Agent): string {
+    return this.agentRootPathForWorkspace(agent.workspace as Workspace);
+  }
+
+  private agentRootPathForWorkspace(workspace: Workspace): string {
+    if (
+      basename(workspace.path) === "project" &&
+      dirname(dirname(workspace.path)) === this.privateWorkspaceRoot()
+    ) {
+      return dirname(workspace.path);
+    }
+    return workspace.path;
+  }
+
+  private agentCoreFileMeta(corePath: string, name: AgentCoreFileName): AgentCoreFile {
+    const path = join(corePath, name);
+    if (!existsSync(path) || !statSync(path).isFile()) {
+      return { name, path, missing: true };
+    }
+    const stat = statSync(path);
+    return { name, path, missing: false, size: stat.size, updatedAtMs: Math.floor(stat.mtimeMs) };
+  }
+
+  private moveWorkspaceEntriesIntoProject(root: string, projectPath: string): void {
+    for (const entry of readdirSync(root)) {
+      if (entry === "agent-core" || entry === "project") continue;
+      let to = join(projectPath, entry);
+      if (existsSync(to)) {
+        const parsed = parse(entry);
+        to = join(projectPath, `${parsed.name}.legacy-${Date.now()}${parsed.ext}`);
+      }
+      renameSync(join(root, entry), to);
+    }
   }
 
 }
@@ -426,4 +645,233 @@ function parseSkillsJson(raw: string | null | undefined): string[] | undefined {
   } catch {
     return undefined;
   }
+}
+
+interface ToolPolicy {
+  tools: AgentToolName[];
+  toolPreset: AgentToolPreset;
+  toolInclude: AgentToolName[];
+  toolExclude: AgentToolName[];
+}
+
+function toolPolicyFromSaveRequest(req: SaveAgentRequest): ToolPolicy {
+  if (req.toolPreset === undefined) {
+    return deriveToolPolicyFromTools(req.tools);
+  }
+  const toolInclude = uniqueTools(req.toolInclude ?? []);
+  const toolExclude = uniqueTools(req.toolExclude ?? []);
+  return {
+    toolPreset: req.toolPreset,
+    toolInclude,
+    toolExclude,
+    tools: expandToolPolicy(req.toolPreset, toolInclude, toolExclude),
+  };
+}
+
+function normalizeStoredToolPolicy(
+  rawPreset: string | null | undefined,
+  rawInclude: string | null | undefined,
+  rawExclude: string | null | undefined,
+  storedTools: readonly AgentToolName[],
+): ToolPolicy {
+  const toolPreset = isAgentToolPreset(rawPreset) ? rawPreset : "none";
+  const toolInclude = parseToolArrayJson(rawInclude);
+  const toolExclude = parseToolArrayJson(rawExclude);
+  const hasStoredPolicy =
+    rawPreset !== undefined &&
+    rawPreset !== null &&
+    (toolPreset !== "none" || toolInclude.length > 0 || toolExclude.length > 0 || storedTools.length === 0);
+  if (!hasStoredPolicy && storedTools.length > 0) {
+    return deriveToolPolicyFromTools(storedTools);
+  }
+  return {
+    toolPreset,
+    toolInclude,
+    toolExclude,
+    tools: uniqueTools(storedTools),
+  };
+}
+
+function deriveToolPolicyFromTools(tools: readonly AgentToolName[]): ToolPolicy {
+  const normalized = uniqueTools(tools);
+  const exact = matchingToolPreset(normalized);
+  if (exact) {
+    return {
+      tools: [...AGENT_TOOL_PRESETS[exact]],
+      toolPreset: exact,
+      toolInclude: [],
+      toolExclude: [],
+    };
+  }
+  return {
+    tools: normalized,
+    toolPreset: "none",
+    toolInclude: normalized,
+    toolExclude: [],
+  };
+}
+
+function expandToolPolicy(
+  preset: AgentToolPreset,
+  include: readonly AgentToolName[],
+  exclude: readonly AgentToolName[],
+): AgentToolName[] {
+  const excluded = new Set(exclude);
+  return uniqueTools([...AGENT_TOOL_PRESETS[preset], ...include]).filter((tool) => !excluded.has(tool));
+}
+
+function parseToolArrayJson(raw: string | null | undefined): AgentToolName[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? uniqueTools(parsed.filter((value): value is AgentToolName => isAgentToolName(value)))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function uniqueTools(tools: readonly AgentToolName[]): AgentToolName[] {
+  const seen = new Set<AgentToolName>();
+  const result: AgentToolName[] = [];
+  for (const tool of tools) {
+    if (!seen.has(tool)) {
+      seen.add(tool);
+      result.push(tool);
+    }
+  }
+  return result;
+}
+
+function matchingToolPreset(tools: readonly AgentToolName[]): AgentToolPreset | null {
+  for (const preset of ["none", "minimal", "standard", "developer", "tl", "full"] as const) {
+    if (sameToolSet(tools, AGENT_TOOL_PRESETS[preset])) return preset;
+  }
+  return null;
+}
+
+function sameToolSet(left: readonly AgentToolName[], right: readonly AgentToolName[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((tool) => rightSet.has(tool));
+}
+
+function isAgentToolName(value: unknown): value is AgentToolName {
+  return typeof value === "string" && (AGENT_TOOL_NAMES as readonly string[]).includes(value);
+}
+
+function isAgentToolPreset(value: unknown): value is AgentToolPreset {
+  return (
+    value === "none" ||
+    value === "minimal" ||
+    value === "standard" ||
+    value === "developer" ||
+    value === "tl" ||
+    value === "full"
+  );
+}
+
+function normalizeAgentCoreFileName(name: string): AgentCoreFileName {
+  const normalized = name.trim().replace(/\\/g, "/");
+  if ((AGENT_CORE_FILE_NAMES as readonly string[]).includes(normalized)) {
+    return normalized as AgentCoreFileName;
+  }
+  throw new Error(`unsupported agent core file: ${name}`);
+}
+
+function agentCoreTemplates(
+  agent: Pick<SaveAgentRequest, "id" | "name" | "description" | "model" | "reasoning" | "tools" | "instructions"> & {
+    toolPreset?: AgentToolPreset;
+    toolInclude?: AgentToolName[];
+    toolExclude?: AgentToolName[];
+    skills?: string[];
+  },
+  workspace: Workspace,
+): Record<AgentCoreFileName, string> {
+  const skillPolicy = agent.skills === undefined ? "all" : agent.skills.length === 0 ? "none" : "allowlist";
+  const toolPolicy = normalizeStoredToolPolicy(
+    agent.toolPreset,
+    JSON.stringify(agent.toolInclude ?? []),
+    JSON.stringify(agent.toolExclude ?? []),
+    agent.tools,
+  );
+  return {
+    "AGENTS.md": [
+      "# AGENTS.md",
+      "",
+      "## Agent Rules",
+      agent.instructions.trim() || "Complete the user's task directly and carefully.",
+      "",
+      "## Working Directory",
+      `Use the project workspace at \`${workspace.path}\` for local file and tool work.`,
+      "",
+    ].join("\n"),
+    "SOUL.md": [
+      "# SOUL.md",
+      "",
+      `You are ${agent.name}.`,
+      "",
+      agent.description.trim() || "Be helpful, clear, and pragmatic.",
+      "",
+      "Prefer concise answers, but include enough detail for the task to be actionable.",
+      "",
+    ].join("\n"),
+    "TOOLS.md": [
+      "# TOOLS.md",
+      "",
+      "Tool availability is generated from `tool-registry.jsonc` and the saved agent tool policy.",
+      "",
+      "Add local environment notes below when a tool needs agent-specific context.",
+      "",
+    ].join("\n"),
+    "IDENTITY.md": [
+      "# IDENTITY.md",
+      "",
+      `- **Name:** ${agent.name}`,
+      `- **Role:** ${agent.description.trim() || "Vulture agent"}`,
+      "",
+    ].join("\n"),
+    "USER.md": [
+      "# USER.md",
+      "",
+      "Capture durable user preferences here when the user explicitly asks you to remember them.",
+      "",
+    ].join("\n"),
+    "HEARTBEAT.md": "",
+    "BOOTSTRAP.md": [
+      "# BOOTSTRAP.md",
+      "",
+      "On first start, read `USER.md`, `IDENTITY.md`, `SOUL.md`, and `TOOLS.md`, then greet the user briefly.",
+      "",
+      "After setup is complete, this file can be left alone or removed by a future onboarding flow.",
+      "",
+    ].join("\n"),
+    "MEMORY.md": "",
+    "tool-registry.jsonc": `${JSON.stringify(
+      {
+        version: 1,
+        preset: toolPolicy.toolPreset,
+        builtin: {
+          include: toolPolicy.toolInclude,
+          exclude: toolPolicy.toolExclude,
+        },
+        mcp: [],
+        conditional: [],
+        notes: "",
+      },
+      null,
+      2,
+    )}\n`,
+    "skills/skills.jsonc": `${JSON.stringify(
+      {
+        version: 1,
+        policy: skillPolicy,
+        allowlist: agent.skills ?? null,
+        skills: [],
+      },
+      null,
+      2,
+    )}\n`,
+  };
 }

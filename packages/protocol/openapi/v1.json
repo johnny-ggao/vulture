@@ -342,6 +342,195 @@
         }
       }
     },
+    "/v1/agents/{id}/files": {
+      "get": {
+        "operationId": "listAgentCoreFiles",
+        "tags": [
+          "agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCoreFilesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{id}/files/{name}": {
+      "get": {
+        "operationId": "getAgentCoreFile",
+        "tags": [
+          "agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCoreFileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putAgentCoreFile",
+        "tags": [
+          "agents"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutAgentCoreFileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCoreFileResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tools/catalog": {
+      "get": {
+        "operationId": "getToolCatalog",
+        "tags": [
+          "tools"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolCatalog"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/conversations": {
       "get": {
         "operationId": "listConversations",
@@ -1055,6 +1244,74 @@
                 "sessions_spawn",
                 "sessions_yield",
                 "update_plan",
+                "memory_search",
+                "memory_get",
+                "memory_append",
+                "browser.snapshot",
+                "browser.click"
+              ]
+            }
+          },
+          "toolPreset": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minimal",
+              "standard",
+              "developer",
+              "tl",
+              "full"
+            ]
+          },
+          "toolInclude": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "edit",
+                "apply_patch",
+                "shell.exec",
+                "process",
+                "web_search",
+                "web_fetch",
+                "sessions_list",
+                "sessions_history",
+                "sessions_send",
+                "sessions_spawn",
+                "sessions_yield",
+                "update_plan",
+                "memory_search",
+                "memory_get",
+                "memory_append",
+                "browser.snapshot",
+                "browser.click"
+              ]
+            }
+          },
+          "toolExclude": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "edit",
+                "apply_patch",
+                "shell.exec",
+                "process",
+                "web_search",
+                "web_fetch",
+                "sessions_list",
+                "sessions_history",
+                "sessions_send",
+                "sessions_spawn",
+                "sessions_yield",
+                "update_plan",
+                "memory_search",
+                "memory_get",
+                "memory_append",
                 "browser.snapshot",
                 "browser.click"
               ]
@@ -1121,12 +1378,105 @@
           "model",
           "reasoning",
           "tools",
+          "toolPreset",
+          "toolInclude",
+          "toolExclude",
           "workspace",
           "instructions",
           "createdAt",
           "updatedAt"
         ],
         "additionalProperties": false
+      },
+      "AgentCoreFile": {
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "missing"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updatedAtMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "AgentCoreFilesResponse": {
+        "type": "object",
+        "required": [
+          "agentId",
+          "rootPath",
+          "corePath",
+          "files"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rootPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "corePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCoreFile"
+            }
+          }
+        }
+      },
+      "AgentCoreFileResponse": {
+        "type": "object",
+        "required": [
+          "agentId",
+          "rootPath",
+          "corePath",
+          "file"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rootPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "corePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file": {
+            "$ref": "#/components/schemas/AgentCoreFile"
+          }
+        }
       },
       "AgentList": {
         "type": "object",
@@ -1191,6 +1541,74 @@
                 "sessions_spawn",
                 "sessions_yield",
                 "update_plan",
+                "memory_search",
+                "memory_get",
+                "memory_append",
+                "browser.snapshot",
+                "browser.click"
+              ]
+            }
+          },
+          "toolPreset": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minimal",
+              "standard",
+              "developer",
+              "tl",
+              "full"
+            ]
+          },
+          "toolInclude": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "edit",
+                "apply_patch",
+                "shell.exec",
+                "process",
+                "web_search",
+                "web_fetch",
+                "sessions_list",
+                "sessions_history",
+                "sessions_send",
+                "sessions_spawn",
+                "sessions_yield",
+                "update_plan",
+                "memory_search",
+                "memory_get",
+                "memory_append",
+                "browser.snapshot",
+                "browser.click"
+              ]
+            }
+          },
+          "toolExclude": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "edit",
+                "apply_patch",
+                "shell.exec",
+                "process",
+                "web_search",
+                "web_fetch",
+                "sessions_list",
+                "sessions_history",
+                "sessions_send",
+                "sessions_spawn",
+                "sessions_yield",
+                "update_plan",
+                "memory_search",
+                "memory_get",
+                "memory_append",
                 "browser.snapshot",
                 "browser.click"
               ]
@@ -1242,6 +1660,18 @@
           "instructions"
         ],
         "additionalProperties": false
+      },
+      "PutAgentCoreFileRequest": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        }
       },
       "ApprovalRequest": {
         "type": "object",
@@ -2553,6 +2983,109 @@
           "path"
         ],
         "additionalProperties": false
+      },
+      "ToolCatalog": {
+        "type": "object",
+        "required": [
+          "groups"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCatalogGroup"
+            }
+          }
+        }
+      },
+      "ToolCatalogGroup": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "items"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCatalogItem"
+            }
+          }
+        }
+      },
+      "ToolCatalogItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "description",
+          "source",
+          "category",
+          "risk",
+          "idempotent",
+          "sdkName"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "core",
+              "plugin",
+              "mcp"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "browser",
+              "fs",
+              "workspace",
+              "web",
+              "sessions",
+              "memory",
+              "agents"
+            ]
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "safe",
+              "approval",
+              "dangerous"
+            ]
+          },
+          "idempotent": {
+            "type": "boolean"
+          },
+          "sdkName": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       }
     }
   }

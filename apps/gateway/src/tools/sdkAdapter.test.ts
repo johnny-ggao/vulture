@@ -44,6 +44,22 @@ describe("gateway tool sdk adapter", () => {
     ]);
   });
 
+  test("core tool specs declare retry idempotency explicitly", () => {
+    const specs = createCoreToolRegistry().list();
+
+    expect(specs.every((spec) => typeof spec.idempotent === "boolean")).toBe(true);
+    expect(Object.fromEntries(specs.map((spec) => [spec.id, spec.idempotent]))).toMatchObject({
+      read: true,
+      "shell.exec": false,
+      sessions_list: true,
+      sessions_send: false,
+      sessions_spawn: false,
+      update_plan: true,
+      memory_append: false,
+      "browser.click": false,
+    });
+  });
+
   test("fails closed when policy allows an unknown tool", () => {
     const registry = createCoreToolRegistry();
 
@@ -113,6 +129,36 @@ describe("gateway tool sdk adapter", () => {
     );
 
     expect(calls).toEqual([{ tool: "shell.exec", approvalToken: "sdk-approved-c-test" }]);
+  });
+
+  test("records idempotency in active tool checkpoints", async () => {
+    const registry = createCoreToolRegistry();
+    const read = registry.get("read");
+    expect(read).toBeDefined();
+    const tool = toSdkTool(read!) as unknown as TestFunctionTool;
+    const checkpoints: GatewayToolRunContext["onCheckpoint"][] = [];
+
+    await tool.invoke(
+      new RunContext({
+        runId: "r-test",
+        workspacePath: "/tmp/work",
+        sdkApprovedToolCalls: new Map(),
+        toolCallable: async () => "ok",
+        onCheckpoint: (checkpoint) => {
+          checkpoints.push(checkpoint as never);
+        },
+      }),
+      JSON.stringify({ path: "README.md", maxBytes: null }),
+      { toolCall: { callId: "c-read" } },
+    );
+
+    expect(checkpoints[0]).toMatchObject({
+      activeTool: {
+        callId: "c-read",
+        tool: "read",
+        idempotent: true,
+      },
+    });
   });
 });
 
