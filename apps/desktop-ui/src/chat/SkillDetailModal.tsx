@@ -27,24 +27,32 @@ export function SkillDetailModal({
   onClose,
   onToggle,
 }: SkillDetailModalProps) {
-  // Esc closes — same contract as AgentEditModal. Read `onClose` through
-  // a ref so the listener doesn't rebind on every parent render where the
-  // handler arrives as an inline arrow.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // Esc closes — same contract as AgentEditModal. Read `onClose` + `saving`
+  // through a ref so the listener doesn't rebind on every parent render
+  // where the handler arrives as an inline arrow. Esc, overlay-click, and
+  // the close button ALL gate on `saving` so a mid-toggle dismiss can't
+  // strand the request.
+  const escDepsRef = useRef({ onClose, saving });
+  escDepsRef.current = { onClose, saving };
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onCloseRef.current();
+      if (event.key !== "Escape") return;
+      const { saving: isSaving, onClose: close } = escDepsRef.current;
+      if (!isSaving) close();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  function attemptClose() {
+    if (!saving) onClose();
+  }
+
   if (!open || !skill) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={attemptClose}>
       <div
         className="modal-card skill-detail-modal"
         onClick={(e) => e.stopPropagation()}
@@ -71,7 +79,8 @@ export function SkillDetailModal({
               type="button"
               className="icon-btn"
               aria-label="关闭"
-              onClick={onClose}
+              disabled={saving}
+              onClick={attemptClose}
             >
               <svg
                 viewBox="0 0 16 16"

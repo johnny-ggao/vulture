@@ -89,7 +89,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
     };
   }, []);
   // When the modal closes mid-flight, reset the flash + file status so the
-  // next open doesn't inherit stale UI from a previous session.
+  // next open doesn't inherit stale UI from a previous session. Also clears
+  // `fileBusy` because the file-load effects branch on `!open` and skip
+  // their own cleanup, otherwise a closed-mid-load modal would reopen with
+  // a stuck "处理中..." button.
   useEffect(() => {
     if (open) return;
     if (savedFlashTimer.current !== null) {
@@ -98,6 +101,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
     }
     setSavedFlash(false);
     setFileStatus("");
+    setFileBusy(false);
   }, [open]);
 
   // Reset the draft + scratch state every time the modal opens for a new

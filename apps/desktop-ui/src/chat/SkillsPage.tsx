@@ -83,7 +83,10 @@ export function SkillsPage(props: SkillsPageProps) {
   }
 
   const data = state.data;
-  const items = data?.items ?? [];
+  // Memoise `items` so its identity is stable when `data?.items` is — the
+  // `?? []` shorthand otherwise creates a fresh array reference on every
+  // render where data is null, churning the auto-close effect below.
+  const items = useMemo(() => data?.items ?? [], [data]);
   const filtered = useMemo(() => filterSkills(items, query), [items, query]);
   const grouped = useMemo(() => groupBySource(filtered), [filtered]);
 
