@@ -52,20 +52,6 @@ export function Stub({ title, body }: { title: string; body: string }) {
   );
 }
 
-export function DotIcon() {
-  return (
-    <span
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 999,
-        background: "currentColor",
-        opacity: 0.5,
-      }}
-    />
-  );
-}
-
 export function describeActive(s: AuthStatusView | null): string {
   if (!s) return "loading";
   if (s.active === "codex") return `Codex (${s.codex.email ?? "已登录"})`;

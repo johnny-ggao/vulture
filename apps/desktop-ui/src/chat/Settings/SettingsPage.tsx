@@ -1,19 +1,27 @@
 import { useState, type ReactNode } from "react";
-import { DotIcon, Stub } from "./shared";
+import { Stub } from "./shared";
 import { GeneralSection } from "./GeneralSection";
 import { ModelSection } from "./ModelSection";
 import { MemorySection } from "./MemorySection";
 import { McpSection } from "./McpSection";
 import { BrowserSection } from "./BrowserSection";
+import {
+  BrowserIcon,
+  ChannelIcon,
+  GeneralIcon,
+  MemoryIcon,
+  ModelIcon,
+  PluginIcon,
+} from "./icons";
 import type { SettingsPageProps } from "./types";
 
 const SECTIONS = [
-  { key: "general",  label: "通用",       icon: <DotIcon /> },
-  { key: "model",    label: "模型",       icon: <DotIcon /> },
-  { key: "memory",   label: "记忆",       icon: <DotIcon /> },
-  { key: "mcp",      label: "MCP 服务器", icon: <DotIcon /> },
-  { key: "browser",  label: "浏览器",     icon: <DotIcon /> },
-  { key: "channels", label: "消息渠道",   icon: <DotIcon /> },
+  { key: "general",  label: "通用",       icon: <GeneralIcon /> },
+  { key: "model",    label: "模型",       icon: <ModelIcon /> },
+  { key: "memory",   label: "记忆",       icon: <MemoryIcon /> },
+  { key: "mcp",      label: "MCP 服务器", icon: <PluginIcon /> },
+  { key: "browser",  label: "浏览器",     icon: <BrowserIcon /> },
+  { key: "channels", label: "消息渠道",   icon: <ChannelIcon /> },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
