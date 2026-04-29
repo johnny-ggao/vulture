@@ -1,7 +1,7 @@
 // SAFETY: all message content is rendered via React children (auto-escaped).
 // markdown.ts emits a typed AST with link href validated against
 // SAFE_HREF_PROTOCOLS. Do NOT introduce dangerouslySetInnerHTML in this file.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { TokenUsageDto } from "../api/runs";
 import type { MessageAttachmentDto } from "../api/conversations";
 import { parseMarkdown, type MarkdownBlock, type MarkdownInline } from "./markdown";
@@ -57,7 +57,9 @@ export function MessageBubble({ role, content, attachments = [], usage, streamin
 }
 
 function MarkdownContent({ source }: { source: string }) {
-  const blocks = parseMarkdown(source);
+  // Streaming assistant messages re-render every token; memoize so we don't
+  // re-tokenize the whole transcript on each chunk append.
+  const blocks = useMemo(() => parseMarkdown(source), [source]);
   return (
     <div className="md-content">
       {blocks.map((block, idx) => renderBlock(block, idx))}

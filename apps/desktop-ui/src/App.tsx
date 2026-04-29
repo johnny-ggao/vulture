@@ -785,6 +785,24 @@ export function App() {
     setPendingDelete(null);
   }
 
+  // On unmount, clear the grace-period timer and commit any pending delete.
+  // Without this, the timer fires against a torn-down component and the local
+  // UI stays out of sync with the backend (row hidden, but never deleted).
+  // We capture the latest pending state via a ref to avoid stale-closure
+  // issues — the cleanup only runs at unmount.
+  const pendingDeleteRef = useRef(pendingDelete);
+  pendingDeleteRef.current = pendingDelete;
+  const commitDeleteRef = useRef(conversations.commitDelete);
+  commitDeleteRef.current = conversations.commitDelete;
+  useEffect(() => {
+    return () => {
+      const pending = pendingDeleteRef.current;
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      void commitDeleteRef.current(pending.item.id);
+    };
+  }, []);
+
   async function handleCreateAgent(input: {
     name: string;
     description: string;

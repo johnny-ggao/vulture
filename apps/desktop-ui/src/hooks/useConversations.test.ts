@@ -68,4 +68,20 @@ describe("conversationsReducer", () => {
     );
     expect(after.items.filter((x) => x.id === "c-a")).toHaveLength(1);
   });
+
+  test("restore appends item with malformed updatedAt rather than crashing", () => {
+    const malformed: ConversationDto = { ...a, id: "c-mal", updatedAt: "not-a-date" };
+    const after = conversationsReducer(
+      { ...initial, items: [a] },
+      { type: "restore", item: malformed },
+    );
+    expect(after.items.map((x) => x.id)).toEqual(["c-a", "c-mal"]);
+  });
+
+  test("unknown action type returns state unchanged", () => {
+    const before: ConversationsState = { ...initial, items: [a] };
+    // @ts-expect-error — exercising the runtime default branch.
+    const after = conversationsReducer(before, { type: "no-such-action" });
+    expect(after).toBe(before);
+  });
 });

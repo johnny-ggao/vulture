@@ -151,6 +151,39 @@ describe("Composer", () => {
     expect(screen.queryByRole("menu", { name: /智能体/ })).toBeNull();
   });
 
+  test("ArrowDown / ArrowUp / Home / End navigate the agent picker", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
+    const menu = screen.getByRole("menu", { name: /智能体/ });
+    const items = screen.getAllByRole("menuitemradio");
+    // Initially the active item (Agent One) gets focus + tabIndex=0
+    expect(items[0].getAttribute("tabindex")).toBe("0");
+    expect(items[1].getAttribute("tabindex")).toBe("-1");
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(items[0].getAttribute("tabindex")).toBe("-1");
+    expect(items[1].getAttribute("tabindex")).toBe("0");
+
+    fireEvent.keyDown(menu, { key: "End" });
+    expect(items[items.length - 1].getAttribute("tabindex")).toBe("0");
+
+    fireEvent.keyDown(menu, { key: "Home" });
+    expect(items[0].getAttribute("tabindex")).toBe("0");
+
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    // Wraps to last
+    expect(items[items.length - 1].getAttribute("tabindex")).toBe("0");
+  });
+
   test("Escape closes the agent picker without selecting", () => {
     const onSelectAgent = mock((_id: string) => {});
     render(

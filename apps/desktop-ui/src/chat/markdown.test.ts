@@ -96,6 +96,16 @@ describe("parseMarkdown", () => {
     });
   });
 
+  test("rejects links whose href contains tab/CR/LF whitespace", () => {
+    for (const ws of ["\t", "\n", "\r", " "]) {
+      const blocks = parseMarkdown(`[bad](https://x${ws}y.com)`);
+      expect(blocks[0]?.kind).toBe("paragraph");
+      if (blocks[0]?.kind === "paragraph") {
+        expect(blocks[0].inlines.some((i) => i.kind === "link")).toBe(false);
+      }
+    }
+  });
+
   test("rejects data: URLs", () => {
     const blocks = parseMarkdown("[bad](data:text/html,<script>x</script>)");
     expect(blocks[0]?.kind).toBe("paragraph");

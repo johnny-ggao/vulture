@@ -821,7 +821,7 @@ describe("App integration", () => {
     await waitFor(
       () => {
         expect(screen.getByText("read")).toBeDefined();
-        expect(screen.getByText("✓ 完成")).toBeDefined();
+        expect(screen.getByText("已完成")).toBeDefined();
         expect(screen.getByText("done")).toBeDefined();
       },
       { timeout: 5000 },
@@ -963,6 +963,91 @@ describe("App integration", () => {
       },
       { timeout: 5000 },
     );
+
+    cleanup();
+  }, 15_000);
+
+  test("history delete shows undo toast and undo restores the conversation without calling DELETE", async () => {
+    let deleteCalls = 0;
+    const { app, cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "DELETE" && /^\/v1\/conversations\//.test(path)) {
+          deleteCalls += 1;
+        }
+      },
+    });
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    await authedJson(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agents.items[0].id, title: "Undo me" }),
+    });
+
+    render(<App />);
+
+    // Open the History drawer
+    await waitFor(
+      () => expect(screen.getByText("Local Work Agent")).toBeDefined(),
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByText("历史"));
+
+    // Wait for the row to render, then delete
+    await waitFor(() => expect(screen.getByText("Undo me")).toBeDefined(), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+    // Row hides, toast appears
+    expect(screen.queryByText("Undo me")).toBeNull();
+    const toast = screen.getByRole("status");
+    expect(toast.textContent ?? "").toContain("已删除");
+    expect(toast.textContent ?? "").toContain("Undo me");
+
+    // Click 撤销
+    fireEvent.click(within(toast).getByRole("button", { name: "撤销" }));
+
+    // Row comes back, toast disappears, no DELETE was issued
+    await waitFor(() => expect(screen.getByText("Undo me")).toBeDefined());
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(deleteCalls).toBe(0);
+
+    cleanup();
+  }, 15_000);
+
+  test("dismissing the undo toast commits the deletion (DELETE called once)", async () => {
+    let deleteCalls = 0;
+    const { app, cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "DELETE" && /^\/v1\/conversations\//.test(path)) {
+          deleteCalls += 1;
+        }
+      },
+    });
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    await authedJson(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agents.items[0].id, title: "Goodbye row" }),
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => expect(screen.getByText("Local Work Agent")).toBeDefined(),
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByText("历史"));
+
+    await waitFor(() => expect(screen.getByText("Goodbye row")).toBeDefined(), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+    // Manually dismiss the toast (simulates user clicking ✕). Avoids waiting
+    // 5s for the auto-commit timer in tests.
+    const toast = screen.getByRole("status");
+    fireEvent.click(within(toast).getByRole("button", { name: "关闭通知" }));
+
+    await waitFor(() => expect(deleteCalls).toBe(1));
+    expect(screen.queryByText("Goodbye row")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
 
     cleanup();
   }, 15_000);

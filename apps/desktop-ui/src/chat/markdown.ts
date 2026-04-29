@@ -175,7 +175,12 @@ function matchAt(input: string, at: number): InlineMatch | null {
     if (closeParen === -1) return null;
     const text = input.slice(at + 1, closeBracket);
     const href = input.slice(closeBracket + 2, closeParen);
-    if (text.length === 0 || text.includes("\n") || href.includes(" ") || href.length === 0) {
+    if (
+      text.length === 0 ||
+      text.includes("\n") ||
+      href.length === 0 ||
+      /\s/.test(href)
+    ) {
       return null;
     }
     const consumed = closeParen - at + 1;

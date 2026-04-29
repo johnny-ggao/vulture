@@ -49,6 +49,8 @@ export function conversationsReducer(
       const without = state.items.filter((x) => x.id !== action.item.id);
       return { ...state, items: insertByUpdatedAt(without, action.item) };
     }
+    default:
+      return state;
   }
 }
 
@@ -56,18 +58,28 @@ export function conversationsReducer(
  * Insert into a list sorted by updatedAt desc — the same order the API
  * returns. Used by `restore` so undoing a delete drops the item back into
  * its original position rather than always at the top.
+ *
+ * Items with malformed updatedAt fall back to the tail so they never crash
+ * the comparison; a parallel refetch will sort the list correctly later.
  */
 function insertByUpdatedAt(
   items: ConversationDto[],
   item: ConversationDto,
 ): ConversationDto[] {
-  const target = new Date(item.updatedAt).getTime();
+  const target = parseTime(item.updatedAt);
+  if (target === null) return [...items, item];
   for (let i = 0; i < items.length; i += 1) {
-    if (new Date(items[i].updatedAt).getTime() <= target) {
+    const candidate = parseTime(items[i].updatedAt);
+    if (candidate !== null && candidate <= target) {
       return [...items.slice(0, i), item, ...items.slice(i)];
     }
   }
   return [...items, item];
+}
+
+function parseTime(input: string): number | null {
+  const t = new Date(input).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
 export function useConversations(client: ApiClient | null) {
