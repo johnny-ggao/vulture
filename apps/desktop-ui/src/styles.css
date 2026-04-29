@@ -1484,22 +1484,39 @@ pre {
   align-content: start;
 }
 .settings-rail button {
+  position: relative;
   display: flex; align-items: center; gap: 10px;
-  min-height: 32px;
-  padding: 0 8px;
+  min-height: 34px;
+  padding: 0 10px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-size: 13px; font-weight: 500;
   text-align: left; cursor: pointer;
-  min-height: 32px;
+  transition:
+    background-color var(--duration-medium) var(--ease-standard),
+    color            var(--duration-medium) var(--ease-standard);
 }
 .settings-rail button:hover { background: var(--fill-quaternary); color: var(--text-primary); }
 .settings-rail button.active {
   background: var(--brand-050);
   color: var(--brand-600);
+  font-weight: 600;
 }
+/* Active rail item gets a 2px brand "tab indicator" on its left edge —
+ * standard settings-pane idiom (Linear, Anthropic Console). */
+.settings-rail button.active::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--brand-500);
+}
+.settings-rail button.active svg { color: var(--brand-500); }
 .settings-content { min-width: 0; }
 
 /* ============================================================
@@ -1553,29 +1570,42 @@ pre {
 
 .section-card {
   border: 1px solid var(--fill-tertiary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--bg-primary);
-  padding: 12px;
+  padding: 18px 20px;
   display: grid;
-  gap: 10px;
+  gap: 14px;
+  /* Settings cards never lift on hover (they're not tappable as a whole),
+   * but border + shadow get a subtle wake on focus-within so keyboard
+   * users can see which card holds the focused control. */
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    box-shadow   var(--duration-medium) var(--ease-standard);
+}
+.section-card:focus-within {
+  border-color: color-mix(in oklab, var(--brand-500) 28%, var(--fill-tertiary));
 }
 .section-card-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-end;
+  align-items: flex-start;
+  margin-bottom: -2px;
 }
-.section-card-meta { display: grid; gap: 4px; }
+.section-card-meta { display: grid; gap: 4px; min-width: 0; }
 .section-card-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 .section-card-desc {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 56ch;
 }
 .section-card-actions {
   display: inline-flex;
@@ -1643,27 +1673,29 @@ pre {
 .placeholder-tall { min-height: 120px; }
 
 /* ============================================================
- * SkillsPage layout
+ * SkillsPage layout — Accio-style card grid with detail modal
  * ============================================================ */
-.skills-shell { padding: 18px; display: grid; gap: 16px; }
-.skills-toolbar {
+.skills-toolbar-row {
   display: grid;
   grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) auto;
   gap: 12px;
   align-items: end;
+  margin-bottom: 14px;
 }
-.skills-toolbar .skills-search { min-width: 0; }
+.skills-search { min-width: 0; }
 .skills-policy { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .skills-meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   color: var(--text-secondary);
   font-size: 13px;
+  margin-bottom: 16px;
 }
-.skills-groups { display: grid; gap: 16px; }
-.skills-group { display: grid; gap: 8px; }
+
+.skills-groups { display: grid; gap: 22px; }
+.skills-group { display: grid; gap: 10px; }
 .skills-group-heading {
   margin: 0;
   font-size: 12px;
@@ -1672,46 +1704,176 @@ pre {
   text-transform: uppercase;
   color: var(--text-tertiary);
 }
-.skills-group-list { display: grid; gap: 10px; }
-.skill-card {
-  padding: 14px 16px;
-  margin-bottom: 0;
-}
-.skill-card-row {
+.skills-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 12px;
-  align-items: start;
 }
-.skill-card-meta { display: grid; gap: 6px; min-width: 0; }
-.skill-card-title {
+
+/* Skill card — compact tile; click the body to open SkillDetailModal,
+ * use the inline Toggle to flip enabled state without navigating. */
+.skill-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    box-shadow   var(--duration-medium) var(--ease-standard),
+    transform    var(--duration-slow)   var(--ease-spring);
+  /* Match agent grid stagger entrance for visual cohesion. */
+  animation: card-enter var(--duration-slow) var(--ease-spring) both;
+}
+.skill-card:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 24%, var(--fill-tertiary));
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+.skill-card[data-enabled="false"] { opacity: 0.78; }
+.skill-card[data-enabled="false"]:hover { opacity: 1; }
+.skill-card-surface {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px 12px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  min-height: 0;
+}
+.skill-card-surface:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring) inset;
+}
+.skill-card-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
 }
-.skill-card-title strong {
-  font-weight: 600;
+.skill-card-name {
+  font-weight: 650;
+  font-size: 14px;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--duration-medium) var(--ease-standard);
+}
+.skill-card:hover .skill-card-name {
+  color: var(--brand-600);
+}
+.skill-card-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 .skill-card-desc {
-  color: var(--text-secondary);
-  font-size: 13px;
+  margin: 0;
+  font-size: 12.5px;
   line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .skill-card-path {
-  color: var(--text-tertiary);
-  font-size: 12px;
   font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+/* Toggle row sits below the surface, separated by a hairline so the
+ * affordance is unambiguously distinct from "open detail". */
+.skill-card-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--fill-quaternary);
+}
+
+/* SkillDetailModal */
+.skill-detail-modal {
+  max-width: 600px;
+  width: min(600px, calc(100vw - 48px));
+  max-height: 80vh;
+}
+.skill-detail-title-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skill-detail-title-block .modal-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
   overflow-wrap: anywhere;
 }
-.skill-card[data-enabled="false"] {
-  opacity: 0.78;
+.skill-detail-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.skill-detail-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.skill-detail-body {
+  padding: 16px 20px 20px;
+  display: grid;
+  gap: 18px;
+  overflow: auto;
+}
+.skill-detail-section { display: grid; gap: 6px; }
+.skill-detail-section-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.skill-detail-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+.skill-detail-path {
+  display: block;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--fill-quaternary);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 720px) {
-  .skills-toolbar { grid-template-columns: 1fr; }
+  .skills-toolbar-row { grid-template-columns: 1fr; }
   .skills-policy { justify-self: start; }
+  .skills-grid { grid-template-columns: 1fr; }
 }
 
 .mono-readonly {
@@ -2064,12 +2226,52 @@ pre {
  * ============================================================ */
 .new-agent-modal {
   max-width: 920px;
+  width: min(920px, calc(100vw - 48px));
   max-height: 86vh;
+  display: flex;
+  flex-direction: column;
 }
+.new-agent-modal .modal-header {
+  /* Match AgentEditModal's slightly taller header (avatar + meta column). */
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--fill-quaternary);
+}
+.new-agent-modal .modal-title {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  display: block;
+}
+.new-agent-header-meta { min-width: 0; }
 .new-agent-step-meta {
   margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-tertiary);
   font-size: 12px;
+  font-feature-settings: "tnum";
+}
+.new-agent-step-meta > :nth-child(3) {
+  /* The label ("身份与模型" etc.) gets a brand tint to anchor the eye. */
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.new-agent-step-desc {
+  color: var(--text-tertiary);
+}
+.new-agent-progress {
+  height: 3px;
+  width: 100%;
+  background: var(--fill-quaternary);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.new-agent-progress-bar {
+  height: 100%;
+  background: var(--brand-500);
+  transition: width var(--duration-slow) var(--ease-standard);
 }
 .new-agent-body { padding: 0; }
 .new-agent-grid {
@@ -2793,25 +2995,84 @@ pre {
   box-shadow: 0 0 0 3px var(--brand-ring) inset;
 }
 .agent-card-banner {
-  height: 64px;
+  height: 72px;
   position: relative;
   margin-bottom: 36px; /* room for half-overlapping avatar */
-  /* Per-card gradient driven by `--banner-hue` set inline as a string
-   * (e.g. "182"). Replaces the previous inline <svg> + <linearGradient>
-   * which suffered from id collisions when two agent ids hashed to the
-   * same hue bucket. */
+  /* Per-card identity painted entirely by CSS:
+   *   - base: diagonal hue gradient (primary tint)
+   *   - layer 2: complementary hue radial blob in upper-right (depth)
+   *   - layer 3: fine dot grid (texture, like Linear's app-card watermarks)
+   *   - layer 4: soft-light gloss in upper-left (subtle highlight)
+   * Driven by a single inline `--banner-hue` so each agent gets its own
+   * deterministic palette without inline SVG / gradient ids. */
   background:
+    /* gloss highlight */
+    radial-gradient(
+      120% 80% at 0% -20%,
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0)    55%
+    ),
+    /* dot grid texture */
+    radial-gradient(
+      circle at 1.5px 1.5px,
+      hsla(calc(var(--banner-hue, 0) * 1deg) 50% 38% / 0.18) 1px,
+      transparent 1.5px
+    ),
+    /* complementary radial blob (analogous +60deg) */
+    radial-gradient(
+      80% 100% at 100% 0%,
+      hsl(calc((var(--banner-hue, 0) + 60) * 1deg) 70% 84%) 0%,
+      transparent 70%
+    ),
+    /* base diagonal */
     linear-gradient(
       135deg,
-      hsl(calc(var(--banner-hue, 0) * 1deg) 64% 90%) 0%,
-      hsl(calc((var(--banner-hue, 0) + 28) * 1deg) 50% 80%) 100%
+      hsl(calc(var(--banner-hue, 0) * 1deg) 70% 88%) 0%,
+      hsl(calc((var(--banner-hue, 0) + 28) * 1deg) 60% 78%) 100%
     );
+  background-size:
+    100% 100%,
+    14px 14px,
+    100% 100%,
+    100% 100%;
+  background-blend-mode: normal, normal, screen, normal;
   overflow: hidden;
+}
+@media (prefers-color-scheme: dark) {
+  .agent-card-banner {
+    background:
+      radial-gradient(
+        120% 80% at 0% -20%,
+        rgba(255, 255, 255, 0.10) 0%,
+        rgba(255, 255, 255, 0)    55%
+      ),
+      radial-gradient(
+        circle at 1.5px 1.5px,
+        hsla(calc(var(--banner-hue, 0) * 1deg) 60% 70% / 0.22) 1px,
+        transparent 1.5px
+      ),
+      radial-gradient(
+        80% 100% at 100% 0%,
+        hsl(calc((var(--banner-hue, 0) + 60) * 1deg) 50% 32%) 0%,
+        transparent 70%
+      ),
+      linear-gradient(
+        135deg,
+        hsl(calc(var(--banner-hue, 0) * 1deg) 45% 26%) 0%,
+        hsl(calc((var(--banner-hue, 0) + 28) * 1deg) 40% 18%) 100%
+      );
+    background-size:
+      100% 100%,
+      14px 14px,
+      100% 100%,
+      100% 100%;
+    background-blend-mode: normal, normal, screen, normal;
+  }
 }
 .agent-card-avatar {
   position: absolute;
   left: 16px;
-  top: 64px;
+  top: 72px;
   transform: translateY(-50%);
   padding: 4px;
   border-radius: 14px;

@@ -142,19 +142,37 @@ export function NewAgentModal(props: NewAgentModalProps) {
     }
   }
 
+  const progressPercent = Math.round(((stepIndex + 1) / STEPS.length) * 100);
+
   return (
     <div className="modal-overlay" onClick={close}>
       <div className="modal-card new-agent-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <div>
+          <div className="new-agent-header-meta">
             <span className="modal-title">新建智能体</span>
             <div className="new-agent-step-meta">
-              {STEPS[stepIndex]?.label} · {STEPS[stepIndex]?.desc}
+              <span>步骤 {stepIndex + 1} / {STEPS.length}</span>
+              <span aria-hidden="true">·</span>
+              <span>{STEPS[stepIndex]?.label}</span>
+              <span className="new-agent-step-desc">{STEPS[stepIndex]?.desc}</span>
             </div>
           </div>
-          <button type="button" className="icon-btn" onClick={close} aria-label="关闭">
+          <button type="button" className="icon-btn" onClick={close} aria-label="关闭" disabled={busy}>
             <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4l8 8M4 12l8-8" /></svg>
           </button>
+        </div>
+        <div
+          className="new-agent-progress"
+          role="progressbar"
+          aria-valuenow={stepIndex + 1}
+          aria-valuemin={1}
+          aria-valuemax={STEPS.length}
+          aria-label="创建进度"
+        >
+          <div
+            className="new-agent-progress-bar"
+            style={{ width: `${progressPercent}%` }}
+          />
         </div>
 
         <div className="modal-body new-agent-body">
