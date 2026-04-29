@@ -90,6 +90,28 @@ describe("ChatView", () => {
     expect(screen.getByText(/重连中/)).toBeDefined();
   });
 
+  test("reconnect status uses role=status (polite live region)", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="reconnecting"
+        runError="net"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    const status = screen.getByRole("status");
+    expect(status.textContent ?? "").toMatch(/重连中/);
+  });
+
   test("shows send error", () => {
     render(
       <ChatView
@@ -110,6 +132,29 @@ describe("ChatView", () => {
       />,
     );
     expect(screen.getByText("attachment.file_required")).toBeDefined();
+  });
+
+  test("send error uses role=alert (assertive live region)", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        sendError="attachment.file_required"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent ?? "").toContain("attachment.file_required");
   });
 
   test("shows empty state when no messages and idle", () => {
