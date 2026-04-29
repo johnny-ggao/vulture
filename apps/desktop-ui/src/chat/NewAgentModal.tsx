@@ -1,9 +1,10 @@
+import type * as React from "react";
 import { useMemo, useState } from "react";
 import type { AgentToolName, AgentToolPreset, ReasoningLevel } from "../api/agents";
 import type { ToolCatalogGroup, ToolPolicyDraft } from "../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../api/tools";
 import { ToolGroupSelector } from "./ToolGroupSelector";
-import { AgentAvatar, Field } from "./components";
+import { AgentAvatar, Field, hashHue } from "./components";
 
 type TemplateKey = "blank" | "writer" | "reviewer" | "shell";
 
@@ -322,7 +323,14 @@ export function NewAgentModal(props: NewAgentModalProps) {
             <aside className="new-agent-preview" aria-label="实时预览">
               <div className="new-agent-preview-label">Live Preview</div>
               <div className="new-agent-preview-card">
-                <div className="new-agent-preview-banner" />
+                <div
+                  className="new-agent-preview-banner"
+                  style={
+                    {
+                      "--banner-hue": hashHue(previewAgent.id).toString(),
+                    } as React.CSSProperties
+                  }
+                />
                 <div className="new-agent-preview-avatar-frame">
                   <AgentAvatar agent={previewAgent} size={54} shape="square" />
                 </div>

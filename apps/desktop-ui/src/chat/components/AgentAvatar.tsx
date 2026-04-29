@@ -1,3 +1,5 @@
+import { hashHue } from "./agentHue";
+
 export interface AgentAvatarProps {
   agent: { id: string; name: string };
   size?: number;
@@ -43,15 +45,3 @@ export function AgentAvatar({
   );
 }
 
-/**
- * Stable per-id hue (0-359). FNV-1a 32-bit modulo 360 — fast, no deps,
- * good enough distribution for the tiny set of agents a single user has.
- */
-function hashHue(id: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i += 1) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return Math.abs(h) % 360;
-}

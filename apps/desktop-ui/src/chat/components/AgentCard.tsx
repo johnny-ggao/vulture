@@ -1,6 +1,7 @@
 import type * as React from "react";
 import type { Agent } from "../../api/agents";
 import { AgentAvatar } from "./AgentAvatar";
+import { hashHue } from "./agentHue";
 
 export interface AgentCardProps {
   agent: Agent;
@@ -126,11 +127,3 @@ function TrashIcon() {
   );
 }
 
-function hashHue(id: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i += 1) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return Math.abs(h) % 360;
-}

@@ -7,3 +7,4 @@ export { Badge, type BadgeProps, type BadgeTone } from "./Badge";
 export { Toast, type ToastProps } from "./Toast";
 export { AgentAvatar, type AgentAvatarProps } from "./AgentAvatar";
 export { AgentCard, type AgentCardProps } from "./AgentCard";
+export { hashHue } from "./agentHue";

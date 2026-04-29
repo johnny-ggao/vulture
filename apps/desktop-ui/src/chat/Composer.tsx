@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useEffect, useRef, useState } from "react";
+import { AgentAvatar } from "./components";
 
 export type ThinkingMode = "low" | "medium" | "high";
 
@@ -240,6 +241,7 @@ function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProp
                 className={"agent-picker-item" + (isActive ? " active" : "")}
                 onClick={() => handleSelect(agent.id)}
               >
+                <AgentAvatar agent={agent} size={24} shape="square" />
                 <span className="agent-picker-item-name">{agent.name}</span>
                 {isActive ? <CheckIcon /> : null}
               </button>
