@@ -1693,16 +1693,7 @@ pre {
 }
 .profile-name { font-weight: 600; }
 .profile-id { color: var(--text-tertiary); font-size: 12px; }
-/* AgentsPage layout */
-.agents-shell {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 16px;
-}
-.agents-shell-single {
-  grid-template-columns: minmax(0, 1fr);
-}
-
+/* AgentsPage layout — browse-first grid; edit happens in <AgentEditModal>. */
 .agents-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -1710,49 +1701,49 @@ pre {
   margin-bottom: 24px;
 }
 
-.agents-edit-header {
+/* AgentEditModal — wide, tall modal anchored under the titlebar.
+ * Shares the .modal-overlay / .modal-card chrome with NewAgentModal. */
+.agent-edit-modal {
+  max-width: 960px;
+  width: min(960px, calc(100vw - 48px));
+  max-height: 86vh;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  flex-direction: column;
 }
-.agents-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px 0 8px;
-  border: 1px solid var(--fill-tertiary);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  min-height: 0;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+.agent-edit-modal .agent-config-title-block {
+  flex: 1;
+  min-width: 0;
 }
-.agents-back-btn:hover {
-  background: var(--fill-quaternary);
+.agent-edit-modal .modal-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
-  border-color: var(--fill-secondary);
-}
-.agents-back-btn:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px var(--brand-ring);
-}
-.agents-edit-breadcrumb {
-  font-size: 13px;
-  color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
-.agents-edit-breadcrumb strong {
-  color: var(--text-primary);
-  font-weight: 650;
-  margin-left: 2px;
+.agent-edit-modal-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.agent-edit-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 20px 22px;
+  overflow: auto;
+  min-height: 0;
+}
+.agent-edit-modal-body .agent-config-tabs {
+  align-self: flex-start;
+}
+.agent-edit-modal-body .agent-config-panel {
+  display: grid;
+  gap: 14px;
 }
 
 .agents-list {

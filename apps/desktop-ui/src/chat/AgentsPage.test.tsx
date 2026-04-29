@@ -38,9 +38,7 @@ const stableProps = {
   onSaveFile: async () => {},
 };
 
-/** Click the agent's grid card to enter edit view. Helper kept here so the
- *  individual test bodies stay focused on the behaviour they assert. */
-function enterEditView(agent: Agent = baseAgent) {
+function openEditModal(agent: Agent = baseAgent) {
   fireEvent.click(screen.getByRole("button", { name: agent.name }));
 }
 
@@ -69,7 +67,7 @@ describe("AgentsPage — browse view", () => {
     expect(screen.getByText("Local Agent")).toBeDefined();
   });
 
-  test("clicking a card transitions to the edit view for that agent", () => {
+  test("clicking a card opens the edit modal for that agent", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -77,12 +75,12 @@ describe("AgentsPage — browse view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
-    expect(screen.getByRole("heading", { name: /Local Agent/ })).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    openEditModal();
     expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
   });
 
-  test("card delete button calls onDelete without entering the edit view", () => {
+  test("card delete button calls onDelete without opening the modal", () => {
     const onDelete = mock((_id: string) => {});
     render(
       <AgentsPage
@@ -96,11 +94,10 @@ describe("AgentsPage — browse view", () => {
       screen.getByRole("button", { name: "删除智能体 Local Agent" }),
     );
     expect(onDelete).toHaveBeenCalledWith("agent-1");
-    // Tabs only exist in the edit view — their absence proves we're still in browse.
     expect(screen.queryByRole("tab")).toBeNull();
   });
 
-  test("card open-chat action invokes onOpenChat without entering the edit view", () => {
+  test("card open-chat action invokes onOpenChat without opening the modal", () => {
     const onOpenChat = mock((_id: string) => {});
     render(
       <AgentsPage
@@ -118,8 +115,8 @@ describe("AgentsPage — browse view", () => {
   });
 });
 
-describe("AgentsPage — edit view", () => {
-  test("exposes 概览 / Persona / 工具 / Agent Core tabs", () => {
+describe("AgentsPage — edit modal", () => {
+  test("modal exposes 概览 / Persona / 工具 / Agent Core tabs", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -127,7 +124,7 @@ describe("AgentsPage — edit view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
+    openEditModal();
     expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "Persona" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "工具" })).toBeDefined();
@@ -142,7 +139,7 @@ describe("AgentsPage — edit view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
+    openEditModal();
     expect(screen.getByLabelText("名称")).toBeDefined();
 
     fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
@@ -158,7 +155,7 @@ describe("AgentsPage — edit view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
+    openEditModal();
     expect(screen.queryByText(/未保存/)).toBeNull();
   });
 
@@ -170,7 +167,7 @@ describe("AgentsPage — edit view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
+    openEditModal();
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "Renamed" },
     });
@@ -187,7 +184,7 @@ describe("AgentsPage — edit view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
+    openEditModal();
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "Renamed" },
     });
@@ -197,7 +194,7 @@ describe("AgentsPage — edit view", () => {
     expect(patch.name).toBe("Renamed");
   });
 
-  test("the back button returns to the browse view", () => {
+  test("close button dismisses the modal", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -205,12 +202,46 @@ describe("AgentsPage — edit view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    enterEditView();
+    openEditModal();
     expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: /返回/ }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
-    // Back to grid → click target is the card root again.
-    expect(screen.getByRole("button", { name: "Local Agent" })).toBeDefined();
+  });
+
+  test("Escape closes the modal", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+  });
+
+  test("modal closes if the agent disappears (e.g. delete-undo committed)", () => {
+    const { rerender } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+
+    rerender(
+      <AgentsPage
+        {...stableProps}
+        agents={[]}
+        selectedAgentId=""
+      />,
+    );
+    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
   });
 });
