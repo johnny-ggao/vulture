@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
+import { AgentAvatar } from "./components";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
@@ -43,9 +44,30 @@ export function ChatView(props: ChatViewProps) {
     props.runStatus === "recoverable";
 
   const hasContent = props.messages.length > 0 || props.runEvents.length > 0;
+  const activeAgent = props.agents.find((a) => a.id === props.selectedAgentId)
+    ?? props.agents[0]
+    ?? null;
+  const showAgentHeader = hasContent && activeAgent && !props.onboardingCard;
 
   return (
     <main className="chat-main">
+      {showAgentHeader ? (
+        <div className="chat-agent-header">
+          <AgentAvatar agent={activeAgent} size={28} shape="square" />
+          <div className="chat-agent-meta">
+            <span className="chat-agent-name">{activeAgent.name}</span>
+            {running ? (
+              <span className="chat-agent-status" aria-live="polite">
+                <span className="chat-agent-status-dot" aria-hidden="true" />
+                {props.runStatus === "streaming" ? "回应中" :
+                 props.runStatus === "reconnecting" ? "重连中" :
+                 props.runStatus === "recoverable" ? "等待恢复" :
+                 "处理中"}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {props.runStatus === "reconnecting" ? (
         <div className="status-banner info" role="status" aria-live="polite">
           <ReconnectIcon />

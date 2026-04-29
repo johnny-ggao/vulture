@@ -54,6 +54,10 @@
 
   --danger:    #dc2626;
   --danger-bg: rgba(220, 38, 38, 0.10);
+
+  /* H value of the brand colour, used by chrome-style illustrations that
+   * want to ride the brand without hard-coding the hex. */
+  --brand-hue: 354;
   --success:    #16a34a;
   --success-bg: rgba(22, 163, 74, 0.10);
   --warning:    #b45309;
@@ -490,6 +494,59 @@ pre {
   flex: 1;
   display: flex; flex-direction: column;
   min-height: 0;
+}
+
+/* Sticky agent identity strip. Only renders when a conversation has
+ * content — keeps the empty/onboarding states uncluttered. Sits at the
+ * top of the chat-main column under the titlebar pad and stays put as
+ * messages scroll. */
+.chat-agent-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 32px;
+  background: color-mix(in oklab, var(--bg-primary) 92%, transparent);
+  border-bottom: 1px solid var(--fill-quaternary);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.chat-agent-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.chat-agent-name {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-agent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+}
+.chat-agent-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--info);
+  /* Soft pulse so the user sees the agent is "thinking". */
+  animation: chat-agent-pulse 1.6s var(--ease-standard) infinite;
+}
+@keyframes chat-agent-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1);    }
 }
 
 .chat-stage {
@@ -2193,22 +2250,59 @@ pre {
 }
 
 .agents-empty-page {
-  padding: 64px 32px;
+  padding: 80px 32px;
   text-align: center;
   display: grid;
   justify-items: center;
-  gap: 16px;
+  gap: 18px;
   margin-bottom: 0;
-  background: var(--bg-secondary);
+  position: relative;
+  /* Soft brand-tinted radial halo so the empty surface doesn't feel flat,
+   * using the same dot-grid texture as agent banners for visual rhyme. */
+  background:
+    radial-gradient(
+      circle at 1.5px 1.5px,
+      color-mix(in oklab, var(--brand-500) 14%, transparent) 1px,
+      transparent 1.5px
+    ),
+    radial-gradient(
+      60% 60% at 50% 30%,
+      var(--brand-050) 0%,
+      transparent 70%
+    ),
+    var(--bg-secondary);
+  background-size: 18px 18px, 100% 100%, 100% 100%;
+  overflow: hidden;
 }
 .agents-empty-art {
-  width: 96px;
-  height: 96px;
+  width: 104px;
+  height: 104px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--brand-050);
+  background:
+    radial-gradient(
+      120% 80% at 0% -20%,
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0)    55%
+    ),
+    radial-gradient(
+      80% 100% at 100% 0%,
+      hsl(calc((var(--brand-hue, 354) + 60) * 1deg) 70% 88%) 0%,
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      var(--brand-050) 0%,
+      color-mix(in oklab, var(--brand-500) 16%, var(--bg-primary)) 100%
+    );
   color: var(--brand-500);
+  box-shadow:
+    0 4px 16px color-mix(in oklab, var(--brand-500) 18%, transparent),
+    0 1px 2px rgba(15, 15, 15, 0.05);
+  /* `--brand-hue` is the salmon-rose primary's H value; keeping it as a
+   * settable token makes the same illustration adapt if a future theme
+   * swaps the brand without touching this rule. */
 }
 .agents-empty-title {
   margin: 0;
@@ -3035,10 +3129,46 @@ pre {
 /* Banner gets a subtle tint amplification on hover — the gradient shows a
  * touch more saturation, like a card "waking up". */
 .agent-card .agent-card-banner {
+  position: relative;
   transition: filter var(--duration-medium) var(--ease-standard);
 }
 .agent-card:hover .agent-card-banner {
   filter: saturate(1.15) brightness(1.02);
+}
+/* Cursor-tracking gloss spotlight. The card root writes --mouse-x / -y
+ * (0-1 normalised) on mousemove; the spotlight follows. Hidden by default
+ * so cards don't flash unprompted, faded in only on hover. Skipped under
+ * reduced-motion since it's purely decorative. */
+@media (prefers-reduced-motion: no-preference) {
+  .agent-card .agent-card-banner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at
+        calc(var(--mouse-x, 0.5) * 100%)
+        calc(var(--mouse-y, 0.5) * 100%),
+      rgba(255, 255, 255, 0.32) 0%,
+      rgba(255, 255, 255, 0)    32%
+    );
+    opacity: 0;
+    transition: opacity var(--duration-medium) var(--ease-standard);
+    pointer-events: none;
+  }
+  .agent-card:hover .agent-card-banner::after {
+    opacity: 1;
+  }
+  @media (prefers-color-scheme: dark) {
+    .agent-card .agent-card-banner::after {
+      background: radial-gradient(
+        circle at
+          calc(var(--mouse-x, 0.5) * 100%)
+          calc(var(--mouse-y, 0.5) * 100%),
+        rgba(255, 255, 255, 0.16) 0%,
+        rgba(255, 255, 255, 0)    32%
+      );
+    }
+  }
 }
 .agent-card-surface {
   display: block;

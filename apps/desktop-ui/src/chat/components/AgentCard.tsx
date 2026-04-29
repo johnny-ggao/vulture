@@ -1,4 +1,5 @@
-import type * as React from "react";
+import * as React from "react";
+import { useRef } from "react";
 import type { Agent } from "../../api/agents";
 import { AgentAvatar } from "./AgentAvatar";
 import { hashHue } from "./agentHue";
@@ -22,8 +23,38 @@ export interface AgentCardProps {
  * buttons stop event propagation so they trigger their own handlers.
  */
 export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCardProps) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  // Cursor-tracking gloss: while the mouse is over the card, write the
+  // normalised (0-1) cursor coordinates as CSS custom properties on the
+  // card root. The banner's `::after` pseudo-element reads them to position
+  // a soft spotlight, which gives the tile a subtle "alive" feel — the
+  // Apple product-card pattern. Done via direct DOM mutation (not state)
+  // so 60-120Hz mousemove events don't trigger React re-renders.
+  function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width).toFixed(3);
+    const y = ((event.clientY - rect.top) / rect.height).toFixed(3);
+    card.style.setProperty("--mouse-x", x);
+    card.style.setProperty("--mouse-y", y);
+  }
+
+  function handleMouseLeave() {
+    const card = cardRef.current;
+    if (!card) return;
+    card.style.removeProperty("--mouse-x");
+    card.style.removeProperty("--mouse-y");
+  }
+
   return (
-    <div className="agent-card">
+    <div
+      className="agent-card"
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       <button
         type="button"
         className="agent-card-surface"
