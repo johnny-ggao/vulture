@@ -67,6 +67,9 @@ export const AgentToolName = z.enum([
   "sessions_spawn",
   "sessions_yield",
   "update_plan",
+  "memory_search",
+  "memory_get",
+  "memory_append",
   "browser.snapshot",
   "browser.click",
 ]);

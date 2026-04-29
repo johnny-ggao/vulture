@@ -127,6 +127,59 @@ export const OPENAPI_V1_ENDPOINTS = [
     ]
   },
   {
+    "operationId": "listAgentCoreFiles",
+    "method": "GET",
+    "path": "/v1/agents/{id}/files",
+    "tags": [
+      "agents"
+    ],
+    "hasRequestBody": false,
+    "responseStatuses": [
+      200,
+      404
+    ]
+  },
+  {
+    "operationId": "getAgentCoreFile",
+    "method": "GET",
+    "path": "/v1/agents/{id}/files/{name}",
+    "tags": [
+      "agents"
+    ],
+    "hasRequestBody": false,
+    "responseStatuses": [
+      200,
+      400,
+      404
+    ]
+  },
+  {
+    "operationId": "putAgentCoreFile",
+    "method": "PUT",
+    "path": "/v1/agents/{id}/files/{name}",
+    "tags": [
+      "agents"
+    ],
+    "hasRequestBody": true,
+    "responseStatuses": [
+      200,
+      400,
+      404
+    ]
+  },
+  {
+    "operationId": "getToolCatalog",
+    "method": "GET",
+    "path": "/v1/tools/catalog",
+    "tags": [
+      "tools"
+    ],
+    "hasRequestBody": false,
+    "responseStatuses": [
+      200
+    ]
+  },
+  {
     "operationId": "listConversations",
     "method": "GET",
     "path": "/v1/conversations",

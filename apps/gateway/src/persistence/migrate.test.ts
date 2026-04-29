@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 11;
+const LATEST_SCHEMA_VERSION = 12;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -228,6 +228,21 @@ describe("migrate", () => {
     rmSync(dir, { recursive: true });
   });
 
+  test("012 adds agent tool preset policy columns", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v12-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(agents)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toContain("tool_preset");
+    expect(columns.map((c) => c.name)).toContain("tool_include_json");
+    expect(columns.map((c) => c.name)).toContain("tool_exclude_json");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
   test("010 adds MCP tool visibility policy columns", () => {
     const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v10-"));
     const db = openDatabase(join(dir, "data.sqlite"));
@@ -283,7 +298,7 @@ describe("migrate", () => {
       on_delete: "CASCADE",
     }));
 
-    expect(currentSchemaVersion(db)).toBe(11);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
     db.close();
     rmSync(dir, { recursive: true });
   });

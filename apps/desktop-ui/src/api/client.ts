@@ -20,6 +20,7 @@ export interface ApiClient {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
   postForm<T>(path: string, form: FormData): Promise<T>;
+  put<T>(path: string, body: unknown): Promise<T>;
   patch<T>(path: string, body: unknown): Promise<T>;
   delete(path: string): Promise<void>;
 }
@@ -95,6 +96,7 @@ export function createApiClient(rt: RuntimeBase, opts: ApiClientOptions = {}): A
     get: <T>(path: string) => request<T>("GET", path),
     post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
     postForm: <T>(path: string, form: FormData) => requestForm<T>(path, form),
+    put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
     patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
     delete: (path: string) => request<void>("DELETE", path),
   };

@@ -14,6 +14,52 @@ export function agentsRouter(store: AgentStore): Hono {
     return c.json(a);
   });
 
+  app.get("/v1/agents/:id/files", (c) => {
+    const id = c.req.param("id");
+    if (!store.get(id)) return c.json({ code: "agent.not_found", message: id }, 404);
+    return c.json({
+      agentId: id,
+      rootPath: store.agentRootPath(id),
+      corePath: store.agentCorePath(id),
+      files: store.listAgentCoreFiles(id),
+    });
+  });
+
+  app.get("/v1/agents/:id/files/:name", (c) => {
+    const id = c.req.param("id");
+    if (!store.get(id)) return c.json({ code: "agent.not_found", message: id }, 404);
+    try {
+      return c.json({
+        agentId: id,
+        rootPath: store.agentRootPath(id),
+        corePath: store.agentCorePath(id),
+        file: store.readAgentCoreFile(id, decodeURIComponent(c.req.param("name"))),
+      });
+    } catch (err) {
+      return c.json({ code: "agent.file_unsupported", message: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  app.put("/v1/agents/:id/files/:name", async (c) => {
+    const id = c.req.param("id");
+    if (!store.get(id)) return c.json({ code: "agent.not_found", message: id }, 404);
+    const raw = await c.req.json().catch(() => ({}));
+    const content = typeof raw.content === "string" ? raw.content : null;
+    if (content === null) {
+      return c.json({ code: "agent.file_content_required", message: "content is required" }, 400);
+    }
+    try {
+      return c.json({
+        agentId: id,
+        rootPath: store.agentRootPath(id),
+        corePath: store.agentCorePath(id),
+        file: store.writeAgentCoreFile(id, decodeURIComponent(c.req.param("name")), content),
+      });
+    } catch (err) {
+      return c.json({ code: "agent.file_unsupported", message: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
   app.post(
     "/v1/agents",
     requireIdempotencyKey,
@@ -35,13 +81,20 @@ export function agentsRouter(store: AgentStore): Hono {
     if (!existing) return c.json({ code: "agent.not_found", message: id }, 404);
     const raw = await c.req.json().catch(() => ({}));
     const hasSkills = Object.prototype.hasOwnProperty.call(raw, "skills");
+    const hasTools = Object.prototype.hasOwnProperty.call(raw, "tools");
+    const hasToolPreset = Object.prototype.hasOwnProperty.call(raw, "toolPreset");
+    const hasToolInclude = Object.prototype.hasOwnProperty.call(raw, "toolInclude");
+    const hasToolExclude = Object.prototype.hasOwnProperty.call(raw, "toolExclude");
     const merged = {
       id,
       name: raw.name ?? existing.name,
       description: raw.description ?? existing.description,
       model: raw.model ?? existing.model,
       reasoning: raw.reasoning ?? existing.reasoning,
-      tools: raw.tools ?? existing.tools,
+      tools: hasTools ? raw.tools : existing.tools,
+      toolPreset: hasToolPreset ? raw.toolPreset : existing.toolPreset,
+      toolInclude: hasToolInclude ? raw.toolInclude : existing.toolInclude,
+      toolExclude: hasToolExclude ? raw.toolExclude : existing.toolExclude,
       skills: hasSkills ? (raw.skills === null ? undefined : raw.skills) : existing.skills,
       workspace:
         raw.workspace ??

@@ -7,7 +7,7 @@ export interface SkillListItem {
   description: string;
   filePath: string;
   baseDir: string;
-  source: "profile" | "workspace";
+  source: "profile" | "workspace" | "agent-core";
   modelInvocationEnabled: boolean;
   userInvocable: boolean;
   enabled: boolean;
@@ -39,6 +39,7 @@ export function skillsRouter(agentStore: AgentStore, profileDir: string): Hono {
     const items = loadSkillEntries({
       workspaceDir: agent.workspace.path,
       profileDir,
+      agentCoreDir: agentStore.agentCorePath(agent.id),
     }).map((entry) => toListItem(entry, enabled(entry.name)));
 
     const body: SkillListResponse = {

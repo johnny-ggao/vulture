@@ -20,6 +20,7 @@ import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
 import { skillsRouter } from "./routes/skills";
+import { toolsRouter } from "./routes/tools";
 import { memoriesRouter } from "./routes/memories";
 import { conversationsRouter } from "./routes/conversations";
 import {
@@ -154,6 +155,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         name: agent.workspace.name,
         path: agent.workspace.path,
       },
+      agentCoreDir: agentStore.agentCorePath(agent.id),
     });
   };
   const modelForAgent = ({ id }: { id: string }): string =>
@@ -166,6 +168,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     const entries = loadSkillEntries({
       workspaceDir: agent.workspace.path,
       profileDir: cfg.profileDir,
+      agentCoreDir: agentStore.agentCorePath(agent.id),
     });
     return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
   };
@@ -503,6 +506,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", profileRouter(profileStore));
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
+  app.route("/", toolsRouter());
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
   app.route(
     "/",

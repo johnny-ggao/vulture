@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brandId } from "@vulture/common";
@@ -29,11 +29,18 @@ describe("AgentStore", () => {
     cleanup();
   });
 
-  test("default agent gets a private workspace under ~/.vuture/workspace/<agent slug>", () => {
+  test("default agent gets an Accio-style private layout under ~/.vuture/workspace/<agent slug>", () => {
     const { store, dir, cleanup } = freshStore();
     const [agent] = store.list();
     expect(agent.workspace.id).toBe(brandId("local-work-agent-workspace"));
-    expect(agent.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent"));
+    expect(agent.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent", "project"));
+    expect(store.agentRootPath(agent.id)).toBe(join(dir, ".vuture", "workspace", "local-work-agent"));
+    expect(store.agentCorePath(agent.id)).toBe(join(dir, ".vuture", "workspace", "local-work-agent", "agent-core"));
+    for (const name of ["AGENTS.md", "SOUL.md", "TOOLS.md", "IDENTITY.md", "USER.md", "HEARTBEAT.md", "BOOTSTRAP.md"]) {
+      expect(existsSync(join(store.agentCorePath(agent.id), name))).toBe(true);
+    }
+    expect(existsSync(join(store.agentCorePath(agent.id), "tool-registry.jsonc"))).toBe(true);
+    expect(existsSync(join(store.agentCorePath(agent.id), "skills", "skills.jsonc"))).toBe(true);
     cleanup();
   });
 
@@ -51,7 +58,7 @@ describe("AgentStore", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-default-workspace-"));
     const { store, dir, cleanup } = freshStore();
     const [before] = store.list();
-    expect(before.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent"));
+    expect(before.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent", "project"));
 
     const db = openDatabase(join(dir, "data.sqlite"));
     const updatedStore = new AgentStore(db, dir, root, dir);
@@ -73,7 +80,7 @@ describe("AgentStore", () => {
     const updatedStore = new AgentStore(db, dir, undefined, dir);
     const after = updatedStore.get("local-work-agent");
 
-    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent"));
+    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent", "project"));
     expect(existsSync(join(after?.workspace.path ?? "", "repo-file.txt"))).toBe(false);
     expect(existsSync(join(root, "repo-file.txt"))).toBe(true);
     db.close();
@@ -97,7 +104,7 @@ describe("AgentStore", () => {
     const updatedStore = new AgentStore(db, dir, undefined, dir);
     const after = updatedStore.get("local-work-agent");
 
-    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent"));
+    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent", "project"));
     expect(existsSync(join(after?.workspace.path ?? "", "notes.txt"))).toBe(true);
     expect(existsSync(legacyPath)).toBe(false);
     db.close();
@@ -120,7 +127,7 @@ describe("AgentStore", () => {
     const updatedStore = new AgentStore(db, dir, undefined, dir);
     const after = updatedStore.get("local-work-agent");
 
-    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent"));
+    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "local-work-agent", "project"));
     expect(existsSync(join(after?.workspace.path ?? "", "notes.txt"))).toBe(true);
     expect(existsSync(oldNamePath)).toBe(false);
     db.close();
@@ -151,7 +158,7 @@ describe("AgentStore", () => {
     const updatedStore = new AgentStore(db, dir, undefined, dir);
     const after = updatedStore.get("coder");
 
-    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "coder"));
+    expect(after?.workspace.path).toBe(join(dir, ".vuture", "workspace", "coder", "project"));
     expect(existsSync(join(after?.workspace.path ?? "", "task.txt"))).toBe(true);
     expect(existsSync(legacyPath)).toBe(false);
     db.close();
@@ -162,6 +169,9 @@ describe("AgentStore", () => {
     const { store, cleanup } = freshStore();
     const [agent] = store.list();
     expect(agent.tools).toEqual([...AGENT_TOOL_NAMES]);
+    expect(agent.toolPreset).toBe("full");
+    expect(agent.toolInclude).toEqual([]);
+    expect(agent.toolExclude).toEqual([]);
     expect(agent.skills).toBeUndefined();
     cleanup();
   });
@@ -178,10 +188,41 @@ describe("AgentStore", () => {
       instructions: "Be careful.",
     });
     expect(saved.id).toBe(brandId<AgentId>("coder"));
-    expect(saved.workspace.path).toBe(join(dir, ".vuture", "workspace", "coder"));
+    expect(saved.description).toBe("Writes code");
+    expect(saved.model).toBe("gpt-5.4");
+    expect(saved.reasoning).toBe("medium");
+    expect(saved.workspace.path).toBe(join(dir, ".vuture", "workspace", "coder", "project"));
     const ids = store.list().map((a) => a.id).sort((a, b) => (a < b ? -1 : 1));
     const expected = [brandId<AgentId>("coder"), brandId<AgentId>("local-work-agent")].sort((a, b) => (a < b ? -1 : 1));
     expect(ids).toEqual(expected);
+    cleanup();
+  });
+
+  test("save expands tool preset policy and writes tool registry", () => {
+    const { store, cleanup } = freshStore();
+    const saved = store.save({
+      id: "coder",
+      name: "Coder",
+      description: "Writes code",
+      model: "gpt-5.4",
+      reasoning: "medium",
+      tools: [],
+      toolPreset: "developer",
+      toolInclude: [],
+      toolExclude: ["browser.click"],
+      instructions: "Be careful.",
+    });
+    expect(saved.toolPreset).toBe("developer");
+    expect(saved.toolInclude).toEqual([]);
+    expect(saved.toolExclude).toEqual(["browser.click"]);
+    expect(saved.tools).toContain("shell.exec");
+    expect(saved.tools).toContain("apply_patch");
+    expect(saved.tools).not.toContain("browser.click");
+
+    const registry = readFileSync(join(store.agentCorePath(saved.id), "tool-registry.jsonc"), "utf8");
+    expect(registry).toContain('"preset": "developer"');
+    expect(registry).toContain('"exclude": [');
+    expect(registry).toContain('"browser.click"');
     cleanup();
   });
 
@@ -213,8 +254,57 @@ describe("AgentStore", () => {
     });
     expect(saved.workspace.path).toBe(workspace);
     expect(saved.workspace.id).toBe(brandId("repo"));
+    expect(existsSync(join(workspace, "agent-core", "AGENTS.md"))).toBe(true);
     cleanup();
     rmSync(workspace, { recursive: true });
+  });
+
+  test("requested workspace named project is not treated as managed private root", () => {
+    const parent = mkdtempSync(join(tmpdir(), "vulture-agent-workspace-parent-"));
+    const workspace = join(parent, "project");
+    mkdirSync(workspace);
+    const { store, cleanup } = freshStore();
+    const saved = store.save({
+      id: "coder",
+      name: "Coder",
+      description: "Writes code",
+      model: "gpt-5.4",
+      reasoning: "medium",
+      tools: ["read"],
+      workspace: {
+        id: "repo",
+        name: "Repo",
+        path: workspace,
+      },
+      instructions: "Be careful.",
+    });
+    expect(saved.workspace.path).toBe(workspace);
+    expect(store.agentRootPath(saved.id)).toBe(workspace);
+    expect(store.agentCorePath(saved.id)).toBe(join(workspace, "agent-core"));
+    cleanup();
+    rmSync(parent, { recursive: true });
+  });
+
+  test("agent core files can be listed, read, and written through the store", () => {
+    const { store, cleanup } = freshStore();
+    const [agent] = store.list();
+    const files = store.listAgentCoreFiles(agent.id);
+    expect(files.map((file) => file.name)).toContain("SOUL.md");
+    const soul = store.readAgentCoreFile(agent.id, "SOUL.md");
+    expect(soul.content).toContain("Local Work Agent");
+
+    const updated = store.writeAgentCoreFile(agent.id, "TOOLS.md", "# Tool notes\n");
+    expect(updated.content).toBe("# Tool notes\n");
+    expect(readFileSync(join(store.agentCorePath(agent.id), "TOOLS.md"), "utf8")).toBe("# Tool notes\n");
+    cleanup();
+  });
+
+  test("agent core file access rejects unsupported names", () => {
+    const { store, cleanup } = freshStore();
+    const [agent] = store.list();
+    expect(() => store.readAgentCoreFile(agent.id, "../secrets")).toThrow(/unsupported/i);
+    expect(() => store.writeAgentCoreFile(agent.id, "profile.jsonc", "{}")).toThrow(/unsupported/i);
+    cleanup();
   });
 
   test("save persists explicit skills allowlist", () => {
