@@ -52,14 +52,16 @@ describe("Field", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  test("clicking the visible label focuses the input via implicit label association", () => {
+  test("hint and error live outside the inner <label> so they don't pollute the accessible name", () => {
     const { container } = render(
-      <Field label="Name">
+      <Field label="Name" hint="Up to 32 characters">
         <input />
       </Field>,
     );
-    const label = container.querySelector(".field");
-    expect(label?.tagName.toLowerCase()).toBe("label");
+    const innerLabel = container.querySelector(".field-control") as HTMLElement | null;
+    expect(innerLabel?.tagName.toLowerCase()).toBe("label");
+    // The label's accessible name is just "Name" — not "Name Up to 32 chars".
+    expect(innerLabel?.textContent ?? "").toBe("Name");
   });
 });
 
