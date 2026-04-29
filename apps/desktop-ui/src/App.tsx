@@ -70,6 +70,26 @@ const DEFAULT_CHAT_SUGGESTIONS: ReadonlyArray<string> = [
   "总结这份文档",
 ];
 
+/** Re-insert a soft-deleted agent at its original position by createdAt. */
+function insertAgentByCreatedAt(items: Agent[], item: Agent): Agent[] {
+  // De-duplicate first in case a refetch already raced us.
+  const filtered = items.filter((a) => a.id !== item.id);
+  const target = parseTime(item.createdAt);
+  if (target === null) return [...filtered, item];
+  for (let i = 0; i < filtered.length; i += 1) {
+    const candidate = parseTime(filtered[i].createdAt);
+    if (candidate !== null && candidate <= target) {
+      return [...filtered.slice(0, i), item, ...filtered.slice(i)];
+    }
+  }
+  return [...filtered, item];
+}
+
+function parseTime(input: string): number | null {
+  const t = new Date(input).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -167,6 +187,10 @@ export function App() {
   const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{
     item: ConversationDto;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const [pendingAgentDelete, setPendingAgentDelete] = useState<{
+    item: Agent;
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
 
@@ -794,12 +818,22 @@ export function App() {
   pendingDeleteRef.current = pendingDelete;
   const commitDeleteRef = useRef(conversations.commitDelete);
   commitDeleteRef.current = conversations.commitDelete;
+  const pendingAgentDeleteRef = useRef(pendingAgentDelete);
+  pendingAgentDeleteRef.current = pendingAgentDelete;
+  const apiClientRef = useRef(apiClient);
+  apiClientRef.current = apiClient;
   useEffect(() => {
     return () => {
       const pending = pendingDeleteRef.current;
-      if (!pending) return;
-      clearTimeout(pending.timer);
-      void commitDeleteRef.current(pending.item.id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        void commitDeleteRef.current(pending.item.id);
+      }
+      const pendingAgent = pendingAgentDeleteRef.current;
+      if (pendingAgent && apiClientRef.current) {
+        clearTimeout(pendingAgent.timer);
+        void agentsApi.delete(apiClientRef.current, pendingAgent.item.id);
+      }
     };
   }, []);
 
@@ -864,6 +898,67 @@ export function App() {
     await agentsApi.setFile(apiClient, id, name, content);
   }
 
+  /**
+   * One-tap agent delete with a 5s undo grace period — mirrors the
+   * conversation delete flow. The list hides the row immediately, a toast
+   * surfaces the undo affordance, and the API DELETE only fires if the user
+   * does not undo.
+   */
+  function handleDeleteAgent(id: string) {
+    const target = agents.find((a) => a.id === id);
+    if (!target) return;
+
+    // Commit any prior pending agent delete so we don't pile up timers.
+    if (pendingAgentDelete) {
+      clearTimeout(pendingAgentDelete.timer);
+      void commitAgentDelete(pendingAgentDelete.item.id);
+    }
+
+    setAgents((prev) => prev.filter((a) => a.id !== id));
+
+    // If the deleted agent was selected, fall back to the next available one
+    // so the editor pane doesn't stay stuck on a missing record.
+    if (id === selectedAgentId) {
+      const replacement = agents.find((a) => a.id !== id);
+      if (replacement) setSelectedAgentId(replacement.id);
+    }
+
+    const timer = setTimeout(() => {
+      setPendingAgentDelete(null);
+      void commitAgentDelete(id);
+    }, 5000);
+    setPendingAgentDelete({ item: target, timer });
+  }
+
+  function handleUndoAgentDelete() {
+    if (!pendingAgentDelete) return;
+    clearTimeout(pendingAgentDelete.timer);
+    setAgents((prev) => insertAgentByCreatedAt(prev, pendingAgentDelete.item));
+    setPendingAgentDelete(null);
+  }
+
+  function handleDismissAgentToast() {
+    if (!pendingAgentDelete) return;
+    clearTimeout(pendingAgentDelete.timer);
+    void commitAgentDelete(pendingAgentDelete.item.id);
+    setPendingAgentDelete(null);
+  }
+
+  async function commitAgentDelete(id: string) {
+    if (!apiClient) return;
+    try {
+      await agentsApi.delete(apiClient, id);
+    } catch {
+      // Refetch on error to reconcile local state with the backend.
+      try {
+        const fresh = await agentsApi.list(apiClient);
+        setAgents(fresh);
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
   return (
     <div className="app-shell">
       <Titlebar />
@@ -922,6 +1017,7 @@ export function App() {
               onListFiles={handleListAgentFiles}
               onLoadFile={handleLoadAgentFile}
               onSaveFile={handleSaveAgentFile}
+              onDelete={handleDeleteAgent}
             />
           ) : null}
           {view === "skills" ? (
@@ -993,7 +1089,13 @@ export function App() {
         onDelete={handleDeleteConversation}
       />
 
-      {pendingDelete ? (
+      {pendingAgentDelete ? (
+        <Toast
+          message={`已删除智能体"${pendingAgentDelete.item.name || pendingAgentDelete.item.id}"`}
+          action={{ label: "撤销", onClick: handleUndoAgentDelete }}
+          onDismiss={handleDismissAgentToast}
+        />
+      ) : pendingDelete ? (
         <Toast
           message={`已删除"${pendingDelete.item.title || "(无标题)"}"`}
           action={{ label: "撤销", onClick: handleUndoDelete }}

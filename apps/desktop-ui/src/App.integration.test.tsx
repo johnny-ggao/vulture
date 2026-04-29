@@ -548,10 +548,13 @@ describe("App integration", () => {
       expect(screen.getByText("新建智能体")).toBeDefined();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Local Work Agent/ }));
+    // Row button has an explicit aria-label of just the agent name; the
+    // sibling delete button is "删除智能体 …" so we can pick by exact match.
+    fireEvent.click(screen.getByRole("button", { name: "Local Work Agent" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Agent 配置")).toBeDefined();
+      // Editor header now uses the agent name, with tabs underneath.
+      expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
       expect(screen.getByText("Workspace")).toBeDefined();
       expect(screen.getByLabelText("Skills")).toBeDefined();
     });
@@ -589,13 +592,15 @@ describe("App integration", () => {
 
     fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
     await waitFor(() => {
-      expect(screen.getByText("Agent 配置")).toBeDefined();
+      expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
       expect(screen.getByText("Workspace")).toBeDefined();
     });
     fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    // Step order is template → identity → persona → tools → skills (matches Accio).
+    fireEvent.click(screen.getByRole("button", { name: "继续" })); // template → identity
     fireEvent.change(screen.getByPlaceholderText("例：周报助手"), { target: { value: "Test Agent" } });
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续" })); // identity → persona
+    fireEvent.click(screen.getByRole("button", { name: "继续" })); // persona  → tools
     await waitFor(() => {
       expect(screen.getAllByText("Files").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Coding").length).toBeGreaterThan(0);
@@ -1009,6 +1014,46 @@ describe("App integration", () => {
     await waitFor(() => expect(screen.getByText("Undo me")).toBeDefined());
     expect(screen.queryByRole("status")).toBeNull();
     expect(deleteCalls).toBe(0);
+
+    cleanup();
+  }, 15_000);
+
+  test("agent delete shows undo toast and undo restores the row without DELETE", async () => {
+    let agentDeleteCalls = 0;
+    const { cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "DELETE" && /^\/v1\/agents\//.test(path)) {
+          agentDeleteCalls += 1;
+        }
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => expect(screen.getByText("Local Work Agent")).toBeDefined(),
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
+
+    // Click the per-row delete button (aria-labelled with the agent name).
+    fireEvent.click(
+      screen.getByRole("button", { name: "删除智能体 Local Work Agent" }),
+    );
+
+    // Row hides locally; toast offers undo.
+    expect(screen.queryByRole("button", { name: "Local Work Agent" })).toBeNull();
+    const toast = screen.getByRole("status");
+    expect(toast.textContent ?? "").toContain("已删除智能体");
+    expect(toast.textContent ?? "").toContain("Local Work Agent");
+
+    fireEvent.click(within(toast).getByRole("button", { name: "撤销" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Local Work Agent" })).toBeDefined(),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(agentDeleteCalls).toBe(0);
 
     cleanup();
   }, 15_000);

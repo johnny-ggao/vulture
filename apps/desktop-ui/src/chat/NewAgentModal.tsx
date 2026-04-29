@@ -1,26 +1,38 @@
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import type { AgentToolName, AgentToolPreset, ReasoningLevel } from "../api/agents";
 import type { ToolCatalogGroup, ToolPolicyDraft } from "../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../api/tools";
 import { ToolGroupSelector } from "./ToolGroupSelector";
+import { AgentAvatar, Field } from "./components";
 
-const TEMPLATES = [
-  { key: "blank", label: "空白", desc: "从零开始构建", instructions: "" },
-  { key: "writer", label: "写作助手", desc: "适合长文写作 + 编辑润色", instructions: "你是一名细致的中文写作助手。" },
-  { key: "reviewer", label: "代码审阅", desc: "审 PR、读代码、定位 bug", instructions: "你是一名严谨的代码审阅者。" },
-  { key: "shell", label: "本地工具", desc: "读写文件、运行命令、检索网页", instructions: "你是一名本地工作助手，可以使用文件、终端、网页和会话工具。" },
-] as const;
+type TemplateKey = "blank" | "writer" | "reviewer" | "shell";
 
-type TemplateKey = typeof TEMPLATES[number]["key"];
-type WizardStep = "template" | "identity" | "tools" | "skills" | "persona";
+interface Template {
+  key: TemplateKey;
+  label: string;
+  desc: string;
+  instructions: string;
+  Icon: () => JSX.Element;
+}
 
-const STEPS: Array<{ id: WizardStep; label: string; desc: string }> = [
-  { id: "template", label: "模板", desc: "选择起点" },
+const TEMPLATES: ReadonlyArray<Template> = [
+  { key: "blank",    label: "空白",       desc: "从零开始构建",                        instructions: "",                                                       Icon: BlankIcon },
+  { key: "writer",   label: "写作助手",   desc: "适合长文写作 + 编辑润色",             instructions: "你是一名细致的中文写作助手。",                          Icon: WriterIcon },
+  { key: "reviewer", label: "代码审阅",   desc: "审 PR、读代码、定位 bug",             instructions: "你是一名严谨的代码审阅者。",                            Icon: ReviewerIcon },
+  { key: "shell",    label: "本地工具",   desc: "读写文件、运行命令、检索网页",        instructions: "你是一名本地工作助手，可以使用文件、终端、网页和会话工具。", Icon: ShellIcon },
+];
+
+// Step order matches Accio: Template → Identity → Persona → Tools → Skills.
+// Persona slots before Tools because the agent's role determines which tools
+// it actually needs.
+type WizardStep = "template" | "identity" | "persona" | "tools" | "skills";
+
+const STEPS: ReadonlyArray<{ id: WizardStep; label: string; desc: string }> = [
+  { id: "template", label: "模板",     desc: "选择起点" },
   { id: "identity", label: "身份与模型", desc: "名称、模型、描述" },
-  { id: "tools", label: "工具能力", desc: "预设与类目" },
-  { id: "skills", label: "Skills", desc: "能力包策略" },
-  { id: "persona", label: "Persona", desc: "行为边界" },
+  { id: "persona",  label: "Persona",   desc: "行为边界" },
+  { id: "tools",    label: "工具能力",  desc: "预设与类目" },
+  { id: "skills",   label: "Skills",    desc: "能力包策略" },
 ];
 
 export interface NewAgentInput {
@@ -66,6 +78,14 @@ export function NewAgentModal(props: NewAgentModalProps) {
     if (parsed.length === 0) return "已禁用";
     return `${parsed.length} 个 allowlist`;
   }, [skillsText]);
+
+  // The avatar peeks at "the agent we're building", so it needs a stable id
+  // even before submit. We hash on the entered name; falls back to the
+  // template key while empty.
+  const previewAgent = {
+    id: name.trim() || tpl.key,
+    name: name.trim() || "新智能体",
+  };
 
   if (!props.open) return null;
 
@@ -124,11 +144,11 @@ export function NewAgentModal(props: NewAgentModalProps) {
 
   return (
     <div className="modal-overlay" onClick={close}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 920, maxHeight: "86vh" }}>
+      <div className="modal-card new-agent-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <span className="modal-title">新建智能体</span>
-            <div style={{ marginTop: 4, color: "var(--text-tertiary)", fontSize: 12 }}>
+            <div className="new-agent-step-meta">
               {STEPS[stepIndex]?.label} · {STEPS[stepIndex]?.desc}
             </div>
           </div>
@@ -137,9 +157,9 @@ export function NewAgentModal(props: NewAgentModalProps) {
           </button>
         </div>
 
-        <div className="modal-body" style={{ padding: 0 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "190px minmax(0, 1fr) 260px", minHeight: 520 }}>
-            <aside style={{ borderRight: "1px solid var(--fill-quaternary)", padding: 16, display: "grid", gap: 8, alignContent: "start" }}>
+        <div className="modal-body new-agent-body">
+          <div className="new-agent-grid">
+            <aside className="new-agent-rail" aria-label="创建步骤">
               {STEPS.map((item, index) => {
                 const active = item.id === step;
                 const complete = index < stepIndex;
@@ -147,84 +167,61 @@ export function NewAgentModal(props: NewAgentModalProps) {
                   <button
                     key={item.id}
                     type="button"
+                    className={"new-agent-rail-item" + (active ? " active" : "") + (complete ? " complete" : "")}
                     onClick={() => {
-                      if (item.id === "identity" || name.trim() || index <= stepIndex) setStep(item.id);
-                    }}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "24px 1fr",
-                      gap: 10,
-                      alignItems: "start",
-                      textAlign: "left",
-                      padding: "9px 8px",
-                      border: "0",
-                      borderRadius: "var(--radius-md)",
-                      background: active ? "var(--brand-050)" : "transparent",
-                      color: active ? "var(--brand-600)" : "var(--text-secondary)",
-                      cursor: "pointer",
+                      if (item.id === "template" || item.id === "identity" || name.trim() || index <= stepIndex) {
+                        setStep(item.id);
+                      }
                     }}
                   >
-                    <span
-                      style={{
-                        width: 22,
-                        height: 22,
-                        display: "grid",
-                        placeItems: "center",
-                        borderRadius: "50%",
-                        background: active || complete ? "var(--brand-500)" : "var(--fill-tertiary)",
-                        color: active || complete ? "#fff" : "var(--text-secondary)",
-                        fontSize: 11,
-                        fontFamily: "var(--font-mono)",
-                      }}
-                    >
-                      {complete ? "✓" : index + 1}
+                    <span className="new-agent-rail-bullet">
+                      {complete ? <CheckSmall /> : index + 1}
                     </span>
-                    <span style={{ display: "grid", gap: 2 }}>
-                      <span style={{ fontWeight: 650, fontSize: 13 }}>{item.label}</span>
-                      <span style={{ fontSize: 11, color: active ? "var(--brand-600)" : "var(--text-tertiary)" }}>{item.desc}</span>
+                    <span className="new-agent-rail-text">
+                      <span className="new-agent-rail-label">{item.label}</span>
+                      <span className="new-agent-rail-desc">{item.desc}</span>
                     </span>
                   </button>
                 );
               })}
             </aside>
 
-            <main style={{ padding: 20, overflow: "auto" }}>
+            <main className="new-agent-main">
               {step === "template" ? (
                 <StepSection title="选择模板" subtitle="模板只决定初始文案，后续每一步都可以调整。">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {TEMPLATES.map((t) => (
-                      <button
-                        key={t.key}
-                        type="button"
-                        onClick={() => {
-                          setTplKey(t.key);
-                          setInstructions(t.instructions);
-                          if (!desc.trim()) setDesc(t.desc);
-                        }}
-                        style={{
-                          textAlign: "left",
-                          padding: "14px 14px",
-                          borderRadius: "var(--radius-md)",
-                          border: tplKey === t.key ? "1px solid var(--brand-500)" : "1px solid var(--fill-tertiary)",
-                          background: tplKey === t.key ? "var(--brand-050)" : "var(--bg-primary)",
-                          color: "var(--text-primary)",
-                          cursor: "pointer",
-                          display: "grid",
-                          gap: 5,
-                        }}
-                      >
-                        <span style={{ fontWeight: 650 }}>{t.label}</span>
-                        <span style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.45 }}>{t.desc}</span>
-                      </button>
-                    ))}
+                  <div className="new-agent-templates">
+                    {TEMPLATES.map((t) => {
+                      const TemplateIcon = t.Icon;
+                      const selected = tplKey === t.key;
+                      return (
+                        <button
+                          key={t.key}
+                          type="button"
+                          className={"new-agent-template" + (selected ? " selected" : "")}
+                          onClick={() => {
+                            setTplKey(t.key);
+                            setInstructions(t.instructions);
+                            if (!desc.trim()) setDesc(t.desc);
+                          }}
+                        >
+                          <span className="new-agent-template-icon" aria-hidden="true">
+                            <TemplateIcon />
+                          </span>
+                          <span className="new-agent-template-meta">
+                            <span className="new-agent-template-label">{t.label}</span>
+                            <span className="new-agent-template-desc">{t.desc}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </StepSection>
               ) : null}
 
               {step === "identity" ? (
                 <StepSection title="身份与模型" subtitle="定义这个智能体在列表、对话和运行时使用的基础配置。">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <Field label="名称">
+                  <div className="new-agent-grid-2">
+                    <Field label="名称" required>
                       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="例：周报助手" />
                     </Field>
                     <Field label="模型">
@@ -244,9 +241,22 @@ export function NewAgentModal(props: NewAgentModalProps) {
                 </StepSection>
               ) : null}
 
+              {step === "persona" ? (
+                <StepSection title="Persona / Instructions" subtitle="写入智能体核心行为边界；创建后仍可在 Agent Core 中细调。">
+                  <Field label="Instructions">
+                    <textarea
+                      value={instructions}
+                      onChange={(e) => setInstructions(e.target.value)}
+                      placeholder={tpl.instructions || "定义这个智能体的行为边界、工作方式和输出风格"}
+                      rows={10}
+                    />
+                  </Field>
+                </StepSection>
+              ) : null}
+
               {step === "tools" ? (
                 <StepSection title="工具能力" subtitle="先选预设，再按能力类目微调。底层工具会自动展开保存。">
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end" }}>
+                  <div className="new-agent-tools-head">
                     <Field label="工具预设">
                       <select
                         value={toolPolicy.toolPreset}
@@ -260,7 +270,7 @@ export function NewAgentModal(props: NewAgentModalProps) {
                         <option value="none">none</option>
                       </select>
                     </Field>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div className="new-agent-tools-buttons">
                       <button type="button" className="btn-secondary" onClick={() => setToolPolicy(toolPolicyFromPreset("full"))}>
                         全选
                       </button>
@@ -279,80 +289,37 @@ export function NewAgentModal(props: NewAgentModalProps) {
 
               {step === "skills" ? (
                 <StepSection title="Skills" subtitle="留空表示可加载全部已启用 Skills；输入 none 表示禁用。">
-                  <Field label="Skills">
+                  <Field label="Skills" hint="留空=全部可用，逗号分隔；输入 none 禁用">
                     <input
                       aria-label="Skills"
                       value={skillsText}
                       onChange={(e) => setSkillsText(e.target.value)}
-                      placeholder="留空=全部可用，逗号分隔；输入 none 禁用"
-                    />
-                  </Field>
-                </StepSection>
-              ) : null}
-
-              {step === "persona" ? (
-                <StepSection title="Persona / Instructions" subtitle="写入智能体核心行为边界；创建后仍可在 Agent Core 中细调。">
-                  <Field label="Instructions">
-                    <textarea
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder={tpl.instructions || "定义这个智能体的行为边界、工作方式和输出风格"}
-                      rows={10}
+                      placeholder="留空=全部可用"
                     />
                   </Field>
                 </StepSection>
               ) : null}
             </main>
 
-            <aside style={{ borderLeft: "1px solid var(--fill-quaternary)", background: "var(--fill-quaternary)", padding: 18 }}>
-              <div style={{ display: "grid", gap: 12 }}>
-                <div style={{ color: "var(--text-tertiary)", fontSize: 11, fontWeight: 700, textTransform: "uppercase" }}>
-                  Live Preview
+            <aside className="new-agent-preview" aria-label="实时预览">
+              <div className="new-agent-preview-label">Live Preview</div>
+              <div className="new-agent-preview-card">
+                <div className="new-agent-preview-banner" />
+                <div className="new-agent-preview-avatar-frame">
+                  <AgentAvatar agent={previewAgent} size={54} shape="square" />
                 </div>
-                <div
-                  style={{
-                    background: "var(--bg-primary)",
-                    border: "1px solid var(--fill-tertiary)",
-                    borderRadius: "var(--radius-lg)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div style={{ height: 56, background: "var(--brand-050)", position: "relative" }}>
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "50%",
-                        bottom: -22,
-                        transform: "translateX(-50%)",
-                        width: 54,
-                        height: 54,
-                        borderRadius: "var(--radius-md)",
-                        display: "grid",
-                        placeItems: "center",
-                        background: "var(--brand-500)",
-                        color: "#fff",
-                        fontWeight: 700,
-                        border: "4px solid var(--bg-primary)",
-                      }}
-                    >
-                      {(name.trim() || tpl.label).slice(0, 1).toUpperCase()}
-                    </div>
-                  </div>
-                  <div style={{ padding: "34px 16px 16px", textAlign: "center", display: "grid", gap: 10 }}>
-                    <div style={{ fontWeight: 700, color: "var(--text-primary)" }}>{name.trim() || "新智能体"}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.45 }}>
-                      {desc.trim() || tpl.desc}
-                    </div>
-                    <div style={{ display: "grid", gap: 5, borderTop: "1px solid var(--fill-quaternary)", paddingTop: 12 }}>
-                      <PreviewRow label="Model" value={model || "gpt-5.5"} />
-                      <PreviewRow label="Tools" value={`${selectedToolCount}`} />
-                      <PreviewRow label="Skills" value={skillsSummary} />
-                    </div>
+                <div className="new-agent-preview-body">
+                  <div className="new-agent-preview-name">{previewAgent.name}</div>
+                  <div className="new-agent-preview-desc">{desc.trim() || tpl.desc}</div>
+                  <div className="new-agent-preview-rows">
+                    <PreviewRow label="Model" value={model || "gpt-5.5"} />
+                    <PreviewRow label="Tools" value={`${selectedToolCount}`} />
+                    <PreviewRow label="Skills" value={skillsSummary} />
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                  {previewInstructions || "选择模板并填写名称后，这里会显示最终创建时的行为摘要。"}
-                </div>
+              </div>
+              <div className="new-agent-preview-instructions">
+                {previewInstructions || "选择模板并填写名称后，这里会显示最终创建时的行为摘要。"}
               </div>
             </aside>
           </div>
@@ -362,23 +329,21 @@ export function NewAgentModal(props: NewAgentModalProps) {
           <button type="button" className="btn-secondary" onClick={stepIndex === 0 ? close : goBack}>
             {stepIndex === 0 ? "取消" : "上一步"}
           </button>
-          {step === "persona" ? (
+          {step === STEPS[STEPS.length - 1].id ? (
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary new-agent-submit"
               onClick={submit}
               disabled={busy || !name.trim()}
-              style={{ opacity: !name.trim() || busy ? 0.5 : 1 }}
             >
               {busy ? "创建中..." : "创建"}
             </button>
           ) : (
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary new-agent-submit"
               onClick={goNext}
               disabled={!canGoNext}
-              style={{ opacity: canGoNext ? 1 : 0.5 }}
             >
               继续
             </button>
@@ -389,32 +354,23 @@ export function NewAgentModal(props: NewAgentModalProps) {
   );
 }
 
-function StepSection(props: { title: string; subtitle: string; children: ReactNode }) {
+function StepSection(props: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{props.title}</h2>
-        <p style={{ margin: "6px 0 0", color: "var(--text-secondary)", fontSize: 13 }}>{props.subtitle}</p>
+    <section className="new-agent-step">
+      <div className="new-agent-step-head">
+        <h2 className="new-agent-step-title">{props.title}</h2>
+        <p className="new-agent-step-subtitle">{props.subtitle}</p>
       </div>
       {props.children}
     </section>
   );
 }
 
-function Field(props: { label: string; children: ReactNode }) {
-  return (
-    <label style={{ display: "grid", gap: 6, color: "var(--text-secondary)", fontSize: 12 }}>
-      <span>{props.label}</span>
-      {props.children}
-    </label>
-  );
-}
-
 function PreviewRow(props: { label: string; value: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
-      <span style={{ color: "var(--text-tertiary)" }}>{props.label}</span>
-      <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>{props.value}</span>
+    <div className="new-agent-preview-row">
+      <span className="new-agent-preview-row-label">{props.label}</span>
+      <span className="new-agent-preview-row-value">{props.value}</span>
     </div>
   );
 }
@@ -427,4 +383,62 @@ function parseSkills(value: string): string[] | null {
     .split(/[\n,]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+const ICON_PROPS = {
+  viewBox: "0 0 24 24",
+  width: 22,
+  height: 22,
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.6,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
+
+function CheckSmall() {
+  return (
+    <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 8.5l3 3 7-7" />
+    </svg>
+  );
+}
+
+function BlankIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <rect x="5" y="3.5" width="14" height="17" rx="2.5" />
+      <path d="M9 8.5h6M9 12.5h6M9 16.5h4" />
+    </svg>
+  );
+}
+
+function WriterIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M4 19l3-1 11-11-2-2L5 16l-1 3z" />
+      <path d="M14 6l2 2" />
+    </svg>
+  );
+}
+
+function ReviewerIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M9 4l-5 6 5 6" />
+      <path d="M15 4l5 6-5 6" />
+      <path d="M13 3l-2 18" />
+    </svg>
+  );
+}
+
+function ShellIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M7 10l3 2-3 2" />
+      <path d="M12 14h5" />
+    </svg>
+  );
 }
