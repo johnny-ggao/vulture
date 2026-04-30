@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { MessageStore } from "../domain/messageStore";
 import type { SubagentSessionStore } from "../domain/subagentSessionStore";
 
@@ -49,6 +49,6 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function notFound(c: Parameters<Parameters<Hono["get"]>[1]>[0], id: string): Response {
+function notFound(c: Context, id: string): Response {
   return c.json({ code: "subagent_session.not_found", message: id }, 404);
 }

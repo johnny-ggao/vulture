@@ -252,56 +252,115 @@ export function buildServer(cfg: GatewayConfig): Hono {
       execute: (call) => mcpClientManager.executeToolCall(call),
     },
     sessions: {
-      list: (input) => {
-        const limit = typeof (input as { limit?: unknown }).limit === "number"
-          ? (input as { limit: number }).limit
-          : 20;
-        return conversationStore.list().slice(0, limit).map((conversation) => ({
-          id: conversation.id,
-          agentId: conversation.agentId,
-          title: conversation.title,
-          createdAt: conversation.createdAt,
-          updatedAt: conversation.updatedAt,
-          activeRuns: runStore.listForConversation(conversation.id, { status: "active" }),
-        }));
+      list: (call) => {
+        const value = call.input as {
+          parentConversationId?: unknown;
+          parentRunId?: unknown;
+          agentId?: unknown;
+          limit?: unknown;
+        };
+        const currentRun = runStore.get(call.runId);
+        const parentConversationId =
+          typeof value.parentConversationId === "string"
+            ? value.parentConversationId
+            : typeof value.parentRunId === "string"
+            ? undefined
+            : currentRun?.conversationId;
+        return subagentSessionStore.list({
+          parentConversationId,
+          parentRunId: typeof value.parentRunId === "string" ? value.parentRunId : undefined,
+          agentId: typeof value.agentId === "string" ? value.agentId : undefined,
+          limit: typeof value.limit === "number" ? value.limit : 20,
+        });
       },
-      history: (input) => {
-        const value = input as { conversationId?: unknown; limit?: unknown };
-        if (typeof value.conversationId !== "string") {
-          throw new Error("sessions_history missing conversationId");
+      history: (call) => {
+        const value = call.input as { sessionId?: unknown; conversationId?: unknown; limit?: unknown };
+        const session = typeof value.sessionId === "string"
+          ? subagentSessionStore.get(value.sessionId)
+          : null;
+        const conversationId = session?.conversationId ??
+          (typeof value.conversationId === "string" ? value.conversationId : null);
+        if (!conversationId) {
+          throw new Error("sessions_history requires sessionId or conversationId");
         }
         const limit = typeof value.limit === "number" ? value.limit : 50;
-        const messages = messageStore.listSince({ conversationId: value.conversationId });
+        const messages = messageStore.listSince({ conversationId });
         return messages.slice(-limit);
       },
-      send: async (input) => {
-        const value = input as { conversationId?: unknown; message?: unknown };
-        if (typeof value.conversationId !== "string" || typeof value.message !== "string") {
-          throw new Error("sessions_send missing conversationId/message");
+      send: async (call) => {
+        const value = call.input as { sessionId?: unknown; conversationId?: unknown; message?: unknown };
+        const session = typeof value.sessionId === "string"
+          ? subagentSessionStore.get(value.sessionId)
+          : null;
+        const conversationId = session?.conversationId ??
+          (typeof value.conversationId === "string" ? value.conversationId : null);
+        if (!conversationId || typeof value.message !== "string") {
+          throw new Error("sessions_send requires sessionId or conversationId and message");
         }
-        return startConversationRun(value.conversationId, value.message);
+        const result = await startConversationRun(conversationId, value.message);
+        return {
+          ...result,
+          session: session ? subagentSessionStore.refreshStatus(session.id) : null,
+        };
       },
-      spawn: async (input) => {
-        const value = input as { agentId?: unknown; title?: unknown; message?: unknown };
+      spawn: async (call) => {
+        const value = call.input as {
+          agentId?: unknown;
+          title?: unknown;
+          label?: unknown;
+          message?: unknown;
+        };
+        const parentRun = runStore.get(call.runId);
+        if (!parentRun) throw new Error(`parent run not found: ${call.runId}`);
         const agentId =
           typeof value.agentId === "string" && value.agentId.length > 0
             ? value.agentId
             : "local-work-agent";
         if (!agentStore.get(agentId)) throw new Error(`agent not found: ${agentId}`);
+        const title = typeof value.title === "string" ? value.title : "";
         const conversation = conversationStore.create({
           agentId,
-          title: typeof value.title === "string" ? value.title : "",
+          title,
+        });
+        const session = subagentSessionStore.create({
+          parentConversationId: parentRun.conversationId,
+          parentRunId: parentRun.id,
+          agentId,
+          conversationId: conversation.id,
+          label: subagentLabel(value, title, agentId),
         });
         if (typeof value.message === "string" && value.message.length > 0) {
-          return { ...(await startConversationRun(conversation.id, value.message)), conversation };
+          const run = await startConversationRun(conversation.id, value.message);
+          return {
+            ...run,
+            conversation,
+            session: subagentSessionStore.refreshStatus(session.id),
+          };
         }
-        return { conversation, runId: null };
+        return { conversation, runId: null, session };
       },
-      yield: () => ({
-        activeRuns: conversationStore
-          .list()
-          .flatMap((conversation) => runStore.listForConversation(conversation.id, { status: "active" })),
-      }),
+      yield: (call) => {
+        const value = call.input as { parentConversationId?: unknown; parentRunId?: unknown; limit?: unknown };
+        const parentRun = runStore.get(call.runId);
+        const parentRunId = typeof value.parentRunId === "string" ? value.parentRunId : call.runId;
+        const parentConversationId =
+          typeof value.parentConversationId === "string"
+            ? value.parentConversationId
+            : parentRun?.conversationId;
+        const sessions = subagentSessionStore.list({
+          parentConversationId,
+          parentRunId,
+          limit: typeof value.limit === "number" ? value.limit : 20,
+        });
+        const items = sessions.map((session) => ({
+          ...session,
+          activeRuns: runStore.listForConversation(session.conversationId, { status: "active" }),
+        }));
+        return {
+          items,
+          activeRuns: items.flatMap((session) => session.activeRuns),
+        };
+      },
     },
     memory: {
       search: async (call) => {
@@ -580,4 +639,17 @@ export function buildServer(cfg: GatewayConfig): Hono {
 function truncateMemorySnippet(content: string): string {
   const normalized = content.replace(/\s+/g, " ").trim();
   return normalized.length <= 240 ? normalized : `${normalized.slice(0, 240)}...`;
+}
+
+function subagentLabel(
+  input: { label?: unknown; title?: unknown; message?: unknown },
+  title: string,
+  agentId: string,
+): string {
+  if (typeof input.label === "string" && input.label.trim()) return input.label.trim().slice(0, 80);
+  if (title.trim()) return title.trim().slice(0, 80);
+  if (typeof input.message === "string" && input.message.trim()) {
+    return input.message.trim().replace(/\s+/g, " ").slice(0, 80);
+  }
+  return agentId;
 }

@@ -29,11 +29,11 @@ const MAX_TEXT_BYTES = 256_000;
 const MAX_PROCESS_BUFFER = 64_000;
 
 export interface GatewaySessionsTools {
-  list(input: unknown): unknown;
-  history(input: unknown): unknown;
-  send(input: unknown): Promise<unknown>;
-  spawn(input: unknown): Promise<unknown>;
-  yield(input: unknown): unknown;
+  list(call: Parameters<ToolCallable>[0]): unknown;
+  history(call: Parameters<ToolCallable>[0]): unknown;
+  send(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+  spawn(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+  yield(call: Parameters<ToolCallable>[0]): unknown;
 }
 
 export interface GatewayMemoryTools {
@@ -143,17 +143,17 @@ async function executeLocalTool(
     case "web_search":
       return webSearchTool(call, deps.fetch);
     case "sessions_list":
-      return wrapItems(requireSessions(deps).list(call.input));
+      return wrapItems(requireSessions(deps).list(call));
     case "sessions_history":
-      return wrapItems(requireSessions(deps).history(call.input));
+      return wrapItems(requireSessions(deps).history(call));
     case "sessions_send":
       requireApproval(call, "sessions_send requires approval");
-      return requireSessions(deps).send(call.input);
+      return requireSessions(deps).send(call);
     case "sessions_spawn":
       requireApproval(call, "sessions_spawn requires approval");
-      return requireSessions(deps).spawn(call.input);
+      return requireSessions(deps).spawn(call);
     case "sessions_yield":
-      return requireSessions(deps).yield(call.input);
+      return requireSessions(deps).yield(call);
     case "update_plan":
       return updatePlanTool(call);
     case "memory_search":

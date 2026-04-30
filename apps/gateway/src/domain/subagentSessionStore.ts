@@ -119,7 +119,7 @@ export class SubagentSessionStore {
 
   list(filter: ListSubagentSessionsFilter = {}): SubagentSession[] {
     const clauses: string[] = [];
-    const params: unknown[] = [];
+    const params: Array<string | number> = [];
     if (filter.parentConversationId) {
       clauses.push("parent_conversation_id = ?");
       params.push(filter.parentConversationId);
