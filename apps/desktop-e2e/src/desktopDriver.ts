@@ -85,8 +85,10 @@ export class RealDesktopDriver implements DesktopDriver {
       cwd: join(this.#options.repoRoot, "apps", "desktop-shell"),
       logsDir: context.artifacts.logsDir,
       env: {
+        OPENAI_API_KEY: undefined,
         VULTURE_DESKTOP_ROOT: rootDir,
         VULTURE_DESKTOP_DEFAULT_WORKSPACE: workspaceDir,
+        VULTURE_DESKTOP_E2E_STUB_LLM: "1",
         VULTURE_MEMORY_SUGGESTIONS: "0",
       },
     });

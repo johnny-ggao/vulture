@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface DesktopStepResult {
@@ -96,8 +96,10 @@ export function writeDesktopFailureReport(
   root: string,
   results: readonly DesktopScenarioResult[],
 ): string | null {
+  const path = join(root, "failure-report.md");
   const failed = results.filter((result) => result.status === "failed");
   if (failed.length === 0) {
+    rmSync(path, { force: true });
     return null;
   }
 
@@ -124,7 +126,6 @@ export function writeDesktopFailureReport(
     lines.push("");
   }
 
-  const path = join(root, "failure-report.md");
   writeFileSync(path, `${lines.join("\n")}\n`);
 
   return path;

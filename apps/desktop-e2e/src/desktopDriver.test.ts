@@ -57,8 +57,10 @@ describe("RealDesktopDriver", () => {
         argv: ["cargo", "tauri", "dev"],
         cwd: join(repoRoot, "apps", "desktop-shell"),
         env: {
+          OPENAI_API_KEY: undefined,
           VULTURE_DESKTOP_ROOT: join(scenarioDir, "root"),
           VULTURE_DESKTOP_DEFAULT_WORKSPACE: join(scenarioDir, "workspace"),
+          VULTURE_DESKTOP_E2E_STUB_LLM: "1",
           VULTURE_MEMORY_SUGGESTIONS: "0",
         },
       },

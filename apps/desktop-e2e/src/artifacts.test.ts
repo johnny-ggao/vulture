@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -83,6 +83,27 @@ describe("desktop e2e artifacts", () => {
 
       expect(writeDesktopFailureReport(root, [result])).toBeNull();
       expect(existsSync(join(root, "failure-report.md"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes stale failure report when all scenarios pass", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-desktop-e2e-artifacts-"));
+    try {
+      const reportPath = join(root, "failure-report.md");
+      writeFileSync(reportPath, "old failure\n");
+      const result = {
+        id: "launch-smoke",
+        name: "Launch smoke",
+        status: "passed" as const,
+        durationMs: 10,
+        artifactPath: "/tmp/artifact",
+        steps: [{ name: "waitForChatReady", status: "passed" as const }],
+      };
+
+      expect(writeDesktopFailureReport(root, [result])).toBeNull();
+      expect(existsSync(reportPath)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

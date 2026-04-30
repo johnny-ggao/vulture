@@ -36,6 +36,10 @@ pub fn vulture_root_from_env(
         .join("Vulture"))
 }
 
+pub fn should_import_codex_auth(env: &impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    env("VULTURE_DESKTOP_E2E_STUB_LLM").is_none()
+}
+
 pub fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
     rand::thread_rng().fill_bytes(&mut bytes);
@@ -188,6 +192,15 @@ mod tests {
                 .contains("VULTURE_DESKTOP_ROOT must be an absolute path"),
             "unexpected error: {err:#}"
         );
+    }
+
+    #[test]
+    fn disables_codex_import_for_desktop_e2e_stub_runs() {
+        assert!(!should_import_codex_auth(&|key| match key {
+            "VULTURE_DESKTOP_E2E_STUB_LLM" => Some("1".into()),
+            _ => None,
+        }));
+        assert!(should_import_codex_auth(&|_| None));
     }
 
     #[test]

@@ -107,6 +107,8 @@ Desktop E2E launches the real Tauri shell through `cargo tauri dev` and drives
 the UI through `tauri-driver` + WebDriver. Each selected scenario gets its own
 isolated desktop root and default workspace under the scenario artifact
 directory, so local SQLite/profile state is not shared across runs.
+The lane also forces the gateway onto the stub LLM path by removing inherited
+`OPENAI_API_KEY` and disabling Codex credential import for the launched shell.
 
 The GitHub Actions desktop E2E lane targets Linux because current Tauri desktop
 WebDriver support is limited to Windows and Linux. Local macOS runs still
@@ -137,7 +139,8 @@ The suite root also writes:
 
 - `summary.json` - aggregate desktop E2E results.
 - `junit.xml` - machine-readable test results for CI surfaces.
-- `failure-report.md` - present only when one or more scenarios fail.
+- `failure-report.md` - present only when one or more scenarios fail; removed
+  on a later all-green run.
 
 Useful environment variables:
 

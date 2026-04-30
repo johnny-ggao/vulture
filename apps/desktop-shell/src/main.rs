@@ -59,8 +59,10 @@ async fn main() -> Result<()> {
     //    known (profile dir is resolved here).
     let app_state =
         AppState::new_for_root(&root).context("failed to initialize Vulture desktop state")?;
-    crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
-        .context("import existing codex credentials")?;
+    if runtime::should_import_codex_auth(&|key| std::env::var_os(key)) {
+        crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
+            .context("import existing codex credentials")?;
+    }
     app_state.set_runtime_descriptor(descriptor.clone());
     let profile_dir_handle = app_state.profile_dir_handle();
     let audit_db_path_handle = app_state.audit_db_path_handle();
