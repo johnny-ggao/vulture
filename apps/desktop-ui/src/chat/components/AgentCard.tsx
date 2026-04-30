@@ -51,17 +51,26 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
         </div>
         <div className="agent-card-body">
           <h3 className="agent-card-name">{agent.name || "未命名智能体"}</h3>
-          <p className="agent-card-desc">
-            {agent.description || "（无描述）"}
+          <p
+            className={
+              "agent-card-desc" + (agent.description ? "" : " agent-card-desc-empty")
+            }
+          >
+            {agent.description || "添加一段描述，告诉团队它适合做什么"}
           </p>
           <div className="agent-card-meta">
             <span className="agent-card-model">{agent.model}</span>
-            {agent.tools.length > 0 ? (
-              <span className="agent-card-meta-sep" aria-hidden="true">·</span>
-            ) : null}
-            {agent.tools.length > 0 ? (
-              <span className="agent-card-tools">{agent.tools.length} 个工具</span>
-            ) : null}
+            <CardMetaChip
+              count={agent.tools.length}
+              label="工具"
+              icon={<ToolMetaIcon />}
+            />
+            <CardMetaChip
+              count={skillsCount(agent.skills)}
+              label={skillsLabel(agent.skills)}
+              icon={<SkillMetaIcon />}
+              hidden={skillsCount(agent.skills) === null}
+            />
           </div>
         </div>
       </button>
@@ -95,6 +104,84 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
         ) : null}
       </div>
     </div>
+  );
+}
+
+interface CardMetaChipProps {
+  count: number | null;
+  label: string;
+  icon: React.ReactNode;
+  /** When true the chip is omitted entirely — use for fields where
+   *  zero ≠ "no signal" (e.g. skills allowlist that's `null = unset`). */
+  hidden?: boolean;
+}
+
+function CardMetaChip({ count, label, icon, hidden }: CardMetaChipProps) {
+  if (hidden) return null;
+  if (count === 0) return null;
+  if (count === null) return null;
+  return (
+    <span className="agent-card-chip" aria-label={`${count} ${label}`}>
+      <span className="agent-card-chip-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="agent-card-chip-count">{count}</span>
+      <span className="agent-card-chip-label">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * Skills are 3-state: `null` means "all skills available" (no allowlist
+ * configured), an array of N entries means N specific skills, and `[]`
+ * (empty array) means "skills disabled". This helper collapses those
+ * shapes into the chip's count + label so the card communicates
+ * meaningful state in every case.
+ */
+function skillsCount(skills: ReadonlyArray<string> | null | undefined): number | null {
+  if (skills === undefined || skills === null) return null; // unset → hide chip
+  return skills.length;
+}
+
+function skillsLabel(skills: ReadonlyArray<string> | null | undefined): string {
+  if (Array.isArray(skills) && skills.length === 0) return "Skills 已禁用";
+  return "Skills";
+}
+
+function ToolMetaIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10 3l3 3-7 7-3-3z" />
+      <path d="M9 4l3 3" />
+    </svg>
+  );
+}
+
+function SkillMetaIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 2.5l1.7 3.5 3.8.5-2.8 2.6.7 3.7L8 11l-3.4 1.8.7-3.7L2.5 6.5l3.8-.5z" />
+    </svg>
   );
 }
 

@@ -2,7 +2,7 @@ import type { Agent, AgentToolPreset } from "../../api/agents";
 import type { ToolCatalogGroup } from "../../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../../api/tools";
 import { ToolGroupSelector } from "../ToolGroupSelector";
-import { Field } from "../components";
+import { AgentAvatar, Field } from "../components";
 import type { Draft } from "./draft";
 
 export interface ToolsTabProps {
@@ -86,7 +86,12 @@ export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: Tools
             {handoffCandidates.map((agent) => {
               const checked = draft.handoffAgentIds.includes(agent.id);
               return (
-                <label className="agent-handoff-row" key={agent.id}>
+                <label
+                  className={
+                    "agent-handoff-row" + (checked ? " agent-handoff-row-checked" : "")
+                  }
+                  key={agent.id}
+                >
                   <input
                     type="checkbox"
                     checked={checked}
@@ -98,8 +103,11 @@ export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: Tools
                       onChange({ ...draft, handoffAgentIds: [...new Set(next)] });
                     }}
                   />
-                  <span>
-                    <strong>{agent.name}</strong>
+                  <span className="agent-handoff-avatar" aria-hidden="true">
+                    <AgentAvatar agent={agent} size={28} shape="square" />
+                  </span>
+                  <span className="agent-handoff-meta">
+                    <strong>{agent.name || agent.id}</strong>
                     <small>{agent.description || agent.id}</small>
                   </span>
                 </label>

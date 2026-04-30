@@ -92,6 +92,95 @@ describe("AgentsPage — browse view", () => {
     expect(onOpenChat).toHaveBeenCalledWith("agent-1");
     expect(screen.queryByRole("tab")).toBeNull();
   });
+
+  // ---- Round 12: search + sort + count toolbar ----------------
+
+  test("toolbar surfaces a search input and a count of total agents", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    expect(screen.getByLabelText("搜索智能体")).toBeDefined();
+    expect(screen.getByText(/1\s*个智能体/)).toBeDefined();
+  });
+
+  test("typing in the search input filters the visible card list", () => {
+    const robin: Agent = { ...baseAgent, id: "robin", name: "Robin" };
+    const sage: Agent = { ...baseAgent, id: "sage", name: "Sage" };
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin, sage]}
+        selectedAgentId="robin"
+      />,
+    );
+    expect(container.querySelectorAll(".agent-card").length).toBe(2);
+    fireEvent.change(screen.getByLabelText("搜索智能体"), {
+      target: { value: "rob" },
+    });
+    // Only Robin matches "rob".
+    expect(container.querySelectorAll(".agent-card").length).toBe(1);
+    expect(screen.getByText("Robin")).toBeDefined();
+    expect(screen.queryByText("Sage")).toBeNull();
+    // Count chip shows the matched / total ratio.
+    expect(screen.getByText("1 / 2")).toBeDefined();
+  });
+
+  test("when no agents match the search, an empty-results CTA appears", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("搜索智能体"), {
+      target: { value: "no-match-here" },
+    });
+    expect(screen.getByText(/没有匹配的智能体/)).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "查看全部智能体" }),
+    );
+    expect(screen.queryByText(/没有匹配的智能体/)).toBeNull();
+  });
+
+  test("sort by alpha orders agents by name", () => {
+    const robin: Agent = {
+      ...baseAgent,
+      id: "robin",
+      name: "Robin",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    const adam: Agent = {
+      ...baseAgent,
+      id: "adam",
+      name: "Adam",
+      updatedAt: "2026-05-01T00:00:00Z", // newer than Robin
+    };
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin, adam]}
+        selectedAgentId="robin"
+      />,
+    );
+    // Default sort is "recent" → Adam (newer) first.
+    let names = Array.from(container.querySelectorAll(".agent-card-name")).map(
+      (n) => n.textContent,
+    );
+    expect(names).toEqual(["Adam", "Robin"]);
+
+    fireEvent.change(screen.getByLabelText("排序方式"), {
+      target: { value: "alpha" },
+    });
+    names = Array.from(container.querySelectorAll(".agent-card-name")).map(
+      (n) => n.textContent,
+    );
+    expect(names).toEqual(["Adam", "Robin"]);
+  });
 });
 
 describe("AgentsPage — edit modal", () => {
@@ -230,6 +319,90 @@ describe("AgentsPage — edit modal", () => {
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+  });
+
+  // ---- Round 12: dirty-close confirm + Cmd+S save shortcut ------
+
+  test("Escape on a dirty modal asks for confirmation; cancelling keeps the modal open", () => {
+    const originalConfirm = window.confirm;
+    let confirmCalls: string[] = [];
+    (window as unknown as { confirm: (msg?: string) => boolean }).confirm = (
+      msg?: string,
+    ) => {
+      confirmCalls.push(msg ?? "");
+      return false;
+    };
+    try {
+      render(
+        <AgentsPage
+          {...stableProps}
+          agents={[baseAgent]}
+          selectedAgentId="agent-1"
+        />,
+      );
+      openEditModal();
+      fireEvent.change(screen.getByLabelText("名称"), {
+        target: { value: "Renamed" },
+      });
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(confirmCalls.length).toBe(1);
+      expect(confirmCalls[0]).toMatch(/未保存/);
+      // Modal stayed open (overview tab still visible).
+      expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("Esc on a clean modal does NOT prompt and closes immediately", () => {
+    const originalConfirm = window.confirm;
+    let confirmCalls = 0;
+    (window as unknown as { confirm: () => boolean }).confirm = () => {
+      confirmCalls += 1;
+      return true;
+    };
+    try {
+      render(
+        <AgentsPage
+          {...stableProps}
+          agents={[baseAgent]}
+          selectedAgentId="agent-1"
+        />,
+      );
+      openEditModal();
+      // No edits → not dirty.
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(confirmCalls).toBe(0);
+      expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("Cmd+S on a dirty modal saves; on a clean modal it is a no-op", async () => {
+    const onSave = mock(async (_id: string, _patch: AgentConfigPatch) => {});
+    render(
+      <AgentsPage
+        {...stableProps}
+        onSave={onSave}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+
+    // Clean: Cmd+S should NOT call onSave.
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    expect(onSave).not.toHaveBeenCalled();
+
+    // Dirty: Cmd+S triggers save.
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
+    expect(onSave).toHaveBeenCalled();
+    const [, patch] = onSave.mock.calls[0]!;
+    expect(patch.name).toBe("Renamed");
   });
 
   test("modal closes if the agent disappears (e.g. delete-undo committed)", () => {

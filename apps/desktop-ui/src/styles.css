@@ -3165,6 +3165,89 @@ pre {
 }
 .profile-name { font-weight: 600; }
 .profile-id { color: var(--text-tertiary); font-size: 12px; }
+/* AgentsPage toolbar — search + count + sort. Sits between the page
+ * header and the card grid; collapses gracefully on narrow screens. */
+.agents-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 16px;
+}
+.agents-toolbar-search {
+  min-width: 0; /* let SearchInput shrink without overflow */
+}
+.agents-toolbar-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.agents-toolbar-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+.agents-toolbar-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agents-toolbar-sort-label {
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+.agents-toolbar-sort select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 24px 5px 10px;
+  border: 1px solid var(--fill-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%),
+                    linear-gradient(135deg, var(--text-tertiary) 50%, transparent 50%);
+  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+.agents-toolbar-sort select:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+@media (max-width: 720px) {
+  .agents-toolbar { grid-template-columns: 1fr; }
+}
+
+/* Agent card meta chips — round 12 split tools/skills counts into
+ * named pills with icons so the meta line communicates state at a
+ * glance instead of "N 个工具". */
+.agent-card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-quaternary);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.agent-card-chip-icon {
+  display: inline-grid; place-items: center;
+  color: var(--text-tertiary);
+}
+.agent-card-chip-count { font-weight: 600; color: var(--text-primary); }
+.agent-card-chip-label { color: var(--text-tertiary); }
+
+.agent-card-desc-empty {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
 /* AgentsPage layout — browse-first grid; edit happens in <AgentEditModal>. */
 .agents-grid {
   display: grid;
@@ -3941,19 +4024,35 @@ pre {
 }
 .agent-handoff-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
   min-height: 52px;
   padding: 10px;
   border: 1px solid var(--fill-tertiary);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+.agent-handoff-row:hover {
+  border-color: var(--text-tertiary);
+}
+.agent-handoff-row-checked {
+  border-color: var(--brand-500);
+  background: var(--brand-050);
 }
 .agent-handoff-row input {
-  margin-top: 2px;
+  margin: 0;
 }
-.agent-handoff-row span {
+.agent-handoff-avatar {
+  display: inline-grid; place-items: center;
+}
+.agent-handoff-meta,
+.agent-handoff-row span:not(.agent-handoff-avatar) {
+  /* Backwards-compatible: also catches the legacy direct <span> children
+   * if any caller hasn't moved to the named slot. */
   min-width: 0;
   display: grid;
   gap: 2px;
@@ -3970,6 +4069,7 @@ pre {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
+  font-size: 12px;
 }
 
 .agent-core { display: grid; gap: 10px; }

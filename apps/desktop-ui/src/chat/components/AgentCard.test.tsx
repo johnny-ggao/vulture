@@ -92,14 +92,18 @@ describe("AgentCard", () => {
     render(
       <AgentCard agent={baseAgent} onOpenEdit={() => {}} onOpenChat={() => {}} />,
     );
-    expect(screen.getByText(/2.*工具/)).toBeDefined();
+    // Round 12: meta is now a chip with count + label split into spans;
+    // the accessible name combines them.
+    expect(screen.getByLabelText("2 工具")).toBeDefined();
   });
 
   test("does not show tools count when the agent has no tools", () => {
     const empty = { ...baseAgent, tools: [] as Agent["tools"] };
-    render(
+    const { container } = render(
       <AgentCard agent={empty} onOpenEdit={() => {}} onOpenChat={() => {}} />,
     );
-    expect(screen.queryByText(/工具/)).toBeNull();
+    // No tools chip is rendered when count = 0.
+    const chips = Array.from(container.querySelectorAll(".agent-card-chip"));
+    expect(chips.some((chip) => /工具/.test(chip.getAttribute("aria-label") ?? ""))).toBe(false);
   });
 });

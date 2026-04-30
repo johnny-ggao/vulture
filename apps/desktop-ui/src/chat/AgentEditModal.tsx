@@ -158,24 +158,95 @@ export function AgentEditModal(props: AgentEditModalProps) {
     };
   }, [open, agent?.id, selectedFile]);
 
-  // Esc closes the modal. The handler reads `saving` and `onClose` through
-  // a ref so the listener is bound once per open/close cycle. The ref is
-  // committed in an effect (commit phase) rather than during render to stay
-  // safe under React 18 StrictMode and concurrent rendering.
-  const escDepsRef = useRef({ saving, onClose: props.onClose });
+  // Esc closes (with dirty-confirm), Cmd/Ctrl+S saves. Both handlers read
+  // their dependencies through a ref so the listener is bound once per
+  // open/close cycle. The ref is committed in an effect (commit phase)
+  // rather than during render to stay safe under React 18 StrictMode and
+  // concurrent rendering.
+  const keyDepsRef = useRef({
+    saving,
+    isDirty,
+    canSave: false,
+    onClose: props.onClose,
+    save: async () => {},
+  });
   useEffect(() => {
-    escDepsRef.current = { saving, onClose: props.onClose };
+    keyDepsRef.current = {
+      saving,
+      isDirty,
+      canSave:
+        !saving &&
+        isDirty &&
+        draft.name.trim().length > 0 &&
+        draft.instructions.trim().length > 0,
+      onClose: props.onClose,
+      save,
+    };
   });
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      const { saving: isSaving, onClose } = escDepsRef.current;
-      if (!isSaving) onClose();
+      const deps = keyDepsRef.current;
+      // Cmd+S / Ctrl+S saves the draft. Always intercept (even when
+      // there's nothing to save) so the OS save dialog never opens —
+      // the modal owns this shortcut while it's mounted.
+      if (
+        event.key === "s" &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        if (deps.canSave) void deps.save();
+        return;
+      }
+      // Esc closes — but if the draft is dirty we ask first so users
+      // don't lose work to a stray keypress. Saving in flight, the key
+      // is ignored until the save resolves.
+      if (event.key === "Escape") {
+        if (deps.saving) return;
+        if (deps.isDirty) {
+          if (window.confirm("有未保存的修改，确定要关闭吗？")) {
+            deps.onClose();
+          }
+          return;
+        }
+        deps.onClose();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  /**
+   * Close-with-confirm wrapper: any close path (overlay click, X
+   * button) that comes through here gets the dirty guard. Esc handler
+   * mirrors this in the keydown listener above.
+   */
+  function requestClose() {
+    if (saving) return;
+    if (isDirty) {
+      if (!window.confirm("有未保存的修改，确定要关闭吗？")) return;
+    }
+    props.onClose();
+  }
+
+  /**
+   * Same dirty-guard for the inline "打开对话" handoff. Switching the
+   * surface away from the modal effectively closes it; reusing the
+   * same prompt keeps the UX consistent so users learn one rule.
+   */
+  function requestOpenChat() {
+    if (saving || !agent) return;
+    if (isDirty) {
+      if (
+        !window.confirm("有未保存的修改，确定要离开并打开对话吗？")
+      ) {
+        return;
+      }
+    }
+    props.onOpenChat(agent.id);
+  }
 
   // Cursor-tracked gloss on the modal header — same idiom as AgentCard.
   const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
@@ -232,9 +303,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
   return (
     <div
       className="modal-overlay"
-      onClick={() => {
-        if (!saving) props.onClose();
-      }}
+      onClick={requestClose}
     >
       <div
         className="modal-card agent-edit-modal"
@@ -261,7 +330,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => props.onOpenChat(agent.id)}
+              onClick={requestOpenChat}
             >
               打开对话
             </button>
@@ -278,9 +347,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
               className="icon-btn"
               aria-label="关闭"
               disabled={saving}
-              onClick={() => {
-                if (!saving) props.onClose();
-              }}
+              onClick={requestClose}
             >
               <svg
                 viewBox="0 0 16 16"

@@ -77,14 +77,18 @@ describe("PersonaTab", () => {
 });
 
 describe("ToolsTab", () => {
+  // Shared minimal shape — most tests don't care about the handoff
+  // surface, so an empty agents list keeps the body of the test focused
+  // on the preset selector + 清空/全选 affordances.
+  const toolsTabBaseProps = {
+    draft: draftFromAgent(baseAgent),
+    agentId: baseAgent.id,
+    agents: [baseAgent] as ReadonlyArray<typeof baseAgent>,
+    toolGroups: [],
+  };
+
   test("renders the preset selector + 全选 / 清空 buttons", () => {
-    render(
-      <ToolsTab
-        draft={draftFromAgent(baseAgent)}
-        toolGroups={[]}
-        onChange={() => {}}
-      />,
-    );
+    render(<ToolsTab {...toolsTabBaseProps} onChange={() => {}} />);
     expect(screen.getByLabelText("Tools 预设")).toBeDefined();
     expect(screen.getByRole("button", { name: "全选" })).toBeDefined();
     expect(screen.getByRole("button", { name: "清空" })).toBeDefined();
@@ -92,13 +96,7 @@ describe("ToolsTab", () => {
 
   test("clicking 清空 calls onChange with the 'none' policy", () => {
     const onChange = mock((_next: Draft) => {});
-    render(
-      <ToolsTab
-        draft={draftFromAgent(baseAgent)}
-        toolGroups={[]}
-        onChange={onChange}
-      />,
-    );
+    render(<ToolsTab {...toolsTabBaseProps} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "清空" }));
     expect(onChange).toHaveBeenCalled();
     const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
@@ -108,13 +106,7 @@ describe("ToolsTab", () => {
 
   test("changing the preset selector cascades into a new tools list", () => {
     const onChange = mock((_next: Draft) => {});
-    render(
-      <ToolsTab
-        draft={draftFromAgent(baseAgent)}
-        toolGroups={[]}
-        onChange={onChange}
-      />,
-    );
+    render(<ToolsTab {...toolsTabBaseProps} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText("Tools 预设"), {
       target: { value: "minimal" },
     });
