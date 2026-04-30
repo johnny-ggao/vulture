@@ -35,6 +35,24 @@ Run a file-backed scenario:
 bun run harness:acceptance --scenario-file apps/gateway/src/harness/scenarios/json-conversation-happy-path.json
 ```
 
+Run the agent runtime harness:
+
+```bash
+bun run harness:runtime
+bun run harness:runtime -- --list
+bun run harness:runtime -- --scenario tool-success-checkpoint
+bun run harness:runtime -- --tag recovery
+```
+
+Run the tool contract harness:
+
+```bash
+bun run harness:tools
+bun run harness:tools -- --list
+bun run harness:tools -- --tool read
+bun run harness:tools -- --category sessions
+```
+
 Run the UI smoke harness:
 
 ```bash
@@ -62,6 +80,57 @@ only when intentionally running a live model smoke.
 
 Temporary profile and workspace directories are isolated per harness process by
 default, so multiple selected CLI runs can execute without sharing SQLite state.
+
+## Agent Runtime Harness
+
+The agent runtime harness is an in-process lane for deterministic runtime
+protocol checks. It drives scripted LLM yields through `runConversation` and
+asserts the runtime emits the expected event stream, tool lifecycle, usage, and
+checkpoint behavior without calling a real model, shell, MCP server, or network.
+
+Runtime harness artifacts default to `.artifacts/runtime-harness/` and can be
+moved with `VULTURE_RUNTIME_HARNESS_ARTIFACT_DIR`. The lane writes:
+
+- `summary.json` - aggregate scenario status.
+- `events.jsonl` - ordered runtime events by scenario.
+- `failure-report.md` - present only when a scenario expectation fails.
+
+Useful environment variables:
+
+- `VULTURE_RUNTIME_HARNESS_ARTIFACT_DIR`: output directory.
+- `VULTURE_RUNTIME_HARNESS_SCENARIOS`: comma-separated scenario ids.
+- `VULTURE_RUNTIME_HARNESS_TAGS`: comma-separated tag names.
+- `VULTURE_RUNTIME_HARNESS_WORKSPACE_DIR`: workspace path passed into runtime calls.
+
+Current runtime scenarios:
+
+- `text-stream-usage`: verifies text deltas, token usage, and final output.
+- `tool-success-checkpoint`: verifies tool plan/start/complete plus active-tool checkpoint metadata.
+- `tool-failure`: verifies failed tool execution produces `tool.failed` and `run.failed`.
+- `recovery-input`: verifies recovery input reaches the LLM callable.
+
+## Tool Contract Harness
+
+The tool contract harness scans the real `createCoreToolRegistry()` output and
+validates every core tool has an explicit contract fixture. For each tool it
+checks identity metadata, Zod parameter validation, category/risk/idempotency,
+approval behavior, and OpenAI Agents SDK adapter invocation semantics. This is
+the gate that prevents new tools from being added without explicit retry and
+approval contracts.
+
+Tool contract artifacts default to `.artifacts/tool-contract-harness/` and can
+be moved with `VULTURE_TOOL_CONTRACT_ARTIFACT_DIR`. The lane writes:
+
+- `summary.json` - aggregate tool status.
+- `results.json` - per-tool check results.
+- `failure-report.md` - present only when one or more contracts fail.
+
+Useful environment variables:
+
+- `VULTURE_TOOL_CONTRACT_ARTIFACT_DIR`: output directory.
+- `VULTURE_TOOL_CONTRACT_TOOLS`: comma-separated tool ids.
+- `VULTURE_TOOL_CONTRACT_CATEGORIES`: comma-separated categories.
+- `VULTURE_TOOL_CONTRACT_WORKSPACE_DIR`: workspace path used for approval checks.
 
 ## Artifacts
 
