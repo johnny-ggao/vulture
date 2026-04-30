@@ -21,11 +21,7 @@ use supervisor::{
 use vulture_core::{PortBinding, RuntimeDescriptor, API_VERSION};
 
 fn vulture_root() -> PathBuf {
-    let home = std::env::var_os("HOME").expect("HOME must be set");
-    PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join("Vulture")
+    runtime::vulture_root_from_env(&|key| std::env::var_os(key))
 }
 
 fn now_iso() -> String {

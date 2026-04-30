@@ -5,7 +5,7 @@ use std::{
     io::Write,
     net::TcpListener,
     os::unix::fs::OpenOptionsExt,
-    path::Path,
+    path::{Path, PathBuf},
 };
 use vulture_core::RuntimeDescriptor;
 
@@ -15,6 +15,20 @@ pub const TOKEN_BYTES: usize = 32;
 /// shared `RuntimeDescriptor` schema.
 #[allow(dead_code)] // referenced from tests and as documentation of the contract
 pub const TOKEN_B64_LEN: usize = 43;
+
+pub fn vulture_root_from_env(
+    env: &impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> std::path::PathBuf {
+    if let Some(value) = env("VULTURE_DESKTOP_ROOT") {
+        return PathBuf::from(value);
+    }
+
+    let home = env("HOME").expect("HOME must be set");
+    PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("Vulture")
+}
 
 pub fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
@@ -103,6 +117,33 @@ mod tests {
         for _ in 0..1024 {
             assert!(seen.insert(generate_token()), "duplicate token");
         }
+    }
+
+    #[test]
+    fn root_uses_vulture_desktop_root_when_set() {
+        let root = vulture_root_from_env(&|key| match key {
+            "VULTURE_DESKTOP_ROOT" => Some("/tmp/vulture-e2e-root".into()),
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        });
+
+        assert_eq!(root, std::path::PathBuf::from("/tmp/vulture-e2e-root"));
+    }
+
+    #[test]
+    fn root_falls_back_to_application_support() {
+        let root = vulture_root_from_env(&|key| match key {
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        });
+
+        assert_eq!(
+            root,
+            std::path::PathBuf::from("/Users/example")
+                .join("Library")
+                .join("Application Support")
+                .join("Vulture")
+        );
     }
 
     #[test]
