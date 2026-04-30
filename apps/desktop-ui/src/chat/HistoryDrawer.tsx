@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ConversationDto } from "../api/conversations";
 import { AgentAvatar } from "./components";
 
@@ -38,8 +38,18 @@ function bucketFor(updatedAt: string): string {
 export function HistoryDrawer(props: HistoryDrawerProps) {
   const [query, setQuery] = useState("");
   // null = "all agents"; an id pins the list to one agent's conversations.
-  // Reset whenever the drawer closes so reopening lands on a clean view.
+  // The state survives close/reopen by default — see the useEffect below
+  // that explicitly clears it when the drawer transitions to closed, so
+  // reopening always lands on a clean "全部" view.
   const [agentFilterId, setAgentFilterId] = useState<string | null>(null);
+
+  // Reset the filter whenever the drawer transitions to closed. Using an
+  // effect (commit phase) instead of a render-time setState avoids the
+  // "set state during render" anti-pattern and keeps the reset
+  // idempotent — closing twice is the same as closing once.
+  useEffect(() => {
+    if (!props.open) setAgentFilterId(null);
+  }, [props.open]);
 
   // O(1) agent lookup for row rendering. Memoised so the map identity is
   // stable across re-renders when the agents array hasn't changed.
@@ -65,13 +75,16 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
   }, [props.agents, props.items]);
 
   // If the pinned agent has no remaining conversations (e.g. last one was
-  // deleted), drop the filter rather than showing an empty list.
-  if (
-    agentFilterId !== null &&
-    !agentsWithConversations.some((a) => a.id === agentFilterId)
-  ) {
-    setAgentFilterId(null);
-  }
+  // deleted), drop the filter rather than showing an empty list. Run in
+  // an effect, not during render — derived-state-from-props pattern.
+  useEffect(() => {
+    if (
+      agentFilterId !== null &&
+      !agentsWithConversations.some((a) => a.id === agentFilterId)
+    ) {
+      setAgentFilterId(null);
+    }
+  }, [agentFilterId, agentsWithConversations]);
 
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -1456,6 +1456,18 @@ pre {
   color: var(--brand-600);
   font-weight: 600;
 }
+/* Dark-mode contrast lift: against the drawer's `--bg-secondary` plus
+ * the brand-tinted chip background, `--brand-600` (#c44e54) reads at
+ * ~4:1 — below WCAG AA for 12px text. Use the brighter `--brand-400`
+ * (#ee9499) which clears AA while staying inside the brand family. */
+@media (prefers-color-scheme: dark) {
+  .history-filter-chip.active {
+    color: var(--brand-400);
+  }
+  .history-filter-chip.active .history-filter-count {
+    color: var(--brand-400);
+  }
+}
 .history-filter-chip .agent-avatar { flex-shrink: 0; }
 .history-filter-label {
   overflow: hidden;
