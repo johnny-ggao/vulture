@@ -12,8 +12,6 @@ import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName,
 import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
 import { conversationsApi, type ConversationDto } from "./api/conversations";
-import { attachmentsApi } from "./api/attachments";
-import { skillsApi, type SkillListResponse } from "./api/skills";
 import { FALLBACK_TOOL_CATALOG, toolsApi, type ToolCatalogGroup } from "./api/tools";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
@@ -23,6 +21,23 @@ import {
   type SaveMcpServer,
   type UpdateMcpServer,
 } from "./api/mcpServers";
+import {
+  authLabel,
+  DEFAULT_CHAT_SUGGESTIONS,
+  delay,
+  insertAgentByCreatedAt,
+  isMissingMcpRoute,
+  isMissingMemoriesRoute,
+  isMissingToolsRoute,
+  type ProfileListResponse,
+  type ProfileView,
+} from "./app/appHelpers";
+import {
+  loadSkillsWithGatewayRestartFallback as loadSkillsRetry,
+  uploadAttachmentsWithGatewayRestartFallback as uploadAttachmentsRetry,
+  withGatewayRestartForMissingRoute,
+} from "./app/gatewayRestartFallback";
+import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -47,109 +62,6 @@ import { useConversations } from "./hooks/useConversations";
 import { useMessages } from "./hooks/useMessages";
 import { useRunStream, type AnyRunEvent } from "./hooks/useRunStream";
 import { useApproval } from "./hooks/useApproval";
-
-interface ProfileView {
-  id: string;
-  name: string;
-  activeAgentId: string;
-}
-
-interface ProfileListResponse {
-  profiles: ProfileView[];
-  activeProfileId: string;
-}
-
-/**
- * Starter prompts shown as clickable chips on the empty chat state.
- * Kept here (rather than a separate constants file) until copy is finalised.
- */
-const DEFAULT_CHAT_SUGGESTIONS: ReadonlyArray<string> = [
-  "帮我审查最近的代码改动",
-  "解释这个错误日志",
-  "起草一份产品方案",
-  "总结这份文档",
-];
-
-/** Re-insert a soft-deleted agent at its original position by createdAt. */
-function insertAgentByCreatedAt(items: Agent[], item: Agent): Agent[] {
-  // De-duplicate first in case a refetch already raced us.
-  const filtered = items.filter((a) => a.id !== item.id);
-  const target = parseTime(item.createdAt);
-  if (target === null) return [...filtered, item];
-  for (let i = 0; i < filtered.length; i += 1) {
-    const candidate = parseTime(filtered[i].createdAt);
-    if (candidate !== null && candidate <= target) {
-      return [...filtered.slice(0, i), item, ...filtered.slice(i)];
-    }
-  }
-  return [...filtered, item];
-}
-
-function parseTime(input: string): number | null {
-  const t = new Date(input).getTime();
-  return Number.isNaN(t) ? null : t;
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function authLabel(status: AuthStatusView | null): string {
-  if (!status) return "loading";
-  if (status.active === "codex") {
-    const email = status.codex.email ?? "";
-    return `Codex(${email.split("@")[0]})`;
-  }
-  if (status.active === "api_key") return "API key";
-  if (status.codex.state === "expired") return "Codex 已过期⚠";
-  return "未认证";
-}
-
-function isMissingAttachmentRoute(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    cause.message.includes("POST /v1/attachments -> HTTP 404")
-  );
-}
-
-function isMissingSkillsRoute(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    cause.message.includes("GET /v1/skills") &&
-    cause.message.includes("HTTP 404")
-  );
-}
-
-function isMissingToolsRoute(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    cause.message.includes("GET /v1/tools/catalog") &&
-    cause.message.includes("HTTP 404")
-  );
-}
-
-function isMissingMemoriesRoute(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    cause.message.includes("/memories") &&
-    cause.message.includes("HTTP 404")
-  );
-}
-
-function isMissingMcpRoute(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    cause.message.includes("/v1/mcp/servers") &&
-    cause.message.includes("HTTP 404")
-  );
-}
-
-function isGatewayRestarting(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    (cause.message.includes("HTTP 503") || cause.message.includes("Failed to fetch"))
-  );
-}
 
 export function App() {
   const runtime = useRuntimeDescriptor();
@@ -185,16 +97,32 @@ export function App() {
   const [view, setView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<{
-    item: ConversationDto;
-    timer: ReturnType<typeof setTimeout>;
-  } | null>(null);
-  const [pendingAgentDelete, setPendingAgentDelete] = useState<{
-    item: Agent;
-    timer: ReturnType<typeof setTimeout>;
-  } | null>(null);
-
   const conversations = useConversations(apiClient);
+
+  // 5s soft-delete + undo for the conversation list. Commit closure
+  // re-binds every render so it always sees the current apiClient.
+  const conversationDelete = useUndoableDelete<ConversationDto>({
+    commit: (item) => conversations.commitDelete(item.id),
+  });
+  // Same pattern for the agent list. The commit also reconciles with
+  // a refetch on failure so the UI doesn't stay out of sync if the
+  // DELETE call fails after the timer fires.
+  const agentDelete = useUndoableDelete<Agent>({
+    commit: async (item) => {
+      if (!apiClient) return;
+      try {
+        await agentsApi.delete(apiClient, item.id);
+      } catch {
+        try {
+          const fresh = await agentsApi.list(apiClient);
+          setAgents(fresh);
+        } catch {
+          // best-effort
+        }
+      }
+    },
+  });
+
   const messages = useMessages(apiClient, activeConversationId);
   const runStream = useRunStream({
     client: apiClient,
@@ -474,7 +402,7 @@ export function App() {
         cid = created.id;
         setActiveConversationId(cid);
       }
-      const uploaded = await uploadAttachmentsWithGatewayRestartFallback(files);
+      const uploaded = await uploadAttachmentsRetry(apiClient, files);
       const result = await runsApi.create(apiClient, cid, {
         input,
         attachmentIds: uploaded.map((attachment) => attachment.id),
@@ -505,99 +433,10 @@ export function App() {
     }
   }
 
-  async function uploadAttachmentsWithGatewayRestartFallback(files: File[]) {
-    if (!apiClient || files.length === 0) return [];
-    try {
-      return await Promise.all(files.map((file) => attachmentsApi.upload(apiClient, file)));
-    } catch (cause) {
-      if (!isMissingAttachmentRoute(cause)) throw cause;
-      await invoke("restart_gateway");
-      let lastError: unknown = cause;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await delay(200);
-        try {
-          await apiClient.get<{ ok: boolean }>("/healthz");
-        } catch (healthCause) {
-          lastError = healthCause;
-          continue;
-        }
-        try {
-          return await Promise.all(files.map((file) => attachmentsApi.upload(apiClient, file)));
-        } catch (retryCause) {
-          lastError = retryCause;
-          if (isMissingAttachmentRoute(retryCause) || isGatewayRestarting(retryCause)) {
-            continue;
-          }
-          throw retryCause;
-        }
-      }
-      throw lastError;
-    }
-  }
-
-  async function loadSkillsWithGatewayRestartFallback(agentId: string): Promise<SkillListResponse> {
-    if (!apiClient) throw new Error("API client is not ready");
-    try {
-      return await skillsApi.list(apiClient, agentId);
-    } catch (cause) {
-      if (!isMissingSkillsRoute(cause)) throw cause;
-      await invoke("restart_gateway");
-      let lastError: unknown = cause;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await delay(200);
-        try {
-          await apiClient.get<{ ok: boolean }>("/healthz");
-        } catch (healthCause) {
-          lastError = healthCause;
-          continue;
-        }
-        try {
-          return await skillsApi.list(apiClient, agentId);
-        } catch (retryCause) {
-          lastError = retryCause;
-          if (isMissingSkillsRoute(retryCause) || isGatewayRestarting(retryCause)) {
-            continue;
-          }
-          throw retryCause;
-        }
-      }
-      throw lastError;
-    }
-  }
-
-  async function withGatewayRestartForMissingRoute<T>(
-    run: () => Promise<T>,
-    isMissingRoute: (cause: unknown) => boolean,
-  ): Promise<T> {
-    try {
-      return await run();
-    } catch (cause) {
-      if (!isMissingRoute(cause) || !apiClient) throw cause;
-      await invoke("restart_gateway");
-      let lastError: unknown = cause;
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await delay(200);
-        try {
-          await apiClient.get<{ ok: boolean }>("/healthz");
-        } catch (healthCause) {
-          lastError = healthCause;
-          continue;
-        }
-        try {
-          return await run();
-        } catch (retryCause) {
-          lastError = retryCause;
-          if (isMissingRoute(retryCause) || isGatewayRestarting(retryCause)) continue;
-          throw retryCause;
-        }
-      }
-      throw lastError;
-    }
-  }
-
   async function loadMemories(agentId: string): Promise<Memory[]> {
     if (!apiClient) return [];
     return withGatewayRestartForMissingRoute(
+      apiClient,
       () => memoriesApi.list(apiClient, agentId),
       isMissingMemoriesRoute,
     );
@@ -606,6 +445,7 @@ export function App() {
   async function loadMemoryStatus(agentId: string): Promise<MemoryStatus | null> {
     if (!apiClient) return null;
     return withGatewayRestartForMissingRoute(
+      apiClient,
       () => memoriesApi.status(apiClient, agentId),
       isMissingMemoriesRoute,
     );
@@ -614,6 +454,7 @@ export function App() {
   async function reindexMemory(agentId: string): Promise<MemoryStatus> {
     if (!apiClient) throw new Error("API client is not ready");
     return withGatewayRestartForMissingRoute(
+      apiClient,
       () => memoriesApi.reindex(apiClient, agentId),
       isMissingMemoriesRoute,
     );
@@ -622,6 +463,7 @@ export function App() {
   async function createMemory(agentId: string, content: string): Promise<Memory> {
     if (!apiClient) throw new Error("API client is not ready");
     return withGatewayRestartForMissingRoute(
+      apiClient,
       () => memoriesApi.create(apiClient, agentId, content),
       isMissingMemoriesRoute,
     );
@@ -630,6 +472,7 @@ export function App() {
   async function deleteMemory(agentId: string, memoryId: string): Promise<void> {
     if (!apiClient) return;
     await withGatewayRestartForMissingRoute(
+      apiClient,
       () => memoriesApi.delete(apiClient, agentId, memoryId),
       isMissingMemoriesRoute,
     );
@@ -638,6 +481,7 @@ export function App() {
   async function loadMcpServers(): Promise<McpServer[]> {
     if (!apiClient) return [];
     return await withGatewayRestartForMissingRoute(
+      apiClient,
       () => mcpServersApi.list(apiClient),
       isMissingMcpRoute,
     );
@@ -646,6 +490,7 @@ export function App() {
   async function createMcpServer(input: SaveMcpServer): Promise<McpServer> {
     if (!apiClient) throw new Error("API client is not ready");
     return await withGatewayRestartForMissingRoute(
+      apiClient,
       () => mcpServersApi.create(apiClient, input),
       isMissingMcpRoute,
     );
@@ -654,6 +499,7 @@ export function App() {
   async function updateMcpServer(id: string, patch: UpdateMcpServer): Promise<McpServer> {
     if (!apiClient) throw new Error("API client is not ready");
     return await withGatewayRestartForMissingRoute(
+      apiClient,
       () => mcpServersApi.update(apiClient, id, patch),
       isMissingMcpRoute,
     );
@@ -662,6 +508,7 @@ export function App() {
   async function deleteMcpServer(id: string): Promise<void> {
     if (!apiClient) return;
     await withGatewayRestartForMissingRoute(
+      apiClient,
       () => mcpServersApi.delete(apiClient, id),
       isMissingMcpRoute,
     );
@@ -670,6 +517,7 @@ export function App() {
   async function reconnectMcpServer(id: string): Promise<McpServer> {
     if (!apiClient) throw new Error("API client is not ready");
     return await withGatewayRestartForMissingRoute(
+      apiClient,
       () => mcpServersApi.reconnect(apiClient, id),
       isMissingMcpRoute,
     );
@@ -678,6 +526,7 @@ export function App() {
   async function listMcpServerTools(id: string): Promise<McpToolSummary[]> {
     if (!apiClient) return [];
     return await withGatewayRestartForMissingRoute(
+      apiClient,
       () => mcpServersApi.tools(apiClient, id),
       isMissingMcpRoute,
     );
@@ -764,78 +613,32 @@ export function App() {
 
   /**
    * One-tap delete: hide the row immediately, surface an undo toast for
-   * 5 seconds, and only call the API when the user does NOT undo.
-   * If the user navigates back to the row before commit, we restore.
+   * 5 seconds, and only call the API when the user does NOT undo. The
+   * `useUndoableDelete` hook owns the timer + unmount-commit invariant;
+   * this function only layers in the surface-specific bookkeeping
+   * (clearing the active chat when the deleted row WAS active).
    */
   function handleDeleteConversation(id: string) {
     const target = conversations.items.find((c) => c.id === id);
     if (!target) return;
 
-    // If a previous undo window is still open, commit it now so we don't
-    // pile up timers (each pending delete owns its own grace period).
-    if (pendingDelete) {
-      clearTimeout(pendingDelete.timer);
-      void conversations.commitDelete(pendingDelete.item.id);
-    }
-
     conversations.softDelete(id);
-
-    // If the deleted row was the active one, drop it from the chat surface
-    // so the user doesn't see stale messages from a removed conversation.
     if (id === activeConversationId) {
       setActiveConversationId(null);
       setActiveRunId(null);
       setRetainedRunEvents({ conversationId: null, events: [] });
     }
-
-    const timer = setTimeout(() => {
-      setPendingDelete(null);
-      void conversations.commitDelete(id);
-    }, 5000);
-    setPendingDelete({ item: target, timer });
+    conversationDelete.startDelete(target);
   }
 
   function handleUndoDelete() {
-    if (!pendingDelete) return;
-    clearTimeout(pendingDelete.timer);
-    conversations.restore(pendingDelete.item);
-    setPendingDelete(null);
+    const restored = conversationDelete.undo();
+    if (restored) conversations.restore(restored);
   }
 
   function handleDismissDeleteToast() {
-    if (!pendingDelete) return;
-    clearTimeout(pendingDelete.timer);
-    void conversations.commitDelete(pendingDelete.item.id);
-    setPendingDelete(null);
+    conversationDelete.dismiss();
   }
-
-  // On unmount, clear the grace-period timer and commit any pending delete.
-  // Without this, the timer fires against a torn-down component and the local
-  // UI stays out of sync with the backend (row hidden, but never deleted).
-  // We capture the latest pending state via a ref to avoid stale-closure
-  // issues — the cleanup only runs at unmount.
-  const pendingDeleteRef = useRef(pendingDelete);
-  pendingDeleteRef.current = pendingDelete;
-  const commitDeleteRef = useRef(conversations.commitDelete);
-  commitDeleteRef.current = conversations.commitDelete;
-  const pendingAgentDeleteRef = useRef(pendingAgentDelete);
-  pendingAgentDeleteRef.current = pendingAgentDelete;
-  const apiClientRef = useRef(apiClient);
-  apiClientRef.current = apiClient;
-  useEffect(() => {
-    return () => {
-      const pending = pendingDeleteRef.current;
-      if (pending) {
-        clearTimeout(pending.timer);
-        void commitDeleteRef.current(pending.item.id);
-      }
-      const pendingAgent = pendingAgentDeleteRef.current;
-      if (pendingAgent && apiClientRef.current) {
-        clearTimeout(pendingAgent.timer);
-        void agentsApi.delete(apiClientRef.current, pendingAgent.item.id);
-      }
-    };
-  }, []);
 
   async function handleCreateAgent(input: {
     name: string;
@@ -899,64 +702,32 @@ export function App() {
   }
 
   /**
-   * One-tap agent delete with a 5s undo grace period — mirrors the
-   * conversation delete flow. The list hides the row immediately, a toast
-   * surfaces the undo affordance, and the API DELETE only fires if the user
-   * does not undo.
+   * One-tap agent delete — mirrors the conversation delete flow via
+   * `useUndoableDelete`. This wrapper handles the surface-specific
+   * concerns (selection fallback, soft-delete via setAgents).
    */
   function handleDeleteAgent(id: string) {
     const target = agents.find((a) => a.id === id);
     if (!target) return;
 
-    // Commit any prior pending agent delete so we don't pile up timers.
-    if (pendingAgentDelete) {
-      clearTimeout(pendingAgentDelete.timer);
-      void commitAgentDelete(pendingAgentDelete.item.id);
-    }
-
     setAgents((prev) => prev.filter((a) => a.id !== id));
-
-    // If the deleted agent was selected, fall back to the next available one
-    // so the editor pane doesn't stay stuck on a missing record.
     if (id === selectedAgentId) {
+      // Don't strand the editor pane on a missing record.
       const replacement = agents.find((a) => a.id !== id);
       if (replacement) setSelectedAgentId(replacement.id);
     }
-
-    const timer = setTimeout(() => {
-      setPendingAgentDelete(null);
-      void commitAgentDelete(id);
-    }, 5000);
-    setPendingAgentDelete({ item: target, timer });
+    agentDelete.startDelete(target);
   }
 
   function handleUndoAgentDelete() {
-    if (!pendingAgentDelete) return;
-    clearTimeout(pendingAgentDelete.timer);
-    setAgents((prev) => insertAgentByCreatedAt(prev, pendingAgentDelete.item));
-    setPendingAgentDelete(null);
+    const restored = agentDelete.undo();
+    if (restored) {
+      setAgents((prev) => insertAgentByCreatedAt(prev, restored));
+    }
   }
 
   function handleDismissAgentToast() {
-    if (!pendingAgentDelete) return;
-    clearTimeout(pendingAgentDelete.timer);
-    void commitAgentDelete(pendingAgentDelete.item.id);
-    setPendingAgentDelete(null);
-  }
-
-  async function commitAgentDelete(id: string) {
-    if (!apiClient) return;
-    try {
-      await agentsApi.delete(apiClient, id);
-    } catch {
-      // Refetch on error to reconcile local state with the backend.
-      try {
-        const fresh = await agentsApi.list(apiClient);
-        setAgents(fresh);
-      } catch {
-        // best-effort
-      }
-    }
+    agentDelete.dismiss();
   }
 
   return (
@@ -1025,7 +796,7 @@ export function App() {
               agents={agents}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
-              onLoadSkills={loadSkillsWithGatewayRestartFallback}
+              onLoadSkills={(agentId) => loadSkillsRetry(apiClient, agentId)}
               onSaveAgentSkills={handleSaveAgentSkills}
             />
           ) : null}
@@ -1090,15 +861,15 @@ export function App() {
         onDelete={handleDeleteConversation}
       />
 
-      {pendingAgentDelete ? (
+      {agentDelete.pending ? (
         <Toast
-          message={`已删除智能体"${pendingAgentDelete.item.name || pendingAgentDelete.item.id}"`}
+          message={`已删除智能体"${agentDelete.pending.name || agentDelete.pending.id}"`}
           action={{ label: "撤销", onClick: handleUndoAgentDelete }}
           onDismiss={handleDismissAgentToast}
         />
-      ) : pendingDelete ? (
+      ) : conversationDelete.pending ? (
         <Toast
-          message={`已删除"${pendingDelete.item.title || "(无标题)"}"`}
+          message={`已删除"${conversationDelete.pending.title || "(无标题)"}"`}
           action={{ label: "撤销", onClick: handleUndoDelete }}
           onDismiss={handleDismissDeleteToast}
         />
