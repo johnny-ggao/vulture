@@ -20,7 +20,7 @@ use supervisor::{
 };
 use vulture_core::{PortBinding, RuntimeDescriptor, API_VERSION};
 
-fn vulture_root() -> PathBuf {
+fn vulture_root() -> Result<PathBuf> {
     runtime::vulture_root_from_env(&|key| std::env::var_os(key))
 }
 
@@ -30,7 +30,7 @@ fn now_iso() -> String {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
-    let root = vulture_root();
+    let root = vulture_root().context("resolve Vulture desktop root")?;
     std::fs::create_dir_all(&root).context("create vulture root")?;
 
     // 1. Single instance lock — held for life of process via this binding.

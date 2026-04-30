@@ -18,23 +18,22 @@ pub const TOKEN_B64_LEN: usize = 43;
 
 pub fn vulture_root_from_env(
     env: &impl Fn(&str) -> Option<std::ffi::OsString>,
-) -> std::path::PathBuf {
+) -> anyhow::Result<PathBuf> {
     if let Some(value) = env("VULTURE_DESKTOP_ROOT") {
         if !value.to_string_lossy().trim().is_empty() {
             let path = PathBuf::from(value);
-            assert!(
-                path.is_absolute(),
-                "VULTURE_DESKTOP_ROOT must be an absolute path"
-            );
-            return path;
+            if !path.is_absolute() {
+                anyhow::bail!("VULTURE_DESKTOP_ROOT must be an absolute path");
+            }
+            return Ok(path);
         }
     }
 
     let home = env("HOME").expect("HOME must be set");
-    PathBuf::from(home)
+    Ok(PathBuf::from(home)
         .join("Library")
         .join("Application Support")
-        .join("Vulture")
+        .join("Vulture"))
 }
 
 pub fn generate_token() -> String {
@@ -132,7 +131,8 @@ mod tests {
             "VULTURE_DESKTOP_ROOT" => Some("/tmp/vulture-e2e-root".into()),
             "HOME" => Some("/Users/example".into()),
             _ => None,
-        });
+        })
+        .expect("absolute override should resolve");
 
         assert_eq!(root, std::path::PathBuf::from("/tmp/vulture-e2e-root"));
     }
@@ -142,7 +142,8 @@ mod tests {
         let root = vulture_root_from_env(&|key| match key {
             "HOME" => Some("/Users/example".into()),
             _ => None,
-        });
+        })
+        .expect("fallback root should resolve");
 
         assert_eq!(
             root,
@@ -159,7 +160,8 @@ mod tests {
             "VULTURE_DESKTOP_ROOT" => Some("   ".into()),
             "HOME" => Some("/Users/example".into()),
             _ => None,
-        });
+        })
+        .expect("empty override should fall back");
 
         assert_eq!(
             root,
@@ -171,13 +173,19 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "VULTURE_DESKTOP_ROOT must be an absolute path")]
     fn root_rejects_relative_vulture_desktop_root() {
-        let _ = vulture_root_from_env(&|key| match key {
+        let err = vulture_root_from_env(&|key| match key {
             "VULTURE_DESKTOP_ROOT" => Some("relative/root".into()),
             "HOME" => Some("/Users/example".into()),
             _ => None,
-        });
+        })
+        .expect_err("relative override should fail");
+
+        assert!(
+            err.to_string()
+                .contains("VULTURE_DESKTOP_ROOT must be an absolute path"),
+            "unexpected error: {err:#}"
+        );
     }
 
     #[test]
