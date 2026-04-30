@@ -83,6 +83,7 @@ export function ChatView(props: ChatViewProps) {
                 role={m.role}
                 content={m.content}
                 attachments={m.attachments}
+                agent={activeAgent ?? undefined}
                 usage={m.runId ? props.messageUsages?.get(m.runId) : null}
               />
             ))}
@@ -91,6 +92,7 @@ export function ChatView(props: ChatViewProps) {
               submittingApprovals={props.submittingApprovals}
               resuming={props.resumingRun}
               streaming={props.runStatus === "streaming" || props.runStatus === "connecting"}
+              agent={activeAgent ?? undefined}
               onDecide={props.onDecide}
               onResume={props.onResume}
               onCancel={props.onCancel}

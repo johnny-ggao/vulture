@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { MessageDto } from "../api/conversations";
 import type { SubagentSessionDto, SubagentSessionStatus } from "../api/subagentSessions";
+import { AgentAvatar } from "./components";
 
 export interface SubagentSessionPanelProps {
   sessions: ReadonlyArray<SubagentSessionDto>;
@@ -9,6 +10,15 @@ export interface SubagentSessionPanelProps {
   onLoadMessages: (sessionId: string) => void | Promise<void>;
 }
 
+/**
+ * Inline panel listing the subagent sessions spawned by the current run.
+ * Each row is collapsible — clicking expands it inline (via aria-expanded)
+ * and lazily loads the conversation messages on first open.
+ *
+ * Visual language matches ToolBlock (round 9): SVG chevron, per-row
+ * status pill, and a subtle inline expansion that doesn't pull the
+ * focus away from the parent run stream.
+ */
 export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   if (props.sessions.length === 0) return null;
@@ -26,6 +36,10 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
           const open = expanded.has(session.id);
           const messages = props.messagesBySessionId[session.id] ?? [];
           const loading = props.loadingSessionIds.has(session.id);
+          const subagent = {
+            id: session.agentId,
+            name: session.label || session.agentId,
+          };
           return (
             <article className="subagent-item" key={session.id} data-status={session.status}>
               <button
@@ -43,9 +57,14 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
                   setExpanded(next);
                 }}
               >
-                <span className="subagent-chevron" aria-hidden="true">{open ? "▼" : "▶"}</span>
+                <span className="subagent-chevron" aria-hidden="true">
+                  <ChevronIcon open={open} />
+                </span>
+                <span className="subagent-avatar" aria-hidden="true">
+                  <AgentAvatar agent={subagent} size={22} shape="square" />
+                </span>
                 <span className="subagent-main">
-                  <strong>{session.label || session.agentId}</strong>
+                  <strong>{subagent.name}</strong>
                   <span>
                     {session.agentId} · {formatMessageCount(session.messageCount)}
                   </span>
@@ -73,6 +92,28 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
         })}
       </div>
     </section>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{
+        transform: open ? "rotate(90deg)" : "rotate(0deg)",
+        transition: "transform 160ms cubic-bezier(0.4, 0, 0.2, 1)",
+      }}
+    >
+      <path d="M5.5 3l5 5-5 5" />
+    </svg>
   );
 }
 

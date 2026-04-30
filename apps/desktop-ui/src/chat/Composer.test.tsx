@@ -288,4 +288,122 @@ describe("Composer", () => {
     expect(screen.getByRole("radio", { name: "快速" }).getAttribute("aria-checked")).toBe("false");
     expect(screen.getByRole("radio", { name: "深度" }).getAttribute("aria-checked")).toBe("true");
   });
+
+  // ---- Round 10: attachment chips, dedupe, drag-drop --------------
+
+  test("attachment chip shows file name + a tabular size + remove button", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const file = new File(["abcde"], "note.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("添加附件"), {
+      target: { files: [file] },
+    });
+    expect(screen.getByText("note.txt")).toBeDefined();
+    // 5 bytes → "5 B" rendered in a tabular-numeric pill.
+    expect(screen.getByText("5 B")).toBeDefined();
+    expect(screen.getByLabelText(/移除 note.txt/)).toBeDefined();
+  });
+
+  test("clicking the remove button drops that file from the staged list", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const file = new File(["x"], "note.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("添加附件"), {
+      target: { files: [file] },
+    });
+    expect(screen.getByText("note.txt")).toBeDefined();
+    fireEvent.click(screen.getByLabelText(/移除 note.txt/));
+    expect(screen.queryByText("note.txt")).toBeNull();
+  });
+
+  test("dropping files onto the composer attaches them", () => {
+    const { container } = render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const composer = container.querySelector(".composer") as HTMLElement;
+    const file = new File(["x"], "drop.txt", { type: "text/plain" });
+    const dataTransfer = {
+      types: ["Files"],
+      files: [file],
+    };
+    fireEvent.drop(composer, { dataTransfer });
+    expect(screen.getByText("drop.txt")).toBeDefined();
+  });
+
+  test("dragenter toggles a dragging class so the drop overlay can show", () => {
+    const { container } = render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const composer = container.querySelector(".composer") as HTMLElement;
+    fireEvent.dragEnter(composer, { dataTransfer: { types: ["Files"] } });
+    expect(composer.classList.contains("composer-dragging")).toBe(true);
+    fireEvent.dragLeave(composer, { dataTransfer: { types: ["Files"] } });
+    expect(composer.classList.contains("composer-dragging")).toBe(false);
+  });
+
+  test("does NOT enter drag state for non-file drags (text selection etc.)", () => {
+    const { container } = render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const composer = container.querySelector(".composer") as HTMLElement;
+    fireEvent.dragEnter(composer, { dataTransfer: { types: ["text/plain"] } });
+    expect(composer.classList.contains("composer-dragging")).toBe(false);
+  });
+
+  test("attaching the same file twice de-dupes by (name, size)", () => {
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const dup = new File(["abc"], "same.txt", { type: "text/plain" });
+    const input = screen.getByLabelText("添加附件");
+    fireEvent.change(input, { target: { files: [dup] } });
+    fireEvent.change(input, { target: { files: [dup] } });
+    // Only one chip in the DOM despite picking the file twice.
+    const chips = document.querySelectorAll(".composer-attachment");
+    expect(chips.length).toBe(1);
+  });
 });

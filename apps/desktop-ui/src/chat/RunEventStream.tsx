@@ -222,6 +222,12 @@ export interface RunEventStreamProps {
    * sees output is in-flight.
    */
   streaming?: boolean;
+  /**
+   * Optional context about the agent producing this run — passed to
+   * each in-flight assistant text block so the bubble's avatar matches
+   * the rest of the surface.
+   */
+  agent?: { id: string; name: string };
   onDecide: (callId: string, decision: ApprovalDecision) => void;
   onResume: () => void;
   onCancel: () => void;
@@ -245,6 +251,7 @@ export function RunEventStream(props: RunEventStreamProps) {
               role="assistant"
               content={b.content}
               usage={b.usage}
+              agent={props.agent}
               streaming={Boolean(props.streaming) && i === lastTextIdx}
             />
           );

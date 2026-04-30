@@ -66,7 +66,15 @@ describe("ChatView", () => {
         onDecide={() => {}}
       />,
     );
-    expect(screen.getByText("Tokens: 100 in · 25 out · 125 total")).toBeDefined();
+    // Round 10: token usage moved from a plain text label to a pill.
+    // Total is the headline number; in/out live in the title for hover.
+    const total = screen.getByText("125");
+    expect(total).toBeDefined();
+    const pill = total.closest(".message-usage") as HTMLElement | null;
+    expect(pill).not.toBeNull();
+    expect(pill?.getAttribute("title") ?? "").toContain("100 in");
+    expect(pill?.getAttribute("title") ?? "").toContain("25 out");
+    expect(pill?.getAttribute("title") ?? "").toContain("125 total");
   });
 
   test("renders subagent sessions below the current conversation", () => {

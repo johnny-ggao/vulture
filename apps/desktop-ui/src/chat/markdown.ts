@@ -1,8 +1,13 @@
 /**
  * Minimal, dependency-free markdown parser for assistant messages.
  *
- * Supports: fenced code blocks, inline code, links, **bold**.
- * Anything else falls through as plain text — by design.
+ * Supports:
+ *   Block: fenced code, heading (h2–h4), unordered/ordered list,
+ *          blockquote, horizontal rule, paragraph.
+ *   Inline: code, links, **bold**.
+ *
+ * Anything else falls through as plain text — by design (we'd rather
+ * preserve raw source than misinterpret it).
  *
  * SAFETY:
  *   - Audited link protocols (see SAFE_HREF_PROTOCOLS): http(s):, mailto:, /,
@@ -16,7 +21,15 @@
 
 export type MarkdownBlock =
   | { kind: "paragraph"; inlines: ReadonlyArray<MarkdownInline> }
-  | { kind: "code"; lang: string; text: string };
+  | { kind: "code"; lang: string; text: string }
+  | { kind: "heading"; level: 2 | 3 | 4; inlines: ReadonlyArray<MarkdownInline> }
+  | {
+      kind: "list";
+      ordered: boolean;
+      items: ReadonlyArray<ReadonlyArray<MarkdownInline>>;
+    }
+  | { kind: "blockquote"; inlines: ReadonlyArray<MarkdownInline> }
+  | { kind: "hr" };
 
 export type MarkdownInline =
   | { kind: "text"; text: string }
@@ -45,6 +58,8 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
 
   while (i < lines.length) {
     const line = lines[i] ?? "";
+
+    // ---- Fenced code: ```lang ... ``` --------------------------------
     const fence = /^```([\w+-]*)\s*$/.exec(line);
     if (fence) {
       let close = -1;
@@ -66,6 +81,88 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
         text: lines.slice(i + 1, close).join("\n"),
       });
       i = close + 1;
+      continue;
+    }
+
+    // ---- Horizontal rule: ---  or  *** -------------------------------
+    if (/^\s*(?:-{3,}|\*{3,})\s*$/.test(line)) {
+      flushParagraph();
+      blocks.push({ kind: "hr" });
+      i += 1;
+      continue;
+    }
+
+    // ---- Heading: ##, ###, #### --------------------------------------
+    const heading = /^(#{2,4})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      flushParagraph();
+      const level = heading[1].length as 2 | 3 | 4;
+      blocks.push({
+        kind: "heading",
+        level,
+        inlines: parseInlines(heading[2]),
+      });
+      i += 1;
+      continue;
+    }
+
+    // ---- Unordered list: -  or  * + space ---------------------------
+    // Consume consecutive matching lines as items. Tight lists only —
+    // a blank line ends the list and starts a new paragraph buffer.
+    const ulMatch = /^[-*]\s+(.*)$/.exec(line);
+    if (ulMatch) {
+      flushParagraph();
+      const items: MarkdownInline[][] = [parseInlines(ulMatch[1])];
+      let j = i + 1;
+      while (j < lines.length) {
+        const next = lines[j] ?? "";
+        const m = /^[-*]\s+(.*)$/.exec(next);
+        if (!m) break;
+        items.push(parseInlines(m[1]));
+        j += 1;
+      }
+      blocks.push({ kind: "list", ordered: false, items });
+      i = j;
+      continue;
+    }
+
+    // ---- Ordered list: 1.  2.  ... + space --------------------------
+    const olMatch = /^\d+\.\s+(.*)$/.exec(line);
+    if (olMatch) {
+      flushParagraph();
+      const items: MarkdownInline[][] = [parseInlines(olMatch[1])];
+      let j = i + 1;
+      while (j < lines.length) {
+        const next = lines[j] ?? "";
+        const m = /^\d+\.\s+(.*)$/.exec(next);
+        if (!m) break;
+        items.push(parseInlines(m[1]));
+        j += 1;
+      }
+      blocks.push({ kind: "list", ordered: true, items });
+      i = j;
+      continue;
+    }
+
+    // ---- Blockquote: >  + space -------------------------------------
+    // Consume consecutive `>` lines, joining their content with newline.
+    const bqMatch = /^>\s?(.*)$/.exec(line);
+    if (bqMatch) {
+      flushParagraph();
+      const parts: string[] = [bqMatch[1]];
+      let j = i + 1;
+      while (j < lines.length) {
+        const next = lines[j] ?? "";
+        const m = /^>\s?(.*)$/.exec(next);
+        if (!m) break;
+        parts.push(m[1]);
+        j += 1;
+      }
+      blocks.push({
+        kind: "blockquote",
+        inlines: parseInlines(parts.join("\n")),
+      });
+      i = j;
       continue;
     }
 

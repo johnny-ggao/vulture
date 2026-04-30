@@ -145,4 +145,132 @@ describe("parseMarkdown", () => {
     expect(parseMarkdown("")).toEqual([]);
     expect(parseMarkdown("   \n\n  ")).toEqual([]);
   });
+
+  // ---- Round 10 extensions: heading / list / blockquote / hr ----
+
+  test("parses ## heading as level 2", () => {
+    const blocks = parseMarkdown("## Title\n\nbody");
+    expect(blocks[0]).toEqual({
+      kind: "heading",
+      level: 2,
+      inlines: [{ kind: "text", text: "Title" }],
+    });
+    expect(blocks[1].kind).toBe("paragraph");
+  });
+
+  test("parses ### and #### into level 3 / 4", () => {
+    const a = parseMarkdown("### sub")[0];
+    const b = parseMarkdown("#### sub-sub")[0];
+    expect(a).toMatchObject({ kind: "heading", level: 3 });
+    expect(b).toMatchObject({ kind: "heading", level: 4 });
+  });
+
+  test("does NOT promote # to a heading (level 1 is reserved for the agent header)", () => {
+    const blocks = parseMarkdown("# topbar style");
+    expect(blocks[0].kind).toBe("paragraph");
+  });
+
+  test("parses ##### and beyond as paragraph (out of scope)", () => {
+    const blocks = parseMarkdown("##### deep");
+    expect(blocks[0].kind).toBe("paragraph");
+  });
+
+  test("strips trailing # tokens from heading text", () => {
+    const blocks = parseMarkdown("## Title ###");
+    expect(blocks[0]).toEqual({
+      kind: "heading",
+      level: 2,
+      inlines: [{ kind: "text", text: "Title" }],
+    });
+  });
+
+  test("supports inline code / bold / link inside a heading", () => {
+    const blocks = parseMarkdown("## Use `bun test` and **note**");
+    expect(blocks[0].kind).toBe("heading");
+    if (blocks[0].kind === "heading") {
+      expect(blocks[0].inlines.some((i) => i.kind === "code")).toBe(true);
+      expect(blocks[0].inlines.some((i) => i.kind === "strong")).toBe(true);
+    }
+  });
+
+  test("parses unordered list with -", () => {
+    const blocks = parseMarkdown("- one\n- two");
+    expect(blocks).toEqual([
+      {
+        kind: "list",
+        ordered: false,
+        items: [
+          [{ kind: "text", text: "one" }],
+          [{ kind: "text", text: "two" }],
+        ],
+      },
+    ]);
+  });
+
+  test("parses unordered list with *", () => {
+    const blocks = parseMarkdown("* one\n* two");
+    expect(blocks[0]).toMatchObject({ kind: "list", ordered: false });
+    if (blocks[0].kind === "list") expect(blocks[0].items).toHaveLength(2);
+  });
+
+  test("parses ordered list with 1. 2. ...", () => {
+    const blocks = parseMarkdown("1. first\n2. second");
+    expect(blocks[0]).toMatchObject({ kind: "list", ordered: true });
+    if (blocks[0].kind === "list") expect(blocks[0].items).toHaveLength(2);
+  });
+
+  test("blank line ends a list and starts a paragraph", () => {
+    const blocks = parseMarkdown("- one\n- two\n\nafter");
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].kind).toBe("list");
+    expect(blocks[1].kind).toBe("paragraph");
+  });
+
+  test("list items support inline code / bold / link", () => {
+    const blocks = parseMarkdown("- run `bun test` to **verify**\n- see [docs](https://example.com)");
+    if (blocks[0].kind === "list") {
+      const first = blocks[0].items[0];
+      expect(first.some((i) => i.kind === "code")).toBe(true);
+      expect(first.some((i) => i.kind === "strong")).toBe(true);
+      const second = blocks[0].items[1];
+      expect(second.some((i) => i.kind === "link")).toBe(true);
+    }
+  });
+
+  test("parses blockquote", () => {
+    const blocks = parseMarkdown("> quoted line\n> and another");
+    expect(blocks[0].kind).toBe("blockquote");
+    if (blocks[0].kind === "blockquote") {
+      // Two source lines join with a single newline; inline parser keeps it
+      // as plain text.
+      const text = blocks[0].inlines
+        .map((i) => (i.kind === "text" ? i.text : ""))
+        .join("");
+      expect(text).toBe("quoted line\nand another");
+    }
+  });
+
+  test("parses horizontal rule from --- and ***", () => {
+    expect(parseMarkdown("---")[0]).toEqual({ kind: "hr" });
+    expect(parseMarkdown("***")[0]).toEqual({ kind: "hr" });
+    expect(parseMarkdown("------")[0]).toEqual({ kind: "hr" });
+  });
+
+  test("does not treat -- (only two dashes) as hr", () => {
+    const blocks = parseMarkdown("--");
+    expect(blocks[0].kind).toBe("paragraph");
+  });
+
+  test("intermixed blocks land in source order", () => {
+    const blocks = parseMarkdown(
+      "## Plan\n\n1. fetch data\n2. render\n\n> note: skip step 2 if cached\n\n---\n\nAfter the rule.",
+    );
+    expect(blocks.map((b) => b.kind)).toEqual([
+      "heading",
+      "list",
+      "blockquote",
+      "hr",
+      "paragraph",
+    ]);
+  });
 });

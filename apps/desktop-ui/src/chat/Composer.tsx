@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AgentAvatar } from "./components";
 
 export type ThinkingMode = "low" | "medium" | "high";
@@ -9,6 +9,9 @@ const THINKING_OPTIONS: Array<{ value: ThinkingMode; label: string }> = [
   { value: "medium", label: "标准" },
   { value: "high", label: "深度" },
 ];
+
+const TEXTAREA_MIN_HEIGHT = 56;
+const TEXTAREA_MAX_HEIGHT = 280;
 
 export interface ComposerProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
@@ -23,6 +26,24 @@ export function Composer(props: ComposerProps) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [thinking, setThinking] = useState<ThinkingMode>("low");
+  const [dragging, setDragging] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Auto-grow: clamp the textarea between MIN and MAX heights based on
+  // the content's scrollHeight. We reset to "auto" first so shrinking
+  // works after the user deletes lines (otherwise scrollHeight stays at
+  // the previous tall value). useLayoutEffect (not useEffect) so the
+  // user never sees the unsized intermediate state.
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const next = Math.min(
+      Math.max(ta.scrollHeight, TEXTAREA_MIN_HEIGHT),
+      TEXTAREA_MAX_HEIGHT,
+    );
+    ta.style.height = `${next}px`;
+  }, [value]);
 
   async function send() {
     const trimmed = value.trim();
@@ -33,12 +54,67 @@ export function Composer(props: ComposerProps) {
     setFiles([]);
   }
 
+  function appendFiles(next: ReadonlyArray<File>) {
+    if (next.length === 0) return;
+    setFiles((prev) => {
+      // De-dupe by (name, size) — picking the same file twice from the
+      // OS dialog produces two identical File objects, which the user
+      // doesn't expect to upload twice.
+      const seen = new Set(prev.map((f) => `${f.name}::${f.size}`));
+      const fresh = Array.from(next).filter(
+        (f) => !seen.has(`${f.name}::${f.size}`),
+      );
+      return prev.concat(fresh);
+    });
+  }
+
+  function removeFile(target: File) {
+    setFiles((prev) =>
+      prev.filter((f) => f.name !== target.name || f.size !== target.size),
+    );
+  }
+
+  // Drag-and-drop attachments. The drag overlay only shows while the
+  // pointer is inside the composer; we track entry/leave at the root
+  // element to avoid the flicker that comes from individual children
+  // firing dragleave as the cursor moves over them.
+  const dragDepth = useRef(0);
+  function onDragEnter(event: React.DragEvent<HTMLDivElement>) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }
+  function onDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+    event.preventDefault();
+  }
+  function onDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+  }
+  function onDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    appendFiles(Array.from(event.dataTransfer.files));
+  }
+
   const canSend = Boolean(value.trim() && props.selectedAgentId && !props.running);
 
   return (
-    <div className="composer">
+    <div
+      className={"composer" + (dragging ? " composer-dragging" : "")}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <textarea
+        ref={textareaRef}
         value={value}
+        rows={1}
         placeholder="输入问题…（Enter 发送，Shift+Enter 换行）"
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -51,9 +127,11 @@ export function Composer(props: ComposerProps) {
       {files.length > 0 ? (
         <div className="composer-attachments">
           {files.map((file) => (
-            <span key={`${file.name}-${file.size}`} className="composer-attachment">
-              {file.name}
-            </span>
+            <AttachmentChip
+              key={`${file.name}::${file.size}`}
+              file={file}
+              onRemove={() => removeFile(file)}
+            />
           ))}
         </div>
       ) : null}
@@ -82,11 +160,15 @@ export function Composer(props: ComposerProps) {
             type="file"
             multiple
             aria-label="添加附件"
-            onChange={(e) => setFiles(Array.from(e.currentTarget.files ?? []))}
+            onChange={(e) => {
+              appendFiles(Array.from(e.currentTarget.files ?? []));
+              // Reset the file input so picking the same file twice in a
+              // row still fires onChange (browsers debounce identical
+              // selections by default).
+              e.currentTarget.value = "";
+            }}
           />
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
-            <path d="M13.5 7.5 8.1 12.9a3.2 3.2 0 0 1-4.5-4.5l5.8-5.8a2.2 2.2 0 0 1 3.1 3.1L6.6 11.6a1.2 1.2 0 0 1-1.7-1.7l5.4-5.4" />
-          </svg>
+          <PaperclipIcon />
         </label>
         <span className="spacer" />
         {props.running ? (
@@ -110,8 +192,51 @@ export function Composer(props: ComposerProps) {
           </button>
         )}
       </div>
+
+      {dragging ? (
+        <div className="composer-dropzone" aria-hidden="true">
+          <div className="composer-dropzone-card">
+            <DropIcon />
+            <span>松开以添加附件</span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+interface AttachmentChipProps {
+  file: File;
+  onRemove: () => void;
+}
+
+function AttachmentChip({ file, onRemove }: AttachmentChipProps) {
+  const isImage = file.type.startsWith("image/");
+  return (
+    <span
+      className={`composer-attachment composer-attachment-${isImage ? "image" : "file"}`}
+    >
+      <span className="composer-attachment-icon" aria-hidden="true">
+        {isImage ? <ImageIcon /> : <FileIcon />}
+      </span>
+      <span className="composer-attachment-name">{file.name}</span>
+      <em className="composer-attachment-size">{formatBytes(file.size)}</em>
+      <button
+        type="button"
+        className="composer-attachment-remove"
+        aria-label={`移除 ${file.name}`}
+        onClick={onRemove}
+      >
+        <CloseSmallIcon />
+      </button>
+    </span>
+  );
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 interface AgentPickerProps {
@@ -217,7 +342,7 @@ function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProp
         onClick={() => setOpen((v) => !v)}
       >
         <span className="agent-picker-name">{triggerLabel}</span>
-        <ChevronIcon />
+        <ChevronDownIcon />
       </button>
       {open ? (
         <div
@@ -253,7 +378,7 @@ function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProp
   );
 }
 
-function ChevronIcon() {
+function ChevronDownIcon() {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -285,6 +410,101 @@ function CheckIcon() {
       aria-hidden="true"
     >
       <path d="M3 8.5l3 3 7-7" />
+    </svg>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="14"
+      height="14"
+      aria-hidden="true"
+    >
+      <path d="M13.5 7.5 8.1 12.9a3.2 3.2 0 0 1-4.5-4.5l5.8-5.8a2.2 2.2 0 0 1 3.1 3.1L6.6 11.6a1.2 1.2 0 0 1-1.7-1.7l5.4-5.4" />
+    </svg>
+  );
+}
+
+function CloseSmallIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="10"
+      height="10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M4 12l8-8" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <circle cx="6" cy="6.5" r="1" />
+      <path d="M3 12l3-3 2.5 2.5L11 8l2 2" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 2.5h5l3 3v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" />
+      <path d="M9 2.5v3h3" />
+    </svg>
+  );
+}
+
+function DropIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 16V5" />
+      <path d="M7 10l5-5 5 5" />
+      <path d="M5 18.5h14" />
     </svg>
   );
 }
