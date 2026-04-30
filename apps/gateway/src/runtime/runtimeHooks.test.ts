@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { createRuntimeHookRunner, type RuntimeHookRegistration } from "./runtimeHooks";
+import {
+  createRuntimeHookRunner,
+  tryEmitRuntimeHook,
+  type RuntimeHookRegistration,
+} from "./runtimeHooks";
 
 describe("RuntimeHookRunner", () => {
   test("runs observation hooks without surfacing fail-open errors", async () => {
@@ -95,6 +99,109 @@ describe("RuntimeHookRunner", () => {
 
     expect(decision).toMatchObject({ blocked: true, reason: "not allowed" });
     expect(calls).toEqual(["blocker"]);
+  });
+
+  test("defaultFailurePolicyByHook applies when a registration omits failurePolicy", async () => {
+    const runner = createRuntimeHookRunner(
+      [
+        {
+          name: "run.afterSuccess",
+          handler: async () => {
+            throw new Error("observation hook crashed");
+          },
+        },
+      ],
+      {
+        logger: { warn: () => undefined, error: () => undefined },
+        defaultFailurePolicyByHook: { "run.afterSuccess": "fail-closed" },
+      },
+    );
+
+    await expect(
+      runner.emit("run.afterSuccess", {
+        runId: "r-1",
+        conversationId: "c-1",
+        agentId: "a-1",
+        model: "gpt-5.4",
+        workspacePath: "/tmp/work",
+        recovery: false,
+        resultMessageId: "m-1",
+        finalText: "ok",
+      }),
+    ).rejects.toThrow("observation hook crashed");
+  });
+
+  test("defaultTimeoutMsByHook overrides DEFAULT_HOOK_TIMEOUT_MS for hook name", async () => {
+    const runner = createRuntimeHookRunner(
+      [
+        {
+          name: "run.afterSuccess",
+          handler: () =>
+            new Promise<void>((resolve) => {
+              const t = setTimeout(resolve, 200);
+              t.unref?.();
+            }),
+        },
+      ],
+      {
+        logger: { warn: () => undefined, error: () => undefined },
+        defaultTimeoutMsByHook: { "run.afterSuccess": 30 },
+        defaultFailurePolicyByHook: { "run.afterSuccess": "fail-closed" },
+      },
+    );
+
+    await expect(
+      runner.emit("run.afterSuccess", {
+        runId: "r-1",
+        conversationId: "c-1",
+        agentId: "a-1",
+        model: "gpt-5.4",
+        workspacePath: "/tmp/work",
+        recovery: false,
+        resultMessageId: "m-1",
+        finalText: "ok",
+      }),
+    ).rejects.toThrow(/timed out after 30ms/);
+  });
+
+  test("tryEmitRuntimeHook awaits but never throws on hook failure", async () => {
+    const warns: string[] = [];
+    const runner = createRuntimeHookRunner(
+      [
+        {
+          name: "run.afterSuccess",
+          failurePolicy: "fail-closed",
+          handler: async () => {
+            throw new Error("observation hook crashed");
+          },
+        },
+      ],
+      { logger: { warn: () => undefined, error: () => undefined } },
+    );
+
+    await expect(
+      tryEmitRuntimeHook(
+        runner,
+        "run.afterSuccess",
+        {
+          runId: "r-1",
+          conversationId: "c-1",
+          agentId: "a-1",
+          model: "gpt-5.4",
+          workspacePath: "/tmp/work",
+          recovery: false,
+          resultMessageId: "m-1",
+          finalText: "ok",
+        },
+        {},
+        {
+          warn: (msg: string) => {
+            warns.push(msg);
+          },
+        },
+      ),
+    ).resolves.toBeUndefined();
+    expect(warns.some((m) => m.includes("observation hook crashed"))).toBe(true);
   });
 
   test("tool.beforeCall fails closed by default", async () => {

@@ -11,7 +11,11 @@ import {
 } from "@vulture/agent-runtime";
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
-import type { RuntimeHookRunner, RunLifecycleEvent } from "./runtimeHooks";
+import {
+  tryEmitRuntimeHook,
+  type RuntimeHookRunner,
+  type RunLifecycleEvent,
+} from "./runtimeHooks";
 
 export interface OrchestratorDeps {
   runs: RunStore;
@@ -138,7 +142,11 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
             : null,
         };
         deps.runs.saveRecoveryState(args.runId, state);
-        void deps.runtimeHooks?.emit(
+        // onCheckpoint is a synchronous callback contract from the LLM; we
+        // can't await here, but the helper still catches rejections so a
+        // failing observation hook never escapes as unhandled.
+        void tryEmitRuntimeHook(
+          deps.runtimeHooks,
           "checkpoint.written",
           { runId: args.runId, checkpointSeq: latestSeq, checkpoint },
           hookContext(args),
@@ -157,21 +165,22 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       },
     });
     modelAfterCallEmitted = true;
-    if (deps.runtimeHooks) {
-      await deps.runtimeHooks.emit(
-        "model.afterCall",
-        {
-          runId: args.runId,
-          agentId: args.agentId,
-          model: args.model,
-          workspacePath: args.workspacePath,
-          outcome: result.status === "succeeded" ? "completed" : "error",
-          durationMs: modelStartedAt === null ? 0 : Date.now() - modelStartedAt,
-          error: result.error?.message,
-        },
-        hookContext(args),
-      );
-    }
+    // model.afterCall is observation-only post-LLM. A misbehaving handler
+    // must not flip the run from succeeded into the catch-block-failure path.
+    await tryEmitRuntimeHook(
+      deps.runtimeHooks,
+      "model.afterCall",
+      {
+        runId: args.runId,
+        agentId: args.agentId,
+        model: args.model,
+        workspacePath: args.workspacePath,
+        outcome: result.status === "succeeded" ? "completed" : "error",
+        durationMs: modelStartedAt === null ? 0 : Date.now() - modelStartedAt,
+        error: result.error?.message,
+      },
+      hookContext(args),
+    );
 
     if (deps.runs.get(args.runId)?.status === "cancelled") {
       deps.runs.clearRecoveryState(args.runId);
@@ -196,7 +205,12 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         resultMessageId: assistantMsg.id,
         finalText: completedFinalText ?? result.finalText,
       });
-      void deps.runtimeHooks?.emit(
+      // Observation-only — must NOT delay orchestrator exit (callers depend
+      // on afterRunSucceeded's sync prelude running before status flips
+      // visible to test waiters). tryEmit catches all errors internally, so
+      // fire-and-forget here is still safe.
+      void tryEmitRuntimeHook(
+        deps.runtimeHooks,
         "run.afterSuccess",
         {
           ...lifecycleEvent(),
@@ -228,7 +242,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       if (args.recoveryFailureMode === "recoverable") {
         if (isInvalidRecoveryStateError(error)) {
           deps.runs.markFailed(args.runId, error);
-          void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
+          await emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
           deps.runs.clearRecoveryState(args.runId);
           return;
         }
@@ -245,7 +259,8 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
     deps.runs.clearRecoveryState(args.runId);
   } catch (err) {
     if (!modelAfterCallEmitted && modelStartedAt !== null) {
-      void deps.runtimeHooks?.emit(
+      await tryEmitRuntimeHook(
+        deps.runtimeHooks,
         "model.afterCall",
         {
           runId: args.runId,
@@ -264,7 +279,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         if (isInvalidRecoveryStateError(err)) {
           const error = fallbackRunError(err);
           deps.runs.markFailed(args.runId, error);
-          void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
+          await emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
           deps.runs.clearRecoveryState(args.runId);
           return;
         }
@@ -301,7 +316,9 @@ async function emitRunFailureHook(
   lifecycle: RunLifecycleEvent,
   error: AppError,
 ): Promise<void> {
-  await hooks?.emit("run.afterFailure", { ...lifecycle, error }, hookContext(args));
+  // Failure-path emits cannot propagate hook errors back to the caller —
+  // the run has already been marked failed; we only need observability.
+  await tryEmitRuntimeHook(hooks, "run.afterFailure", { ...lifecycle, error }, hookContext(args));
 }
 
 function markRecoverableAfterResumeFailure(

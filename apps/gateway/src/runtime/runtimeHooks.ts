@@ -187,9 +187,31 @@ export interface RuntimeHookRunner {
 
 export interface RuntimeHookRunnerOptions {
   logger?: Pick<Console, "warn" | "error">;
+  /**
+   * Default failure policy per hook name. Used when a registration does not
+   * declare its own `failurePolicy`. Without an entry here, the
+   * built-in default (`DEFAULT_FAILURE_POLICY_BY_HOOK`) decides.
+   */
+  defaultFailurePolicyByHook?: Partial<Record<RuntimeHookName, "fail-open" | "fail-closed">>;
+  /**
+   * Default per-hook-name timeout. Falls back to `DEFAULT_HOOK_TIMEOUT_MS`.
+   */
+  defaultTimeoutMsByHook?: Partial<Record<RuntimeHookName, number>>;
 }
 
 const DEFAULT_HOOK_TIMEOUT_MS = 15_000;
+
+/**
+ * Built-in failure-policy defaults. tool.beforeCall is the lone fail-closed
+ * default — a missing/buggy policy hook must NOT silently allow tool calls.
+ * Everything else defaults to fail-open so observation hooks can never break
+ * the run loop.
+ */
+const DEFAULT_FAILURE_POLICY_BY_HOOK: Partial<
+  Record<RuntimeHookName, "fail-open" | "fail-closed">
+> = {
+  "tool.beforeCall": "fail-closed",
+};
 
 export function createRuntimeHookRunner(
   registrations: readonly RuntimeHookRegistration[] = [],
@@ -197,6 +219,11 @@ export function createRuntimeHookRunner(
 ): RuntimeHookRunner {
   const logger = opts.logger ?? console;
   const hooks = registrations.slice().sort(byPriorityDescending);
+  const failurePolicyDefaults = {
+    ...DEFAULT_FAILURE_POLICY_BY_HOOK,
+    ...opts.defaultFailurePolicyByHook,
+  };
+  const timeoutDefaults = opts.defaultTimeoutMsByHook ?? {};
 
   function getHooks<K extends RuntimeHookName>(name: K): Extract<RuntimeHookRegistration, { name: K }>[] {
     return hooks.filter((hook) => hook.name === name) as unknown as Extract<
@@ -205,8 +232,16 @@ export function createRuntimeHookRunner(
     >[];
   }
 
+  function resolveFailurePolicy(hook: RuntimeHookRegistrationBase): "fail-open" | "fail-closed" {
+    if (hook.failurePolicy) return hook.failurePolicy;
+    return failurePolicyDefaults[hook.name] ?? "fail-open";
+  }
+
   async function runWithTimeout<T>(hook: RuntimeHookRegistrationBase, task: () => Promise<T>): Promise<T> {
-    const timeoutMs = positiveTimeout(hook.timeoutMs) ?? DEFAULT_HOOK_TIMEOUT_MS;
+    const timeoutMs =
+      positiveTimeout(hook.timeoutMs) ??
+      positiveTimeout(timeoutDefaults[hook.name]) ??
+      DEFAULT_HOOK_TIMEOUT_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -240,7 +275,7 @@ export function createRuntimeHookRunner(
           });
         } catch (err) {
           logger.warn?.(`[runtime-hooks] ${name} hook failed: ${errorMessage(err)}`);
-          if (hook.failurePolicy === "fail-closed") throw err;
+          if (resolveFailurePolicy(hook) === "fail-closed") throw err;
         }
       }),
     );
@@ -269,7 +304,7 @@ export function createRuntimeHookRunner(
         }
       } catch (err) {
         const reason = `Tool call blocked because runtime hook failed: ${errorMessage(err)}`;
-        if (hook.failurePolicy === "fail-open") {
+        if (resolveFailurePolicy(hook) === "fail-open") {
           logger.warn?.(`[runtime-hooks] tool.beforeCall hook failed: ${errorMessage(err)}`);
           continue;
         }
@@ -284,6 +319,30 @@ export function createRuntimeHookRunner(
     emit,
     runToolBeforeCall,
   };
+}
+
+/**
+ * Emit a runtime hook from a position that must NOT propagate hook failures
+ * (catch blocks, post-finalize lifecycle, sync callbacks). Awaits the emit
+ * and logs any error; never re-throws. fail-closed handlers still surface in
+ * logs but won't derail an already-decided run status. Use plain `emit` when
+ * the caller intentionally wants fail-closed behaviour (pre-flight gates).
+ */
+export async function tryEmitRuntimeHook<K extends RuntimeHookName>(
+  hooks: RuntimeHookRunner | undefined,
+  name: K,
+  event: RuntimeHookEventMap[K],
+  context: RuntimeHookContext = {},
+  logger: Pick<Console, "warn"> = console,
+): Promise<void> {
+  if (!hooks) return;
+  try {
+    await hooks.emit(name, event, context);
+  } catch (err) {
+    logger.warn?.(
+      `[runtime-hooks] ${name} hook failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 function byPriorityDescending(left: RuntimeHookRegistrationBase, right: RuntimeHookRegistrationBase): number {

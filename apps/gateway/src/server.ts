@@ -67,7 +67,7 @@ import { PermissionPolicyStore } from "./domain/permissionPolicyStore";
 import { ArtifactStore } from "./domain/artifactStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
 import { McpClientManager } from "./runtime/mcpClientManager";
-import { createRuntimeHookRunner } from "./runtime/runtimeHooks";
+import { createRuntimeHookRunner, tryEmitRuntimeHook } from "./runtime/runtimeHooks";
 import { makePermissionPolicyHook } from "./runtime/permissionPolicyHook";
 import { makeArtifactAuditHooks } from "./runtime/artifactAuditHooks";
 
@@ -107,7 +107,9 @@ export function buildServer(cfg: GatewayConfig): Hono {
     runs: runStore,
     messages: messageStore,
     onStatusChange: ({ session, previousStatus }) => {
-      void runtimeHooksRef?.emit(
+      // Sync callback contract; we can't await but must not leak rejections.
+      void tryEmitRuntimeHook(
+        runtimeHooksRef,
         "subagent.afterEnd",
         {
           parentRunId: session.parentRunId,
@@ -386,7 +388,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
           conversationId: conversation.id,
           label,
         });
-        void runtimeHooksRef?.emit(
+        await tryEmitRuntimeHook(
+          runtimeHooksRef,
           "subagent.beforeSpawn",
           {
             parentRunId: parentRun.id,

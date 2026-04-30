@@ -288,6 +288,53 @@ describe("orchestrateRun recovery persistence", () => {
     }
   });
 
+  test("run.afterSuccess hook failure does not flip the run status to failed", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const runtimeHooks = createRuntimeHookRunner(
+        [
+          {
+            name: "run.afterSuccess",
+            failurePolicy: "fail-closed",
+            handler: () => {
+              throw new Error("audit handler crashed");
+            },
+          },
+        ],
+        { logger: { warn: () => undefined, error: () => undefined } },
+      );
+      const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+        yield { kind: "final", text: "ok" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools: async () => ({}),
+          cancelSignals: new Map(),
+          runtimeHooks,
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+        },
+      );
+
+      expect(deps.runs.get(run.id)?.status).toBe("succeeded");
+    } finally {
+      deps.cleanup();
+    }
+  });
+
   test("does not wrap the tool callable with runtime hooks (sdkAdapter is the single trigger point)", async () => {
     const deps = freshDeps();
     try {

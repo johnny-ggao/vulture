@@ -3,7 +3,7 @@ import type { PartialRunEvent } from "../domain/runStore";
 import { ApprovalTimeoutError, type ApprovalQueue } from "./approvalQueue";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 import type { SdkApprovalCallable } from "./openaiLlm";
-import type { RuntimeHookRunner } from "./runtimeHooks";
+import { tryEmitRuntimeHook, type RuntimeHookRunner } from "./runtimeHooks";
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -169,7 +169,8 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           reason: body.reason,
           approvalToken: nextApprovalToken,
         });
-        void opts.runtimeHooks?.emit(
+        await tryEmitRuntimeHook(
+          opts.runtimeHooks,
           "approval.required",
           {
             runId: call.runId,
@@ -206,7 +207,8 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           }
           throw err;
         }
-        void opts.runtimeHooks?.emit(
+        await tryEmitRuntimeHook(
+          opts.runtimeHooks,
           "approval.resolved",
           {
             runId: call.runId,
@@ -262,7 +264,8 @@ export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkAppro
       reason: request.reason,
       approvalToken: request.approvalToken,
     });
-    void opts.runtimeHooks?.emit(
+    await tryEmitRuntimeHook(
+      opts.runtimeHooks,
       "approval.required",
       {
         runId: request.runId,
@@ -283,7 +286,8 @@ export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkAppro
       const decision = await opts.approvalQueue.wait(request.callId, ac.signal, {
         timeoutMs: opts.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS,
       });
-      void opts.runtimeHooks?.emit(
+      await tryEmitRuntimeHook(
+        opts.runtimeHooks,
         "approval.resolved",
         {
           runId: request.runId,
