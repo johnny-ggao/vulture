@@ -32,6 +32,13 @@ import {
 } from "./routes/runs";
 import { attachmentsRouter } from "./routes/attachments";
 import { mcpServersRouter } from "./routes/mcpServers";
+import { skillCatalogRouter } from "./routes/skillCatalog";
+import { permissionPoliciesRouter } from "./routes/permissionPolicies";
+import { artifactsRouter } from "./routes/artifacts";
+import { runTraceRouter } from "./routes/runTrace";
+import { browserCapabilitiesRouter } from "./routes/browserCapabilities";
+import { mcpProxyRouter } from "./routes/mcpProxy";
+import { runtimeDiagnosticsRouter } from "./routes/runtimeDiagnostics";
 import {
   assembleAgentInstructions,
   type ToolCallable,
@@ -55,8 +62,12 @@ import { filterSkillEntries, formatSkillsForPrompt, loadSkillEntries } from "./r
 import { MemoryStore } from "./domain/memoryStore";
 import { MemoryFileStore } from "./domain/memoryFileStore";
 import { McpServerStore } from "./domain/mcpServerStore";
+import { SkillCatalogStore } from "./domain/skillCatalogStore";
+import { PermissionPolicyStore } from "./domain/permissionPolicyStore";
+import { ArtifactStore } from "./domain/artifactStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
 import { McpClientManager } from "./runtime/mcpClientManager";
+import { createRuntimeHookRunner } from "./runtime/runtimeHooks";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -93,6 +104,12 @@ export function buildServer(cfg: GatewayConfig): Hono {
   });
   const memoryStore = new MemoryStore(db);
   const mcpServerStore = new McpServerStore(db);
+  const skillCatalogStore = new SkillCatalogStore(cfg.profileDir);
+  const permissionPolicyStore = new PermissionPolicyStore(
+    join(cfg.profileDir, "policies", "permission-policies.json"),
+  );
+  const artifactStore = new ArtifactStore(join(cfg.profileDir, "artifacts", "index.json"));
+  const runtimeHooks = createRuntimeHookRunner();
   const mcpClientManager = new McpClientManager(mcpServerStore);
   const embedMemoryText = makeOpenAIEmbeddingProvider();
   const memoryFileStore = new MemoryFileStore({ db, legacy: memoryStore, embed: embedMemoryText });
@@ -240,6 +257,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         tools,
         approvalQueue,
         cancelSignals,
+        runtimeHooks,
         contexts: conversationContextStore,
         resumeRun,
         systemPromptForAgent,
@@ -444,6 +462,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     toolCallable: tools,
     approvalCallable,
     mcpToolProvider: () => mcpClientManager.getSdkToolsForRun(),
+    runtimeHooks,
     shellCallbackUrl: cfg.shellCallbackUrl,
     shellToken: cfg.token,
   });
@@ -478,6 +497,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         llm,
         tools,
         cancelSignals,
+        runtimeHooks,
       },
       {
         runId,
@@ -582,6 +602,12 @@ export function buildServer(cfg: GatewayConfig): Hono {
   app.route("/", agentsRouter(agentStore));
   app.route("/", toolsRouter());
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
+  app.route("/", skillCatalogRouter(skillCatalogStore));
+  app.route("/", permissionPoliciesRouter(permissionPolicyStore));
+  app.route("/", artifactsRouter(artifactStore));
+  app.route("/", browserCapabilitiesRouter());
+  app.route("/", mcpProxyRouter());
+  app.route("/", runtimeDiagnosticsRouter());
   app.route(
     "/",
     mcpServersRouter({
@@ -633,6 +659,15 @@ export function buildServer(cfg: GatewayConfig): Hono {
       afterRunSucceeded,
       modelForAgent,
       workspacePathForAgent,
+    }),
+  );
+  app.route(
+    "/",
+    runTraceRouter({
+      runs: runStore,
+      messages: messageStore,
+      subagentSessions: subagentSessionStore,
+      artifacts: artifactStore,
     }),
   );
 

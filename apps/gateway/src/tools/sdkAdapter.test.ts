@@ -4,6 +4,11 @@ import { RunContext } from "@openai/agents";
 import { createCoreToolRegistry } from "./coreTools";
 import { resolveEffectiveTools } from "./registry";
 import { sdkApprovalDecision, toSdkTool, type GatewayToolRunContext } from "./sdkAdapter";
+import {
+  createRuntimeHookRunner,
+  type ToolAfterCallEvent,
+  type ToolBeforeCallEvent,
+} from "../runtime/runtimeHooks";
 
 type TestFunctionTool = {
   name: string;
@@ -192,6 +197,79 @@ describe("gateway tool sdk adapter", () => {
         idempotent: true,
       },
     });
+  });
+
+  test("runs runtime tool hooks around SDK tool execution", async () => {
+    const registry = createCoreToolRegistry();
+    const read = registry.get("read");
+    expect(read).toBeDefined();
+    const tool = toSdkTool(read!) as unknown as TestFunctionTool;
+    const calls: Array<{ phase: string; input?: unknown; outcome?: string }> = [];
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "tool.beforeCall",
+        handler: async (event) => {
+          calls.push({ phase: "before", input: (event as ToolBeforeCallEvent).input });
+          return { input: { path: "patched.txt", maxBytes: null } };
+        },
+      },
+      {
+        name: "tool.afterCall",
+        handler: async (event) => {
+          const toolEvent = event as ToolAfterCallEvent;
+          calls.push({ phase: "after", input: toolEvent.input, outcome: toolEvent.outcome });
+        },
+      },
+    ]);
+    const toolCalls: Array<{ input: unknown }> = [];
+
+    await tool.invoke(
+      new RunContext({
+        runId: "r-test",
+        workspacePath: "/tmp/work",
+        sdkApprovedToolCalls: new Map(),
+        runtimeHooks,
+        toolCallable: async (call: Parameters<ToolCallable>[0]) => {
+          toolCalls.push({ input: call.input });
+          return "ok";
+        },
+      }),
+      JSON.stringify({ path: "original.txt", maxBytes: null }),
+      { toolCall: { callId: "c-read" } },
+    );
+
+    expect(toolCalls).toEqual([{ input: { path: "patched.txt", maxBytes: null } }]);
+    expect(calls).toEqual([
+      { phase: "before", input: { path: "original.txt", maxBytes: null } },
+      { phase: "after", input: { path: "patched.txt", maxBytes: null }, outcome: "completed" },
+    ]);
+  });
+
+  test("blocks SDK tool execution when runtime hook denies it", async () => {
+    const registry = createCoreToolRegistry();
+    const write = registry.get("write");
+    expect(write).toBeDefined();
+    const tool = toSdkTool(write!) as unknown as TestFunctionTool;
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "tool.beforeCall",
+        handler: async () => ({ block: true, blockReason: "policy denied" }),
+      },
+    ]);
+
+    const result = await tool.invoke(
+      new RunContext({
+        runId: "r-test",
+        workspacePath: "/tmp/work",
+        sdkApprovedToolCalls: new Map(),
+        runtimeHooks,
+        toolCallable: async () => "should-not-run",
+      }),
+      JSON.stringify({ path: "out.txt", content: "x" }),
+      { toolCall: { callId: "c-write" } },
+    );
+
+    expect(String(result)).toContain("policy denied");
   });
 });
 

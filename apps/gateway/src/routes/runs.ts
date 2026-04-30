@@ -28,6 +28,7 @@ import {
 } from "../runtime/conversationContext";
 import { compactConversationContext } from "../runtime/conversationCompactor";
 import type { AgentInputItem, Session } from "@openai/agents";
+import type { RuntimeHookRunner } from "../runtime/runtimeHooks";
 
 export type ResumeRunResult =
   | { status: "scheduled" }
@@ -44,6 +45,7 @@ export interface RunsDeps {
   tools: ToolCallable;
   approvalQueue: ApprovalQueue;
   cancelSignals: Map<string, AbortController>;
+  runtimeHooks?: RuntimeHookRunner;
   contexts?: ConversationContextStore;
   resumeRun(runId: string, mode: "auto" | "manual"): ResumeRunResult;
   systemPromptForAgent(a: { id: string }): string;
@@ -430,6 +432,7 @@ export async function startConversationRun(
       llm: deps.llm,
       tools: deps.tools,
       cancelSignals: deps.cancelSignals,
+      runtimeHooks: deps.runtimeHooks,
       afterRunSucceeded,
     },
     {

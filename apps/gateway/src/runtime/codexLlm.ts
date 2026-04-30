@@ -72,6 +72,7 @@ export interface CodexLlmOptions {
   runFactory?: OpenAILlmOptions["runFactory"];
   approvalCallable?: OpenAILlmOptions["approvalCallable"];
   mcpToolProvider?: OpenAILlmOptions["mcpToolProvider"];
+  runtimeHooks?: OpenAILlmOptions["runtimeHooks"];
 }
 
 /**
@@ -220,6 +221,7 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
       runFactory: opts.runFactory,
       approvalCallable: opts.approvalCallable,
       mcpToolProvider: opts.mcpToolProvider,
+      runtimeHooks: opts.runtimeHooks,
     });
     yield* inner(input);
   };

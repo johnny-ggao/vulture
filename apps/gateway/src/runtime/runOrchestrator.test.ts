@@ -8,6 +8,7 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore, type RunRecoveryState } from "../domain/runStore";
 import { orchestrateRun } from "./runOrchestrator";
+import { createRuntimeHookRunner, type RuntimeHookRegistration } from "./runtimeHooks";
 import type { AgentInputItem, Session, SessionInputCallback } from "@openai/agents";
 import type { LlmCallable, LlmRecoveryInput, LlmYield, ToolCallable } from "@vulture/agent-runtime";
 
@@ -282,6 +283,67 @@ describe("orchestrateRun recovery persistence", () => {
       expect(seen).toEqual([{ session, sessionInputCallback }]);
       expect(hookCalls[0]?.resultMessageId).toBe(persistedMessageId);
       expect(hookCalls[0]?.resultMessageId).toMatch(/^m-/);
+    } finally {
+      deps.cleanup();
+    }
+  });
+
+  test("emits runtime lifecycle, model, checkpoint, and success hooks", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const calls: string[] = [];
+      const hook = (name: RuntimeHookRegistration["name"]): RuntimeHookRegistration => ({
+        name,
+        handler: async () => {
+          calls.push(name);
+        },
+      });
+      const runtimeHooks = createRuntimeHookRunner([
+        hook("run.beforeStart"),
+        hook("run.afterStart"),
+        hook("model.beforeCall"),
+        hook("checkpoint.written"),
+        hook("model.afterCall"),
+        hook("run.afterSuccess"),
+      ]);
+      const llm: LlmCallable = mock(async function* (
+        input: Parameters<LlmCallable>[0],
+      ): AsyncGenerator<LlmYield, void, unknown> {
+        input.onCheckpoint?.({ sdkState: "sdk-hook", activeTool: null });
+        yield { kind: "final", text: "ok" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools: async () => ({}),
+          cancelSignals: new Map(),
+          runtimeHooks,
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+        },
+      );
+
+      await waitForCondition(() => calls.includes("run.afterSuccess"));
+      expect(calls).toEqual([
+        "run.beforeStart",
+        "run.afterStart",
+        "model.beforeCall",
+        "checkpoint.written",
+        "model.afterCall",
+        "run.afterSuccess",
+      ]);
     } finally {
       deps.cleanup();
     }

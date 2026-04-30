@@ -19,6 +19,7 @@ import type {
   ToolCallable,
 } from "@vulture/agent-runtime";
 import type { TokenUsage } from "@vulture/protocol/src/v1/run";
+import type { RuntimeHookRunner } from "./runtimeHooks";
 import { createCoreToolRegistry } from "../tools/coreTools";
 import { resolveEffectiveTools } from "../tools/registry";
 import {
@@ -75,6 +76,7 @@ export interface RunFactoryInput {
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
   session?: Session;
   sessionInputCallback?: SessionInputCallback;
+  runtimeHooks?: RuntimeHookRunner;
 }
 
 export interface OpenAILlmOptions {
@@ -85,6 +87,7 @@ export interface OpenAILlmOptions {
   tracingDisabled?: boolean;
   approvalCallable?: SdkApprovalCallable;
   mcpToolProvider?: McpToolProvider;
+  runtimeHooks?: RuntimeHookRunner;
   /**
    * Factory that returns an async iterable of SDK events for one run. Default
    * uses the real @openai/agents Run; tests inject a deterministic stream so
@@ -116,6 +119,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
       onCheckpoint: input.onCheckpoint,
       session: input.session,
       sessionInputCallback: input.sessionInputCallback,
+      runtimeHooks: opts.runtimeHooks,
     });
     for await (const event of stream) {
       yield event as LlmYield;
@@ -161,6 +165,7 @@ export async function* defaultRunFactory(
     toolCallable: input.toolCallable,
     sdkApprovedToolCalls: new Map(),
     onCheckpoint: input.onCheckpoint,
+    runtimeHooks: input.runtimeHooks,
   };
   const runContext = new RunContext(context);
   let runInput = await resolveSdkRunInput(

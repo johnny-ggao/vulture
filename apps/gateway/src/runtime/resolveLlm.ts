@@ -22,6 +22,7 @@ export interface ResolveLlmDeps {
   approvalCallable?: SdkApprovalCallable;
   mcpToolProvider?: McpToolProvider;
   runFactory?: OpenAILlmOptions["runFactory"];
+  runtimeHooks?: OpenAILlmOptions["runtimeHooks"];
   /** Test injection point. Defaults to global fetch. */
   fetch?: typeof fetch;
 }
@@ -70,6 +71,7 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
         approvalCallable: deps.approvalCallable,
         mcpToolProvider: deps.mcpToolProvider,
         runFactory: deps.runFactory,
+        runtimeHooks: deps.runtimeHooks,
       });
       yield* inner(input);
       return;
@@ -96,6 +98,7 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
         approvalCallable: deps.approvalCallable,
         mcpToolProvider: deps.mcpToolProvider,
         runFactory: deps.runFactory,
+        runtimeHooks: deps.runtimeHooks,
       });
       yield* inner(input);
       return;

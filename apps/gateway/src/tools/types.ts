@@ -1,4 +1,5 @@
 import type { ToolCallable, LlmCheckpoint } from "@vulture/agent-runtime";
+import type { RuntimeHookRunner } from "../runtime/runtimeHooks";
 import type { z } from "zod";
 
 export type GatewayToolRisk = "safe" | "approval" | "dangerous";
@@ -19,6 +20,7 @@ export interface GatewayToolRunContext {
   toolCallable: ToolCallable;
   sdkApprovedToolCalls: Map<string, string>;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
+  runtimeHooks?: RuntimeHookRunner;
 }
 
 export interface GatewayToolExecutionContext extends GatewayToolRunContext {

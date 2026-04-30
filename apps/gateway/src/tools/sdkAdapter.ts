@@ -1,4 +1,5 @@
 import { tool, type Tool } from "@openai/agents";
+import { ToolCallError } from "@vulture/agent-runtime";
 import type { GatewayToolRunContext, GatewayToolSpec } from "./types";
 import { coreToolApprovalDecision } from "./coreTools";
 
@@ -38,25 +39,84 @@ async function executeToolWithCheckpoint(
   input: unknown,
 ): Promise<unknown> {
   const approvalToken = ctx.sdkApprovedToolCalls?.get(callId);
+  const before = await ctx.runtimeHooks?.runToolBeforeCall(
+    {
+      runId: ctx.runId,
+      workspacePath: ctx.workspacePath,
+      callId,
+      toolId: spec.id,
+      category: spec.category,
+      idempotent: spec.idempotent,
+      input,
+    },
+    {
+      runId: ctx.runId,
+      workspacePath: ctx.workspacePath,
+    },
+  );
+  const effectiveInput = before?.input ?? input;
+  if (before?.blocked) {
+    await ctx.runtimeHooks?.emit("tool.afterCall", {
+      runId: ctx.runId,
+      workspacePath: ctx.workspacePath,
+      callId,
+      toolId: spec.id,
+      category: spec.category,
+      idempotent: spec.idempotent,
+      input: effectiveInput,
+      outcome: "blocked",
+      durationMs: 0,
+      error: before.reason,
+    });
+    throw new ToolCallError("tool.permission_denied", before.reason ?? "tool blocked");
+  }
   ctx.onCheckpoint?.({
     sdkState: null,
     activeTool: {
       callId,
       tool: spec.id,
-      input,
+      input: effectiveInput,
       approvalToken,
       idempotent: spec.idempotent,
     },
   });
+  const startedAt = Date.now();
   try {
-    return await spec.execute(
+    const output = await spec.execute(
       {
         ...ctx,
         callId,
         approvalToken,
       },
-      input,
+      effectiveInput,
     );
+    await ctx.runtimeHooks?.emit("tool.afterCall", {
+      runId: ctx.runId,
+      workspacePath: ctx.workspacePath,
+      callId,
+      toolId: spec.id,
+      category: spec.category,
+      idempotent: spec.idempotent,
+      input: effectiveInput,
+      outcome: "completed",
+      durationMs: Date.now() - startedAt,
+      output,
+    });
+    return output;
+  } catch (err) {
+    await ctx.runtimeHooks?.emit("tool.afterCall", {
+      runId: ctx.runId,
+      workspacePath: ctx.workspacePath,
+      callId,
+      toolId: spec.id,
+      category: spec.category,
+      idempotent: spec.idempotent,
+      input: effectiveInput,
+      outcome: "error",
+      durationMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
   } finally {
     ctx.onCheckpoint?.({ sdkState: null, activeTool: null });
   }

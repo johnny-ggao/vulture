@@ -8,9 +8,11 @@ import {
   type LlmCallable,
   type LlmRecoveryInput,
   type ToolCallable,
+  ToolCallError,
 } from "@vulture/agent-runtime";
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+import type { RuntimeHookRunner, RunLifecycleEvent } from "./runtimeHooks";
 
 export interface OrchestratorDeps {
   runs: RunStore;
@@ -19,6 +21,7 @@ export interface OrchestratorDeps {
   llm: LlmCallable;
   tools: ToolCallable;
   cancelSignals: Map<string, AbortController>;
+  runtimeHooks?: RuntimeHookRunner;
   afterRunSucceeded?: (input: {
     runId: string;
     conversationId: string;
@@ -51,8 +54,21 @@ export interface OrchestrateArgs {
 export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateArgs): Promise<void> {
   const ac = new AbortController();
   let completedFinalText: string | null = null;
+  let modelStartedAt: number | null = null;
+  let modelAfterCallEmitted = false;
+  const lifecycleEvent = (): RunLifecycleEvent => ({
+    runId: args.runId,
+    conversationId: args.conversationId,
+    agentId: args.agentId,
+    model: args.model,
+    workspacePath: args.workspacePath,
+    recovery: Boolean(args.recovery),
+  });
   deps.cancelSignals.set(args.runId, ac);
   try {
+    if (deps.runtimeHooks) {
+      await deps.runtimeHooks.emit("run.beforeStart", lifecycleEvent(), hookContext(args));
+    }
     const recoveryMetadata: RunRecoveryMetadata = {
       runId: args.runId,
       conversationId: args.conversationId,
@@ -74,6 +90,22 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       activeTool: existingRecovery?.activeTool ?? null,
     });
     deps.runs.markRunning(args.runId);
+    if (deps.runtimeHooks) {
+      await deps.runtimeHooks.emit("run.afterStart", lifecycleEvent(), hookContext(args));
+    }
+    modelStartedAt = Date.now();
+    if (deps.runtimeHooks) {
+      await deps.runtimeHooks.emit(
+        "model.beforeCall",
+        {
+          runId: args.runId,
+          agentId: args.agentId,
+          model: args.model,
+          workspacePath: args.workspacePath,
+        },
+        hookContext(args),
+      );
+    }
     const result = await runConversation({
       runId: args.runId,
       agentId: args.agentId,
@@ -84,14 +116,14 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       attachments: args.attachments,
       workspacePath: args.workspacePath,
       llm: deps.llm,
-      tools: deps.tools,
+      tools: wrapToolCallableWithRuntimeHooks(deps.tools, deps.runtimeHooks),
       recovery: args.recovery,
       session: args.session,
       sessionInputCallback: args.sessionInputCallback,
       onCheckpoint: (checkpoint) => {
         const previous = deps.runs.getRecoveryState(args.runId);
         const latestSeq = deps.runs.latestSeq(args.runId);
-        deps.runs.saveRecoveryState(args.runId, {
+        const state = {
           schemaVersion: 1,
           sdkState: checkpoint.sdkState ?? previous?.sdkState ?? null,
           metadata: previous?.metadata ?? recoveryMetadata,
@@ -99,7 +131,13 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
           activeTool: checkpoint.activeTool
             ? { ...checkpoint.activeTool, startedSeq: latestSeq }
             : null,
-        });
+        };
+        deps.runs.saveRecoveryState(args.runId, state);
+        void deps.runtimeHooks?.emit(
+          "checkpoint.written",
+          { runId: args.runId, checkpointSeq: latestSeq, checkpoint },
+          hookContext(args),
+        );
       },
       onEvent: (e: RunEvent) => {
         if (e.type === "run.completed") {
@@ -113,6 +151,22 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         updateActiveToolSequence(deps, args.runId, appended);
       },
     });
+    modelAfterCallEmitted = true;
+    if (deps.runtimeHooks) {
+      await deps.runtimeHooks.emit(
+        "model.afterCall",
+        {
+          runId: args.runId,
+          agentId: args.agentId,
+          model: args.model,
+          workspacePath: args.workspacePath,
+          outcome: result.status === "succeeded" ? "completed" : "error",
+          durationMs: modelStartedAt === null ? 0 : Date.now() - modelStartedAt,
+          error: result.error?.message,
+        },
+        hookContext(args),
+      );
+    }
 
     if (deps.runs.get(args.runId)?.status === "cancelled") {
       deps.runs.clearRecoveryState(args.runId);
@@ -137,6 +191,16 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         resultMessageId: assistantMsg.id,
         finalText: completedFinalText ?? result.finalText,
       });
+      void deps.runtimeHooks?.emit(
+        "run.afterSuccess",
+        {
+          ...lifecycleEvent(),
+          resultMessageId: assistantMsg.id,
+          finalText: result.finalText,
+          usage: result.usage,
+        },
+        hookContext(args),
+      );
       void Promise.resolve(
         deps.afterRunSucceeded?.({
           runId: args.runId,
@@ -159,6 +223,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       if (args.recoveryFailureMode === "recoverable") {
         if (isInvalidRecoveryStateError(error)) {
           deps.runs.markFailed(args.runId, error);
+          void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
           deps.runs.clearRecoveryState(args.runId);
           return;
         }
@@ -170,13 +235,31 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         return;
       }
       deps.runs.markFailed(args.runId, error);
+      void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
     }
     deps.runs.clearRecoveryState(args.runId);
   } catch (err) {
+    if (!modelAfterCallEmitted && modelStartedAt !== null) {
+      void deps.runtimeHooks?.emit(
+        "model.afterCall",
+        {
+          runId: args.runId,
+          agentId: args.agentId,
+          model: args.model,
+          workspacePath: args.workspacePath,
+          outcome: "error",
+          durationMs: Date.now() - modelStartedAt,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        hookContext(args),
+      );
+    }
     if (deps.runs.get(args.runId)?.status !== "cancelled") {
       if (args.recoveryFailureMode === "recoverable") {
         if (isInvalidRecoveryStateError(err)) {
-          deps.runs.markFailed(args.runId, fallbackRunError(err));
+          const error = fallbackRunError(err);
+          deps.runs.markFailed(args.runId, error);
+          void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
           deps.runs.clearRecoveryState(args.runId);
           return;
         }
@@ -187,12 +270,97 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         );
         return;
       }
-      deps.runs.markFailed(args.runId, fallbackRunError(err));
+      const error = fallbackRunError(err);
+      deps.runs.markFailed(args.runId, error);
+      void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
     }
     deps.runs.clearRecoveryState(args.runId);
   } finally {
     deps.cancelSignals.delete(args.runId);
   }
+}
+
+function hookContext(args: OrchestrateArgs) {
+  return {
+    runId: args.runId,
+    conversationId: args.conversationId,
+    agentId: args.agentId,
+    model: args.model,
+    workspacePath: args.workspacePath,
+  };
+}
+
+function wrapToolCallableWithRuntimeHooks(
+  tools: ToolCallable,
+  hooks: RuntimeHookRunner | undefined,
+): ToolCallable {
+  if (!hooks) return tools;
+  return async (call) => {
+    const before = await hooks.runToolBeforeCall(
+      {
+        runId: call.runId,
+        workspacePath: call.workspacePath,
+        callId: call.callId,
+        toolId: call.tool,
+        input: call.input,
+      },
+      {
+        runId: call.runId,
+        workspacePath: call.workspacePath,
+      },
+    );
+    const input = before.input;
+    if (before.blocked) {
+      await hooks.emit("tool.afterCall", {
+        runId: call.runId,
+        workspacePath: call.workspacePath,
+        callId: call.callId,
+        toolId: call.tool,
+        input,
+        outcome: "blocked",
+        durationMs: 0,
+        error: before.reason,
+      });
+      throw new ToolCallError("tool.permission_denied", before.reason ?? "tool blocked");
+    }
+
+    const startedAt = Date.now();
+    try {
+      const output = await tools({ ...call, input });
+      await hooks.emit("tool.afterCall", {
+        runId: call.runId,
+        workspacePath: call.workspacePath,
+        callId: call.callId,
+        toolId: call.tool,
+        input,
+        outcome: "completed",
+        durationMs: Date.now() - startedAt,
+        output,
+      });
+      return output;
+    } catch (err) {
+      await hooks.emit("tool.afterCall", {
+        runId: call.runId,
+        workspacePath: call.workspacePath,
+        callId: call.callId,
+        toolId: call.tool,
+        input,
+        outcome: "error",
+        durationMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+}
+
+async function emitRunFailureHook(
+  hooks: RuntimeHookRunner | undefined,
+  args: OrchestrateArgs,
+  lifecycle: RunLifecycleEvent,
+  error: AppError,
+): Promise<void> {
+  await hooks?.emit("run.afterFailure", { ...lifecycle, error }, hookContext(args));
 }
 
 function markRecoverableAfterResumeFailure(
