@@ -92,12 +92,39 @@ describe("RealDesktopDriver", () => {
 
     expect(webdriver.findElementCalls).toEqual([
       { using: "css selector", value: 'textarea[placeholder*="输入问题"]' },
+      { using: "xpath", value: '//textarea[contains(@placeholder, "输入问题") or contains(@aria-label, "输入问题")]' },
       { using: "css selector", value: 'textarea[placeholder*="输入问题"]' },
+      { using: "xpath", value: '//textarea[contains(@placeholder, "输入问题") or contains(@aria-label, "输入问题")]' },
       { using: "css selector", value: 'textarea[placeholder*="输入问题"]' },
     ]);
   });
 
-  test("sendMessage clicks the send button, expectMessage checks DOM content, and openNavigation matches labels", async () => {
+  test("waitForChatReady falls back to the textarea XPath when the placeholder CSS selector misses", async () => {
+    const repoRoot = makeTempDir();
+    const webdriver = new FakeWebDriver();
+    webdriver.findElementResponses.set('css selector:textarea[placeholder*="输入问题"]', [new Error("css missing")]);
+    webdriver.findElementResponses.set(
+      'xpath://textarea[contains(@placeholder, "输入问题") or contains(@aria-label, "输入问题")]',
+      ["textarea-id"],
+    );
+
+    const driver = new RealDesktopDriver(
+      { repoRoot, webdriverUrl: "http://127.0.0.1:4444" },
+      {
+        startProcess: (options) => createManagedProcess(options.name),
+        createWebDriver: () => webdriver,
+      },
+    );
+
+    await driver.waitForChatReady(createContext(makeTempDir(), { deadlineMs: Date.now() + 5_000 }));
+
+    expect(webdriver.findElementCalls).toEqual([
+      { using: "css selector", value: 'textarea[placeholder*="输入问题"]' },
+      { using: "xpath", value: '//textarea[contains(@placeholder, "输入问题") or contains(@aria-label, "输入问题")]' },
+    ]);
+  });
+
+  test("sendMessage clicks the send button, expectMessage checks DOM content, and openNavigation matches localized labels", async () => {
     const repoRoot = makeTempDir();
     const webdriver = new FakeWebDriver();
     webdriver.findElementResponses.set('css selector:textarea[placeholder*="输入问题"]', ["textarea-id"]);
@@ -108,6 +135,14 @@ describe("RealDesktopDriver", () => {
     webdriver.findElementResponses.set(
       `xpath://aside[@aria-label="主导航"]//button[@aria-label="设置" or normalize-space(.)="设置" or .//*[normalize-space(.)="设置"]]`,
       ["settings-id"],
+    );
+    webdriver.findElementResponses.set(
+      `xpath://aside[@aria-label="主导航"]//button[@aria-label="技能" or normalize-space(.)="技能" or .//*[normalize-space(.)="技能"]]`,
+      ["skills-id"],
+    );
+    webdriver.findElementResponses.set(
+      `xpath://aside[@aria-label="主导航"]//button[@aria-label="智能体" or normalize-space(.)="智能体" or .//*[normalize-space(.)="智能体"]]`,
+      ["agents-id"],
     );
     webdriver.pageSourceResponses = ["<html>nothing yet</html>", "<html>desktop e2e hello</html>"];
     let nowMs = 0;
@@ -128,9 +163,19 @@ describe("RealDesktopDriver", () => {
     await driver.sendMessage({ action: "sendMessage", text: "desktop e2e hello" }, context);
     await driver.expectMessage({ action: "expectMessage", text: "desktop e2e hello" }, context);
     await driver.openNavigation({ action: "openNavigation", label: "设置" }, context);
+    await driver.openNavigation({ action: "openNavigation", label: "技能" }, context);
+    await driver.openNavigation({ action: "openNavigation", label: "智能体" }, context);
 
     expect(webdriver.typeCalls).toEqual([{ elementId: "textarea-id", text: "desktop e2e hello" }]);
-    expect(webdriver.clickCalls).toEqual(["send-id", "settings-id"]);
+    expect(webdriver.clickCalls).toEqual(["send-id", "settings-id", "skills-id", "agents-id"]);
+    expect(webdriver.findElementCalls).toContainEqual({
+      using: "xpath",
+      value: '//aside[@aria-label="主导航"]//button[@aria-label="技能" or normalize-space(.)="技能" or .//*[normalize-space(.)="技能"]]',
+    });
+    expect(webdriver.findElementCalls).toContainEqual({
+      using: "xpath",
+      value: '//aside[@aria-label="主导航"]//button[@aria-label="智能体" or normalize-space(.)="智能体" or .//*[normalize-space(.)="智能体"]]',
+    });
   });
 
   test("captureScreenshot writes the PNG and DOM snapshot", async () => {

@@ -8,6 +8,7 @@ import { WebDriverClient } from "./webdriver";
 const POLL_INTERVAL_MS = 250;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 2_000;
 const CHAT_TEXTAREA_SELECTOR = 'textarea[placeholder*="输入问题"]';
+const CHAT_TEXTAREA_XPATH = `//textarea[contains(@placeholder, "输入问题") or contains(@aria-label, "输入问题")]`;
 const SEND_BUTTON_XPATH = `//button[@aria-label="发送" or normalize-space(.)="发送"]`;
 
 interface WebDriverLike {
@@ -95,7 +96,7 @@ export class RealDesktopDriver implements DesktopDriver {
   }
 
   async waitForChatReady(context: DesktopDriverContext): Promise<void> {
-    await this.#retry(context, () => this.#webdriver.findElement("css selector", CHAT_TEXTAREA_SELECTOR));
+    await this.#retry(context, () => findChatTextarea(this.#webdriver));
   }
 
   async sendMessage(
@@ -104,7 +105,7 @@ export class RealDesktopDriver implements DesktopDriver {
   ): Promise<void> {
     this.#throwIfAborted(context);
 
-    const textarea = await this.#webdriver.findElement("css selector", CHAT_TEXTAREA_SELECTOR);
+    const textarea = await findChatTextarea(this.#webdriver);
     await this.#webdriver.type(textarea, step.text);
 
     const sendButton = await this.#webdriver.findElement("xpath", SEND_BUTTON_XPATH);
@@ -293,6 +294,30 @@ export class RealDesktopDriver implements DesktopDriver {
 function navigationButtonXPath(label: string): string {
   const literal = xpathLiteral(label);
   return `//aside[@aria-label="主导航"]//button[@aria-label=${literal} or normalize-space(.)=${literal} or .//*[normalize-space(.)=${literal}]]`;
+}
+
+async function findChatTextarea(webdriver: WebDriverLike): Promise<string> {
+  return await findElementWithFallback(webdriver, [
+    { using: "css selector", value: CHAT_TEXTAREA_SELECTOR },
+    { using: "xpath", value: CHAT_TEXTAREA_XPATH },
+  ]);
+}
+
+async function findElementWithFallback(
+  webdriver: WebDriverLike,
+  candidates: ReadonlyArray<{ using: string; value: string }>,
+): Promise<string> {
+  let lastError: unknown = null;
+
+  for (const candidate of candidates) {
+    try {
+      return await webdriver.findElement(candidate.using, candidate.value);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw toError(lastError);
 }
 
 function xpathLiteral(value: string): string {

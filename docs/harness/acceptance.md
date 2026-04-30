@@ -46,6 +46,8 @@ Run the desktop E2E harness:
 ```bash
 bun run harness:desktop-e2e -- --list
 bun run harness:desktop-e2e -- --scenario launch-smoke
+bun run harness:desktop-e2e -- --scenario navigation-smoke
+bun run harness:desktop-e2e -- --scenario chat-send-smoke
 ```
 
 Run the CI harness bundle:
@@ -96,6 +98,11 @@ Prerequisites:
 - Tauri CLI available for `cargo tauri dev`.
 - `tauri-driver` available on `PATH`.
 - A local desktop development environment that can launch the Tauri shell.
+
+If `tauri-driver` is missing, the selected scenario fails during `launchApp`.
+The harness still writes `.artifacts/desktop-e2e/failure-report.md`,
+`summary.json`, and per-scenario log directories so the environment failure can
+be attached to a bug report or CI artifact bundle.
 
 Desktop E2E artifacts default to `.artifacts/desktop-e2e/` and can be moved
 with `VULTURE_DESKTOP_E2E_ARTIFACT_DIR`. Each scenario artifact directory
