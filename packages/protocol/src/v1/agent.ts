@@ -118,6 +118,7 @@ export const AgentSchema = z.object({
   toolInclude: z.array(AgentToolNameSchema),
   toolExclude: z.array(AgentToolNameSchema),
   skills: z.array(SkillNameSchema).optional(),
+  handoffAgentIds: z.array(SlugSchema),
   workspace: WorkspaceSchema,
   instructions: z.string().min(1),
   createdAt: Iso8601Schema,
@@ -145,6 +146,7 @@ export const SaveAgentRequestSchema = z
     toolInclude: z.array(AgentToolNameSchema).optional(),
     toolExclude: z.array(AgentToolNameSchema).optional(),
     skills: z.array(SkillNameSchema).optional(),
+    handoffAgentIds: z.array(SlugSchema).optional(),
     workspace: SaveWorkspaceRequestSchema.optional(),
     instructions: z.string().min(1),
   })

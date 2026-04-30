@@ -85,6 +85,7 @@ export function agentsRouter(store: AgentStore): Hono {
     const hasToolPreset = Object.prototype.hasOwnProperty.call(raw, "toolPreset");
     const hasToolInclude = Object.prototype.hasOwnProperty.call(raw, "toolInclude");
     const hasToolExclude = Object.prototype.hasOwnProperty.call(raw, "toolExclude");
+    const hasHandoffs = Object.prototype.hasOwnProperty.call(raw, "handoffAgentIds");
     const merged = {
       id,
       name: raw.name ?? existing.name,
@@ -96,6 +97,7 @@ export function agentsRouter(store: AgentStore): Hono {
       toolInclude: hasToolInclude ? raw.toolInclude : existing.toolInclude,
       toolExclude: hasToolExclude ? raw.toolExclude : existing.toolExclude,
       skills: hasSkills ? (raw.skills === null ? undefined : raw.skills) : existing.skills,
+      handoffAgentIds: hasHandoffs ? raw.handoffAgentIds : existing.handoffAgentIds,
       workspace:
         raw.workspace ??
         {

@@ -39,6 +39,7 @@ interface AgentRow {
   tool_include_json?: string | null;
   tool_exclude_json?: string | null;
   skills?: string | null;
+  handoff_agent_ids_json?: string | null;
   workspace_json: string;
   instructions: string;
   created_at: string;
@@ -79,6 +80,7 @@ const DEFAULT_AGENT: SaveAgentRequest = {
   toolInclude: [],
   toolExclude: [],
   tools: [...AGENT_TOOL_NAMES],
+  handoffAgentIds: [],
   instructions: [
     "You are Vulture's local work agent.",
     "Complete the user's task directly; do not reply with standby text like asking for another task.",
@@ -109,6 +111,7 @@ function rowToAgent(r: AgentRow): Agent {
     toolInclude: toolPolicy.toolInclude,
     toolExclude: toolPolicy.toolExclude,
     skills: parseSkillsJson(r.skills),
+    handoffAgentIds: parseStringArrayJson(r.handoff_agent_ids_json),
     workspace: {
       id: brandId<WorkspaceId>(workspace_data.id),
       name: workspace_data.name,
@@ -263,7 +266,7 @@ export class AgentStore {
     if (existing) {
       this.db
         .query(
-          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, tool_preset=?, tool_include_json=?, tool_exclude_json=?, skills=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
+          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, tool_preset=?, tool_include_json=?, tool_exclude_json=?, skills=?, handoff_agent_ids_json=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
         )
         .run(
           req.name,
@@ -275,6 +278,7 @@ export class AgentStore {
           JSON.stringify(toolPolicy.toolInclude),
           JSON.stringify(toolPolicy.toolExclude),
           req.skills === undefined ? null : JSON.stringify(req.skills),
+          JSON.stringify(req.handoffAgentIds ?? []),
           JSON.stringify(workspace),
           req.instructions,
           now,
@@ -283,8 +287,8 @@ export class AgentStore {
     } else {
       this.db
         .query(
-          `INSERT INTO agents(id, name, description, model, reasoning, tools, tool_preset, tool_include_json, tool_exclude_json, skills, workspace_json, instructions, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO agents(id, name, description, model, reasoning, tools, tool_preset, tool_include_json, tool_exclude_json, skills, handoff_agent_ids_json, workspace_json, instructions, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           req.id,
@@ -297,6 +301,7 @@ export class AgentStore {
           JSON.stringify(toolPolicy.toolInclude),
           JSON.stringify(toolPolicy.toolExclude),
           req.skills === undefined ? null : JSON.stringify(req.skills),
+          JSON.stringify(req.handoffAgentIds ?? []),
           JSON.stringify(workspace),
           req.instructions,
           now,
@@ -348,6 +353,7 @@ export class AgentStore {
         toolInclude: [],
         toolExclude: [],
         skills: undefined,
+        handoffAgentIds: [],
         instructions: "",
       }, existing);
       return existing;
@@ -391,6 +397,7 @@ export class AgentStore {
       toolInclude: [],
       toolExclude: [],
       skills: undefined,
+      handoffAgentIds: [],
       instructions: "",
     }, migrated);
     return migrated;
@@ -560,6 +567,7 @@ export class AgentStore {
       toolInclude?: AgentToolName[];
       toolExclude?: AgentToolName[];
       skills?: string[];
+      handoffAgentIds?: string[];
     },
     workspace: Workspace,
   ): void {
@@ -644,6 +652,18 @@ function parseSkillsJson(raw: string | null | undefined): string[] | undefined {
       : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function parseStringArrayJson(raw: string | null | undefined): string[] {
+  if (raw === null || raw === undefined) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
   }
 }
 
@@ -786,6 +806,7 @@ function agentCoreTemplates(
     toolInclude?: AgentToolName[];
     toolExclude?: AgentToolName[];
     skills?: string[];
+    handoffAgentIds?: string[];
   },
   workspace: Workspace,
 ): Record<AgentCoreFileName, string> {

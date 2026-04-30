@@ -153,6 +153,15 @@ export function buildServer(cfg: GatewayConfig): Hono {
         description: agent.description,
         instructions: agent.instructions,
         tools: agent.tools,
+        handoffs: agent.handoffAgentIds
+          .map((handoffId) => agentStore.get(handoffId))
+          .filter((handoff): handoff is NonNullable<typeof handoff> => Boolean(handoff))
+          .filter((handoff) => handoff.id !== agent.id)
+          .map((handoff) => ({
+            id: handoff.id,
+            name: handoff.name,
+            description: handoff.description,
+          })),
         model: agent.model,
         reasoning: agent.reasoning,
       },

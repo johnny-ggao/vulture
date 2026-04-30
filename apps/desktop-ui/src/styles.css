@@ -3209,6 +3209,61 @@ pre {
 }
 .agent-tools-head .field { min-width: 220px; }
 .agent-tools-presets { display: inline-flex; gap: 8px; }
+.agent-handoff-config {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--fill-quaternary);
+}
+.agent-handoff-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.agent-handoff-head p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.agent-handoff-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.agent-handoff-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 52px;
+  padding: 10px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.agent-handoff-row input {
+  margin-top: 2px;
+}
+.agent-handoff-row span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.agent-handoff-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.agent-handoff-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
 
 .agent-core { display: grid; gap: 10px; }
 .agent-core-head {

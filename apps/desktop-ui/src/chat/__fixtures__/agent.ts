@@ -17,6 +17,7 @@ export const localAgentFixture: Agent = {
   toolPreset: "developer",
   toolInclude: ["read"],
   toolExclude: [],
+  handoffAgentIds: [],
   workspace: {
     id: "agent-1",
     name: "Local Agent",

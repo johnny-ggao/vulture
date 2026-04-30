@@ -26,6 +26,7 @@ const sampleAgent: Agent = {
   toolInclude: ["shell.exec" as Agent["tools"][number]],
   toolExclude: [],
   skills: ["csv-insights"],
+  handoffAgentIds: ["researcher"],
   workspace: ws,
   instructions: "Be concise.",
   createdAt: "2026-04-26T00:00:00.000Z" as Agent["createdAt"],
@@ -74,6 +75,20 @@ describe("Agent schema", () => {
       instructions: "x",
     });
     expect(req.skills).toEqual([]);
+  });
+
+  test("SaveAgentRequest accepts optional handoff agent ids", () => {
+    const req = SaveAgentRequestSchema.parse({
+      id: "x",
+      name: "X",
+      description: "x",
+      model: "gpt-5.4",
+      reasoning: "low",
+      tools: [],
+      handoffAgentIds: ["researcher"],
+      instructions: "x",
+    });
+    expect(req.handoffAgentIds).toEqual(["researcher"]);
   });
 
   test("SaveAgentRequest accepts tool preset policy", () => {

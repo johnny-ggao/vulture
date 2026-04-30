@@ -14,6 +14,7 @@ export interface AgentConfigPatch {
   toolPreset: AgentToolPreset;
   toolInclude: AgentToolName[];
   toolExclude: AgentToolName[];
+  handoffAgentIds: string[];
   skills?: string[] | null;
   instructions: string;
 }
@@ -28,6 +29,7 @@ export interface Draft {
   toolPreset: AgentToolPreset;
   toolInclude: AgentToolName[];
   toolExclude: AgentToolName[];
+  handoffAgentIds: string[];
   /**
    * Free-form skills input. The comma/newline-separated string lives in
    * the draft so the user can edit a "WIP" value without losing it; it is
@@ -52,6 +54,7 @@ export function draftFromAgent(agent: Agent | null): Draft {
     toolPreset: agent?.toolPreset ?? "none",
     toolInclude: agent?.toolInclude ?? agent?.tools ?? [],
     toolExclude: agent?.toolExclude ?? [],
+    handoffAgentIds: agent?.handoffAgentIds ? [...agent.handoffAgentIds] : [],
     skillsText:
       agent?.skills === undefined
         ? ""
@@ -105,6 +108,7 @@ export function isDirtyDraft(draft: Draft, agent: Agent | null): boolean {
     draft.instructions !== ref.instructions ||
     !sameStringSet(draft.tools, ref.tools) ||
     !sameStringSet(draft.toolInclude, ref.toolInclude) ||
-    !sameStringSet(draft.toolExclude, ref.toolExclude)
+    !sameStringSet(draft.toolExclude, ref.toolExclude) ||
+    !sameStringSet(draft.handoffAgentIds, ref.handoffAgentIds)
   );
 }

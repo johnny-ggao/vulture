@@ -8,7 +8,14 @@ export interface PromptAgent {
   model: string;
   reasoning: string;
   tools: string[];
+  handoffs?: PromptHandoffAgent[];
   instructions: string;
+}
+
+export interface PromptHandoffAgent {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface PromptWorkspace {
@@ -59,6 +66,7 @@ export function assembleAgentInstructions(args: AssembleArgs): string {
   const agentCoreUser = readOptionalSection(args.agentCoreDir, "USER.md");
   const agentCoreHeartbeat = readOptionalSection(args.agentCoreDir, "HEARTBEAT.md");
   const workspaceAgents = loadWorkspaceAgentsMd(workspace.path);
+  const handoffs = formatHandoffs(agent.handoffs ?? []);
 
   return `# Vulture Agent Pack
 
@@ -112,7 +120,22 @@ ${agentCoreHeartbeat || "No heartbeat instructions are configured."}
 
 ### Granted Tools
 ${agent.tools.join(", ")}
+
+### Available Handoffs
+${handoffs}
 `.trim();
+}
+
+function formatHandoffs(handoffs: readonly PromptHandoffAgent[]): string {
+  if (handoffs.length === 0) {
+    return "No handoff agents are configured.";
+  }
+  return [
+    "Use `sessions_spawn` with the target `agentId` only when delegated work is independent and useful.",
+    ...handoffs.map((agent) =>
+      `- agentId: ${agent.id}; name: ${agent.name}; description: ${agent.description || "No description"}`,
+    ),
+  ].join("\n");
 }
 
 export function assembleCodexPrompt(args: CodexAssembleArgs): string {

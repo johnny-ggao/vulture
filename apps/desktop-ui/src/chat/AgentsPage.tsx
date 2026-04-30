@@ -79,6 +79,7 @@ export function AgentsPage(props: AgentsPageProps) {
         <AgentEditModal
           open={editingAgent !== null}
           agent={editingAgent}
+          agents={props.agents}
           toolGroups={props.toolGroups}
           onClose={() => setEditingId(null)}
           onOpenChat={handleOpenChatFromAgent}
@@ -118,6 +119,7 @@ export function AgentsPage(props: AgentsPageProps) {
       <AgentEditModal
         open={editingAgent !== null}
         agent={editingAgent}
+        agents={props.agents}
         toolGroups={props.toolGroups}
         onClose={() => setEditingId(null)}
         onOpenChat={handleOpenChatFromAgent}

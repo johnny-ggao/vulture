@@ -173,6 +173,32 @@ describe("AgentsPage — edit modal", () => {
     expect(patch.name).toBe("Renamed");
   });
 
+  test("tools tab edits handoff agent ids", async () => {
+    const onSave = mock(async (_id: string, _patch: AgentConfigPatch) => {});
+    const researcher: Agent = {
+      ...baseAgent,
+      id: "researcher",
+      name: "Researcher",
+      description: "Finds facts",
+      handoffAgentIds: [],
+    };
+    render(
+      <AgentsPage
+        {...stableProps}
+        onSave={onSave}
+        agents={[baseAgent, researcher]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+    fireEvent.click(screen.getByLabelText("委派给 Researcher"));
+    fireEvent.click(screen.getByRole("button", { name: /^保存/ }));
+
+    const [, patch] = onSave.mock.calls[0]!;
+    expect(patch.handoffAgentIds).toEqual(["researcher"]);
+  });
+
   test("close button dismisses the modal", () => {
     render(
       <AgentsPage

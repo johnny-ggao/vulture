@@ -34,6 +34,7 @@ export interface AgentEditModalProps {
    * the draft; if it disappears the modal closes itself.
    */
   agent: Agent | null;
+  agents: ReadonlyArray<Agent>;
   toolGroups: ReadonlyArray<ToolCatalogGroup>;
   onClose: () => void;
   onOpenChat: (id: string) => void;
@@ -192,6 +193,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
         toolPreset: draft.toolPreset,
         toolInclude: draft.toolInclude,
         toolExclude: draft.toolExclude,
+        handoffAgentIds: draft.handoffAgentIds,
         skills: parseSkills(draft.skillsText),
         instructions: draft.instructions.trim(),
       });
@@ -333,6 +335,8 @@ export function AgentEditModal(props: AgentEditModalProps) {
           {tab === "tools" ? (
             <ToolsTab
               draft={draft}
+              agentId={agent.id}
+              agents={props.agents}
               toolGroups={props.toolGroups}
               onChange={setDraft}
             />

@@ -198,6 +198,33 @@ describe("AgentStore", () => {
     cleanup();
   });
 
+  test("save persists handoff agent ids", () => {
+    const { store, cleanup } = freshStore();
+    store.save({
+      id: "researcher",
+      name: "Researcher",
+      description: "Finds facts",
+      model: "gpt-5.4",
+      reasoning: "medium",
+      tools: ["read"],
+      instructions: "Research carefully.",
+    });
+    const saved = store.save({
+      id: "lead",
+      name: "Lead",
+      description: "Delegates work",
+      model: "gpt-5.4",
+      reasoning: "medium",
+      tools: ["sessions_spawn", "sessions_yield", "sessions_history"],
+      handoffAgentIds: ["researcher"],
+      instructions: "Delegate when useful.",
+    });
+
+    expect(saved.handoffAgentIds).toEqual(["researcher"]);
+    expect(store.get("lead")?.handoffAgentIds).toEqual(["researcher"]);
+    cleanup();
+  });
+
   test("save expands tool preset policy and writes tool registry", () => {
     const { store, cleanup } = freshStore();
     const saved = store.save({
