@@ -3177,6 +3177,18 @@ pre {
 .agents-toolbar-search {
   min-width: 0; /* let SearchInput shrink without overflow */
 }
+/* Round 13: agents-toolbar uses a pill-shaped search to match the
+ * Accio idiom. Scoped to the toolbar so other surfaces keep the
+ * standard rectangular search-input. */
+.agents-toolbar-search .search-input {
+  border-radius: var(--radius-pill);
+  height: 36px;
+  padding: 0 14px;
+  background: var(--bg-secondary);
+}
+.agents-toolbar-search .search-input:focus-within {
+  background: var(--bg-primary);
+}
 .agents-toolbar-meta {
   display: inline-flex;
   align-items: center;
@@ -3191,29 +3203,47 @@ pre {
 .agents-toolbar-sort {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .agents-toolbar-sort-label {
   color: var(--text-tertiary);
   font-size: 12.5px;
 }
-.agents-toolbar-sort select {
+
+/* Pill segmented control — round 13 swap from <select>.
+ * Container is a soft pill, each segment a smaller pill that the
+ * active state fills. Matches the tab-bar idiom from Accio. */
+.agents-sort-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--fill-quaternary);
+  border-radius: var(--radius-pill);
+}
+.agents-sort-segment {
   font: inherit;
-  font-size: 12.5px;
-  padding: 5px 24px 5px 10px;
-  border: 1px solid var(--fill-secondary);
-  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.agents-sort-segment:hover { color: var(--text-primary); }
+.agents-sort-segment.active {
   background: var(--bg-primary);
   color: var(--text-primary);
-  cursor: pointer;
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%),
-                    linear-gradient(135deg, var(--text-tertiary) 50%, transparent 50%);
-  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
-  background-size: 4px 4px;
-  background-repeat: no-repeat;
+  box-shadow: var(--shadow-card-rest);
 }
-.agents-toolbar-sort select:focus-visible {
+.agents-sort-segment:focus-visible {
   outline: 2px solid var(--brand-500);
   outline-offset: 2px;
 }
@@ -3246,6 +3276,66 @@ pre {
 .agent-card-desc-empty {
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+/* Round 13 — Accio-style "+" tile in the agents grid. Same vertical
+ * footprint as a regular AgentCard so the grid stays uniform; dashed
+ * border + tinted background reads as "create" without competing with
+ * the populated cards visually. */
+.agent-create-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 248px;
+  padding: 24px;
+  border: 1.5px dashed var(--fill-secondary);
+  border-radius: 24px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  text-align: center;
+  font: inherit;
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-medium) var(--ease-standard),
+    color var(--duration-medium) var(--ease-standard),
+    transform var(--duration-slow) var(--ease-spring);
+}
+.agent-create-tile:hover {
+  border-color: var(--brand-500);
+  background: var(--brand-050);
+  color: var(--brand-600);
+  transform: translateY(-2px);
+}
+.agent-create-tile:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.agent-create-tile-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--fill-quaternary);
+  color: inherit;
+  transition: background-color var(--duration-medium) var(--ease-standard);
+}
+.agent-create-tile:hover .agent-create-tile-glyph {
+  background: color-mix(in oklab, var(--brand-500) 16%, transparent);
+}
+.agent-create-tile-label {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.agent-create-tile:hover .agent-create-tile-label { color: var(--brand-600); }
+.agent-create-tile-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
 }
 
 /* AgentsPage layout — browse-first grid; edit happens in <AgentEditModal>. */
@@ -4483,19 +4573,29 @@ pre {
  * Hover lift uses a spring overshoot so the tile feels tactile, not slidy.
  * The duration is intentionally longer (240ms) than ordinary buttons so the
  * elevation change reads as a deliberate response, not a glitch. */
+/* Round 13 — Accio-style centered product tile.
+ * Card is uniform-height (min-height) with floating-from-banner avatar
+ * centred horizontally, content stacked + centred underneath. The
+ * 24px radius (rounded-3xl in Tailwind terms) reads as "object" rather
+ * than "container", which is the visual cue that this is a tappable
+ * product surface. */
 .agent-card {
   position: relative;
   background: var(--bg-primary);
   border: 1px solid var(--fill-tertiary);
-  border-radius: var(--radius-xl);
+  border-radius: 24px;
   overflow: hidden;
+  min-height: 248px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-card-rest);
   transition:
     border-color var(--duration-medium) var(--ease-standard),
     box-shadow   var(--duration-medium) var(--ease-standard),
     transform    var(--duration-slow)   var(--ease-spring);
 }
 .agent-card:hover {
-  border-color: color-mix(in oklab, var(--brand-500) 24%, var(--fill-tertiary));
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--fill-tertiary));
   box-shadow: var(--shadow-card-hover);
   transform: translateY(-2px);
 }
@@ -4554,12 +4654,14 @@ pre {
   }
 }
 .agent-card-surface {
-  display: block;
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  text-align: left;
+  flex: 1;
+  text-align: center; /* round 13: centre stack */
   border: 0;
   background: transparent;
-  padding: 0 0 16px;
+  padding: 0 20px 20px;
   cursor: pointer;
   color: inherit;
   min-height: 0;
@@ -4569,9 +4671,9 @@ pre {
   box-shadow: 0 0 0 3px var(--brand-ring) inset;
 }
 .agent-card-banner {
-  height: 72px;
+  height: 64px;
   position: relative;
-  margin-bottom: 36px; /* room for half-overlapping avatar */
+  margin: -1px -21px 36px; /* extend to card edge + room for avatar */
   /* Per-card identity painted entirely by CSS:
    *   - base: diagonal hue gradient (primary tint)
    *   - layer 2: complementary hue radial blob in upper-right (depth)
@@ -4643,21 +4745,26 @@ pre {
     background-blend-mode: normal, normal, screen, normal;
   }
 }
+/* Round 13 — avatar floats centred below the banner edge. The white
+ * frame around it (padding: 4px + bg) reads as the avatar "punching
+ * through" the banner, matching Accio's product-tile language. */
 .agent-card-avatar {
   position: absolute;
-  left: 16px;
-  top: 72px;
-  transform: translateY(-50%);
+  left: 50%;
+  top: 64px;
+  transform: translate(-50%, -50%);
   padding: 4px;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--bg-primary);
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.08);
+  box-shadow: 0 2px 6px rgba(15, 15, 15, 0.08);
   z-index: 1;
 }
 .agent-card-body {
-  padding: 0 16px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 6px;
+  flex: 1;
 }
 .agent-card-name {
   margin: 0;
@@ -4668,32 +4775,54 @@ pre {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 .agent-card-desc {
   margin: 0;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* Reserve space so cards with shorter descriptions don't ripple the
+   * grid — three-line min keeps row heights uniform. */
+  min-height: calc(3 * 1.5em);
+  max-width: 100%;
 }
+.agent-card-desc-empty { font-style: italic; }
 .agent-card-meta {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-tertiary);
   font-feature-settings: "tnum";
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 2px;
+  max-width: 100%;
 }
 .agent-card-model {
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 .agent-card-meta-sep { color: var(--fill-secondary); }
+.agent-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: auto; /* push chips to the bottom of the centred stack */
+  padding-top: 12px;
+}
 
 .agent-card-actions {
   position: absolute;

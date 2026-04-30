@@ -15,19 +15,27 @@ export interface AgentCardProps {
 }
 
 /**
- * Browse-mode card for an agent, modelled after Accio's product-style
- * tile: a banner strip, a square-rounded avatar overlapping the banner
- * edge, then name / description / meta. Hover reveals top-right actions.
+ * Browse-mode card for an agent. Round 13 redesign — closer to Accio's
+ * product tile language:
  *
- * The card is a `<button>` so keyboard users can reach it; nested action
- * buttons stop event propagation so they trigger their own handlers.
+ *   - center-aligned content (avatar floats below the banner edge,
+ *     name + description + meta stack centred underneath)
+ *   - uniform min-height so a roster of varied descriptions still
+ *     reads as a tidy grid (no ragged bottom edge)
+ *   - softer, more elevated shadow that lifts on hover
+ *   - top-right actions HIDDEN by default — revealed on hover or
+ *     keyboard focus so the card looks calm at rest but the chat /
+ *     delete affordances stay one keystroke away
+ *
+ * The card is a `<button>` so keyboard users can reach it; nested
+ * action buttons stop event propagation so they trigger their own
+ * handlers. Cursor-tracked gloss on the banner uses the shared hook —
+ * cached bounding rect, leave-state coords preserved so the fade-out
+ * doesn't snap.
  */
 export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCardProps) {
-  // Cursor-tracked gloss spotlight on the banner. The hook handles
-  // bounding-rect caching, mouse coord normalisation, resize invalidation,
-  // and on-leave the last cursor coords are preserved so the opacity fade
-  // doesn't snap to center.
   const { ref, ...gloss } = useCursorGloss<HTMLDivElement>();
+  const skillsValue = skillsCount(agent.skills);
 
   return (
     <div className="agent-card" ref={ref} {...gloss}>
@@ -59,23 +67,25 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
             {agent.description || "添加一段描述，告诉团队它适合做什么"}
           </p>
           <div className="agent-card-meta">
-            <span className="agent-card-model">{agent.model}</span>
+            <span className="agent-card-model" title={agent.model}>{agent.model}</span>
+          </div>
+          <div className="agent-card-chips" aria-label="智能体配置">
             <CardMetaChip
               count={agent.tools.length}
               label="工具"
               icon={<ToolMetaIcon />}
             />
             <CardMetaChip
-              count={skillsCount(agent.skills)}
+              count={skillsValue}
               label={skillsLabel(agent.skills)}
               icon={<SkillMetaIcon />}
-              hidden={skillsCount(agent.skills) === null}
+              hidden={skillsValue === null}
             />
           </div>
         </div>
       </button>
 
-      <div className="agent-card-actions">
+      <div className="agent-card-actions" aria-label="智能体快捷操作">
         <button
           type="button"
           className="agent-card-action"

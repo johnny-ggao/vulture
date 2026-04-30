@@ -173,13 +173,43 @@ describe("AgentsPage — browse view", () => {
     );
     expect(names).toEqual(["Adam", "Robin"]);
 
-    fireEvent.change(screen.getByLabelText("排序方式"), {
-      target: { value: "alpha" },
-    });
+    // Round 13: sort dropdown → segmented pill control. Click the
+    // "名称" radio.
+    fireEvent.click(screen.getByRole("radio", { name: "名称" }));
     names = Array.from(container.querySelectorAll(".agent-card-name")).map(
       (n) => n.textContent,
     );
     expect(names).toEqual(["Adam", "Robin"]);
+  });
+
+  // ---- Round 13: dashed "create" tile in the grid -----------------
+
+  test("renders a 新建智能体 create tile inside the grid", () => {
+    const robin: Agent = { ...baseAgent, id: "robin", name: "Robin" };
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin]}
+        selectedAgentId="robin"
+      />,
+    );
+    const tile = container.querySelector(".agent-create-tile");
+    expect(tile).not.toBeNull();
+    expect(tile?.getAttribute("aria-label")).toBe("新建智能体");
+  });
+
+  test("clicking the grid create tile invokes onCreate", () => {
+    const onCreate = mock(() => {});
+    render(
+      <AgentsPage
+        {...stableProps}
+        onCreate={onCreate}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("新建智能体"));
+    expect(onCreate).toHaveBeenCalled();
   });
 });
 

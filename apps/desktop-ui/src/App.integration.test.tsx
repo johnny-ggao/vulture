@@ -545,7 +545,9 @@ describe("App integration", () => {
 
     fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
     await waitFor(() => {
-      expect(screen.getByText("新建智能体")).toBeDefined();
+      // Round 13: "新建智能体" appears both as the page-header button
+      // and as the in-grid create tile; just confirm the surface is up.
+      expect(screen.getAllByText("新建智能体").length).toBeGreaterThan(0);
     });
 
     // Row button has an explicit aria-label of just the agent name; the
@@ -595,7 +597,16 @@ describe("App integration", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
     });
-    fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
+    // Round 13: page-header has a primary-styled "新建智能体" button and
+    // the grid has a dashed create-tile with the same label. Pick the
+    // header button explicitly by its primary-action class so the
+    // wizard opens deterministically.
+    const newAgentButtons = screen.getAllByRole("button", { name: "新建智能体" });
+    const headerButton = newAgentButtons.find((btn) =>
+      btn.classList.contains("btn-primary"),
+    );
+    if (!headerButton) throw new Error("page-header create button missing");
+    fireEvent.click(headerButton);
     // Step order is template → identity → persona → tools → skills (matches Accio).
     fireEvent.click(screen.getByRole("button", { name: "继续" })); // template → identity
     fireEvent.change(screen.getByPlaceholderText("例：周报助手"), { target: { value: "Test Agent" } });
