@@ -93,8 +93,9 @@ changing the default PR/push CI path:
 2. Select `Run workflow`.
 3. Set `runDesktopE2E` to `true`.
 4. Start the run to execute `bun run harness:desktop-e2e -- --tag smoke` on
-   `macos-latest`.
-   The workflow installs both Tauri CLI and `tauri-driver` before launching the
+   `ubuntu-latest` through `xvfb-run`.
+   The workflow installs Tauri CLI, `tauri-driver`, `webkit2gtk-driver`, Xvfb,
+   and the standard Tauri v2 Linux build dependencies before launching the
    smoke lane.
 
 When `runDesktopE2E` stays `false`, the manual run behaves like the default CI
@@ -106,6 +107,11 @@ Desktop E2E launches the real Tauri shell through `cargo tauri dev` and drives
 the UI through `tauri-driver` + WebDriver. Each selected scenario gets its own
 isolated desktop root and default workspace under the scenario artifact
 directory, so local SQLite/profile state is not shared across runs.
+
+The GitHub Actions desktop E2E lane targets Linux because current Tauri desktop
+WebDriver support is limited to Windows and Linux. Local macOS runs still
+require Tauri CLI plus locally installed driver tooling to be available on
+`PATH`.
 
 Prerequisites:
 
