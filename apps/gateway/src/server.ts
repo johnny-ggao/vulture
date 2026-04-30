@@ -16,6 +16,7 @@ import { MessageStore } from "./domain/messageStore";
 import { AttachmentStore } from "./domain/attachmentStore";
 import { RunStore } from "./domain/runStore";
 import { ConversationContextStore } from "./domain/conversationContextStore";
+import { SubagentSessionStore } from "./domain/subagentSessionStore";
 import { profileRouter } from "./routes/profile";
 import { workspacesRouter } from "./routes/workspaces";
 import { agentsRouter } from "./routes/agents";
@@ -23,6 +24,7 @@ import { skillsRouter } from "./routes/skills";
 import { toolsRouter } from "./routes/tools";
 import { memoriesRouter } from "./routes/memories";
 import { conversationsRouter } from "./routes/conversations";
+import { subagentSessionsRouter } from "./routes/subagentSessions";
 import {
   runsRouter,
   startConversationRun as startConversationRunWithContext,
@@ -85,6 +87,10 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
   const conversationContextStore = new ConversationContextStore(db);
+  const subagentSessionStore = new SubagentSessionStore(db, {
+    runs: runStore,
+    messages: messageStore,
+  });
   const memoryStore = new MemoryStore(db);
   const mcpServerStore = new McpServerStore(db);
   const mcpClientManager = new McpClientManager(mcpServerStore);
@@ -530,6 +536,13 @@ export function buildServer(cfg: GatewayConfig): Hono {
       conversations: conversationStore,
       messages: messageStore,
       contexts: conversationContextStore,
+    }),
+  );
+  app.route(
+    "/",
+    subagentSessionsRouter({
+      sessions: subagentSessionStore,
+      messages: messageStore,
     }),
   );
   app.route(

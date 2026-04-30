@@ -73,4 +73,16 @@ describe("gateway server", () => {
     expect(Array.isArray(body.items)).toBe(true);
     cleanup();
   });
+
+  test("with valid token → 200 OK on /v1/subagent-sessions", async () => {
+    const { cfg, cleanup } = freshCfg();
+    const app = buildServer(cfg);
+    const res = await app.request("/v1/subagent-sessions", {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.items).toEqual([]);
+    cleanup();
+  });
 });
