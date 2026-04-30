@@ -8,5 +8,10 @@ export { Toast, type ToastProps } from "./Toast";
 export { AgentAvatar, type AgentAvatarProps } from "./AgentAvatar";
 export { AgentCard, type AgentCardProps } from "./AgentCard";
 export { AgentCreateTile, type AgentCreateTileProps } from "./AgentCreateTile";
+export {
+  Segmented,
+  type SegmentedProps,
+  type SegmentedOption,
+} from "./Segmented";
 export { hashHue } from "./agentHue";
 export { useCursorGloss } from "./useCursorGloss";

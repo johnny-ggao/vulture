@@ -19,7 +19,9 @@ describe("OverviewTab", () => {
     );
     expect(screen.getByLabelText("名称")).toBeDefined();
     expect(screen.getByLabelText("模型")).toBeDefined();
-    expect(screen.getByLabelText("推理强度")).toBeDefined();
+    // Round 14: reasoning is now a Segmented radiogroup, not a form
+    // control — assert by role with the radiogroup's aria-label.
+    expect(screen.getByRole("radiogroup", { name: "推理强度" })).toBeDefined();
     expect(screen.getByLabelText("Skills")).toBeDefined();
     expect(screen.getByText("Workspace")).toBeDefined();
     expect(screen.getByText("/tmp/workspace")).toBeDefined();
@@ -51,9 +53,9 @@ describe("OverviewTab", () => {
         onChange={onChange}
       />,
     );
-    fireEvent.change(screen.getByLabelText("推理强度"), {
-      target: { value: "high" },
-    });
+    // Round 14: reasoning moved from <select> to a Segmented control;
+    // click the "深度" (high) radio.
+    fireEvent.click(screen.getByRole("radio", { name: "深度" }));
     const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
     expect(next.reasoning).toBe("high");
   });
@@ -74,6 +76,52 @@ describe("PersonaTab", () => {
     const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
     expect(next.instructions).toBe("be thoughtful");
   });
+
+  // ---- Round 14: counter + threshold tones --------------------
+
+  test("shows a live character counter that reflects draft length", () => {
+    const draft = draftFromAgent(baseAgent);
+    const { rerender, container } = render(
+      <PersonaTab draft={{ ...draft, instructions: "abc" }} onChange={() => {}} />,
+    );
+    expect(container.querySelector(".agent-persona-counter")?.textContent).toBe("3 字符");
+    rerender(
+      <PersonaTab
+        draft={{ ...draft, instructions: "abc"+"def".repeat(10) }}
+        onChange={() => {}}
+      />,
+    );
+    expect(container.querySelector(".agent-persona-counter")?.textContent).toBe("33 字符");
+  });
+
+  test("counter tone is 'soft' between 600 and 1199 chars, 'danger' at 1200+", () => {
+    const draft = draftFromAgent(baseAgent);
+    const { rerender, container } = render(
+      <PersonaTab
+        draft={{ ...draft, instructions: "x".repeat(600) }}
+        onChange={() => {}}
+      />,
+    );
+    expect(
+      container.querySelector(".agent-persona-counter")?.classList.contains("agent-persona-counter-soft"),
+    ).toBe(true);
+    rerender(
+      <PersonaTab
+        draft={{ ...draft, instructions: "x".repeat(1200) }}
+        onChange={() => {}}
+      />,
+    );
+    expect(
+      container.querySelector(".agent-persona-counter")?.classList.contains("agent-persona-counter-danger"),
+    ).toBe(true);
+  });
+
+  test("renders a structural hint above the editor", () => {
+    render(
+      <PersonaTab draft={draftFromAgent(baseAgent)} onChange={() => {}} />,
+    );
+    expect(screen.getByText(/角色 → 目标 → 行为边界/)).toBeDefined();
+  });
 });
 
 describe("ToolsTab", () => {
@@ -89,7 +137,8 @@ describe("ToolsTab", () => {
 
   test("renders the preset selector + 全选 / 清空 buttons", () => {
     render(<ToolsTab {...toolsTabBaseProps} onChange={() => {}} />);
-    expect(screen.getByLabelText("Tools 预设")).toBeDefined();
+    // Round 14: preset moved from <select> to a Segmented radiogroup.
+    expect(screen.getByRole("radiogroup", { name: "Tools 预设" })).toBeDefined();
     expect(screen.getByRole("button", { name: "全选" })).toBeDefined();
     expect(screen.getByRole("button", { name: "清空" })).toBeDefined();
   });
@@ -107,9 +156,8 @@ describe("ToolsTab", () => {
   test("changing the preset selector cascades into a new tools list", () => {
     const onChange = mock((_next: Draft) => {});
     render(<ToolsTab {...toolsTabBaseProps} onChange={onChange} />);
-    fireEvent.change(screen.getByLabelText("Tools 预设"), {
-      target: { value: "minimal" },
-    });
+    // Round 14: click the "最小" segment (value=minimal).
+    fireEvent.click(screen.getByRole("radio", { name: "最小" }));
     const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
     expect(next.toolPreset).toBe("minimal");
   });

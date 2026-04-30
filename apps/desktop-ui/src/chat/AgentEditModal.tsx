@@ -316,9 +316,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
         >
           <div className="agent-config-title-block">
             <AgentAvatar agent={agent} size={40} shape="square" />
-            <div>
+            <div className="agent-config-title-text">
               <span className="modal-title">{agent.name || "未命名智能体"}</span>
-              <div className="agent-config-id">{agent.id}</div>
+              <AgentIdChip id={agent.id} />
             </div>
           </div>
           <div className="agent-edit-modal-actions">
@@ -366,8 +366,13 @@ export function AgentEditModal(props: AgentEditModalProps) {
         </div>
 
         <div className="modal-body agent-edit-modal-body">
+          {/* Tabs visually adopt the Segmented pill look (round 14)
+            * for cross-surface consistency with AgentsPage sort and
+            * the tool preset, but keep role="tab" / aria-selected so
+            * screen readers still announce them as tabs and the
+            * tablist arrow-key navigation pattern stays correct. */}
           <div
-            className="agent-config-tabs"
+            className="agent-config-tabs segmented segmented-cozy"
             role="tablist"
             aria-label="智能体配置"
           >
@@ -385,7 +390,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
                 role="tab"
                 aria-selected={tab === entry.key}
                 tabIndex={tab === entry.key ? 0 : -1}
-                className={"agent-config-tab" + (tab === entry.key ? " active" : "")}
+                className={
+                  "agent-config-tab segmented-segment" +
+                  (tab === entry.key ? " active" : "")
+                }
                 onClick={() => setTab(entry.key)}
               >
                 {entry.label}
@@ -424,5 +432,86 @@ export function AgentEditModal(props: AgentEditModalProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Copy-on-click chip showing the agent id in monospaced text. Reads
+ * as a stable identifier rather than a body-text run, and gives the
+ * user a low-friction way to grab the id for support / API debugging.
+ */
+function AgentIdChip({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+  async function copy() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(id);
+      }
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      setCopied(true);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable — silently fall back; the chip just
+      // doesn't flash 已复制.
+    }
+  }
+  return (
+    <button
+      type="button"
+      className="agent-id-chip"
+      data-copied={copied || undefined}
+      onClick={copy}
+      aria-label={`复制 agent id ${id}`}
+      title="复制 agent id"
+    >
+      <code>{id}</code>
+      <span className="agent-id-chip-icon" aria-hidden="true">
+        {copied ? <CheckSmallIcon /> : <CopyIcon />}
+      </span>
+    </button>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="5" width="8" height="9" rx="1.5" />
+      <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" />
+    </svg>
+  );
+}
+
+function CheckSmallIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5l3 3 7-7" />
+    </svg>
   );
 }

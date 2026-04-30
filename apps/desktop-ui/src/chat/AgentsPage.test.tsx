@@ -435,6 +435,88 @@ describe("AgentsPage — edit modal", () => {
     expect(patch.name).toBe("Renamed");
   });
 
+  // ---- Round 14: skills chip preview + ID copy chip + segmented tabs
+
+  test("Skills field shows the default-state pill when the input is empty", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    // baseAgent has skills=null → skillsText defaults to "" → preview is "全部 Skills 可用".
+    expect(screen.getByText("全部 Skills 可用")).toBeDefined();
+  });
+
+  test("Skills field shows 已禁用 pill when the input is 'none'", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    fireEvent.change(screen.getByLabelText("Skills"), {
+      target: { value: "none" },
+    });
+    expect(screen.getByText("已禁用")).toBeDefined();
+  });
+
+  test("Skills field renders one chip per parsed entry", () => {
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    fireEvent.change(screen.getByLabelText("Skills"), {
+      target: { value: "alpha, beta, gamma" },
+    });
+    const chips = container.querySelectorAll(".agent-skills-chip");
+    expect(chips.length).toBe(3);
+    expect(chips[0].textContent).toBe("alpha");
+    expect(chips[2].textContent).toBe("gamma");
+  });
+
+  test("modal header surfaces the agent id as a copy chip", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    const chip = screen.getByLabelText(/复制 agent id agent-1/);
+    expect(chip).toBeDefined();
+    // The id appears inside the chip as monospaced code.
+    expect(chip.querySelector("code")?.textContent).toBe("agent-1");
+  });
+
+  test("modal tabs are a Segmented radiogroup that keeps role=tab semantics", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    // Tablist still uses role=tablist + role=tab for screen readers,
+    // but the buttons carry the .segmented-segment class so visual
+    // styling stays consistent.
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.length).toBe(4);
+    for (const tab of tabs) {
+      expect(tab.classList.contains("segmented-segment")).toBe(true);
+    }
+  });
+
   test("modal closes if the agent disappears (e.g. delete-undo committed)", () => {
     const { rerender } = render(
       <AgentsPage

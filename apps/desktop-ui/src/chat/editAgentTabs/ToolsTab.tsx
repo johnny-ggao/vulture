@@ -2,8 +2,20 @@ import type { Agent, AgentToolPreset } from "../../api/agents";
 import type { ToolCatalogGroup } from "../../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../../api/tools";
 import { ToolGroupSelector } from "../ToolGroupSelector";
-import { AgentAvatar, Field } from "../components";
+import { AgentAvatar, Field, Segmented } from "../components";
 import type { Draft } from "./draft";
+
+const PRESET_OPTIONS: ReadonlyArray<{
+  value: AgentToolPreset;
+  label: string;
+}> = [
+  { value: "minimal", label: "最小" },
+  { value: "standard", label: "标准" },
+  { value: "developer", label: "开发者" },
+  { value: "tl", label: "TL" },
+  { value: "full", label: "全部" },
+  { value: "none", label: "无" },
+];
 
 export interface ToolsTabProps {
   draft: Draft;
@@ -24,23 +36,18 @@ export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: Tools
     <div className="agent-config-panel" role="tabpanel">
       <section className="agent-tools">
         <div className="agent-tools-head">
-          <Field label="Tools 预设">
-            <select
+          <Field
+            label="Tools 预设"
+            hint="预设决定默认开关；下方类目可继续微调。"
+          >
+            <Segmented
+              ariaLabel="Tools 预设"
               value={draft.toolPreset}
-              onChange={(event) =>
-                onChange({
-                  ...draft,
-                  ...toolPolicyFromPreset(event.target.value as AgentToolPreset),
-                })
+              options={PRESET_OPTIONS}
+              onChange={(value) =>
+                onChange({ ...draft, ...toolPolicyFromPreset(value) })
               }
-            >
-              <option value="minimal">minimal</option>
-              <option value="standard">standard</option>
-              <option value="developer">developer</option>
-              <option value="tl">tl</option>
-              <option value="full">full</option>
-              <option value="none">none</option>
-            </select>
+            />
           </Field>
           <div className="agent-tools-presets">
             <button
