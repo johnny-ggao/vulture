@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version '^2.0' --locked
+
       - name: Install Tauri driver
         run: cargo install tauri-driver --locked
 

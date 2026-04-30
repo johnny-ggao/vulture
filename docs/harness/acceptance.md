@@ -94,6 +94,8 @@ changing the default PR/push CI path:
 3. Set `runDesktopE2E` to `true`.
 4. Start the run to execute `bun run harness:desktop-e2e -- --tag smoke` on
    `macos-latest`.
+   The workflow installs both Tauri CLI and `tauri-driver` before launching the
+   smoke lane.
 
 When `runDesktopE2E` stays `false`, the manual run behaves like the default CI
 path and only runs the `harness` job.
