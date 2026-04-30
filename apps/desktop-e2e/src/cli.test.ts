@@ -1,7 +1,22 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { main, parseDesktopE2EArgs, selectDesktopScenarios } from "./cli";
+import type { DesktopDriver } from "./runner";
 import { desktopScenarios } from "./scenarios";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const path = tempDirs.pop();
+    if (path) {
+      rmSync(path, { recursive: true, force: true });
+    }
+  }
+});
 
 describe("desktop e2e cli", () => {
   test("parses list and separated scenario/tag args", () => {
@@ -94,10 +109,10 @@ describe("desktop e2e cli", () => {
     expect(() => parseDesktopE2EArgs(["--scenario", "--tag"])).toThrow("--scenario requires an id");
   });
 
-  test("lists selected scenarios with id name and tags", () => {
+  test("lists selected scenarios with id name and tags", async () => {
     const lines: string[] = [];
 
-    const exitCode = main(["--list", "--tag", "smoke"], {
+    const exitCode = await main(["--list", "--tag", "smoke"], {
       write: (message) => {
         lines.push(message);
       },
@@ -113,19 +128,170 @@ describe("desktop e2e cli", () => {
     ]);
   });
 
-  test("returns exit code 1 until the real driver is enabled", () => {
+  test("runs selected scenarios, writes suite artifacts, and returns 0 when all scenarios pass", async () => {
+    const cwd = makeTempDir();
+    const artifactRoot = join(cwd, "custom-artifacts");
+    const writes: string[] = [];
+    const createdDrivers: Array<{ repoRoot: string; webdriverUrl: string }> = [];
+    const runCalls: string[] = [];
+    const fakeDriver = createFakeDriver("fake-driver");
+
+    const exitCode = await main(["--scenario", "launch-smoke"], {
+      env: {
+        VULTURE_DESKTOP_E2E_ARTIFACT_DIR: artifactRoot,
+        VULTURE_DESKTOP_E2E_WEBDRIVER_URL: "http://127.0.0.1:4555",
+      },
+      cwd,
+      write: (message) => {
+        writes.push(message);
+      },
+      writeError: (message) => {
+        throw new Error(`did not expect stderr output: ${message}`);
+      },
+    }, {
+      createDriver: ({ repoRoot, webdriverUrl }) => {
+        createdDrivers.push({ repoRoot, webdriverUrl });
+        return fakeDriver;
+      },
+      runScenario: async ({ artifactRoot: root, driver, scenario }) => {
+        runCalls.push(`${scenario.id}:${(driver as FakeDriver).kind}:${root}`);
+        return {
+          id: scenario.id,
+          name: scenario.name,
+          status: "passed",
+          durationMs: 123,
+          artifactPath: join(root, `${scenario.id}-artifacts`),
+          steps: [{ name: "1. launchApp", status: "passed" }],
+        };
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(createdDrivers).toEqual([{ repoRoot: cwd, webdriverUrl: "http://127.0.0.1:4555" }]);
+    expect(runCalls).toEqual([`launch-smoke:fake-driver:${artifactRoot}`]);
+    expect(writes).toEqual([
+      `PASS launch-smoke (${join(artifactRoot, "launch-smoke-artifacts")})`,
+      `Desktop E2E summary: ${join(artifactRoot, "summary.json")}`,
+      `Desktop E2E JUnit: ${join(artifactRoot, "junit.xml")}`,
+    ]);
+    expect(existsSync(join(artifactRoot, "summary.json"))).toBe(true);
+    expect(existsSync(join(artifactRoot, "junit.xml"))).toBe(true);
+    expect(existsSync(join(artifactRoot, "failure-report.md"))).toBe(false);
+
+    const summary = JSON.parse(readFileSync(join(artifactRoot, "summary.json"), "utf8"));
+    expect(summary.total).toBe(1);
+    expect(summary.passed).toBe(1);
+    expect(summary.failed).toBe(0);
+  });
+
+  test("writes failure artifacts and returns 1 when any selected scenario fails", async () => {
+    const cwd = makeTempDir();
+    const errors: string[] = [];
+    const writes: string[] = [];
+    const fakeDriver = createFakeDriver("failed-driver");
+
+    const exitCode = await main(["--scenario", "launch-smoke"], {
+      cwd,
+      write: (message) => {
+        writes.push(message);
+      },
+      writeError: (message) => {
+        errors.push(message);
+      },
+    }, {
+      createDriver: () => fakeDriver,
+      runScenario: async ({ artifactRoot, scenario }) => ({
+        id: scenario.id,
+        name: scenario.name,
+        status: "failed",
+        durationMs: 456,
+        artifactPath: join(artifactRoot, `${scenario.id}-artifacts`),
+        steps: [{ name: "1. launchApp", status: "failed", error: "driver missing" }],
+      }),
+    });
+
+    const artifactRoot = join(cwd, ".artifacts", "desktop-e2e");
+    expect(exitCode).toBe(1);
+    expect(writes).toContain(`FAIL launch-smoke (${join(artifactRoot, "launch-smoke-artifacts")})`);
+    expect(errors).toEqual([`Desktop E2E failure report: ${join(artifactRoot, "failure-report.md")}`]);
+    expect(existsSync(join(artifactRoot, "summary.json"))).toBe(true);
+    expect(existsSync(join(artifactRoot, "junit.xml"))).toBe(true);
+    expect(existsSync(join(artifactRoot, "failure-report.md"))).toBe(true);
+    expect(readFileSync(join(artifactRoot, "failure-report.md"), "utf8")).toContain("driver missing");
+  });
+
+  test("resolves the workspace repo root when the CLI runs from a nested package cwd", async () => {
+    const repoRoot = makeTempDir();
+    const packageCwd = join(repoRoot, "apps", "desktop-e2e");
+    const calls: Array<{ repoRoot: string; webdriverUrl: string }> = [];
+
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "repo", workspaces: ["apps/*"] }));
+    mkdirSync(packageCwd, { recursive: true });
+
+    const exitCode = await main(["--scenario", "launch-smoke"], {
+      cwd: packageCwd,
+      writeError: (message) => {
+        throw new Error(`did not expect stderr output: ${message}`);
+      },
+    }, {
+      createDriver: ({ repoRoot: resolvedRoot, webdriverUrl }) => {
+        calls.push({ repoRoot: resolvedRoot, webdriverUrl });
+        return createFakeDriver("nested-driver");
+      },
+      runScenario: async ({ artifactRoot, scenario }) => ({
+        id: scenario.id,
+        name: scenario.name,
+        status: "passed",
+        durationMs: 1,
+        artifactPath: join(artifactRoot, `${scenario.id}-artifacts`),
+        steps: [{ name: "1. launchApp", status: "passed" }],
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls).toEqual([{ repoRoot, webdriverUrl: "http://127.0.0.1:4444" }]);
+    expect(existsSync(join(repoRoot, ".artifacts", "desktop-e2e", "summary.json"))).toBe(true);
+  });
+
+  test("returns exit code 1 for execution errors", async () => {
     const errors: string[] = [];
 
-    const exitCode = main(["--scenario", "launch-smoke"], {
+    const exitCode = await main(["--scenario", "launch-smoke"], {
       write: () => {
         throw new Error("did not expect stdout output");
       },
       writeError: (message) => {
         errors.push(message);
       },
+    }, {
+      createDriver: () => createFakeDriver("exploding-driver"),
+      runScenario: async () => {
+        throw new Error("runner exploded");
+      },
     });
 
     expect(exitCode).toBe(1);
-    expect(errors).toEqual(["Desktop E2E real driver is intentionally disabled until Task 6/7 wiring lands."]);
+    expect(errors).toEqual(["runner exploded"]);
   });
 });
+
+function makeTempDir(): string {
+  const path = mkdtempSync(join(tmpdir(), "vulture-desktop-cli-"));
+  tempDirs.push(path);
+  return path;
+}
+
+type FakeDriver = DesktopDriver & { kind: string };
+
+function createFakeDriver(kind: string): FakeDriver {
+  return {
+    kind,
+    async launchApp() {},
+    async waitForChatReady() {},
+    async sendMessage() {},
+    async expectMessage() {},
+    async openNavigation() {},
+    async captureScreenshot() {},
+    async shutdown() {},
+  };
+}

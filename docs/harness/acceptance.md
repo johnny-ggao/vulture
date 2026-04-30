@@ -41,6 +41,13 @@ Run the UI smoke harness:
 bun run harness:ui-smoke
 ```
 
+Run the desktop E2E harness:
+
+```bash
+bun run harness:desktop-e2e -- --list
+bun run harness:desktop-e2e -- --scenario launch-smoke
+```
+
 Run the CI harness bundle:
 
 ```bash
@@ -76,6 +83,41 @@ artifact path.
 GitHub Actions runs the same bundle through
 [.github/workflows/harness.yml](/Users/johnny/Work/vulture/.github/workflows/harness.yml)
 and uploads `.artifacts/acceptance` on every run.
+
+## Desktop E2E
+
+Desktop E2E launches the real Tauri shell through `cargo tauri dev` and drives
+the UI through `tauri-driver` + WebDriver. Each selected scenario gets its own
+isolated desktop root and default workspace under the scenario artifact
+directory, so local SQLite/profile state is not shared across runs.
+
+Prerequisites:
+
+- Tauri CLI available for `cargo tauri dev`.
+- `tauri-driver` available on `PATH`.
+- A local desktop development environment that can launch the Tauri shell.
+
+Desktop E2E artifacts default to `.artifacts/desktop-e2e/` and can be moved
+with `VULTURE_DESKTOP_E2E_ARTIFACT_DIR`. Each scenario artifact directory
+contains:
+
+- `summary.json` - per-scenario status and step results.
+- `dom.html` - most recent DOM snapshot captured by the desktop driver.
+- `screenshots/` - PNG screenshots captured by scenario steps.
+- `logs/` - stdout/stderr logs for `tauri-driver` and `cargo tauri dev`.
+
+The suite root also writes:
+
+- `summary.json` - aggregate desktop E2E results.
+- `junit.xml` - machine-readable test results for CI surfaces.
+- `failure-report.md` - present only when one or more scenarios fail.
+
+Useful environment variables:
+
+- `VULTURE_DESKTOP_E2E_ARTIFACT_DIR`: output directory for suite + scenario artifacts.
+- `VULTURE_DESKTOP_E2E_SCENARIOS`: comma-separated scenario ids.
+- `VULTURE_DESKTOP_E2E_TAGS`: comma-separated tags. Tag selection uses OR semantics.
+- `VULTURE_DESKTOP_E2E_WEBDRIVER_URL`: WebDriver server URL. Defaults to `http://127.0.0.1:4444`.
 
 ## Current Scenarios
 
