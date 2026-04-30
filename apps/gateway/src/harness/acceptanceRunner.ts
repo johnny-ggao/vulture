@@ -3,6 +3,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { openDatabase } from "../persistence/sqlite";
 import { applyMigrations } from "../persistence/migrate";
+import { ConversationStore } from "../domain/conversationStore";
+import { MessageStore } from "../domain/messageStore";
+import { RunStore } from "../domain/runStore";
+import { SubagentSessionStore } from "../domain/subagentSessionStore";
 
 export type AcceptanceRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "recoverable";
 
@@ -141,6 +145,35 @@ export type AcceptanceStep =
       action: "assertMcpTools";
       tools: string;
       names?: string[];
+    }
+  | {
+      action: "seedSubagentSession";
+      parentConversation: string;
+      parentRun: string;
+      as: string;
+      agentId?: string;
+      label: string;
+      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+    }
+  | {
+      action: "listSubagentSessions";
+      as: string;
+      parentConversation?: string;
+      parentRun?: string;
+      limit?: number;
+    }
+  | {
+      action: "assertSubagentSessions";
+      sessions: string;
+      containsSession?: string;
+      parentConversation?: string;
+      parentRun?: string;
+      statuses?: Array<SubagentSessionResource["status"]>;
+    }
+  | {
+      action: "listSubagentMessages";
+      session: string;
+      as: string;
     };
 
 export interface AcceptanceScenario {
@@ -235,6 +268,19 @@ interface McpToolResource {
   enabled: boolean;
 }
 
+interface SubagentSessionResource {
+  id: string;
+  parentConversationId: string;
+  parentRunId: string;
+  agentId: string;
+  conversationId: string;
+  label: string;
+  status: "active" | "completed" | "failed" | "cancelled";
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface RunEventResource {
   id?: string;
   type: string;
@@ -254,6 +300,8 @@ interface AcceptanceResources {
   mcpServers: Record<string, McpServerResource>;
   mcpServerLists: Record<string, McpServerResource[]>;
   mcpToolLists: Record<string, McpToolResource[]>;
+  subagentSessions: Record<string, SubagentSessionResource>;
+  subagentSessionLists: Record<string, SubagentSessionResource[]>;
 }
 
 interface RunnerState {
@@ -277,6 +325,8 @@ export async function runAcceptanceScenario(options: AcceptanceRunnerOptions): P
       mcpServers: {},
       mcpServerLists: {},
       mcpToolLists: {},
+      subagentSessions: {},
+      subagentSessionLists: {},
     },
     observations: [],
   };
@@ -608,6 +658,90 @@ async function executeStep(
       observe(state, step.action, { alias: step.tools });
       return;
     }
+    case "seedSubagentSession": {
+      const parentConversation = requireAlias(
+        state.resources.conversations,
+        step.parentConversation,
+        "conversation",
+      );
+      const parentRun = requireAlias(state.resources.runs, step.parentRun, "run");
+      const session = seedSubagentSession(options, {
+        parentConversationId: parentConversation.id,
+        parentRunId: parentRun.id,
+        agentId: step.agentId ?? "local-work-agent",
+        label: step.label,
+        messages: step.messages ?? [],
+      });
+      state.resources.subagentSessions[step.as] = session;
+      observe(state, step.action, { alias: step.as, session });
+      return;
+    }
+    case "listSubagentSessions": {
+      const params = new URLSearchParams();
+      if (step.parentConversation) {
+        params.set(
+          "parentConversationId",
+          requireAlias(state.resources.conversations, step.parentConversation, "conversation").id,
+        );
+      }
+      if (step.parentRun) {
+        params.set("parentRunId", requireAlias(state.resources.runs, step.parentRun, "run").id);
+      }
+      if (step.limit) params.set("limit", String(step.limit));
+      const query = params.toString();
+      const response = await requestJson<{ items: SubagentSessionResource[] }>(
+        options,
+        state,
+        `/v1/subagent-sessions${query ? `?${query}` : ""}`,
+      );
+      state.resources.subagentSessionLists[step.as] = response.items;
+      observe(state, step.action, { alias: step.as, sessions: response.items });
+      return;
+    }
+    case "assertSubagentSessions": {
+      const sessions = requireAlias(state.resources.subagentSessionLists, step.sessions, "subagent session list");
+      if (step.statuses) {
+        const actual = sessions.map((session) => session.status);
+        if (!arrayEquals(actual, step.statuses)) {
+          throw new Error(`Expected subagent statuses ${JSON.stringify(step.statuses)}, received ${JSON.stringify(actual)}`);
+        }
+      }
+      if (step.containsSession) {
+        const expected = requireAlias(
+          state.resources.subagentSessions,
+          step.containsSession,
+          "subagent session",
+        );
+        if (!sessions.some((session) => session.id === expected.id)) {
+          throw new Error(`Expected subagent list ${step.sessions} to contain ${expected.id}`);
+        }
+      }
+      if (step.parentConversation) {
+        const expected = requireAlias(state.resources.conversations, step.parentConversation, "conversation");
+        if (!sessions.every((session) => session.parentConversationId === expected.id)) {
+          throw new Error(`Expected all subagent sessions to belong to parent conversation ${expected.id}`);
+        }
+      }
+      if (step.parentRun) {
+        const expected = requireAlias(state.resources.runs, step.parentRun, "run");
+        if (!sessions.every((session) => session.parentRunId === expected.id)) {
+          throw new Error(`Expected all subagent sessions to belong to parent run ${expected.id}`);
+        }
+      }
+      observe(state, step.action, { alias: step.sessions });
+      return;
+    }
+    case "listSubagentMessages": {
+      const session = requireAlias(state.resources.subagentSessions, step.session, "subagent session");
+      const response = await requestJson<{ items: MessageResource[] }>(
+        options,
+        state,
+        `/v1/subagent-sessions/${encodeURIComponent(session.id)}/messages`,
+      );
+      state.resources.messageLists[step.as] = response.items;
+      observe(state, step.action, { alias: step.as, messages: response.items });
+      return;
+    }
   }
 }
 
@@ -835,6 +969,49 @@ function seedRunningRun(
   }
 }
 
+function seedSubagentSession(
+  options: AcceptanceRunnerOptions,
+  input: {
+    parentConversationId: string;
+    parentRunId: string;
+    agentId: string;
+    label: string;
+    messages: Array<{ role: "user" | "assistant"; content: string }>;
+  },
+): SubagentSessionResource {
+  if (!options.profileDir) throw new Error("seedSubagentSession requires profileDir");
+  const db = openDatabase(join(options.profileDir, "data.sqlite"));
+  applyMigrations(db);
+  try {
+    const conversations = new ConversationStore(db);
+    const messages = new MessageStore(db);
+    const runs = new RunStore(db);
+    const sessions = new SubagentSessionStore(db, { runs, messages });
+    const child = conversations.create({
+      agentId: input.agentId,
+      title: input.label,
+    });
+    for (const message of input.messages) {
+      messages.append({
+        conversationId: child.id,
+        role: message.role,
+        content: message.content,
+        runId: null,
+      });
+    }
+    const session = sessions.create({
+      parentConversationId: input.parentConversationId,
+      parentRunId: input.parentRunId,
+      agentId: input.agentId,
+      conversationId: child.id,
+      label: input.label,
+    });
+    return sessions.refreshStatus(session.id) as SubagentSessionResource;
+  } finally {
+    db.close();
+  }
+}
+
 function writeArtifacts(
   scenario: AcceptanceScenario,
   result: AcceptanceRunResult,
@@ -917,6 +1094,17 @@ function renderTranscript(scenario: AcceptanceScenario, result: AcceptanceRunRes
         lines.push(`- ${tool.name}: ${tool.enabled ? "enabled" : "disabled"}`);
       }
       if (tools.length === 0) lines.push("- none");
+      lines.push("");
+    }
+  }
+  if (Object.keys(result.resources.subagentSessionLists).length > 0) {
+    lines.push("## Subagent Sessions", "");
+    for (const [alias, sessions] of Object.entries(result.resources.subagentSessionLists)) {
+      lines.push(`### ${alias}`, "");
+      for (const session of sessions) {
+        lines.push(`- ${session.id}: ${session.status} ${session.label}`);
+      }
+      if (sessions.length === 0) lines.push("- none");
       lines.push("");
     }
   }

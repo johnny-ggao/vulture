@@ -110,6 +110,26 @@ describe("acceptance suite", () => {
     ]);
   });
 
+  test("ships a default subagent orchestration scenario", () => {
+    expect(defaultAcceptanceScenarios.map((scenario) => scenario.id)).toContain(
+      "subagent-spawn-yield-history",
+    );
+    const scenario = defaultAcceptanceScenarios.find((item) => item.id === "subagent-spawn-yield-history");
+    expect(scenario?.tags).toEqual(expect.arrayContaining(["fast", "subagents"]));
+    expect(scenario?.steps.map((step) => step.action)).toEqual([
+      "createConversation",
+      "seedRunningRun",
+      "seedSubagentSession",
+      "listSubagentSessions",
+      "assertSubagentSessions",
+      "listSubagentMessages",
+      "assertMessages",
+      "restartGateway",
+      "listSubagentSessions",
+      "assertSubagentSessions",
+    ]);
+  });
+
   test("summarizes multiple scenario results for CLI output", () => {
     const summary = summarizeAcceptanceResults([
       {
@@ -153,6 +173,7 @@ describe("acceptance suite", () => {
       "recovery-interrupted-tool",
       "recovery-list-recoverable-runs",
       "restore-list-active-runs",
+      "subagent-spawn-yield-history",
     ]);
     expect(filterAcceptanceScenariosByTags(["missing"], defaultAcceptanceScenarios)).toEqual([]);
   });
@@ -285,5 +306,7 @@ function emptyResources() {
     mcpServers: {},
     mcpServerLists: {},
     mcpToolLists: {},
+    subagentSessions: {},
+    subagentSessionLists: {},
   };
 }

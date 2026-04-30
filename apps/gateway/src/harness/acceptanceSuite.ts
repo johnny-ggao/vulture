@@ -208,6 +208,69 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
       { action: "assertMcpTools", tools: "tools", names: [] },
     ],
   },
+  {
+    id: "subagent-spawn-yield-history",
+    name: "Subagent spawn yield history",
+    description: "Seeds a parent run and durable child subagent session, then verifies list/history survive restart.",
+    tags: ["fast", "subagents", "recovery"],
+    steps: [
+      { action: "createConversation", as: "conversation", agentId: "local-work-agent" },
+      {
+        action: "seedRunningRun",
+        conversation: "conversation",
+        asRun: "parentRun",
+        runId: "r-acceptance-subagent-parent",
+      },
+      {
+        action: "seedSubagentSession",
+        parentConversation: "conversation",
+        parentRun: "parentRun",
+        as: "subagent",
+        agentId: "local-work-agent",
+        label: "Read child docs",
+        messages: [
+          { role: "user", content: "child task" },
+          { role: "assistant", content: "child result" },
+        ],
+      },
+      {
+        action: "listSubagentSessions",
+        parentConversation: "conversation",
+        parentRun: "parentRun",
+        as: "subagents",
+      },
+      {
+        action: "assertSubagentSessions",
+        sessions: "subagents",
+        containsSession: "subagent",
+        parentConversation: "conversation",
+        parentRun: "parentRun",
+        statuses: ["active"],
+      },
+      { action: "listSubagentMessages", session: "subagent", as: "subagentMessages" },
+      {
+        action: "assertMessages",
+        messages: "subagentMessages",
+        roles: ["user", "assistant"],
+        contains: ["child result"],
+      },
+      { action: "restartGateway" },
+      {
+        action: "listSubagentSessions",
+        parentConversation: "conversation",
+        parentRun: "parentRun",
+        as: "subagentsAfterRestart",
+      },
+      {
+        action: "assertSubagentSessions",
+        sessions: "subagentsAfterRestart",
+        containsSession: "subagent",
+        parentConversation: "conversation",
+        parentRun: "parentRun",
+        statuses: ["active"],
+      },
+    ],
+  },
 ];
 
 export interface AcceptanceSuiteOptions {
