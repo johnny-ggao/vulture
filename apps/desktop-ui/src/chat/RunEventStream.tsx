@@ -5,6 +5,7 @@ import { ToolBlock, type ToolBlockStatus } from "./ToolBlock";
 import { ApprovalCard } from "./ApprovalCard";
 import { RecoveryCard } from "./RecoveryCard";
 import { RunErrorCard } from "./RunErrorCard";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 export type RunBlock =
   | { kind: "text"; content: string; firstSeq: number; usage?: TokenUsageDto }
@@ -241,6 +242,14 @@ export function RunEventStream(props: RunEventStreamProps) {
   for (let i = 0; i < blocks.length; i += 1) {
     if (blocks[i]?.kind === "text") lastTextIdx = i;
   }
+  // "Thinking" affordance: when the stream is active but no assistant
+  // text has arrived yet, fill the silence with a 3-dot pulse next to
+  // the agent's avatar. Without this the user has zero feedback between
+  // hitting Enter and the first token landing — feels like the message
+  // got dropped. Suppressed once the first text block lands or when
+  // streaming flips off (terminal status).
+  const showThinking =
+    Boolean(props.streaming) && lastTextIdx === -1 && !props.resuming;
   return (
     <div className="run-event-stream">
       {blocks.map((b, i) => {
@@ -308,6 +317,7 @@ export function RunEventStream(props: RunEventStreamProps) {
           />
         );
       })}
+      {showThinking ? <ThinkingIndicator agent={props.agent} /> : null}
     </div>
   );
 }

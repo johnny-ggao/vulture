@@ -585,12 +585,54 @@ pre {
 .chat-stage {
   flex: 1;
   overflow: auto;
+  scroll-behavior: auto; /* JS handles smooth-scroll for the FAB only */
 }
 .chat-stage.has-messages { padding: 28px 32px 32px; }
 .chat-stage:not(.has-messages) {
   display: grid; place-items: center;
   padding: 24px;
 }
+
+/* Scroll-to-bottom FAB shown when the user has scrolled up to read
+ * history while new content is arriving. Sits above the composer,
+ * centred horizontally; doesn't overlap the message-list because the
+ * chat-main column already lays composer below the chat-stage. */
+.chat-scroll-bottom {
+  position: absolute;
+  bottom: 96px; /* sits above the composer (~84px tall) */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--fill-secondary);
+  border-radius: var(--radius-pill);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-popover);
+  animation: chat-scroll-bottom-enter var(--duration-fast) var(--ease-out) both;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-spring);
+}
+.chat-scroll-bottom:hover {
+  background: var(--fill-quaternary);
+  transform: translateX(-50%) translateY(-1px);
+}
+.chat-scroll-bottom:active {
+  transform: translateX(-50%) scale(0.97);
+}
+@keyframes chat-scroll-bottom-enter {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0);   }
+}
+/* Anchor the FAB inside the chat-main flex column. */
+.chat-main { position: relative; }
 
 .message-list {
   max-width: 960px;
@@ -687,6 +729,39 @@ pre {
   line-height: 1.45;
 }
 .status-banner svg { flex: 0 0 14px; margin-top: 1px; }
+.status-banner-icon {
+  display: inline-grid; place-items: center;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.status-banner-icon-spin svg {
+  /* The reconnecting banner gets a slow rotation so it visibly
+   * communicates "we're trying" — static SVG read as "stuck". */
+  animation: status-banner-spin 1.4s linear infinite;
+}
+@keyframes status-banner-spin { to { transform: rotate(360deg); } }
+.status-banner-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.status-banner-dismiss {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+.status-banner-dismiss:hover {
+  opacity: 1;
+  background: rgba(15, 15, 15, 0.08);
+}
 .status-banner .label { font-weight: 600; }
 .status-banner .detail { color: var(--text-secondary); }
 .status-banner.info {
@@ -785,6 +860,43 @@ pre {
 }
 .message.assistant .message-bubble { padding: 0; }
 
+/* Pre-stream "thinking" affordance — three dots staggered to read as a
+ * pulse. Mirrors the pacing of typical typing indicators (~280ms per
+ * dot). On reduced-motion we suppress the pulse and surface the
+ * fallback "思考中…" word instead so the affordance still communicates. */
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+.thinking-dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  animation: thinking-bounce 1.1s var(--ease-out) infinite both;
+}
+.thinking-dots span:nth-child(2) { animation-delay: 140ms; }
+.thinking-dots span:nth-child(3) { animation-delay: 280ms; }
+@keyframes thinking-bounce {
+  0%, 60%, 100% { transform: translateY(0);   opacity: 0.45; }
+  30%           { transform: translateY(-3px); opacity: 1;    }
+}
+.thinking-fallback {
+  display: none;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots { display: none; }
+  .thinking-fallback { display: inline; }
+}
+/* Hide the action rail under the thinking placeholder — there's
+ * nothing to copy yet. Hover-affordance leak guard. */
+.message-thinking .message-actions { display: none; }
+
 /* Streaming caret — visible inside an actively-being-produced assistant
  * bubble. Sits inline with the last rendered text node so it tracks the
  * end of the message naturally. Animation is suppressed by the global
@@ -842,6 +954,40 @@ pre {
   border: 0;
   border-top: 1px solid var(--fill-tertiary);
   margin: 6px 0;
+}
+/* GFM tables — sit inside a scroll wrapper so wide tables don't blow
+ * up the bubble width on narrow viewports. */
+.md-content .md-table-wrap {
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+}
+.md-content .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.md-content .md-table th,
+.md-content .md-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--fill-quaternary);
+  vertical-align: top;
+}
+.md-content .md-table thead th {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  text-align: left; /* JS will override per-column via inline style */
+  border-bottom: 1px solid var(--fill-tertiary);
+}
+.md-content .md-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.md-content .md-table tbody tr:hover td {
+  background: color-mix(in oklab, var(--fill-quaternary) 60%, transparent);
 }
 .md-content a {
   color: var(--brand-600);

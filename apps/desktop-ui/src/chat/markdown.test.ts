@@ -261,6 +261,79 @@ describe("parseMarkdown", () => {
     expect(blocks[0].kind).toBe("paragraph");
   });
 
+  // ---- Round 11: GFM tables -------------------------------------
+
+  test("parses a basic 3-column GFM table", () => {
+    const blocks = parseMarkdown(
+      ["| a | b | c |", "|---|---|---|", "| 1 | 2 | 3 |"].join("\n"),
+    );
+    expect(blocks[0].kind).toBe("table");
+    if (blocks[0].kind === "table") {
+      expect(blocks[0].header).toHaveLength(3);
+      expect(blocks[0].rows).toHaveLength(1);
+      expect(blocks[0].rows[0]).toHaveLength(3);
+      expect(blocks[0].align).toEqual(["left", "left", "left"]);
+    }
+  });
+
+  test("derives column alignment from the separator row colons", () => {
+    const blocks = parseMarkdown(
+      ["| a | b | c |", "|:---|:---:|---:|", "| 1 | 2 | 3 |"].join("\n"),
+    );
+    expect(blocks[0].kind).toBe("table");
+    if (blocks[0].kind === "table") {
+      expect(blocks[0].align).toEqual(["left", "center", "right"]);
+    }
+  });
+
+  test("supports inline marks (bold / code / link) inside cells", () => {
+    const blocks = parseMarkdown(
+      [
+        "| key | value |",
+        "|---|---|",
+        "| **id** | `abc` |",
+        "| docs | [link](https://example.com) |",
+      ].join("\n"),
+    );
+    expect(blocks[0].kind).toBe("table");
+    if (blocks[0].kind === "table") {
+      const idCell = blocks[0].rows[0][0];
+      expect(idCell.some((i) => i.kind === "strong")).toBe(true);
+      const codeCell = blocks[0].rows[0][1];
+      expect(codeCell.some((i) => i.kind === "code")).toBe(true);
+      const linkCell = blocks[0].rows[1][1];
+      expect(linkCell.some((i) => i.kind === "link")).toBe(true);
+    }
+  });
+
+  test("pads body rows with fewer cells than the header to match column count", () => {
+    const blocks = parseMarkdown(
+      [
+        "| a | b | c |",
+        "|---|---|---|",
+        "| 1 | 2 |", // missing third cell
+      ].join("\n"),
+    );
+    if (blocks[0].kind === "table") {
+      expect(blocks[0].rows[0]).toHaveLength(3);
+      expect(blocks[0].rows[0][2]).toEqual([]);
+    }
+  });
+
+  test("does not match a table when the separator row is malformed", () => {
+    const blocks = parseMarkdown(
+      ["| a | b |", "| not | a separator |", "| 1 | 2 |"].join("\n"),
+    );
+    expect(blocks[0].kind).toBe("paragraph");
+  });
+
+  test("does not match a table when the header column count differs from separator", () => {
+    const blocks = parseMarkdown(
+      ["| a | b |", "|---|---|---|", "| 1 | 2 |"].join("\n"),
+    );
+    expect(blocks[0].kind).toBe("paragraph");
+  });
+
   test("intermixed blocks land in source order", () => {
     const blocks = parseMarkdown(
       "## Plan\n\n1. fetch data\n2. render\n\n> note: skip step 2 if cached\n\n---\n\nAfter the rule.",

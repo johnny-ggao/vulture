@@ -29,7 +29,17 @@ export type MarkdownBlock =
       items: ReadonlyArray<ReadonlyArray<MarkdownInline>>;
     }
   | { kind: "blockquote"; inlines: ReadonlyArray<MarkdownInline> }
-  | { kind: "hr" };
+  | { kind: "hr" }
+  | {
+      kind: "table";
+      /** Header row cells; one inline run per column. */
+      header: ReadonlyArray<ReadonlyArray<MarkdownInline>>;
+      /** "left" | "center" | "right" alignment per column, derived from
+       *  the separator row (e.g. `:---:` → center, `---:` → right). */
+      align: ReadonlyArray<"left" | "center" | "right">;
+      /** Body rows, each with one inline run per column. */
+      rows: ReadonlyArray<ReadonlyArray<ReadonlyArray<MarkdownInline>>>;
+    };
 
 export type MarkdownInline =
   | { kind: "text"; text: string }
@@ -142,6 +152,46 @@ export function parseMarkdown(source: string): MarkdownBlock[] {
       blocks.push({ kind: "list", ordered: true, items });
       i = j;
       continue;
+    }
+
+    // ---- Table: GFM-style with `|` columns + separator row ----------
+    // A table requires at least two lines: header row, separator row.
+    // The separator row's cells must be made of `-` (with optional
+    // leading/trailing `:` for alignment). We deliberately stop at
+    // tables — multi-line cells / col-spans are out of scope.
+    if (line.includes("|") && i + 1 < lines.length) {
+      const next = lines[i + 1] ?? "";
+      const headerCells = parseTableRow(line);
+      const separatorAligns = parseTableSeparator(next);
+      if (
+        headerCells &&
+        separatorAligns &&
+        headerCells.length === separatorAligns.length
+      ) {
+        flushParagraph();
+        const rows: MarkdownInline[][][] = [];
+        let j = i + 2;
+        while (j < lines.length) {
+          const rowCells = parseTableRow(lines[j] ?? "");
+          if (!rowCells) break;
+          // Pad/truncate so every body row has the same column count as
+          // the header. Missing cells are rendered as empty.
+          const normalised: MarkdownInline[][] = [];
+          for (let c = 0; c < headerCells.length; c += 1) {
+            normalised.push(rowCells[c] ?? []);
+          }
+          rows.push(normalised);
+          j += 1;
+        }
+        blocks.push({
+          kind: "table",
+          header: headerCells,
+          align: separatorAligns,
+          rows,
+        });
+        i = j;
+        continue;
+      }
     }
 
     // ---- Blockquote: >  + space -------------------------------------
@@ -292,6 +342,50 @@ function matchAt(input: string, at: number): InlineMatch | null {
   }
 
   return null;
+}
+
+/**
+ * Split a `| a | b | c |` line into a list of inline-parsed cells.
+ * Returns null if the line doesn't look like a table row (no pipes
+ * outside of escaped contexts).
+ *
+ * We're permissive about leading/trailing `|` — both `| a | b |` and
+ * `a | b` are accepted — but require at least one pipe to confirm
+ * intent. Empty trailing cells (from `| a | b |` ending with `|`)
+ * are stripped so column count matches what the user typed.
+ */
+function parseTableRow(line: string): MarkdownInline[][] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return null;
+  const stripped = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  if (!stripped.includes("|") && !trimmed.startsWith("|") && !trimmed.endsWith("|")) {
+    // A bare `a | b` with one pipe still counts; only reject lines with
+    // no pipes after stripping outer ones.
+  }
+  const parts = stripped.split("|").map((part) => part.trim());
+  if (parts.length === 0) return null;
+  return parts.map((part) => parseInlines(part));
+}
+
+/**
+ * Parse the GFM separator row (`|---|:---:|---:|`) into per-column
+ * alignment. Returns null if any cell isn't a valid `:?-+:?` pattern.
+ */
+function parseTableSeparator(line: string): Array<"left" | "center" | "right"> | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|") && !trimmed.includes("-")) return null;
+  const stripped = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+  const parts = stripped.split("|").map((part) => part.trim());
+  if (parts.length === 0) return null;
+  const aligns: Array<"left" | "center" | "right"> = [];
+  for (const part of parts) {
+    const m = /^(:?)(-{3,})(:?)$/.exec(part);
+    if (!m) return null;
+    const left = m[1] === ":";
+    const right = m[3] === ":";
+    aligns.push(left && right ? "center" : right ? "right" : "left");
+  }
+  return aligns;
 }
 
 function mergeAdjacentText(items: MarkdownInline[]): MarkdownInline[] {

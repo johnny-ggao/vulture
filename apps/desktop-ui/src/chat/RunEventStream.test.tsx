@@ -217,6 +217,98 @@ describe("reduceRunEvents", () => {
     expect(screen.getByText(/运行失败：Connection error\./)).toBeDefined();
   });
 
+  // ---- Round 11: thinking indicator -------------------------------
+
+  test("renders a thinking indicator while streaming with no text yet", () => {
+    const { container } = render(
+      <RunEventStream
+        events={[]}
+        submittingApprovals={new Set()}
+        resuming={false}
+        streaming
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(container.querySelector(".thinking-dots")).not.toBeNull();
+  });
+
+  test("hides the thinking indicator once any text block has landed", () => {
+    const events: AnyRunEvent[] = [
+      ev({ type: "text.delta", seq: 0, text: "Hi" }),
+    ];
+    const { container } = render(
+      <RunEventStream
+        events={events}
+        submittingApprovals={new Set()}
+        resuming={false}
+        streaming
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(container.querySelector(".thinking-dots")).toBeNull();
+  });
+
+  test("hides the thinking indicator when streaming is false", () => {
+    const { container } = render(
+      <RunEventStream
+        events={[]}
+        submittingApprovals={new Set()}
+        resuming={false}
+        streaming={false}
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(container.querySelector(".thinking-dots")).toBeNull();
+  });
+
+  test("hides the thinking indicator while resuming (recovery flow owns the affordance)", () => {
+    const { container } = render(
+      <RunEventStream
+        events={[]}
+        submittingApprovals={new Set()}
+        resuming
+        streaming
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(container.querySelector(".thinking-dots")).toBeNull();
+  });
+
+  test("thinking indicator still renders when only tool blocks (no text) are present", () => {
+    const events: AnyRunEvent[] = [
+      ev({
+        type: "tool.planned",
+        seq: 0,
+        callId: "c1",
+        tool: "shell.exec",
+        input: { argv: ["ls"] },
+      }),
+    ];
+    const { container } = render(
+      <RunEventStream
+        events={events}
+        submittingApprovals={new Set()}
+        resuming={false}
+        streaming
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    // Tool still renders, AND the thinking indicator is shown — the
+    // user has zero textual response yet.
+    expect(container.querySelector(".tool-block")).not.toBeNull();
+    expect(container.querySelector(".thinking-dots")).not.toBeNull();
+  });
+
   test("run.recovered renders a visible recovery boundary", () => {
     render(
       <RunEventStream

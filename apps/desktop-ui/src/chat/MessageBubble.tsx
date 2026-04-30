@@ -231,6 +231,44 @@ function renderBlock(block: MarkdownBlock, key: number) {
       );
     case "hr":
       return <hr key={key} className="md-hr" />;
+    case "table": {
+      // GFM table — we render alignment via inline text-align so the
+      // value carries even when the user copies the table out into
+      // another tool. `<colgroup>` would be cleaner but doesn't carry
+      // through plain-text copy.
+      return (
+        <div key={key} className="md-table-wrap">
+          <table className="md-table">
+            <thead>
+              <tr>
+                {block.header.map((cell, c) => (
+                  <th
+                    key={c}
+                    style={{ textAlign: block.align[c] ?? "left" }}
+                  >
+                    {cell.map((inline, i) => renderInline(inline, i))}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, r) => (
+                <tr key={r}>
+                  {row.map((cell, c) => (
+                    <td
+                      key={c}
+                      style={{ textAlign: block.align[c] ?? "left" }}
+                    >
+                      {cell.map((inline, i) => renderInline(inline, i))}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
     case "paragraph":
     default:
       return (

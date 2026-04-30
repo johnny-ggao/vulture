@@ -369,4 +369,119 @@ describe("ChatView", () => {
     expect(calls).toEqual([]);
     expect(screen.queryByLabelText("发送")).toBeNull();
   });
+
+  // ---- Round 11: dismissible send-error banner -----------------
+
+  test("send-error banner shows a dismiss button; clicking it hides the banner", () => {
+    const { container, rerender } = render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        sendError="boom"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByText("boom")).toBeDefined();
+    const dismiss = container.querySelector(".status-banner-dismiss") as HTMLButtonElement;
+    expect(dismiss).not.toBeNull();
+    fireEvent.click(dismiss);
+    // Same sendError prop value but now dismissed locally — banner hides.
+    expect(container.querySelector(".status-banner.danger")).toBeNull();
+
+    // A NEW error string re-shows the banner.
+    rerender(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        sendError="another failure"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByText("another failure")).toBeDefined();
+  });
+
+  test("reconnecting banner uses the spinning icon class", () => {
+    const { container } = render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="reconnecting"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(container.querySelector(".status-banner-icon-spin")).not.toBeNull();
+  });
+
+  test("scroll-to-bottom FAB is hidden when the user is at the bottom", () => {
+    const { container } = render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    // happy-dom containers have scrollHeight=clientHeight by default,
+    // so distance is 0 → stuck=true → FAB hidden.
+    expect(container.querySelector(".chat-scroll-bottom")).toBeNull();
+  });
+
+  test("scroll-to-bottom FAB does not render on the empty state", () => {
+    const { container } = render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(container.querySelector(".chat-scroll-bottom")).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
@@ -9,6 +9,7 @@ import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
 import { SubagentSessionPanel } from "./SubagentSessionPanel";
+import { useStickyBottomScroll } from "./useStickyBottomScroll";
 
 export interface ChatViewProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
@@ -52,6 +53,35 @@ export function ChatView(props: ChatViewProps) {
     ?? null;
   const showAgentHeader = hasContent && activeAgent;
 
+  // Local "dismissed" state for the send-error banner. We can't push
+  // back to App.tsx (sendError is owned there for retry semantics), so
+  // we hide it locally and reset whenever a NEW error string arrives.
+  // This gives the user a clear close affordance without losing the
+  // upstream state.
+  const [sendErrorDismissed, setSendErrorDismissed] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    // Reset dismissal when a fresh error comes in. We compare strings so
+    // an identical retry that fails again still re-shows the banner.
+    if (props.sendError === null) setSendErrorDismissed(null);
+  }, [props.sendError]);
+  const showSendError =
+    Boolean(props.sendError) && props.sendError !== sendErrorDismissed;
+
+  // Sticky-bottom scroll: while at bottom, every new message / SSE
+  // event keeps the view pinned to the latest content; once the user
+  // scrolls up to read history, auto-scroll pauses until they hit the
+  // 回到底部 button. Deps mirror "things that grow": message count,
+  // run event count, run status (so terminal flips force a final
+  // snap), and subagent session count.
+  const stickyScroll = useStickyBottomScroll<HTMLElement>([
+    props.messages.length,
+    props.runEvents.length,
+    props.runStatus,
+    props.subagentSessions?.length ?? 0,
+  ]);
+
   return (
     <main className="chat-main">
       {showAgentHeader ? (
@@ -63,18 +93,33 @@ export function ChatView(props: ChatViewProps) {
       ) : null}
       {props.runStatus === "reconnecting" ? (
         <div className="status-banner info" role="status" aria-live="polite">
-          <ReconnectIcon />
+          <span className="status-banner-icon status-banner-icon-spin">
+            <ReconnectIcon />
+          </span>
           <span><span className="label">重连中…</span>{props.runError ? <span className="detail"> · {props.runError}</span> : null}</span>
         </div>
       ) : null}
-      {props.sendError ? (
+      {showSendError ? (
         <div className="status-banner danger" role="alert">
-          <AlertIcon />
-          <span>{props.sendError}</span>
+          <span className="status-banner-icon">
+            <AlertIcon />
+          </span>
+          <span className="status-banner-message">{props.sendError}</span>
+          <button
+            type="button"
+            className="status-banner-dismiss"
+            aria-label="关闭"
+            onClick={() => setSendErrorDismissed(props.sendError ?? null)}
+          >
+            <CloseIcon />
+          </button>
         </div>
       ) : null}
 
-      <section className={`chat-stage ${hasContent ? "has-messages" : ""}`}>
+      <section
+        ref={stickyScroll.ref as React.RefObject<HTMLElement>}
+        className={`chat-stage ${hasContent ? "has-messages" : ""}`}
+      >
         {hasContent ? (
           <div className="message-list">
             {props.messages.map((m) => (
@@ -132,6 +177,18 @@ export function ChatView(props: ChatViewProps) {
         )}
       </section>
 
+      {hasContent && !stickyScroll.stuck ? (
+        <button
+          type="button"
+          className="chat-scroll-bottom"
+          aria-label="回到底部"
+          onClick={stickyScroll.scrollToBottom}
+        >
+          <ArrowDownIcon />
+          <span>回到底部</span>
+        </button>
+      ) : null}
+
       <section className="composer-wrap">
         <Composer
           agents={props.agents}
@@ -163,6 +220,43 @@ function AlertIcon() {
       <circle cx="8" cy="8" r="6" />
       <path d="M8 5v3.5" />
       <circle cx="8" cy="11" r="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M4 12l8-8" />
+    </svg>
+  );
+}
+
+function ArrowDownIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 3v9.5" />
+      <path d="M3.5 8.5L8 13l4.5-4.5" />
     </svg>
   );
 }

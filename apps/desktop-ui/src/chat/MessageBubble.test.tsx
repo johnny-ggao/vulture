@@ -235,4 +235,44 @@ describe("MessageBubble", () => {
     expect(hr).not.toBeNull();
     expect(hr?.classList.contains("md-hr")).toBe(true);
   });
+
+  // ---- Round 11: GFM tables ------------------------------------
+
+  test("markdown table renders as a <table.md-table> with the expected cells", () => {
+    const { container } = render(
+      <MessageBubble
+        role="assistant"
+        content={[
+          "| key | value |",
+          "|---|---|",
+          "| id  | 42 |",
+          "| ttl | 60s |",
+        ].join("\n")}
+      />,
+    );
+    const table = container.querySelector("table.md-table");
+    expect(table).not.toBeNull();
+    const ths = table?.querySelectorAll("thead th") ?? [];
+    expect(ths.length).toBe(2);
+    expect(ths[0].textContent).toBe("key");
+    expect(ths[1].textContent).toBe("value");
+    expect(table?.querySelectorAll("tbody tr").length).toBe(2);
+  });
+
+  test("markdown table forwards alignment from the separator row to inline style", () => {
+    const { container } = render(
+      <MessageBubble
+        role="assistant"
+        content={[
+          "| L | C | R |",
+          "|:---|:---:|---:|",
+          "| a | b | c |",
+        ].join("\n")}
+      />,
+    );
+    const ths = container.querySelectorAll("table.md-table thead th");
+    expect((ths[0] as HTMLElement).style.textAlign).toBe("left");
+    expect((ths[1] as HTMLElement).style.textAlign).toBe("center");
+    expect((ths[2] as HTMLElement).style.textAlign).toBe("right");
+  });
 });
