@@ -6,12 +6,14 @@ import type { ConversationDto } from "../api/conversations";
 const items: ConversationDto[] = [
   {
     id: "c-1",
+    agentId: "agent-1",
     title: "Project plan",
     updatedAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
   } as ConversationDto,
   {
     id: "c-2",
+    agentId: "agent-1",
     title: "Bug review",
     updatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
     createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),

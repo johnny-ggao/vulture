@@ -8,3 +8,4 @@ export { Toast, type ToastProps } from "./Toast";
 export { AgentAvatar, type AgentAvatarProps } from "./AgentAvatar";
 export { AgentCard, type AgentCardProps } from "./AgentCard";
 export { hashHue } from "./agentHue";
+export { useCursorGloss } from "./useCursorGloss";

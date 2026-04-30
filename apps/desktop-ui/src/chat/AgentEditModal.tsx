@@ -10,7 +10,7 @@ import type {
 import type { ToolCatalogGroup } from "../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../api/tools";
 import { ToolGroupSelector } from "./ToolGroupSelector";
-import { AgentAvatar, Badge, Field } from "./components";
+import { AgentAvatar, Badge, Field, useCursorGloss } from "./components";
 
 type AgentsTab = "overview" | "persona" | "tools" | "core";
 
@@ -78,6 +78,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
   const [tab, setTab] = useState<AgentsTab>("overview");
   const [savedFlash, setSavedFlash] = useState(false);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cursor-tracked gloss for the modal header — shared hook with AgentCard
+  // / SkillCard / ChatView so the four sites can't drift apart.
+  const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
   // Tracks whether the modal is currently mounted + open. We branch on this
   // before any state setter that follows an awaited Promise, so a save that
   // resolves after the user dismissed the modal doesn't poke a dead tree.
@@ -274,7 +277,11 @@ export function AgentEditModal(props: AgentEditModalProps) {
         className="modal-card agent-edit-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header">
+        <div
+          className="modal-header"
+          ref={headerRef}
+          {...headerGloss}
+        >
           <div className="agent-config-title-block">
             <AgentAvatar agent={agent} size={40} shape="square" />
             <div>

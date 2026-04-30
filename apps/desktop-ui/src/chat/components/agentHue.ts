@@ -8,10 +8,16 @@
  * letter + name disambiguate; consider folding a second hash byte into
  * banner offsets if collisions become user-visible.
  */
-export function hashHue(id: string): number {
+export function hashHue(id: string | null | undefined): number {
+  // Defensive against `undefined` slipping through type erasure (the
+  // HistoryDrawer fixture, for example, casts a plain object literal to
+  // `ConversationDto` and may omit `agentId`). Treat missing ids as the
+  // empty string so hue defaults to 0 (a stable bucket) instead of
+  // throwing on `.length`.
+  const seed = id ?? "";
   let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i += 1) {
-    h ^= id.charCodeAt(i);
+  for (let i = 0; i < seed.length; i += 1) {
+    h ^= seed.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
   return Math.abs(h) % 360;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Agent } from "../api/agents";
 import type { SkillListItem, SkillListResponse } from "../api/skills";
-import { Badge, ErrorAlert, Field, SearchInput, Toggle } from "./components";
+import { Badge, ErrorAlert, Field, SearchInput, Toggle, useCursorGloss } from "./components";
 import { SkillDetailModal } from "./SkillDetailModal";
 
 export interface SkillsPageProps {
@@ -223,8 +223,16 @@ interface SkillCardProps {
  * enable/disable doesn't require a round-trip through the modal.
  */
 function SkillCard({ skill, saving, onOpenDetail, onToggle }: SkillCardProps) {
+  // Shared cursor-gloss handlers; see useCursorGloss for caching details.
+  const { ref, ...gloss } = useCursorGloss<HTMLDivElement>();
+
   return (
-    <div className="skill-card" data-enabled={skill.enabled ? "true" : "false"}>
+    <div
+      ref={ref}
+      className="skill-card"
+      data-enabled={skill.enabled ? "true" : "false"}
+      {...gloss}
+    >
       <button
         type="button"
         className="skill-card-surface"

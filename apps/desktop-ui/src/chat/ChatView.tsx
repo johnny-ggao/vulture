@@ -1,10 +1,9 @@
-import * as React from "react";
-import { useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
-import { AgentAvatar } from "./components";
+import { AgentAvatar, useCursorGloss } from "./components";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
@@ -51,27 +50,8 @@ export function ChatView(props: ChatViewProps) {
   const showAgentHeader = hasContent && activeAgent;
   const statusLabel = runStatusLabel(props.runStatus, props.resumingRun);
 
-  // Mirror the AgentCard cursor-tracked spotlight on the chat header so the
-  // identity strip feels alive, not just a static label. Direct DOM
-  // mutation through a ref keeps mousemove cheap (no React re-render); the
-  // bounding rect is cached on enter and invalidated on leave.
-  const headerRef = useRef<HTMLDivElement | null>(null);
-  const headerRectRef = useRef<DOMRect | null>(null);
-  function handleHeaderEnter() {
-    headerRectRef.current = headerRef.current?.getBoundingClientRect() ?? null;
-  }
-  function handleHeaderMove(event: React.MouseEvent<HTMLDivElement>) {
-    const node = headerRef.current;
-    const rect = headerRectRef.current;
-    if (!node || !rect) return;
-    const x = ((event.clientX - rect.left) / rect.width).toFixed(3);
-    const y = ((event.clientY - rect.top) / rect.height).toFixed(3);
-    node.style.setProperty("--mouse-x", x);
-    node.style.setProperty("--mouse-y", y);
-  }
-  function handleHeaderLeave() {
-    headerRectRef.current = null;
-  }
+  // Shared cursor-tracked gloss — same idiom as AgentCard / SkillCard.
+  const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
 
   return (
     <main className="chat-main">
@@ -79,9 +59,7 @@ export function ChatView(props: ChatViewProps) {
         <div
           className="chat-agent-header"
           ref={headerRef}
-          onMouseEnter={handleHeaderEnter}
-          onMouseMove={handleHeaderMove}
-          onMouseLeave={handleHeaderLeave}
+          {...headerGloss}
         >
           <AgentAvatar agent={activeAgent} size={28} shape="square" />
           <div className="chat-agent-meta">

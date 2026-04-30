@@ -1857,6 +1857,43 @@ pre {
 }
 .skill-card[data-enabled="false"] { opacity: 0.78; }
 .skill-card[data-enabled="false"]:hover { opacity: 1; }
+/* Cursor-tracked spotlight — same idiom as AgentCard, scoped to the card
+ * and tinted with the brand color so disabled skills feel cooler than
+ * active ones on hover. The card establishes its own stacking context
+ * via `isolation: isolate` so the `::after` (z-index: -1) sits behind
+ * the surface text but cannot escape the parent. */
+@media (prefers-reduced-motion: no-preference) {
+  .skill-card { isolation: isolate; }
+  .skill-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at
+        calc(var(--mouse-x, 0.5) * 100%)
+        calc(var(--mouse-y, 0.5) * 100%),
+      color-mix(in oklab, var(--brand-500) 12%, transparent) 0%,
+      transparent 40%
+    );
+    opacity: 0;
+    transition: opacity var(--duration-medium) var(--ease-standard);
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: -1;
+  }
+  .skill-card:hover::after { opacity: 1; }
+  @media (prefers-color-scheme: dark) {
+    .skill-card::after {
+      background: radial-gradient(
+        circle at
+          calc(var(--mouse-x, 0.5) * 100%)
+          calc(var(--mouse-y, 0.5) * 100%),
+        color-mix(in oklab, var(--brand-500) 22%, transparent) 0%,
+        transparent 40%
+      );
+    }
+  }
+}
 .skill-card-surface {
   display: flex;
   flex-direction: column;
@@ -2102,6 +2139,42 @@ pre {
   max-height: 86vh;
   display: flex;
   flex-direction: column;
+}
+/* Position the cursor-tracked spotlight pseudo for the modal header. */
+.agent-edit-modal .modal-header {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .agent-edit-modal .modal-header::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at
+        calc(var(--mouse-x, 0.5) * 100%)
+        calc(var(--mouse-y, 0.5) * 100%),
+      color-mix(in oklab, var(--brand-500) 12%, transparent) 0%,
+      transparent 42%
+    );
+    opacity: 0;
+    transition: opacity var(--duration-medium) var(--ease-standard);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .agent-edit-modal .modal-header:hover::after { opacity: 1; }
+  @media (prefers-color-scheme: dark) {
+    .agent-edit-modal .modal-header::after {
+      background: radial-gradient(
+        circle at
+          calc(var(--mouse-x, 0.5) * 100%)
+          calc(var(--mouse-y, 0.5) * 100%),
+        color-mix(in oklab, var(--brand-500) 22%, transparent) 0%,
+        transparent 42%
+      );
+    }
+  }
 }
 .agent-edit-modal .agent-config-title-block {
   flex: 1;

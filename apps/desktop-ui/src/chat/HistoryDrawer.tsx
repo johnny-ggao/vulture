@@ -121,7 +121,16 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
                       className="row-button"
                       onClick={() => pickAndClose(c.id)}
                     >
-                      {agent ? <AgentAvatar agent={agent} size={20} shape="square" /> : null}
+                      {/* When the row's agent isn't in scope (e.g. it was
+                       * deleted), AgentAvatar still renders a glyph from the
+                       * agentId's hue + a "?" fallback letter so column
+                       * alignment stays consistent with rows that do have
+                       * a known agent. */}
+                      <AgentAvatar
+                        agent={agent ?? { id: c.agentId, name: "" }}
+                        size={20}
+                        shape="square"
+                      />
                       <span className="row-text">
                         <span className="row-title">{c.title || "(无标题)"}</span>
                         <span className="row-meta">{new Date(c.updatedAt).toLocaleString()}</span>
