@@ -20,7 +20,14 @@ pub fn vulture_root_from_env(
     env: &impl Fn(&str) -> Option<std::ffi::OsString>,
 ) -> std::path::PathBuf {
     if let Some(value) = env("VULTURE_DESKTOP_ROOT") {
-        return PathBuf::from(value);
+        if !value.to_string_lossy().trim().is_empty() {
+            let path = PathBuf::from(value);
+            assert!(
+                path.is_absolute(),
+                "VULTURE_DESKTOP_ROOT must be an absolute path"
+            );
+            return path;
+        }
     }
 
     let home = env("HOME").expect("HOME must be set");
@@ -144,6 +151,33 @@ mod tests {
                 .join("Application Support")
                 .join("Vulture")
         );
+    }
+
+    #[test]
+    fn root_ignores_empty_vulture_desktop_root() {
+        let root = vulture_root_from_env(&|key| match key {
+            "VULTURE_DESKTOP_ROOT" => Some("   ".into()),
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        });
+
+        assert_eq!(
+            root,
+            std::path::PathBuf::from("/Users/example")
+                .join("Library")
+                .join("Application Support")
+                .join("Vulture")
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "VULTURE_DESKTOP_ROOT must be an absolute path")]
+    fn root_rejects_relative_vulture_desktop_root() {
+        let _ = vulture_root_from_env(&|key| match key {
+            "VULTURE_DESKTOP_ROOT" => Some("relative/root".into()),
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        });
     }
 
     #[test]
