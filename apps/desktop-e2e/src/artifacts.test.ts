@@ -7,7 +7,8 @@ import {
   createDesktopArtifactRun,
   writeDesktopFailureReport,
   writeDesktopJUnit,
-  writeDesktopSummary,
+  writeDesktopScenarioSummary,
+  writeDesktopSuiteSummary,
 } from "./artifacts";
 
 describe("desktop e2e artifacts", () => {
@@ -26,36 +27,45 @@ describe("desktop e2e artifacts", () => {
     }
   });
 
-  test("writes summary, junit, and failure report", () => {
-    const root = mkdtempSync(join(tmpdir(), "vulture-desktop-e2e-artifacts-"));
+  test("writes suite summary, scenario summary, junit, and failure report", () => {
+    const suiteRoot = mkdtempSync(join(tmpdir(), "vulture-desktop-e2e-suite-"));
+    const scenarioRoot = mkdtempSync(join(tmpdir(), "vulture-desktop-e2e-scenario-"));
     try {
-      const results = [
-        {
-          id: "launch-smoke",
-          name: "Launch <smoke>",
-          status: "failed" as const,
-          durationMs: 12,
-          artifactPath: "/tmp/artifact",
-          steps: [
-            {
-              name: "waitForChatReady",
-              status: "failed" as const,
-              error: "chat & shell not ready",
-            },
-          ],
-        },
-      ];
+      const result = {
+        id: "launch-smoke",
+        name: "Launch <smoke>",
+        status: "failed" as const,
+        durationMs: 12,
+        artifactPath: "/tmp/artifact",
+        steps: [
+          {
+            name: '2. waitForChatReady',
+            status: "failed" as const,
+            error: "chat & shell not ready",
+          },
+        ],
+      };
+      const results = [result];
 
-      expect(writeDesktopSummary(root, results)).toBe(join(root, "summary.json"));
-      expect(writeDesktopJUnit(root, results)).toBe(join(root, "junit.xml"));
-      expect(writeDesktopFailureReport(root, results)).toBe(join(root, "failure-report.md"));
+      expect(writeDesktopSuiteSummary(suiteRoot, results)).toBe(join(suiteRoot, "summary.json"));
+      expect(writeDesktopScenarioSummary(scenarioRoot, result)).toBe(join(scenarioRoot, "summary.json"));
+      expect(writeDesktopJUnit(suiteRoot, results)).toBe(join(suiteRoot, "junit.xml"));
+      expect(writeDesktopFailureReport(suiteRoot, results)).toBe(join(suiteRoot, "failure-report.md"));
 
-      expect(readFileSync(join(root, "summary.json"), "utf8")).toContain("launch-smoke");
-      expect(readFileSync(join(root, "junit.xml"), "utf8")).toContain("chat &amp; shell not ready");
-      expect(readFileSync(join(root, "junit.xml"), "utf8")).toContain("Launch &lt;smoke&gt;");
-      expect(readFileSync(join(root, "failure-report.md"), "utf8")).toContain("waitForChatReady");
+      expect(JSON.parse(readFileSync(join(suiteRoot, "summary.json"), "utf8"))).toEqual({
+        total: 1,
+        passed: 0,
+        failed: 1,
+        results,
+      });
+      expect(JSON.parse(readFileSync(join(scenarioRoot, "summary.json"), "utf8"))).toEqual(result);
+      expect(readFileSync(join(suiteRoot, "junit.xml"), "utf8")).toContain("2. waitForChatReady: chat &amp; shell not ready");
+      expect(readFileSync(join(suiteRoot, "junit.xml"), "utf8")).toContain("chat &amp; shell not ready");
+      expect(readFileSync(join(suiteRoot, "junit.xml"), "utf8")).toContain("Launch &lt;smoke&gt;");
+      expect(readFileSync(join(suiteRoot, "failure-report.md"), "utf8")).toContain("2. waitForChatReady");
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(suiteRoot, { recursive: true, force: true });
+      rmSync(scenarioRoot, { recursive: true, force: true });
     }
   });
 
@@ -89,7 +99,7 @@ describe("desktop e2e artifacts", () => {
         artifactPath: "/tmp/artifact",
         steps: [
           {
-            name: "waitForChatReady",
+            name: "2. waitForChatReady",
             status: "failed" as const,
             error: "first line\n## not a heading\n```inner fence```",
           },
@@ -114,5 +124,38 @@ describe("desktop e2e artifacts", () => {
     expect(packageJson.scripts.typecheck).toBe("tsc -p tsconfig.json --noEmit");
     expect(packageJson.scripts.build).toBe("bun run typecheck");
     expect(existsSync(join(import.meta.dir, "..", "tsconfig.json"))).toBe(true);
+  });
+
+  test("includes additional failed steps in junit and markdown failure outputs", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-desktop-e2e-artifacts-"));
+    try {
+      const result = {
+        id: "launch-smoke",
+        name: "Launch smoke",
+        status: "failed" as const,
+        durationMs: 10,
+        artifactPath: "/tmp/artifact",
+        steps: [
+          { name: '2. sendMessage("boom")', status: "failed" as const, error: "message rejected" },
+          { name: "shutdown", status: "failed" as const, error: "shutdown also failed" },
+        ],
+      };
+
+      writeDesktopJUnit(root, [result]);
+      writeDesktopFailureReport(root, [result]);
+
+      const junit = readFileSync(join(root, "junit.xml"), "utf8");
+      expect(junit).toContain('message="2. sendMessage(&quot;boom&quot;): message rejected"');
+      expect(junit).toContain("Additional failures:");
+      expect(junit).toContain("shutdown: shutdown also failed");
+
+      const report = readFileSync(join(root, "failure-report.md"), "utf8");
+      expect(report).toContain('Failed step: 2. sendMessage("boom")');
+      expect(report).toContain("Additional failures:");
+      expect(report).toContain("shutdown");
+      expect(report).toContain("shutdown also failed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

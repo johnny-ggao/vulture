@@ -37,7 +37,7 @@ export function createDesktopArtifactRun(
   return { scenarioDir, screenshotsDir, logsDir };
 }
 
-export function writeDesktopSummary(root: string, results: readonly DesktopScenarioResult[]): string {
+export function writeDesktopSuiteSummary(root: string, results: readonly DesktopScenarioResult[]): string {
   mkdirSync(root, { recursive: true });
 
   const passed = results.filter((result) => result.status === "passed").length;
@@ -47,6 +47,17 @@ export function writeDesktopSummary(root: string, results: readonly DesktopScena
 
   return path;
 }
+
+export function writeDesktopScenarioSummary(root: string, result: DesktopScenarioResult): string {
+  mkdirSync(root, { recursive: true });
+
+  const path = join(root, "summary.json");
+  writeFileSync(path, `${JSON.stringify(result, null, 2)}\n`);
+
+  return path;
+}
+
+export const writeDesktopSummary = writeDesktopSuiteSummary;
 
 export function writeDesktopJUnit(root: string, results: readonly DesktopScenarioResult[]): string {
   mkdirSync(root, { recursive: true });
@@ -62,10 +73,11 @@ export function writeDesktopJUnit(root: string, results: readonly DesktopScenari
       `  <testcase classname="vulture.desktop-e2e" name="${xml(result.name)}" time="${(result.durationMs / 1000).toFixed(3)}">`,
     );
 
-    const failedStep = result.steps.find((step) => step.status === "failed");
-    if (failedStep) {
-      const message = `${failedStep.name}: ${failedStep.error ?? "unknown failure"}`;
-      lines.push(`    <failure message="${xml(message)}">${xml(message)}</failure>`);
+    const failedSteps = result.steps.filter((step) => step.status === "failed");
+    const primaryFailure = failedSteps[0];
+    if (primaryFailure) {
+      const message = `${primaryFailure.name}: ${primaryFailure.error ?? "unknown failure"}`;
+      lines.push(`    <failure message="${xml(message)}">${xml(formatFailureBody(failedSteps))}</failure>`);
     }
 
     lines.push(`    <system-out>${xml(result.artifactPath)}</system-out>`);
@@ -93,11 +105,20 @@ export function writeDesktopFailureReport(
 
   const lines = ["# Desktop E2E Failure Report", "", `Failed: ${failed.length}/${results.length}`, ""];
   for (const result of failed) {
-    const failedStep = result.steps.find((step) => step.status === "failed");
+    const failedSteps = result.steps.filter((step) => step.status === "failed");
+    const primaryFailure = failedSteps[0];
+    const additionalFailures = failedSteps.slice(1);
     lines.push(`## ${result.id}`, "", `Name: ${result.name}`, `Artifacts: ${result.artifactPath}`);
 
-    if (failedStep) {
-      lines.push(`Failed step: ${failedStep.name}`, "Error:", fencedMarkdown(failedStep.error ?? "unknown failure"));
+    if (primaryFailure) {
+      lines.push(`Failed step: ${primaryFailure.name}`, "Error:", fencedMarkdown(primaryFailure.error ?? "unknown failure"));
+    }
+
+    if (additionalFailures.length > 0) {
+      lines.push("", "Additional failures:");
+      for (const step of additionalFailures) {
+        lines.push(step.name, "Error:", fencedMarkdown(step.error ?? "unknown failure"));
+      }
     }
 
     lines.push("");
@@ -117,6 +138,23 @@ function fencedMarkdown(value: string): string {
   const longestFence = Math.max(3, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length));
   const fence = "`".repeat(longestFence + 1);
   return `${fence}\n${value}\n${fence}`;
+}
+
+function formatFailureBody(failedSteps: readonly DesktopStepResult[]): string {
+  const [primaryFailure, ...additionalFailures] = failedSteps;
+  if (!primaryFailure) {
+    return "";
+  }
+
+  const lines = [`${primaryFailure.name}: ${primaryFailure.error ?? "unknown failure"}`];
+  if (additionalFailures.length > 0) {
+    lines.push("Additional failures:");
+    for (const step of additionalFailures) {
+      lines.push(`- ${step.name}: ${step.error ?? "unknown failure"}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function xml(value: string): string {

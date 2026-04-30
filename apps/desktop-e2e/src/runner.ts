@@ -1,6 +1,6 @@
 import {
   createDesktopArtifactRun,
-  writeDesktopSummary,
+  writeDesktopScenarioSummary,
   type DesktopArtifactRun,
   type DesktopScenarioResult,
   type DesktopStepResult,
@@ -10,6 +10,8 @@ import type { DesktopScenario, DesktopScenarioStep } from "./scenarios";
 export interface DesktopDriverContext {
   scenario: DesktopScenario;
   artifacts: DesktopArtifactRun;
+  signal: AbortSignal;
+  deadlineMs: number;
 }
 
 export interface DesktopDriver {
@@ -41,28 +43,36 @@ export interface RunDesktopScenarioOptions {
 
 export async function runDesktopScenario(options: RunDesktopScenarioOptions): Promise<DesktopScenarioResult> {
   const now = options.now ?? Date.now;
+  const startedAt = now();
+  const deadlineMs = startedAt + Math.max(0, options.scenario.timeoutMs);
   const artifacts = createDesktopArtifactRun(options.artifactRoot, options.scenario.id, options.runId);
+  const timeoutController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    timeoutController.abort(new Error(`Scenario timed out after ${options.scenario.timeoutMs}ms`));
+  }, Math.max(0, options.scenario.timeoutMs));
   const context: DesktopDriverContext = {
     scenario: options.scenario,
     artifacts,
+    signal: timeoutController.signal,
+    deadlineMs,
   };
 
-  const startedAt = now();
   const steps: DesktopStepResult[] = [];
   let status: DesktopScenarioResult["status"] = "passed";
 
   try {
-    for (const step of options.scenario.steps) {
+    for (const [index, step] of options.scenario.steps.entries()) {
+      const stepName = formatStepName(step, index);
       try {
-        await executeStep(options.driver, step, context);
+        await executeStepWithDeadline(options.driver, step, stepName, context, timeoutController, now);
         steps.push({
-          name: step.action,
+          name: stepName,
           status: "passed",
         });
       } catch (error) {
         status = "failed";
         steps.push({
-          name: step.action,
+          name: stepName,
           status: "failed",
           error: toErrorMessage(error),
         });
@@ -70,6 +80,7 @@ export async function runDesktopScenario(options: RunDesktopScenarioOptions): Pr
       }
     }
   } finally {
+    clearTimeout(timeoutHandle);
     try {
       await options.driver.shutdown(context);
     } catch (error) {
@@ -91,9 +102,48 @@ export async function runDesktopScenario(options: RunDesktopScenarioOptions): Pr
     steps,
   };
 
-  writeDesktopSummary(artifacts.scenarioDir, [result]);
+  writeDesktopScenarioSummary(artifacts.scenarioDir, result);
 
   return result;
+}
+
+async function executeStepWithDeadline(
+  driver: DesktopDriver,
+  step: DesktopScenarioStep,
+  stepName: string,
+  context: DesktopDriverContext,
+  timeoutController: AbortController,
+  now: () => number,
+): Promise<void> {
+  const remainingMs = Math.max(0, context.deadlineMs - now());
+  if (remainingMs === 0) {
+    const error = new Error(`${stepName} timed out after ${context.scenario.timeoutMs}ms`);
+    if (!context.signal.aborted) {
+      timeoutController.abort(error);
+    }
+    throw error;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    await Promise.race([
+      executeStep(driver, step, context),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          const error = new Error(`${stepName} timed out after ${context.scenario.timeoutMs}ms`);
+          if (!context.signal.aborted) {
+            timeoutController.abort(error);
+          }
+          reject(error);
+        }, remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 async function executeStep(driver: DesktopDriver, step: DesktopScenarioStep, context: DesktopDriverContext): Promise<void> {
@@ -119,6 +169,26 @@ async function executeStep(driver: DesktopDriver, step: DesktopScenarioStep, con
     default:
       step satisfies never;
       throw new Error("Unknown desktop scenario step");
+  }
+}
+
+function formatStepName(step: DesktopScenarioStep, index: number): string {
+  const prefix = `${index + 1}. ${step.action}`;
+
+  switch (step.action) {
+    case "sendMessage":
+    case "expectMessage":
+      return `${prefix}(${JSON.stringify(step.text)})`;
+    case "openNavigation":
+      return `${prefix}(${JSON.stringify(step.label)})`;
+    case "captureScreenshot":
+      return `${prefix}(${JSON.stringify(step.name)})`;
+    case "launchApp":
+    case "waitForChatReady":
+      return prefix;
+    default:
+      step satisfies never;
+      return prefix;
   }
 }
 
