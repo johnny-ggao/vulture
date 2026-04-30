@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
+import type { SubagentSessionDto } from "../api/subagentSessions";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
 import { ChatAgentHeader, isRunningStatus } from "./ChatAgentHeader";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
+import { SubagentSessionPanel } from "./SubagentSessionPanel";
 
 export interface ChatViewProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
@@ -15,6 +17,10 @@ export interface ChatViewProps {
 
   messages: ReadonlyArray<MessageDto>;
   messageUsages?: ReadonlyMap<string, TokenUsageDto>;
+  subagentSessions?: ReadonlyArray<SubagentSessionDto>;
+  subagentMessages?: Readonly<Record<string, ReadonlyArray<MessageDto>>>;
+  loadingSubagentMessages?: ReadonlySet<string>;
+  onLoadSubagentMessages?: (sessionId: string) => void | Promise<void>;
   runEvents: ReadonlyArray<AnyRunEvent>;
   runStatus: RunStreamStatus;
   runError: string | null;
@@ -88,6 +94,12 @@ export function ChatView(props: ChatViewProps) {
               onDecide={props.onDecide}
               onResume={props.onResume}
               onCancel={props.onCancel}
+            />
+            <SubagentSessionPanel
+              sessions={props.subagentSessions ?? []}
+              messagesBySessionId={props.subagentMessages ?? {}}
+              loadingSessionIds={props.loadingSubagentMessages ?? new Set()}
+              onLoadMessages={props.onLoadSubagentMessages ?? (async () => {})}
             />
           </div>
         ) : props.onboardingCard ? (

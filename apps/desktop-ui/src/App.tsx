@@ -11,7 +11,8 @@ import { createApiClient } from "./api/client";
 import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName, type AgentToolPreset, type ReasoningLevel } from "./api/agents";
 import { profileApi } from "./api/profile";
 import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
-import { conversationsApi, type ConversationDto } from "./api/conversations";
+import { conversationsApi, type ConversationDto, type MessageDto } from "./api/conversations";
+import { subagentSessionsApi, type SubagentSessionDto } from "./api/subagentSessions";
 import { FALLBACK_TOOL_CATALOG, toolsApi, type ToolCatalogGroup } from "./api/tools";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
@@ -90,6 +91,9 @@ export function App() {
     events: AnyRunEvent[];
   }>({ conversationId: null, events: [] });
   const [conversationRuns, setConversationRuns] = useState<RunDto[]>([]);
+  const [subagentSessions, setSubagentSessions] = useState<SubagentSessionDto[]>([]);
+  const [subagentMessages, setSubagentMessages] = useState<Record<string, MessageDto[]>>({});
+  const [loadingSubagentMessages, setLoadingSubagentMessages] = useState<Set<string>>(new Set());
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -207,6 +211,7 @@ export function App() {
   const refetchConversationsRef = useRef(conversations.refetch);
   refetchConversationsRef.current = conversations.refetch;
   const refetchRunsRef = useRef<() => Promise<void>>(async () => undefined);
+  const refetchSubagentSessionsRef = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => {
     if (
       runStream.status === "succeeded" ||
@@ -220,6 +225,7 @@ export function App() {
       void refetchMessagesRef.current();
       void refetchConversationsRef.current();
       void refetchRunsRef.current();
+      void refetchSubagentSessionsRef.current();
       setActiveRunId(null);
       clearActiveRunId();
     }
@@ -246,6 +252,40 @@ export function App() {
       cancelled = true;
     };
   }, [apiClient, activeConversationId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) {
+      setSubagentSessions([]);
+      setSubagentMessages({});
+      refetchSubagentSessionsRef.current = async () => undefined;
+      return;
+    }
+    let cancelled = false;
+    const refetch = async () => {
+      try {
+        const items = await subagentSessionsApi.list(apiClient, {
+          parentConversationId: activeConversationId,
+          limit: 20,
+        });
+        if (!cancelled) setSubagentSessions(items);
+      } catch (cause) {
+        console.error("Subagent session load failed", cause);
+        if (!cancelled) setSubagentSessions([]);
+      }
+    };
+    refetchSubagentSessionsRef.current = refetch;
+    void refetch();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
+
+  useEffect(() => {
+    const last = runStream.events[runStream.events.length - 1];
+    if (!last || last.type !== "tool.completed") return;
+    if (!isSessionsToolName(last.tool)) return;
+    void refetchSubagentSessionsRef.current();
+  }, [runStream.events]);
 
   useEffect(() => {
     if (!apiClient || !activeConversationId) {
@@ -547,6 +587,26 @@ export function App() {
     }
   }
 
+  async function handleLoadSubagentMessages(sessionId: string): Promise<void> {
+    if (!apiClient) return;
+    setLoadingSubagentMessages((items) => new Set(items).add(sessionId));
+    try {
+      const result = await subagentSessionsApi.messages(apiClient, sessionId);
+      setSubagentMessages((items) => ({ ...items, [sessionId]: result.items }));
+      setSubagentSessions((items) =>
+        items.map((session) => (session.id === sessionId ? result.session : session)),
+      );
+    } catch (cause) {
+      console.error("Subagent messages load failed", cause);
+    } finally {
+      setLoadingSubagentMessages((items) => {
+        const next = new Set(items);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+  }
+
   function handleNew() {
     setActiveConversationId(null);
     setActiveRunId(null);
@@ -760,6 +820,10 @@ export function App() {
               onSelectAgent={setSelectedAgentId}
               messages={messages.items}
               messageUsages={messageUsages}
+              subagentSessions={subagentSessions}
+              subagentMessages={subagentMessages}
+              loadingSubagentMessages={loadingSubagentMessages}
+              onLoadSubagentMessages={handleLoadSubagentMessages}
               runEvents={visibleRunEvents}
               runStatus={runStream.status}
               runError={runStream.error}
@@ -883,4 +947,8 @@ export function App() {
       />
     </div>
   );
+}
+
+function isSessionsToolName(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith("sessions_");
 }

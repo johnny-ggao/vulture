@@ -69,6 +69,47 @@ describe("ChatView", () => {
     expect(screen.getByText("Tokens: 100 in · 25 out · 125 total")).toBeDefined();
   });
 
+  test("renders subagent sessions below the current conversation", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs}
+        subagentSessions={[
+          {
+            id: "sub-1",
+            parentConversationId: "c-1",
+            parentRunId: "r-1",
+            agentId: "researcher",
+            conversationId: "c-child",
+            label: "Researcher",
+            status: "completed",
+            messageCount: 3,
+            createdAt: "2026-04-30T00:00:00.000Z",
+            updatedAt: "2026-04-30T00:01:00.000Z",
+          },
+        ]}
+        subagentMessages={{}}
+        loadingSubagentMessages={new Set()}
+        onLoadSubagentMessages={async () => {}}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText("子智能体会话")).toBeDefined();
+    expect(screen.getByText("Researcher")).toBeDefined();
+    expect(screen.getByText("已完成")).toBeDefined();
+  });
+
   test("shows reconnecting chip when status=reconnecting", () => {
     render(
       <ChatView

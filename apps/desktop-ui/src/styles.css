@@ -1250,6 +1250,124 @@ pre {
   border-radius: var(--radius-sm);
 }
 
+.subagent-panel {
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+.subagent-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--fill-quaternary);
+  border-bottom: 1px solid var(--fill-quaternary);
+}
+.subagent-panel-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.subagent-panel-head p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.subagent-list {
+  display: grid;
+}
+.subagent-item + .subagent-item {
+  border-top: 1px solid var(--fill-quaternary);
+}
+.subagent-row {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.subagent-row:hover {
+  background: var(--fill-quaternary);
+}
+.subagent-chevron {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+.subagent-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.subagent-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+.subagent-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.subagent-status {
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.subagent-status.active {
+  background: var(--info-bg);
+  color: var(--info);
+}
+.subagent-status.completed {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.subagent-status.failed {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.subagent-status.cancelled {
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+}
+.subagent-messages {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 12px 40px;
+  border-top: 1px solid var(--fill-quaternary);
+  background: color-mix(in oklab, var(--fill-quaternary) 45%, transparent);
+}
+.subagent-message {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+}
+.subagent-message-role {
+  color: var(--text-tertiary);
+}
+.subagent-message p,
+.subagent-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .approval-card {
   border: 1px solid color-mix(in oklab, var(--warning) 32%, transparent);
   background: var(--warning-bg);
