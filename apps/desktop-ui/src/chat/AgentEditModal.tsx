@@ -15,11 +15,13 @@ import {
   PersonaTab,
   SaveStatusIndicator,
   ToolsTab,
+  dirtyTabs,
   draftFromAgent,
   isDirtyDraft,
   parseSkills,
   type AgentConfigPatch,
   type Draft,
+  type DraftTabKey,
 } from "./editAgentTabs";
 
 export type { AgentConfigPatch };
@@ -63,7 +65,14 @@ export function AgentEditModal(props: AgentEditModalProps) {
   const [fileBusy, setFileBusy] = useState(false);
   const [tab, setTab] = useState<AgentsTab>("overview");
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Capture the element that had focus the moment the modal opens so we
+  // can return focus there on close — the WAI-ARIA "modal dialog"
+  // pattern. Without this, keyboard users find themselves dumped at
+  // document.body when the modal goes away.
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   // Tracks whether the modal is currently mounted + open. Branch on this
   // before any state setter that follows an awaited Promise so a save that
@@ -83,8 +92,29 @@ export function AgentEditModal(props: AgentEditModalProps) {
     setDraft(draftFromAgent(agent));
     setTab("overview");
     setSavedFlash(false);
+    setSaveError(null);
     setFileStatus("");
   }, [open, agent?.id]);
+
+  // Round 15 — focus management. When the modal opens, snapshot the
+  // currently-focused element so we can return focus to it on close
+  // (WAI-ARIA modal-dialog pattern). The save button gets focus on
+  // open as the most likely next action; if it ends up disabled (no
+  // changes yet), the close button is the runner-up.
+  useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    return () => {
+      const node = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      // Defer one tick so React commits the unmount before we steal
+      // focus — otherwise focus lands inside the just-unmounted tree.
+      queueMicrotask(() => node?.focus({ preventScroll: true }));
+    };
+  }, [open]);
 
   // When the modal closes mid-flight, clear flash + file status + busy so
   // the next open doesn't inherit stale UI.
@@ -100,6 +130,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
   }, [open]);
 
   const isDirty = useMemo(() => isDirtyDraft(draft, agent), [draft, agent]);
+  const dirtyTabSet = useMemo(() => dirtyTabs(draft, agent), [draft, agent]);
 
   // Cleanup the saved-flash timer on unmount.
   useEffect(() => {
@@ -254,6 +285,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
   async function save() {
     if (!agent || !draft.name.trim() || !draft.instructions.trim() || saving) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await props.onSave(agent.id, {
         name: draft.name.trim(),
@@ -274,6 +306,19 @@ export function AgentEditModal(props: AgentEditModalProps) {
       savedFlashTimer.current = setTimeout(() => {
         if (aliveRef.current) setSavedFlash(false);
       }, 1800);
+    } catch (cause) {
+      // Round 15: surface the error inline next to the save button.
+      // The previous behaviour silently swallowed exceptions which
+      // left the user staring at a still-dirty form with no feedback.
+      if (!aliveRef.current) return;
+      const message =
+        cause instanceof Error && cause.message
+          ? cause.message
+          : "保存失败，请重试。";
+      setSaveError(message);
+      // Re-throw so callers / the runtime can log; aliveRef-guarded
+      // setState above already moved the visible state.
+      console.error("Agent save failed", cause);
     } finally {
       if (aliveRef.current) setSaving(false);
     }
@@ -336,11 +381,29 @@ export function AgentEditModal(props: AgentEditModalProps) {
             </button>
             <button
               type="button"
-              className="btn-primary"
+              className="btn-primary agent-edit-save"
               disabled={saving || !isDirty || !draft.name.trim() || !draft.instructions.trim()}
               onClick={save}
             >
-              {saving ? "保存中..." : "保存"}
+              {saving ? (
+                <>
+                  <span className="agent-edit-save-spinner" aria-hidden="true" />
+                  保存中…
+                </>
+              ) : (
+                <>
+                  保存
+                  {/* Round 15: surface the Cmd+S shortcut next to the
+                    * primary action so it's discoverable. Hidden when
+                    * disabled to avoid implying the shortcut works. */}
+                  <kbd
+                    className="agent-edit-save-kbd"
+                    aria-hidden="true"
+                  >
+                    ⌘S
+                  </kbd>
+                </>
+              )}
             </button>
             <button
               type="button"
@@ -378,28 +441,74 @@ export function AgentEditModal(props: AgentEditModalProps) {
           >
             {(
               [
-                { key: "overview" as const, label: "概览" },
-                { key: "persona" as const, label: "Persona" },
-                { key: "tools" as const, label: "工具" },
-                { key: "core" as const, label: "Agent Core" },
+                { key: "overview" as const, label: "概览", dirtyKey: "overview" as DraftTabKey },
+                { key: "persona" as const, label: "Persona", dirtyKey: "persona" as DraftTabKey },
+                { key: "tools" as const, label: "工具", dirtyKey: "tools" as DraftTabKey },
+                { key: "core" as const, label: "Agent Core", dirtyKey: null },
               ]
-            ).map((entry) => (
-              <button
-                key={entry.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === entry.key}
-                tabIndex={tab === entry.key ? 0 : -1}
-                className={
-                  "agent-config-tab segmented-segment" +
-                  (tab === entry.key ? " active" : "")
-                }
-                onClick={() => setTab(entry.key)}
-              >
-                {entry.label}
-              </button>
-            ))}
+            ).map((entry) => {
+              const isDirtyTab =
+                entry.dirtyKey !== null && dirtyTabSet.has(entry.dirtyKey);
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === entry.key}
+                  tabIndex={tab === entry.key ? 0 : -1}
+                  className={
+                    "agent-config-tab segmented-segment" +
+                    (tab === entry.key ? " active" : "") +
+                    (isDirtyTab ? " has-changes" : "")
+                  }
+                  onClick={() => setTab(entry.key)}
+                >
+                  {entry.label}
+                  {isDirtyTab ? (
+                    // aria-hidden so the dot doesn't pollute the
+                    // tab's accessible name. SR users have the
+                    // SaveStatusIndicator pill in the modal header
+                    // for the form-level dirty signal; this is a
+                    // visual-only "you edited this tab" cue.
+                    <span
+                      className="agent-config-tab-dot"
+                      aria-hidden="true"
+                      title="有未保存的修改"
+                    />
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
+
+          {saveError ? (
+            <div
+              className="agent-edit-error"
+              role="alert"
+              aria-live="assertive"
+            >
+              <span className="agent-edit-error-icon" aria-hidden="true">
+                <ErrorIcon />
+              </span>
+              <span className="agent-edit-error-message">{saveError}</span>
+              <button
+                type="button"
+                className="agent-edit-error-retry"
+                disabled={saving}
+                onClick={save}
+              >
+                重试
+              </button>
+              <button
+                type="button"
+                className="agent-edit-error-dismiss"
+                aria-label="关闭"
+                onClick={() => setSaveError(null)}
+              >
+                <CloseSmallIcon />
+              </button>
+            </div>
+          ) : null}
 
           {tab === "overview" ? (
             <OverviewTab agent={agent} draft={draft} onChange={setDraft} />
@@ -512,6 +621,44 @@ function CheckSmallIcon() {
       aria-hidden="true"
     >
       <path d="M3 8.5l3 3 7-7" />
+    </svg>
+  );
+}
+
+function ErrorIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v3.5" />
+      <circle cx="8" cy="11" r="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function CloseSmallIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M4 12l8-8" />
     </svg>
   );
 }

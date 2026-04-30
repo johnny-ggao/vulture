@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { Agent, ReasoningLevel } from "../../api/agents";
 import { Field, Segmented } from "../components";
 import type { Draft } from "./draft";
@@ -125,7 +126,81 @@ function InfoBlock(props: { title: string; value: string }) {
   return (
     <div className="agent-info-block">
       <div className="agent-info-label">{props.title}</div>
-      <div className="agent-info-value">{props.value}</div>
+      <div className="agent-info-row">
+        <code className="agent-info-value">{props.value}</code>
+        {props.value ? <CopyValueButton value={props.value} /> : null}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Tiny "copy to clipboard" affordance reused for the Workspace path
+ * (and any other read-only mono value the modal surfaces). Round 15:
+ * makes the path actually take-able rather than something users have
+ * to triple-click to select.
+ */
+function CopyValueButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+  async function copy() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      }
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      setCopied(true);
+      timerRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable — silently fall back; the icon just
+      // doesn't flash 已复制.
+    }
+  }
+  return (
+    <button
+      type="button"
+      className="agent-info-copy"
+      onClick={copy}
+      aria-label={`复制 ${value}`}
+      title="复制路径"
+      data-copied={copied || undefined}
+    >
+      {copied ? (
+        <svg
+          viewBox="0 0 16 16"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 8.5l3 3 7-7" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 16 16"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="5" y="5" width="8" height="9" rx="1.5" />
+          <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10" />
+        </svg>
+      )}
+    </button>
   );
 }

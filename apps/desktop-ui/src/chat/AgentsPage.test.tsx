@@ -517,6 +517,170 @@ describe("AgentsPage — edit modal", () => {
     }
   });
 
+  // ---- Round 15: per-tab dirty dot + save error + persona starters
+
+  test("editing a Persona-tab field shows the dirty dot only on the Persona tab", () => {
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    // Switch to Persona tab and edit Instructions.
+    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    fireEvent.change(screen.getByLabelText("Instructions"), {
+      target: { value: "be precise" },
+    });
+    // The Persona tab now carries a dot; Overview / 工具 do not.
+    const personaTab = screen.getByRole("tab", { name: "Persona" });
+    expect(personaTab.querySelector(".agent-config-tab-dot")).not.toBeNull();
+    const overviewTab = screen.getByRole("tab", { name: "概览" });
+    expect(overviewTab.querySelector(".agent-config-tab-dot")).toBeNull();
+    // Tab class also picks up has-changes for CSS hooks.
+    expect(personaTab.classList.contains("has-changes")).toBe(true);
+    // Confirm there's at least one dot in the tablist (sanity).
+    expect(container.querySelectorAll(".agent-config-tab-dot").length).toBe(1);
+  });
+
+  test("save error from onSave surfaces an inline alert with retry + dismiss", async () => {
+    let calls = 0;
+    const onSave = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("network down");
+    };
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        onSave={onSave}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^保存/ }));
+    await new Promise((r) => setTimeout(r, 0));
+    // Error alert visible.
+    const alert = container.querySelector(".agent-edit-error");
+    expect(alert).not.toBeNull();
+    expect(alert?.textContent ?? "").toContain("network down");
+
+    // Click 重试 — second call to onSave succeeds, alert disappears.
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toBe(2);
+    expect(container.querySelector(".agent-edit-error")).toBeNull();
+  });
+
+  test("save error dismiss button hides the alert without retrying", async () => {
+    const onSave = async () => {
+      throw new Error("boom");
+    };
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        onSave={onSave}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Renamed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^保存/ }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(container.querySelector(".agent-edit-error")).not.toBeNull();
+
+    fireEvent.click(
+      container.querySelector(".agent-edit-error-dismiss") as HTMLButtonElement,
+    );
+    expect(container.querySelector(".agent-edit-error")).toBeNull();
+  });
+
+  test("save button shows a Cmd+S kbd hint when not saving and not disabled", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    // Make dirty so the save button is enabled.
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Renamed" },
+    });
+    const saveBtn = screen.getByRole("button", { name: /^保存/ });
+    expect(saveBtn.querySelector(".agent-edit-save-kbd")).not.toBeNull();
+  });
+
+  test("PersonaTab starters are visible only when Instructions is empty", () => {
+    const { rerender } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[{ ...baseAgent, instructions: "" }]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal({ ...baseAgent, instructions: "" });
+    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    expect(screen.getByText("从模板开始：")).toBeDefined();
+    expect(screen.getByRole("button", { name: "通用助手" })).toBeDefined();
+
+    // Once the user types, the starter row hides.
+    fireEvent.change(screen.getByLabelText("Instructions"), {
+      target: { value: "x" },
+    });
+    expect(screen.queryByText("从模板开始：")).toBeNull();
+
+    rerender(
+      <AgentsPage
+        {...stableProps}
+        agents={[{ ...baseAgent, instructions: "" }]}
+        selectedAgentId="agent-1"
+      />,
+    );
+  });
+
+  test("clicking a Persona starter chip seeds the Instructions textarea", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[{ ...baseAgent, instructions: "" }]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal({ ...baseAgent, instructions: "" });
+    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    fireEvent.click(screen.getByRole("button", { name: "代码审阅" }));
+    const ta = screen.getByLabelText("Instructions") as HTMLTextAreaElement;
+    expect(ta.value).toContain("代码审阅者");
+    expect(ta.value.length).toBeGreaterThan(50);
+  });
+
+  test("workspace block shows a copy button for the path", () => {
+    const { container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    // Modal header carries the agent ID copy chip; the OverviewTab
+    // also carries a separate copy button for the workspace path.
+    // We pick the workspace button by its aria-label.
+    const copyBtn = container.querySelector(
+      `button[aria-label="复制 ${baseAgent.workspace.path}"]`,
+    );
+    expect(copyBtn).not.toBeNull();
+  });
+
   test("modal closes if the agent disappears (e.g. delete-undo committed)", () => {
     const { rerender } = render(
       <AgentsPage

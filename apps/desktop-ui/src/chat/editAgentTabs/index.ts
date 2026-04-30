@@ -11,6 +11,8 @@ export {
   parseSkills,
   sameStringSet,
   isDirtyDraft,
+  dirtyTabs,
   type Draft,
+  type DraftTabKey,
   type AgentConfigPatch,
 } from "./draft";

@@ -3668,6 +3668,158 @@ pre {
  * but no longer carry their own visual rules — keep this section
  * empty so future readers know styling lives under .segmented. */
 .agent-config-tabs { align-self: flex-start; }
+
+/* Round 15: per-tab dirty dot. The button extends so the dot sits
+ * just to the right of the label; it never collapses the segment
+ * height to keep the segmented strip steady. */
+.agent-config-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-config-tab-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  flex: 0 0 auto;
+  /* The dot pulses gently so it reads as "fresh edit" rather than a
+   * permanent badge. Reduced motion drops the pulse. */
+  animation: agent-tab-dot-pulse 1.6s ease-out infinite;
+}
+@keyframes agent-tab-dot-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%      { transform: scale(1.2); opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-config-tab-dot { animation: none; }
+}
+
+/* Round 15: save button refinements — kbd hint + busy spinner. */
+.agent-edit-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-edit-save-kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  line-height: 1.2;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.agent-edit-save:disabled .agent-edit-save-kbd { display: none; }
+.agent-edit-save-spinner {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: agent-edit-save-spin 700ms linear infinite;
+}
+@keyframes agent-edit-save-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-edit-save-spinner { animation: none; }
+}
+
+/* Round 15: inline save-error alert. Sits between the tablist and
+ * the active tab body, role=alert so SRs announce it. */
+.agent-edit-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--danger-bg);
+  border: 1px solid color-mix(in oklab, var(--danger) 32%, transparent);
+  color: var(--danger);
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+.agent-edit-error-icon {
+  display: inline-grid; place-items: center;
+  flex: 0 0 auto;
+}
+.agent-edit-error-message {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.agent-edit-error-retry {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid currentColor;
+  background: var(--bg-primary);
+  color: inherit;
+  cursor: pointer;
+  min-height: 0;
+  flex: 0 0 auto;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.agent-edit-error-retry:hover { background: var(--bg-secondary); }
+.agent-edit-error-retry:disabled { opacity: 0.5; cursor: not-allowed; }
+.agent-edit-error-dismiss {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+.agent-edit-error-dismiss:hover {
+  opacity: 1;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* Round 15: PersonaTab starter chip row. Only rendered when the
+ * Instructions textarea is empty so we never overwrite a draft. */
+.agent-persona-starters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.agent-persona-starters-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.agent-persona-starter {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--fill-tertiary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.agent-persona-starter:hover {
+  background: var(--brand-050);
+  color: var(--brand-600);
+  border-color: var(--brand-500);
+}
+.agent-persona-starter:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
 .agent-config-panel {
   display: grid;
   gap: 14px;
@@ -4130,7 +4282,15 @@ pre {
 
 .agent-info-block { display: grid; gap: 6px; }
 .agent-info-label { color: var(--text-secondary); font-size: 12px; }
+/* Round 15: row layout so the copy chip can sit alongside the value
+ * without wrapping unless the path is genuinely long. */
+.agent-info-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
 .agent-info-value {
+  flex: 1;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
@@ -4139,6 +4299,37 @@ pre {
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   overflow-wrap: anywhere;
+  /* Render as code-styled text but keep <code> default white-space
+   * unset so we wrap normally. */
+  white-space: pre-wrap;
+}
+.agent-info-copy {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  border: 1px solid var(--fill-tertiary);
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+  flex: 0 0 auto;
+}
+.agent-info-copy:hover {
+  background: var(--fill-quaternary);
+  border-color: var(--text-tertiary);
+  color: var(--text-secondary);
+}
+.agent-info-copy[data-copied="true"] {
+  border-color: color-mix(in oklab, var(--success) 30%, transparent);
+  color: var(--success);
+}
+.agent-info-copy:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
 }
 
 .agent-tools { display: grid; gap: 10px; }

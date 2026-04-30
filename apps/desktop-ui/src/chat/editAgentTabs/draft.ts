@@ -112,3 +112,47 @@ export function isDirtyDraft(draft: Draft, agent: Agent | null): boolean {
     !sameStringSet(draft.handoffAgentIds, ref.handoffAgentIds)
   );
 }
+
+/**
+ * Per-tab dirty signal — used by the modal tab strip to surface a dot
+ * next to the tab whose fields the user has touched, so navigating
+ * away mid-edit doesn't lose the cue. CoreTab edits live in their own
+ * file-content state outside the Draft, so it's omitted here (the
+ * tab's own "保存文件" button is the canonical save path for it).
+ */
+export type DraftTabKey = "overview" | "persona" | "tools";
+
+export function dirtyTabs(
+  draft: Draft,
+  agent: Agent | null,
+): ReadonlySet<DraftTabKey> {
+  const dirty = new Set<DraftTabKey>();
+  if (!agent) return dirty;
+  const ref = draftFromAgent(agent);
+
+  if (
+    draft.name !== ref.name ||
+    draft.description !== ref.description ||
+    draft.model !== ref.model ||
+    draft.reasoning !== ref.reasoning ||
+    draft.skillsText !== ref.skillsText
+  ) {
+    dirty.add("overview");
+  }
+
+  if (draft.instructions !== ref.instructions) {
+    dirty.add("persona");
+  }
+
+  if (
+    draft.toolPreset !== ref.toolPreset ||
+    !sameStringSet(draft.tools, ref.tools) ||
+    !sameStringSet(draft.toolInclude, ref.toolInclude) ||
+    !sameStringSet(draft.toolExclude, ref.toolExclude) ||
+    !sameStringSet(draft.handoffAgentIds, ref.handoffAgentIds)
+  ) {
+    dirty.add("tools");
+  }
+
+  return dirty;
+}

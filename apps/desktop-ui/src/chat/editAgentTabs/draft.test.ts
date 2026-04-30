@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  dirtyTabs,
   draftFromAgent,
   isDirtyDraft,
   parseSkills,
@@ -115,5 +116,69 @@ describe("isDirtyDraft", () => {
       tools: ["shell.exec", "read"],
     };
     expect(isDirtyDraft(draft, baseAgent)).toBe(false);
+  });
+});
+
+describe("dirtyTabs", () => {
+  test("returns an empty set when nothing changed", () => {
+    expect(dirtyTabs(draftFromAgent(baseAgent), baseAgent).size).toBe(0);
+  });
+
+  test("returns 'overview' when name / model / reasoning / skills / description changes", () => {
+    const tests: Array<Partial<Draft>> = [
+      { name: "Renamed" },
+      { model: "gpt-5.5" },
+      { reasoning: "high" },
+      { skillsText: "alpha, beta" },
+      { description: "new copy" },
+    ];
+    for (const patch of tests) {
+      const draft = { ...draftFromAgent(baseAgent), ...patch };
+      const tabs = dirtyTabs(draft, baseAgent);
+      expect(tabs.has("overview")).toBe(true);
+      expect(tabs.has("persona")).toBe(false);
+      expect(tabs.has("tools")).toBe(false);
+    }
+  });
+
+  test("returns 'persona' when instructions change", () => {
+    const draft: Draft = {
+      ...draftFromAgent(baseAgent),
+      instructions: "be concise",
+    };
+    const tabs = dirtyTabs(draft, baseAgent);
+    expect(tabs.has("persona")).toBe(true);
+    expect(tabs.has("overview")).toBe(false);
+    expect(tabs.has("tools")).toBe(false);
+  });
+
+  test("returns 'tools' when toolPreset / tools / handoff change", () => {
+    const tests: Array<Partial<Draft>> = [
+      { toolPreset: "minimal" },
+      { tools: ["read"] },
+      { handoffAgentIds: ["other"] },
+    ];
+    for (const patch of tests) {
+      const draft = { ...draftFromAgent(baseAgent), ...patch };
+      const tabs = dirtyTabs(draft, baseAgent);
+      expect(tabs.has("tools")).toBe(true);
+    }
+  });
+
+  test("multiple touched tabs all show in the set", () => {
+    const draft: Draft = {
+      ...draftFromAgent(baseAgent),
+      name: "Renamed",
+      instructions: "new",
+      toolPreset: "minimal",
+    };
+    const tabs = dirtyTabs(draft, baseAgent);
+    expect(tabs.has("overview")).toBe(true);
+    expect(tabs.has("persona")).toBe(true);
+    expect(tabs.has("tools")).toBe(true);
+  });
+
+  test("returns an empty set when agent is null", () => {
+    expect(dirtyTabs(draftFromAgent(null), null).size).toBe(0);
   });
 });
