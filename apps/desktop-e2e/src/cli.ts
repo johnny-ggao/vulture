@@ -32,17 +32,17 @@ export function parseDesktopE2EArgs(
 
     if (arg === "--scenario") {
       const value = argv[index + 1];
-      if (!value) {
+      if (!isSeparatedValue(value)) {
         throw new Error("--scenario requires an id");
       }
-      parsed.scenarios.push(value);
+      parsed.scenarios.push(value.trim());
       index += 1;
       continue;
     }
 
     if (arg === "--tag") {
       const value = argv[index + 1];
-      if (!value) {
+      if (!isSeparatedValue(value)) {
         throw new Error("--tag requires a value");
       }
       parsed.tags.push(...parseTagValue(value));
@@ -140,6 +140,15 @@ function parseTagValue(value: string): string[] {
     throw new Error("--tag requires a value");
   }
   return tags;
+}
+
+function isSeparatedValue(value: string | undefined): value is string {
+  if (!value) {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 && !trimmed.startsWith("--");
 }
 
 if (import.meta.main) {

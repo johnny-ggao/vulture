@@ -27,6 +27,11 @@ describe("desktop e2e cli", () => {
     expect(() => parseDesktopE2EArgs(["--tag="])).toThrow("--tag requires a value");
   });
 
+  test("rejects separated tag values when the next token is another flag", () => {
+    expect(() => parseDesktopE2EArgs(["--tag", "--list"])).toThrow("--tag requires a value");
+    expect(() => parseDesktopE2EArgs(["--tag", "--scenario"])).toThrow("--tag requires a value");
+  });
+
   test("uses environment defaults for scenarios and tags", () => {
     expect(
       parseDesktopE2EArgs([], {
@@ -81,6 +86,12 @@ describe("desktop e2e cli", () => {
     expect(() =>
       selectDesktopScenarios({ scenarios: ["missing-scenario"], tags: [] }, desktopScenarios),
     ).toThrow("Unknown desktop E2E scenario missing-scenario");
+  });
+
+  test("rejects separated scenario ids when the next token is missing or another flag", () => {
+    expect(() => parseDesktopE2EArgs(["--scenario", "   "])).toThrow("--scenario requires an id");
+    expect(() => parseDesktopE2EArgs(["--scenario", "--list"])).toThrow("--scenario requires an id");
+    expect(() => parseDesktopE2EArgs(["--scenario", "--tag"])).toThrow("--scenario requires an id");
   });
 
   test("lists selected scenarios with id name and tags", () => {
