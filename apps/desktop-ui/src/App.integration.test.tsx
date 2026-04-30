@@ -548,10 +548,13 @@ describe("App integration", () => {
       expect(screen.getByText("新建智能体")).toBeDefined();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Local Work Agent/ }));
+    // Row button has an explicit aria-label of just the agent name; the
+    // sibling delete button is "删除智能体 …" so we can pick by exact match.
+    fireEvent.click(screen.getByRole("button", { name: "Local Work Agent" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Agent 配置")).toBeDefined();
+      // Editor header now uses the agent name, with tabs underneath.
+      expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
       expect(screen.getByText("Workspace")).toBeDefined();
       expect(screen.getByLabelText("Skills")).toBeDefined();
     });
@@ -588,14 +591,16 @@ describe("App integration", () => {
     );
 
     fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
+    // Browse view first — wait for the agent's card to appear.
     await waitFor(() => {
-      expect(screen.getByText("Agent 配置")).toBeDefined();
-      expect(screen.getByText("Workspace")).toBeDefined();
+      expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
     });
     fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    // Step order is template → identity → persona → tools → skills (matches Accio).
+    fireEvent.click(screen.getByRole("button", { name: "继续" })); // template → identity
     fireEvent.change(screen.getByPlaceholderText("例：周报助手"), { target: { value: "Test Agent" } });
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    fireEvent.click(screen.getByRole("button", { name: "继续" })); // identity → persona
+    fireEvent.click(screen.getByRole("button", { name: "继续" })); // persona  → tools
     await waitFor(() => {
       expect(screen.getAllByText("Files").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Coding").length).toBeGreaterThan(0);
@@ -628,7 +633,9 @@ describe("App integration", () => {
     await waitFor(
       () => {
         expect(document.body.textContent ?? "").toContain("profile:Work");
-        expect(screen.getByDisplayValue("Local Work Agent")).toBeDefined();
+        // Composer's agent picker renders the active agent name; this used
+        // to be a native <select> readable via getByDisplayValue.
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
       },
       { timeout: 5000 },
     );
@@ -819,7 +826,7 @@ describe("App integration", () => {
     await waitFor(
       () => {
         expect(screen.getByText("read")).toBeDefined();
-        expect(screen.getByText("✓ 完成")).toBeDefined();
+        expect(screen.getByText("已完成")).toBeDefined();
         expect(screen.getByText("done")).toBeDefined();
       },
       { timeout: 5000 },
@@ -887,8 +894,11 @@ describe("App integration", () => {
       () => {
         expect(screen.getByText("csv-insights")).toBeDefined();
         expect(screen.getByText("Summarize CSV reports.")).toBeDefined();
-        expect(screen.getByText("profile")).toBeDefined();
-        expect(screen.getByText("已启用")).toBeDefined();
+        // Source is shown in the group heading ("Profile (1)") rather than as
+        // a per-row badge. The toggle reflects the enabled state.
+        expect(screen.getByRole("heading", { name: /^profile/i })).toBeDefined();
+        const toggle = screen.getByRole("switch", { name: /csv-insights/ });
+        expect(toggle.getAttribute("aria-checked")).toBe("true");
       },
       { timeout: 5000 },
     );
@@ -896,13 +906,15 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "全部禁用" }));
     await waitFor(() => {
       expect(patches).toContainEqual({ skills: [] });
-      expect(screen.getByText("已禁用")).toBeDefined();
+      const toggle = screen.getByRole("switch", { name: /csv-insights/ });
+      expect(toggle.getAttribute("aria-checked")).toBe("false");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "全部启用" }));
     await waitFor(() => {
       expect(patches).toContainEqual({ skills: null });
-      expect(screen.getByText("已启用")).toBeDefined();
+      const toggle = screen.getByRole("switch", { name: /csv-insights/ });
+      expect(toggle.getAttribute("aria-checked")).toBe("true");
     });
 
     cleanup();
@@ -956,6 +968,131 @@ describe("App integration", () => {
       },
       { timeout: 5000 },
     );
+
+    cleanup();
+  }, 15_000);
+
+  test("history delete shows undo toast and undo restores the conversation without calling DELETE", async () => {
+    let deleteCalls = 0;
+    const { app, cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "DELETE" && /^\/v1\/conversations\//.test(path)) {
+          deleteCalls += 1;
+        }
+      },
+    });
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    await authedJson(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agents.items[0].id, title: "Undo me" }),
+    });
+
+    render(<App />);
+
+    // Open the History drawer
+    await waitFor(
+      () => expect(screen.getByText("Local Work Agent")).toBeDefined(),
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByText("历史"));
+
+    // Wait for the row to render, then delete
+    await waitFor(() => expect(screen.getByText("Undo me")).toBeDefined(), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+    // Row hides, toast appears
+    expect(screen.queryByText("Undo me")).toBeNull();
+    const toast = screen.getByRole("status");
+    expect(toast.textContent ?? "").toContain("已删除");
+    expect(toast.textContent ?? "").toContain("Undo me");
+
+    // Click 撤销
+    fireEvent.click(within(toast).getByRole("button", { name: "撤销" }));
+
+    // Row comes back, toast disappears, no DELETE was issued
+    await waitFor(() => expect(screen.getByText("Undo me")).toBeDefined());
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(deleteCalls).toBe(0);
+
+    cleanup();
+  }, 15_000);
+
+  test("agent delete shows undo toast and undo restores the row without DELETE", async () => {
+    let agentDeleteCalls = 0;
+    const { cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "DELETE" && /^\/v1\/agents\//.test(path)) {
+          agentDeleteCalls += 1;
+        }
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => expect(screen.getByText("Local Work Agent")).toBeDefined(),
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
+
+    // Click the per-row delete button (aria-labelled with the agent name).
+    fireEvent.click(
+      screen.getByRole("button", { name: "删除智能体 Local Work Agent" }),
+    );
+
+    // Row hides locally; toast offers undo.
+    expect(screen.queryByRole("button", { name: "Local Work Agent" })).toBeNull();
+    const toast = screen.getByRole("status");
+    expect(toast.textContent ?? "").toContain("已删除智能体");
+    expect(toast.textContent ?? "").toContain("Local Work Agent");
+
+    fireEvent.click(within(toast).getByRole("button", { name: "撤销" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Local Work Agent" })).toBeDefined(),
+    );
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(agentDeleteCalls).toBe(0);
+
+    cleanup();
+  }, 15_000);
+
+  test("dismissing the undo toast commits the deletion (DELETE called once)", async () => {
+    let deleteCalls = 0;
+    const { app, cleanup } = setup({
+      onRequest: (path, init) => {
+        if ((init?.method ?? "GET") === "DELETE" && /^\/v1\/conversations\//.test(path)) {
+          deleteCalls += 1;
+        }
+      },
+    });
+
+    const agents = await authedJson<{ items: Array<{ id: string }> }>(app, "/v1/agents");
+    await authedJson(app, "/v1/conversations", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agents.items[0].id, title: "Goodbye row" }),
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => expect(screen.getByText("Local Work Agent")).toBeDefined(),
+      { timeout: 5000 },
+    );
+    fireEvent.click(within(screen.getByLabelText("主导航")).getByText("历史"));
+
+    await waitFor(() => expect(screen.getByText("Goodbye row")).toBeDefined(), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+
+    // Manually dismiss the toast (simulates user clicking ✕). Avoids waiting
+    // 5s for the auto-commit timer in tests.
+    const toast = screen.getByRole("status");
+    fireEvent.click(within(toast).getByRole("button", { name: "关闭通知" }));
+
+    await waitFor(() => expect(deleteCalls).toBe(1));
+    expect(screen.queryByText("Goodbye row")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
 
     cleanup();
   }, 15_000);

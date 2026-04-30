@@ -10,6 +10,14 @@
         "typescript": "^5.8.0",
       },
     },
+    "apps/desktop-e2e": {
+      "name": "@vulture/desktop-e2e",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/bun": "^1.3.13",
+        "typescript": "^5.8.0",
+      },
+    },
     "apps/desktop-ui": {
       "name": "@vulture/desktop-ui",
       "version": "0.1.0",
@@ -294,6 +302,8 @@
     "@vulture/agent-runtime": ["@vulture/agent-runtime@workspace:packages/agent-runtime"],
 
     "@vulture/common": ["@vulture/common@workspace:packages/common"],
+
+    "@vulture/desktop-e2e": ["@vulture/desktop-e2e@workspace:apps/desktop-e2e"],
 
     "@vulture/desktop-ui": ["@vulture/desktop-ui@workspace:apps/desktop-ui"],
 

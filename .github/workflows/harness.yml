@@ -1,0 +1,89 @@
+name: Harness
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      runDesktopE2E:
+        description: Run desktop E2E lane
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  harness:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run harness checks
+        run: bun run harness:ci
+
+      - name: Upload acceptance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-artifacts
+          path: .artifacts/acceptance
+          if-no-files-found: ignore
+
+  desktop-e2e:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.runDesktopE2E == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            webkit2gtk-driver \
+            wget \
+            xvfb
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version '^2.0' --locked
+
+      - name: Install Tauri driver
+        run: cargo install tauri-driver --locked
+
+      - name: Run desktop E2E smoke lane
+        run: xvfb-run -a bun run harness:desktop-e2e -- --tag smoke
+
+      - name: Upload desktop E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-e2e-artifacts
+          path: .artifacts/desktop-e2e
+          if-no-files-found: ignore

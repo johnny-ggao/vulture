@@ -114,6 +114,35 @@ describe("/v1/agents", () => {
     cleanup();
   });
 
+  test("PATCH persists handoff agent ids", async () => {
+    const { app, cleanup } = freshApp();
+    await app.request("/v1/agents", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ka-researcher" },
+      body: JSON.stringify({
+        id: "researcher",
+        name: "Researcher",
+        description: "x",
+        model: "gpt-5.4",
+        reasoning: "medium",
+        tools: [],
+        instructions: "x",
+      }),
+    });
+
+    const res = await app.request("/v1/agents/local-work-agent", {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ handoffAgentIds: ["researcher"] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).handoffAgentIds).toEqual(["researcher"]);
+    const get = await app.request("/v1/agents/local-work-agent", { headers: auth });
+    expect((await get.json()).handoffAgentIds).toEqual(["researcher"]);
+    cleanup();
+  });
+
   test("PATCH clears skills allowlist with null", async () => {
     const { app, cleanup } = freshApp();
     await app.request("/v1/agents/local-work-agent", {

@@ -29,7 +29,7 @@ export function buildConversationSessionInputCallback(
     ).slice(-recentLimit);
     const summaryPrefix = context?.summary.trim() ? [summaryItem(context.summary)] : [];
 
-    return [...summaryPrefix, ...rawHistory, ...newItems];
+    return stripLocalProviderMetadataFromItems([...summaryPrefix, ...rawHistory, ...newItems]);
   };
 }
 
@@ -130,6 +130,26 @@ function summaryItem(summary: string): AgentInputItem {
       },
     ],
   } as AgentInputItem;
+}
+
+function stripLocalProviderMetadataFromItems(items: readonly AgentInputItem[]): AgentInputItem[] {
+  return items.map((item) => stripLocalProviderMetadata(item) as AgentInputItem);
+}
+
+function stripLocalProviderMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripLocalProviderMetadata(item));
+  }
+  if (!isRecord(value)) return value;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "providerData" || key === "provider_data" || key === "messageId" || key === "message_id") {
+      continue;
+    }
+    result[key] = stripLocalProviderMetadata(entry);
+  }
+  return result;
 }
 
 function providerDataCandidates(item: Record<string, unknown>): Record<string, unknown>[] {

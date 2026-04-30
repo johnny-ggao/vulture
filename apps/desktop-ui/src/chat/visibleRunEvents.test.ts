@@ -25,6 +25,21 @@ describe("visibleRunEvents", () => {
     ]);
   });
 
+  test("terminal failed runs retain run.failed so the error remains visible", () => {
+    const events = [
+      ev({ type: "run.started", seq: 0 }),
+      ev({
+        type: "run.failed",
+        seq: 1,
+        error: { code: "internal", message: "Connection error." },
+      }),
+    ];
+
+    expect(retainedRunEventsForTerminalRun(events).map((event) => event.type)).toEqual([
+      "run.failed",
+    ]);
+  });
+
   test("chat shows retained terminal events after active run is cleared", () => {
     const retained = [
       ev({ type: "tool.planned", seq: 1, callId: "c1", tool: "read", input: {} }),

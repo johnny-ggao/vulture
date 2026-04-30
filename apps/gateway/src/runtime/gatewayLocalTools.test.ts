@@ -183,14 +183,35 @@ describe("gateway local tools", () => {
 
   test("sessions and update_plan use gateway stores when provided", async () => {
     const workspacePath = await tempWorkspace();
+    const seenCalls: Array<{ tool: string; runId?: string; callId?: string; input?: unknown }> = [];
     const tools = makeGatewayLocalTools({
       shellTools: async () => "shell",
       sessions: {
-        list: () => [{ id: "c1", title: "Main", agentId: "a1" }],
-        history: () => [{ role: "user", content: "hello" }],
-        send: async () => ({ conversationId: "c1", runId: "r2" }),
-        spawn: async () => ({ conversationId: "c2", runId: null }),
-        yield: () => ({ activeRuns: [] }),
+        list: (call) => {
+          seenCalls.push({
+            tool: "sessions_list",
+            runId: call.runId,
+            callId: call.callId,
+            input: call.input,
+          });
+          return [{ id: "c1", title: "Main", agentId: "a1" }];
+        },
+        history: (call) => {
+          seenCalls.push({ tool: "sessions_history", runId: call.runId, input: call.input });
+          return [{ role: "user", content: "hello" }];
+        },
+        send: async (call) => {
+          seenCalls.push({ tool: "sessions_send", runId: call.runId, input: call.input });
+          return { sessionId: (call.input as { sessionId?: string }).sessionId, conversationId: "c1", runId: "r2" };
+        },
+        spawn: async (call) => {
+          seenCalls.push({ tool: "sessions_spawn", runId: call.runId, input: call.input });
+          return { conversationId: "c2", runId: null };
+        },
+        yield: (call) => {
+          seenCalls.push({ tool: "sessions_yield", runId: call.runId, input: call.input });
+          return { activeRuns: [] };
+        },
       },
     });
 
@@ -203,6 +224,29 @@ describe("gateway local tools", () => {
         input: { limit: null },
       }),
     ).resolves.toMatchObject({ items: [{ id: "c1", title: "Main" }] });
+
+    await expect(
+      tools({
+        callId: "c-session-send",
+        runId: "r-parent",
+        tool: "sessions_send",
+        workspacePath,
+        approvalToken: "approved",
+        input: { sessionId: "sub-1", message: "continue" },
+      }),
+    ).resolves.toMatchObject({ sessionId: "sub-1", runId: "r2" });
+
+    expect(seenCalls).toContainEqual({
+      tool: "sessions_list",
+      runId: "r",
+      callId: "c-sessions",
+      input: { limit: null },
+    });
+    expect(seenCalls).toContainEqual({
+      tool: "sessions_send",
+      runId: "r-parent",
+      input: { sessionId: "sub-1", message: "continue" },
+    });
 
     await expect(
       tools({

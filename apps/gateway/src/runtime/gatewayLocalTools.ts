@@ -29,11 +29,11 @@ const MAX_TEXT_BYTES = 256_000;
 const MAX_PROCESS_BUFFER = 64_000;
 
 export interface GatewaySessionsTools {
-  list(input: unknown): unknown;
-  history(input: unknown): unknown;
-  send(input: unknown): Promise<unknown>;
-  spawn(input: unknown): Promise<unknown>;
-  yield(input: unknown): unknown;
+  list(call: Parameters<ToolCallable>[0]): unknown;
+  history(call: Parameters<ToolCallable>[0]): unknown;
+  send(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+  spawn(call: Parameters<ToolCallable>[0]): Promise<unknown>;
+  yield(call: Parameters<ToolCallable>[0]): unknown;
 }
 
 export interface GatewayMemoryTools {
@@ -143,17 +143,17 @@ async function executeLocalTool(
     case "web_search":
       return webSearchTool(call, deps.fetch);
     case "sessions_list":
-      return wrapItems(requireSessions(deps).list(call.input));
+      return wrapItems(requireSessions(deps).list(call));
     case "sessions_history":
-      return wrapItems(requireSessions(deps).history(call.input));
+      return wrapItems(requireSessions(deps).history(call));
     case "sessions_send":
       requireApproval(call, "sessions_send requires approval");
-      return requireSessions(deps).send(call.input);
+      return requireSessions(deps).send(call);
     case "sessions_spawn":
-      requireApproval(call, "sessions_spawn requires approval");
-      return requireSessions(deps).spawn(call.input);
+      requireApproval(call, sessionsSpawnApprovalReason(call.input));
+      return requireSessions(deps).spawn(call);
     case "sessions_yield":
-      return requireSessions(deps).yield(call.input);
+      return requireSessions(deps).yield(call);
     case "update_plan":
       return updatePlanTool(call);
     case "memory_search":
@@ -385,6 +385,24 @@ function requireApproval(call: Parameters<ToolCallable>[0], message: string): vo
   if (!call.approvalToken) {
     throw new ToolCallError("tool.permission_denied", message);
   }
+}
+
+function sessionsSpawnApprovalReason(input: unknown): string {
+  const value = isRecord(input) ? input : {};
+  const label = stringField(value, "label") || stringField(value, "agentId") || "子智能体";
+  const title = stringField(value, "title") || stringField(value, "message");
+  return title ? `建议开启子智能体 ${label}：${title}` : `建议开启子智能体 ${label}`;
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  const field = value[key];
+  if (typeof field !== "string") return undefined;
+  const trimmed = field.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function resolveToolPath(workspacePath: string, value: unknown): string {

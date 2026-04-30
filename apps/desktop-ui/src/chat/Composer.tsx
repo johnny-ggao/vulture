@@ -1,4 +1,6 @@
-import { useState } from "react";
+import * as React from "react";
+import { useEffect, useRef, useState } from "react";
+import { AgentAvatar } from "./components";
 
 export type ThinkingMode = "low" | "medium" | "high";
 
@@ -31,12 +33,6 @@ export function Composer(props: ComposerProps) {
     setFiles([]);
   }
 
-  function cycleThinking() {
-    const idx = THINKING_OPTIONS.findIndex((o) => o.value === thinking);
-    setThinking(THINKING_OPTIONS[(idx + 1) % THINKING_OPTIONS.length].value);
-  }
-
-  const thinkingLabel = THINKING_OPTIONS.find((o) => o.value === thinking)?.label ?? "快速";
   const canSend = Boolean(value.trim() && props.selectedAgentId && !props.running);
 
   return (
@@ -62,31 +58,25 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <div className="composer-controls">
-        <select
-          className="agent-select"
-          value={props.selectedAgentId}
-          onChange={(e) => props.onSelectAgent(e.target.value)}
-          aria-label="智能体"
-        >
-          {props.agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
+        <AgentPicker
+          agents={props.agents}
+          selectedAgentId={props.selectedAgentId}
+          onSelectAgent={props.onSelectAgent}
+        />
+        <div className="thinking-segmented" role="radiogroup" aria-label="思考模式">
+          {THINKING_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={option.value === thinking}
+              className={"thinking-segment" + (option.value === thinking ? " active" : "")}
+              onClick={() => setThinking(option.value)}
+            >
+              {option.label}
+            </button>
           ))}
-        </select>
-        <button
-          type="button"
-          className="chip"
-          onClick={cycleThinking}
-          aria-label={`思考模式：${thinkingLabel}`}
-          title={`思考模式：${thinkingLabel}`}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="13" height="13">
-            <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4 17.5v-1A2.5 2.5 0 0 1 2 14v-1A2.5 2.5 0 0 1 4.5 10.5 2.5 2.5 0 0 1 7 8V6.5A2.5 2.5 0 0 1 9.5 4 2.5 2.5 0 0 1 9.5 2Z"/>
-            <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 20 17.5v-1A2.5 2.5 0 0 0 22 14v-1a2.5 2.5 0 0 0-2.5-2.5A2.5 2.5 0 0 0 17 8V6.5A2.5 2.5 0 0 0 14.5 4Z"/>
-          </svg>
-          <span>{thinkingLabel}</span>
-        </button>
+        </div>
         <label className="composer-attach" title="添加附件">
           <input
             type="file"
@@ -121,5 +111,180 @@ export function Composer(props: ComposerProps) {
         )}
       </div>
     </div>
+  );
+}
+
+interface AgentPickerProps {
+  agents: ReadonlyArray<{ id: string; name: string }>;
+  selectedAgentId: string;
+  onSelectAgent: (id: string) => void;
+}
+
+function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Fall back to the first available agent so the trigger always shows a
+  // concrete name once the agent list has loaded (matches the historical
+  // <select> behaviour where an empty value displayed the first option).
+  const selectedAgent =
+    agents.find((a) => a.id === selectedAgentId) ?? agents[0] ?? null;
+  const triggerLabel = selectedAgent?.name ?? "选择智能体";
+
+  function closeAndReturnFocus() {
+    setOpen(false);
+    setFocusedIndex(-1);
+    triggerRef.current?.focus();
+  }
+
+  // Close on Escape and on outside click. Window-level so the menu closes
+  // when clicking elsewhere in the page (titlebar, message list, etc.).
+  // Outside-click closes WITHOUT returning focus (the user moved their
+  // attention elsewhere) — Escape always returns focus to the trigger.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAndReturnFocus();
+      }
+    }
+    function onMouseDown(event: MouseEvent) {
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(event.target as Node)) return;
+      setOpen(false);
+      setFocusedIndex(-1);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [open]);
+
+  // When the menu opens, move focus into it: the active row if any,
+  // otherwise the first item. This is the WAI-ARIA expectation for menus.
+  useEffect(() => {
+    if (!open) return;
+    const activeIdx = agents.findIndex((a) => a.id === selectedAgent?.id);
+    const initial = activeIdx >= 0 ? activeIdx : 0;
+    setFocusedIndex(initial);
+    queueMicrotask(() => itemRefs.current[initial]?.focus());
+  }, [open, agents, selectedAgent?.id]);
+
+  function handleSelect(id: string) {
+    onSelectAgent(id);
+    closeAndReturnFocus();
+  }
+
+  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (agents.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const next = (focusedIndex + 1) % agents.length;
+      setFocusedIndex(next);
+      itemRefs.current[next]?.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const prev = focusedIndex <= 0 ? agents.length - 1 : focusedIndex - 1;
+      setFocusedIndex(prev);
+      itemRefs.current[prev]?.focus();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setFocusedIndex(0);
+      itemRefs.current[0]?.focus();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      const last = agents.length - 1;
+      setFocusedIndex(last);
+      itemRefs.current[last]?.focus();
+    }
+  }
+
+  return (
+    <div className="agent-picker" ref={containerRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="agent-picker-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`智能体: ${triggerLabel}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="agent-picker-name">{triggerLabel}</span>
+        <ChevronIcon />
+      </button>
+      {open ? (
+        <div
+          className="agent-picker-menu"
+          role="menu"
+          aria-label="智能体"
+          onKeyDown={handleMenuKeyDown}
+        >
+          {agents.map((agent, idx) => {
+            const isActive = agent.id === selectedAgent?.id;
+            return (
+              <button
+                key={agent.id}
+                ref={(node) => {
+                  itemRefs.current[idx] = node;
+                }}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                tabIndex={idx === focusedIndex ? 0 : -1}
+                className={"agent-picker-item" + (isActive ? " active" : "")}
+                onClick={() => handleSelect(agent.id)}
+              >
+                <AgentAvatar agent={agent} size={24} shape="square" />
+                <span className="agent-picker-item-name">{agent.name}</span>
+                {isActive ? <CheckIcon /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 6l4 4 4-4" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5l3 3 7-7" />
+    </svg>
   );
 }

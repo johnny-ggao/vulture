@@ -20,12 +20,8 @@ use supervisor::{
 };
 use vulture_core::{PortBinding, RuntimeDescriptor, API_VERSION};
 
-fn vulture_root() -> PathBuf {
-    let home = std::env::var_os("HOME").expect("HOME must be set");
-    PathBuf::from(home)
-        .join("Library")
-        .join("Application Support")
-        .join("Vulture")
+fn vulture_root() -> Result<PathBuf> {
+    runtime::vulture_root_from_env(&|key| std::env::var_os(key))
 }
 
 fn now_iso() -> String {
@@ -34,7 +30,7 @@ fn now_iso() -> String {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<()> {
-    let root = vulture_root();
+    let root = vulture_root().context("resolve Vulture desktop root")?;
     std::fs::create_dir_all(&root).context("create vulture root")?;
 
     // 1. Single instance lock — held for life of process via this binding.
@@ -63,8 +59,10 @@ async fn main() -> Result<()> {
     //    known (profile dir is resolved here).
     let app_state =
         AppState::new_for_root(&root).context("failed to initialize Vulture desktop state")?;
-    crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
-        .context("import existing codex credentials")?;
+    if runtime::should_import_codex_auth(&|key| std::env::var_os(key)) {
+        crate::codex_auth::ensure_store_with_import(&app_state.profile_dir())
+            .context("import existing codex credentials")?;
+    }
     app_state.set_runtime_descriptor(descriptor.clone());
     let profile_dir_handle = app_state.profile_dir_handle();
     let audit_db_path_handle = app_state.audit_db_path_handle();
@@ -83,6 +81,8 @@ async fn main() -> Result<()> {
     .await?;
 
     // 6. Spawn Bun gateway as a background task with restart loop.
+    let default_workspace =
+        std::env::var_os("VULTURE_DESKTOP_DEFAULT_WORKSPACE").map(PathBuf::from);
     let spawn_spec = SpawnSpec {
         bun_bin: PathBuf::from("bun"),
         gateway_entry: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -98,6 +98,7 @@ async fn main() -> Result<()> {
         token,
         shell_pid: std::process::id(),
         profile_dir: profile_dir_handle,
+        default_workspace,
     };
     let restart_signal = app_state.restart_signal();
     let shutdown_signal = app_state.shutdown_signal();

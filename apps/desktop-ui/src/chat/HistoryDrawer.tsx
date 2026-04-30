@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ConversationDto } from "../api/conversations";
+import { AgentAvatar } from "./components";
 
 export interface HistoryDrawerProps {
   open: boolean;
@@ -8,6 +9,18 @@ export interface HistoryDrawerProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  /**
+   * Optional roster of agents the conversations may reference. When
+   * provided, each row renders the originating agent's avatar so users
+   * can spot which agent owns which conversation at a glance. Rows whose
+   * `agentId` doesn't resolve fall back to a no-avatar layout.
+   */
+  agents?: ReadonlyArray<{ id: string; name: string }>;
+  /**
+   * Called when the user clicks the row's delete affordance. The drawer
+   * dispatches immediately and lets the parent surface an undo path
+   * (typically a transient toast).
+   */
   onDelete?: (id: string) => void;
 }
 
@@ -24,11 +37,62 @@ function bucketFor(updatedAt: string): string {
 
 export function HistoryDrawer(props: HistoryDrawerProps) {
   const [query, setQuery] = useState("");
+  // null = "all agents"; an id pins the list to one agent's conversations.
+  // The state survives close/reopen by default — see the useEffect below
+  // that explicitly clears it when the drawer transitions to closed, so
+  // reopening always lands on a clean "全部" view.
+  const [agentFilterId, setAgentFilterId] = useState<string | null>(null);
+
+  // Reset the filter whenever the drawer transitions to closed. Using an
+  // effect (commit phase) instead of a render-time setState avoids the
+  // "set state during render" anti-pattern and keeps the reset
+  // idempotent — closing twice is the same as closing once.
+  useEffect(() => {
+    if (!props.open) setAgentFilterId(null);
+  }, [props.open]);
+
+  // O(1) agent lookup for row rendering. Memoised so the map identity is
+  // stable across re-renders when the agents array hasn't changed.
+  const agentById = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    if (props.agents) {
+      for (const agent of props.agents) map.set(agent.id, agent);
+    }
+    return map;
+  }, [props.agents]);
+
+  // Only show filter chips for agents that actually have conversations in
+  // the current item set — avoids pinning to an empty result.
+  const agentsWithConversations = useMemo(() => {
+    if (!props.agents) return [] as Array<{ id: string; name: string; count: number }>;
+    const counts = new Map<string, number>();
+    for (const c of props.items) {
+      counts.set(c.agentId, (counts.get(c.agentId) ?? 0) + 1);
+    }
+    return props.agents
+      .filter((agent) => counts.has(agent.id))
+      .map((agent) => ({ ...agent, count: counts.get(agent.id) ?? 0 }));
+  }, [props.agents, props.items]);
+
+  // If the pinned agent has no remaining conversations (e.g. last one was
+  // deleted), drop the filter rather than showing an empty list. Run in
+  // an effect, not during render — derived-state-from-props pattern.
+  useEffect(() => {
+    if (
+      agentFilterId !== null &&
+      !agentsWithConversations.some((a) => a.id === agentFilterId)
+    ) {
+      setAgentFilterId(null);
+    }
+  }, [agentFilterId, agentsWithConversations]);
 
   const grouped = useMemo(() => {
-    const filtered = props.items.filter((c) =>
-      query.trim() ? (c.title || "").toLowerCase().includes(query.toLowerCase()) : true,
-    );
+    const q = query.trim().toLowerCase();
+    const filtered = props.items.filter((c) => {
+      if (agentFilterId !== null && c.agentId !== agentFilterId) return false;
+      if (q && !(c.title || "").toLowerCase().includes(q)) return false;
+      return true;
+    });
     const map = new Map<string, ConversationDto[]>();
     const order: string[] = [];
     for (const c of filtered) {
@@ -40,7 +104,7 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
       map.get(b)!.push(c);
     }
     return order.map((label) => ({ label, rows: map.get(label)! }));
-  }, [props.items, query]);
+  }, [props.items, query, agentFilterId]);
 
   if (!props.open) return null;
 
@@ -72,13 +136,51 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
           </div>
         </div>
         <div className="search-field">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-tertiary)" }}><circle cx="7" cy="7" r="4.5" /><path d="M14 14l-3.5-3.5" /></svg>
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="search-field-icon"><circle cx="7" cy="7" r="4.5" /><path d="M14 14l-3.5-3.5" /></svg>
           <input
             placeholder="搜索历史会话…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {agentsWithConversations.length >= 2 ? (
+          <div
+            className="history-filter-chips"
+            role="tablist"
+            aria-label="按智能体筛选"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={agentFilterId === null}
+              className={
+                "history-filter-chip" + (agentFilterId === null ? " active" : "")
+              }
+              onClick={() => setAgentFilterId(null)}
+            >
+              <span className="history-filter-label">全部</span>
+              <span className="history-filter-count">{props.items.length}</span>
+            </button>
+            {agentsWithConversations.map((agent) => (
+              <button
+                key={agent.id}
+                type="button"
+                role="tab"
+                aria-selected={agentFilterId === agent.id}
+                className={
+                  "history-filter-chip" +
+                  (agentFilterId === agent.id ? " active" : "")
+                }
+                onClick={() => setAgentFilterId(agent.id)}
+                title={agent.name}
+              >
+                <AgentAvatar agent={agent} size={16} shape="square" />
+                <span className="history-filter-label">{agent.name}</span>
+                <span className="history-filter-count">{agent.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="history-list">
           {grouped.length === 0 ? (
             <div className="group-heading">没有匹配的会话</div>
@@ -86,7 +188,9 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
             grouped.map((g) => (
               <div key={g.label}>
                 <div className="group-heading">{g.label}</div>
-                {g.rows.map((c) => (
+                {g.rows.map((c) => {
+                  const agent = agentById.get(c.agentId);
+                  return (
                   <div
                     key={c.id}
                     className={"history-row" + (c.id === props.activeId ? " active" : "")}
@@ -96,13 +200,26 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
                       className="row-button"
                       onClick={() => pickAndClose(c.id)}
                     >
-                      <span className="row-title">{c.title || "(无标题)"}</span>
-                      <span className="row-meta">{new Date(c.updatedAt).toLocaleString()}</span>
+                      {/* When the row's agent isn't in scope (e.g. it was
+                       * deleted), AgentAvatar still renders a glyph from the
+                       * agentId's hue + a "?" fallback letter so column
+                       * alignment stays consistent with rows that do have
+                       * a known agent. */}
+                      <AgentAvatar
+                        agent={agent ?? { id: c.agentId, name: "" }}
+                        size={20}
+                        shape="square"
+                      />
+                      <span className="row-text">
+                        <span className="row-title">{c.title || "(无标题)"}</span>
+                        <span className="row-meta">{new Date(c.updatedAt).toLocaleString()}</span>
+                      </span>
                     </button>
                     {props.onDelete ? (
                       <button
                         type="button"
                         className="row-delete"
+                        aria-label="删除"
                         title="删除"
                         onClick={() => props.onDelete?.(c.id)}
                       >
@@ -110,7 +227,8 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
                       </button>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ))
           )}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Badge, type BadgeTone } from "./components";
 
 export type ToolBlockStatus = "planned" | "running" | "completed" | "failed";
 
@@ -20,7 +21,7 @@ export function ToolBlock(props: ToolBlockProps) {
 
   const inputSummary = summarize(props.input);
   const statusLabel = labelFor(props.status);
-  const statusColor = colorFor(props.status);
+  const statusTone = toneFor(props.status);
 
   return (
     <div className={`tool-block tool-block-${props.status}`}>
@@ -35,9 +36,7 @@ export function ToolBlock(props: ToolBlockProps) {
         <span className="tool-block-icon">{open ? "▼" : "▶"}</span>
         <strong className="tool-block-tool">{props.tool}</strong>
         <code className="tool-block-input">{inputSummary}</code>
-        <span className="tool-block-status" style={{ color: statusColor }}>
-          {statusLabel}
-        </span>
+        <Badge tone={statusTone}>{statusLabel}</Badge>
       </button>
       {open ? (
         <div className="tool-block-body">
@@ -78,21 +77,22 @@ function labelFor(status: ToolBlockStatus): string {
     case "running":
       return "运行中";
     case "completed":
-      return "✓ 完成";
+      return "已完成";
     case "failed":
-      return "✗ 失败";
+      return "失败";
   }
 }
 
-function colorFor(status: ToolBlockStatus): string {
+function toneFor(status: ToolBlockStatus): BadgeTone {
   switch (status) {
     case "running":
-      return "#80b0ff";
+      return "info";
     case "completed":
-      return "#6dd29a";
+      return "success";
     case "failed":
-      return "#ff8080";
+      return "danger";
+    case "planned":
     default:
-      return "inherit";
+      return "neutral";
   }
 }

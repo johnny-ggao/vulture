@@ -48,4 +48,40 @@ describe("conversationsReducer", () => {
     expect(s.error).toBe("boom");
     expect(s.loading).toBe(false);
   });
+
+  test("restore re-inserts a deleted item by updatedAt position", () => {
+    // older > newer order on the API side, so b (older) sits AFTER a.
+    const newer: ConversationDto = { ...a, updatedAt: "2026-04-29T00:00:00.000Z" };
+    const older: ConversationDto = { ...b, updatedAt: "2026-04-27T00:00:00.000Z" };
+    const oldest: ConversationDto = { ...a, id: "c-c", title: "C", updatedAt: "2026-04-26T00:00:00.000Z" };
+    const after = conversationsReducer(
+      { ...initial, items: [newer, oldest] },
+      { type: "restore", item: older },
+    );
+    expect(after.items.map((x) => x.id)).toEqual(["c-a", "c-b", "c-c"]);
+  });
+
+  test("restore is idempotent — does not duplicate when item already present", () => {
+    const after = conversationsReducer(
+      { ...initial, items: [a, b] },
+      { type: "restore", item: a },
+    );
+    expect(after.items.filter((x) => x.id === "c-a")).toHaveLength(1);
+  });
+
+  test("restore appends item with malformed updatedAt rather than crashing", () => {
+    const malformed: ConversationDto = { ...a, id: "c-mal", updatedAt: "not-a-date" };
+    const after = conversationsReducer(
+      { ...initial, items: [a] },
+      { type: "restore", item: malformed },
+    );
+    expect(after.items.map((x) => x.id)).toEqual(["c-a", "c-mal"]);
+  });
+
+  test("unknown action type returns state unchanged", () => {
+    const before: ConversationsState = { ...initial, items: [a] };
+    // @ts-expect-error — exercising the runtime default branch.
+    const after = conversationsReducer(before, { type: "no-such-action" });
+    expect(after).toBe(before);
+  });
 });

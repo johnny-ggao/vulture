@@ -7,6 +7,7 @@ import { RecoveryCard } from "./RecoveryCard";
 
 export type RunBlock =
   | { kind: "text"; content: string; firstSeq: number; usage?: TokenUsageDto }
+  | { kind: "run-error"; message: string; code: string; firstSeq: number }
   | { kind: "recovery"; message: string; reason: string; firstSeq: number }
   | { kind: "recovery-boundary"; firstSeq: number }
   | {
@@ -129,6 +130,16 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         blocks.push({ kind: "recovery-boundary", firstSeq: e.seq });
         break;
       }
+      case "run.failed": {
+        const error = e.error as { code?: unknown; message?: unknown } | undefined;
+        blocks.push({
+          kind: "run-error",
+          message: typeof error?.message === "string" ? error.message : "Run failed.",
+          code: typeof error?.code === "string" ? error.code : "internal",
+          firstSeq: e.seq,
+        });
+        break;
+      }
       case "run.usage": {
         const usage = normalizeUsage(e.usage);
         if (!usage) break;
@@ -138,7 +149,7 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         }
         break;
       }
-      // run.started / run.completed / run.failed / run.cancelled produce no inline block
+      // run.started / run.completed / run.cancelled produce no inline block
     }
   }
 
@@ -186,6 +197,12 @@ export interface RunEventStreamProps {
   events: readonly AnyRunEvent[];
   submittingApprovals: ReadonlySet<string>;
   resuming: boolean;
+  /**
+   * True while the run is actively producing tokens. When set, the LAST
+   * text block in the stream renders with a streaming caret so the user
+   * sees output is in-flight.
+   */
+  streaming?: boolean;
   onDecide: (callId: string, decision: ApprovalDecision) => void;
   onResume: () => void;
   onCancel: () => void;
@@ -193,11 +210,34 @@ export interface RunEventStreamProps {
 
 export function RunEventStream(props: RunEventStreamProps) {
   const blocks = reduceRunEvents(props.events);
+  // Track the index of the latest text block so we can attach the caret
+  // only there (and not to historical text blocks earlier in the stream).
+  let lastTextIdx = -1;
+  for (let i = 0; i < blocks.length; i += 1) {
+    if (blocks[i]?.kind === "text") lastTextIdx = i;
+  }
   return (
     <div className="run-event-stream">
       {blocks.map((b, i) => {
         if (b.kind === "text") {
-          return <MessageBubble key={i} role="assistant" content={b.content} usage={b.usage} />;
+          return (
+            <MessageBubble
+              key={i}
+              role="assistant"
+              content={b.content}
+              usage={b.usage}
+              streaming={Boolean(props.streaming) && i === lastTextIdx}
+            />
+          );
+        }
+        if (b.kind === "run-error") {
+          return (
+            <MessageBubble
+              key={`run-error-${b.firstSeq}`}
+              role="assistant"
+              content={`运行失败：${b.message}`}
+            />
+          );
         }
         if (b.kind === "tool") {
           return (

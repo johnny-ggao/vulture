@@ -11,6 +11,7 @@ dist/
 !.env.example
 .omx/
 .superpowers/
+.artifacts/
 *.pkg
 apps/desktop-shell/gen/
 openclaw/

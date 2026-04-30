@@ -1,0 +1,15 @@
+{
+  "name": "@vulture/desktop-e2e",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun test src",
+    "desktop-e2e": "bun src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "bun run typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.13",
+    "typescript": "^5.8.0"
+  }
+}

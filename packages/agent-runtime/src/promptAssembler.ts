@@ -8,7 +8,14 @@ export interface PromptAgent {
   model: string;
   reasoning: string;
   tools: string[];
+  handoffs?: PromptHandoffAgent[];
   instructions: string;
+}
+
+export interface PromptHandoffAgent {
+  id: string;
+  name: string;
+  description: string;
 }
 
 export interface PromptWorkspace {
@@ -59,6 +66,7 @@ export function assembleAgentInstructions(args: AssembleArgs): string {
   const agentCoreUser = readOptionalSection(args.agentCoreDir, "USER.md");
   const agentCoreHeartbeat = readOptionalSection(args.agentCoreDir, "HEARTBEAT.md");
   const workspaceAgents = loadWorkspaceAgentsMd(workspace.path);
+  const handoffs = formatHandoffs(agent.handoffs ?? []);
 
   return `# Vulture Agent Pack
 
@@ -112,7 +120,25 @@ ${agentCoreHeartbeat || "No heartbeat instructions are configured."}
 
 ### Granted Tools
 ${agent.tools.join(", ")}
+
+### Available Handoffs
+${handoffs}
 `.trim();
+}
+
+function formatHandoffs(handoffs: readonly PromptHandoffAgent[]): string {
+  if (handoffs.length === 0) {
+    return "No handoff agents are configured.";
+  }
+  return [
+    "Decide autonomously whether a subagent is useful. The user does not need to manually request or name a subagent.",
+    "Use `sessions_spawn` with the target `agentId` only when the work is independent, parallelizable, and worth the added coordination.",
+    "Before calling `sessions_spawn`, make the title and message explain the proposed delegation; the approval card is the user confirmation.",
+    "If the user denies the approval, continue with the task yourself or explain the limitation briefly.",
+    ...handoffs.map((agent) =>
+      `- agentId: ${agent.id}; name: ${agent.name}; description: ${agent.description || "No description"}`,
+    ),
+  ].join("\n");
 }
 
 export function assembleCodexPrompt(args: CodexAssembleArgs): string {

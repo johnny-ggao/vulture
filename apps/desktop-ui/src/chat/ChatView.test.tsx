@@ -69,6 +69,47 @@ describe("ChatView", () => {
     expect(screen.getByText("Tokens: 100 in · 25 out · 125 total")).toBeDefined();
   });
 
+  test("renders subagent sessions below the current conversation", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs}
+        subagentSessions={[
+          {
+            id: "sub-1",
+            parentConversationId: "c-1",
+            parentRunId: "r-1",
+            agentId: "researcher",
+            conversationId: "c-child",
+            label: "Researcher",
+            status: "completed",
+            messageCount: 3,
+            createdAt: "2026-04-30T00:00:00.000Z",
+            updatedAt: "2026-04-30T00:01:00.000Z",
+          },
+        ]}
+        subagentMessages={{}}
+        loadingSubagentMessages={new Set()}
+        onLoadSubagentMessages={async () => {}}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+
+    expect(screen.getByLabelText("子智能体会话")).toBeDefined();
+    expect(screen.getByText("Researcher")).toBeDefined();
+    expect(screen.getByText("已完成")).toBeDefined();
+  });
+
   test("shows reconnecting chip when status=reconnecting", () => {
     render(
       <ChatView
@@ -88,6 +129,28 @@ describe("ChatView", () => {
       />,
     );
     expect(screen.getByText(/重连中/)).toBeDefined();
+  });
+
+  test("reconnect status uses role=status (polite live region)", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="reconnecting"
+        runError="net"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    const status = screen.getByRole("status");
+    expect(status.textContent ?? "").toMatch(/重连中/);
   });
 
   test("shows send error", () => {
@@ -112,6 +175,29 @@ describe("ChatView", () => {
     expect(screen.getByText("attachment.file_required")).toBeDefined();
   });
 
+  test("send error uses role=alert (assertive live region)", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        sendError="attachment.file_required"
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent ?? "").toContain("attachment.file_required");
+  });
+
   test("shows empty state when no messages and idle", () => {
     render(
       <ChatView
@@ -131,6 +217,78 @@ describe("ChatView", () => {
       />,
     );
     expect(screen.getByText(/选择智能体/)).toBeDefined();
+  });
+
+  test("renders suggestion chips when provided", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        suggestions={["帮我审查代码", "解释错误日志", "起草一份方案", "总结这份文档"]}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "帮我审查代码" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "解释错误日志" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "起草一份方案" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "总结这份文档" })).toBeDefined();
+  });
+
+  test("clicking a suggestion chip sends it as the next prompt", async () => {
+    const calls: Array<{ text: string; files: number }> = [];
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        suggestions={["帮我审查代码"]}
+        onSend={(text, files) => {
+          calls.push({ text, files: files.length });
+        }}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "帮我审查代码" }));
+    expect(calls).toEqual([{ text: "帮我审查代码", files: 0 }]);
+  });
+
+  test("does not render suggestions list when suggestions prop is empty/undefined", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "帮我审查代码" })).toBeNull();
   });
 
   test("shows recovery actions when run is recoverable", async () => {

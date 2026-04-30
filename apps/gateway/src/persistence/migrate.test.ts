@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 12;
+const LATEST_SCHEMA_VERSION = 14;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -239,6 +239,48 @@ describe("migrate", () => {
     expect(columns.map((c) => c.name)).toContain("tool_preset");
     expect(columns.map((c) => c.name)).toContain("tool_include_json");
     expect(columns.map((c) => c.name)).toContain("tool_exclude_json");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("013 adds durable subagent session table", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v13-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toEqual([
+      "id",
+      "parent_conversation_id",
+      "parent_run_id",
+      "agent_id",
+      "conversation_id",
+      "label",
+      "status",
+      "message_count",
+      "created_at",
+      "updated_at",
+    ]);
+    expect(columns.find((c) => c.name === "parent_conversation_id")?.notnull).toBe(1);
+    expect(columns.find((c) => c.name === "parent_run_id")?.notnull).toBe(1);
+    expect(columns.find((c) => c.name === "conversation_id")?.notnull).toBe(1);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("014 adds agent handoff configuration", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v14-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(agents)")
+      .all() as { name: string; notnull: number; dflt_value: string | null }[];
+    const handoffColumn = columns.find((c) => c.name === "handoff_agent_ids_json");
+    expect(handoffColumn?.notnull).toBe(1);
+    expect(handoffColumn?.dflt_value).toBe("'[]'");
     db.close();
     rmSync(dir, { recursive: true });
   });

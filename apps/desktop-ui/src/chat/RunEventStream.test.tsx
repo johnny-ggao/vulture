@@ -185,6 +185,38 @@ describe("reduceRunEvents", () => {
     expect(blocks.map((b) => b.kind)).toEqual(["text", "recovery-boundary", "text"]);
   });
 
+  test("run.failed renders a visible assistant error block", () => {
+    const events: AnyRunEvent[] = [
+      ev({
+        type: "run.failed",
+        seq: 1,
+        error: { code: "internal", message: "Connection error." },
+      }),
+    ];
+
+    const blocks = reduceRunEvents(events);
+    expect(blocks).toEqual([
+      {
+        kind: "run-error",
+        message: "Connection error.",
+        code: "internal",
+        firstSeq: 1,
+      },
+    ]);
+
+    render(
+      <RunEventStream
+        events={events}
+        submittingApprovals={new Set()}
+        resuming={false}
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByText(/运行失败：Connection error\./)).toBeDefined();
+  });
+
   test("run.recovered renders a visible recovery boundary", () => {
     render(
       <RunEventStream

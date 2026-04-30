@@ -22,6 +22,7 @@ const agent = {
   model: "gpt-5.4",
   reasoning: "medium",
   tools: ["shell.exec"],
+  handoffs: [],
   instructions: "Be concise.",
 };
 
@@ -51,6 +52,32 @@ describe("promptAssembler", () => {
       userInput: "Summarize the repo",
     });
     expect(text).toContain("User task:\nSummarize the repo");
+    rmSync(dir, { recursive: true });
+  });
+
+  test("includes configured handoff agents with sessions_spawn guidance", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-pack-"));
+    const packDir = fakePack(dir);
+    const text = assembleAgentInstructions({
+      packDir,
+      agent: {
+        ...agent,
+        handoffs: [
+          {
+            id: "researcher",
+            name: "Researcher",
+            description: "Finds external and local facts",
+          },
+        ],
+      },
+      workspace,
+    });
+    expect(text).toContain("### Available Handoffs");
+    expect(text).toContain("researcher");
+    expect(text).toContain("sessions_spawn");
+    expect(text).toContain("Decide autonomously whether a subagent is useful");
+    expect(text).toContain("The user does not need to manually request or name a subagent");
+    expect(text).toContain("the approval card is the user confirmation");
     rmSync(dir, { recursive: true });
   });
 });

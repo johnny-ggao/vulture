@@ -95,6 +95,7 @@ pub struct SpawnSpec {
     pub token: String,
     pub shell_pid: u32,
     pub profile_dir: Arc<RwLock<PathBuf>>,
+    pub default_workspace: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -124,6 +125,9 @@ pub async fn spawn_gateway(spec: &SpawnSpec) -> Result<RunningGateway> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if let Some(default_workspace) = &spec.default_workspace {
+        cmd.env("VULTURE_DEFAULT_WORKSPACE", default_workspace);
+    }
 
     let mut child = cmd
         .spawn()
@@ -224,6 +228,7 @@ mod tests {
             token: "x".repeat(43),
             shell_pid: std::process::id(),
             profile_dir: Arc::new(RwLock::new(dir.clone())),
+            default_workspace: None,
         };
 
         let mut running = spawn_gateway(&spec).await.expect("spawn ready");
@@ -259,11 +264,100 @@ mod tests {
             token: "x".repeat(43),
             shell_pid: std::process::id(),
             profile_dir: Arc::new(RwLock::new(dir.clone())),
+            default_workspace: None,
         };
 
         let mut running = spawn_gateway(&spec).await.expect("spawn ready");
         let value = std::fs::read_to_string(&env_file).unwrap();
         assert_eq!(value, "");
+        signal_gateway_shutdown(&mut running.child).await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn spawn_exports_default_workspace_when_spec_sets_it() {
+        use std::io::Write;
+
+        let dir = tempdir();
+        let workspace = dir.join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let env_file = dir.join("default-workspace-env.txt");
+        let entry = dir.join("fake-gateway-env.ts");
+        std::fs::File::create(&entry)
+            .unwrap()
+            .write_all(
+                format!(
+                    "await Bun.write('{}', process.env.VULTURE_DEFAULT_WORKSPACE ?? ''); console.log('READY 12345'); setTimeout(()=>{{}}, 60_000);",
+                    env_file.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let spec = SpawnSpec {
+            bun_bin: PathBuf::from("bun"),
+            gateway_entry: entry,
+            workdir: dir.clone(),
+            gateway_port: 12345,
+            shell_port: 12346,
+            token: "x".repeat(43),
+            shell_pid: std::process::id(),
+            profile_dir: Arc::new(RwLock::new(dir.clone())),
+            default_workspace: Some(workspace.clone()),
+        };
+
+        let mut running = spawn_gateway(&spec).await.expect("spawn ready");
+        let value = std::fs::read_to_string(&env_file).unwrap();
+        assert_eq!(value, workspace.display().to_string());
+        signal_gateway_shutdown(&mut running.child).await;
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn spawn_does_not_force_memory_suggestions_env() {
+        use std::io::Write;
+        use std::sync::{Mutex, OnceLock};
+
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let previous = std::env::var_os("VULTURE_MEMORY_SUGGESTIONS");
+        std::env::set_var("VULTURE_MEMORY_SUGGESTIONS", "1");
+
+        let dir = tempdir();
+        let env_file = dir.join("memory-suggestions-env.txt");
+        let entry = dir.join("fake-gateway-memory-env.ts");
+        std::fs::File::create(&entry)
+            .unwrap()
+            .write_all(
+                format!(
+                    "await Bun.write('{}', process.env.VULTURE_MEMORY_SUGGESTIONS ?? ''); console.log('READY 12345'); setTimeout(()=>{{}}, 60_000);",
+                    env_file.display()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+
+        let spec = SpawnSpec {
+            bun_bin: PathBuf::from("bun"),
+            gateway_entry: entry,
+            workdir: dir.clone(),
+            gateway_port: 12345,
+            shell_port: 12346,
+            token: "x".repeat(43),
+            shell_pid: std::process::id(),
+            profile_dir: Arc::new(RwLock::new(dir.clone())),
+            default_workspace: None,
+        };
+
+        let mut running = spawn_gateway(&spec).await.expect("spawn ready");
+        if let Some(value) = previous {
+            std::env::set_var("VULTURE_MEMORY_SUGGESTIONS", value);
+        } else {
+            std::env::remove_var("VULTURE_MEMORY_SUGGESTIONS");
+        }
+
+        let value = std::fs::read_to_string(&env_file).unwrap();
+        assert_eq!(value, "1");
         signal_gateway_shutdown(&mut running.child).await;
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -288,6 +382,7 @@ mod tests {
             token: "x".repeat(43),
             shell_pid: std::process::id(),
             profile_dir: Arc::new(RwLock::new(dir.clone())),
+            default_workspace: None,
         };
 
         let err = spawn_gateway(&spec).await.expect_err("should time out");

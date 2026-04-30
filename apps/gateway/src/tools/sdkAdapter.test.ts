@@ -60,6 +60,39 @@ describe("gateway tool sdk adapter", () => {
     });
   });
 
+  test("sessions tools expose durable subagent session fields to the SDK", () => {
+    const registry = createCoreToolRegistry();
+
+    expect(registry.get("sessions_list")?.parameters.parse({
+      parentConversationId: "c-parent",
+      parentRunId: null,
+      agentId: null,
+      limit: 20,
+    })).toMatchObject({ parentConversationId: "c-parent", limit: 20 });
+    expect(registry.get("sessions_history")?.parameters.parse({
+      sessionId: "sub-1",
+      conversationId: null,
+      limit: 50,
+    })).toMatchObject({ sessionId: "sub-1" });
+    expect(registry.get("sessions_send")?.parameters.parse({
+      sessionId: "sub-1",
+      conversationId: null,
+      message: "continue",
+    })).toMatchObject({ sessionId: "sub-1", message: "continue" });
+    expect(registry.get("sessions_spawn")?.parameters.parse({
+      agentId: "researcher",
+      title: "Research",
+      label: "Researcher",
+      message: "collect facts",
+    })).toMatchObject({ label: "Researcher" });
+    expect(registry.get("sessions_yield")?.parameters.parse({
+      parentConversationId: null,
+      parentRunId: "r-parent",
+      limit: 20,
+      message: null,
+    })).toMatchObject({ parentRunId: "r-parent" });
+  });
+
   test("fails closed when policy allows an unknown tool", () => {
     const registry = createCoreToolRegistry();
 
@@ -169,6 +202,24 @@ describe("sdkApprovalDecision", () => {
     ).toEqual({
       needsApproval: true,
       reason: "browser.click requires browser approval",
+    });
+  });
+
+  test("explains subagent spawn approvals as agent suggestions", () => {
+    expect(
+      sdkApprovalDecision(
+        "sessions_spawn",
+        {
+          agentId: "researcher",
+          label: "Researcher",
+          title: "Investigate Openclaw tools",
+          message: "Compare the Openclaw tool system with Vulture.",
+        },
+        "/tmp/work",
+      ),
+    ).toEqual({
+      needsApproval: true,
+      reason: "建议开启子智能体 Researcher：Investigate Openclaw tools",
     });
   });
 });

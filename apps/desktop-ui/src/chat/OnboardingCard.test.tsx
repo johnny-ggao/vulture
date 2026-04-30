@@ -31,4 +31,21 @@ describe("OnboardingCard", () => {
     fireEvent.click(screen.getByText(/OpenAI API key/i));
     expect(onFocus).toHaveBeenCalled();
   });
+
+  test("uses SVG icons, not emoji", () => {
+    const { container } = render(
+      <OnboardingCard
+        onSignInWithChatGPT={async () => {}}
+        onFocusApiKey={() => {}}
+      />,
+    );
+    // No emoji glyphs sneaking back in
+    expect(container.textContent ?? "").not.toMatch(/[⚡🔑]/);
+    // Each option button carries an icon SVG
+    const svgs = container.querySelectorAll(".onboarding-icon");
+    expect(svgs.length).toBe(2);
+    for (const node of svgs) {
+      expect(node.tagName.toLowerCase()).toBe("svg");
+    }
+  });
 });

@@ -64,4 +64,18 @@ describe("ApprovalCard", () => {
       expect(b.disabled).toBe(true);
     }
   });
+
+  test("renders an SVG warning icon, not an emoji", () => {
+    const { container } = render(
+      <ApprovalCard
+        callId="c1"
+        tool="shell.exec"
+        reason="r"
+        submitting={false}
+        onDecide={() => {}}
+      />,
+    );
+    expect(container.textContent ?? "").not.toMatch(/⚠️/);
+    expect(container.querySelector(".approval-card-header svg")).not.toBeNull();
+  });
 });

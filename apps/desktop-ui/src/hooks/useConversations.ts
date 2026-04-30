@@ -19,7 +19,8 @@ export type ConversationsAction =
   | { type: "create.optimistic"; item: ConversationDto }
   | { type: "create.commit"; id: string; item: ConversationDto }
   | { type: "create.rollback"; id: string }
-  | { type: "delete"; id: string };
+  | { type: "delete"; id: string }
+  | { type: "restore"; item: ConversationDto };
 
 export function conversationsReducer(
   state: ConversationsState,
@@ -43,7 +44,42 @@ export function conversationsReducer(
       return { ...state, items: state.items.filter((x) => x.id !== action.id) };
     case "delete":
       return { ...state, items: state.items.filter((x) => x.id !== action.id) };
+    case "restore": {
+      // De-duplicate in case the item already came back from a refetch.
+      const without = state.items.filter((x) => x.id !== action.item.id);
+      return { ...state, items: insertByUpdatedAt(without, action.item) };
+    }
+    default:
+      return state;
   }
+}
+
+/**
+ * Insert into a list sorted by updatedAt desc — the same order the API
+ * returns. Used by `restore` so undoing a delete drops the item back into
+ * its original position rather than always at the top.
+ *
+ * Items with malformed updatedAt fall back to the tail so they never crash
+ * the comparison; a parallel refetch will sort the list correctly later.
+ */
+function insertByUpdatedAt(
+  items: ConversationDto[],
+  item: ConversationDto,
+): ConversationDto[] {
+  const target = parseTime(item.updatedAt);
+  if (target === null) return [...items, item];
+  for (let i = 0; i < items.length; i += 1) {
+    const candidate = parseTime(items[i].updatedAt);
+    if (candidate !== null && candidate <= target) {
+      return [...items.slice(0, i), item, ...items.slice(i)];
+    }
+  }
+  return [...items, item];
+}
+
+function parseTime(input: string): number | null {
+  const t = new Date(input).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
 export function useConversations(client: ApiClient | null) {
@@ -106,9 +142,41 @@ export function useConversations(client: ApiClient | null) {
     [client, refetch],
   );
 
+  /**
+   * Hide the conversation locally without calling the API. Pair with
+   * `commitDelete` (after a grace period) or `restore` (to undo).
+   */
+  const softDelete = useCallback((id: string) => {
+    dispatch({ type: "delete", id });
+  }, []);
+
+  /**
+   * Re-insert a previously soft-deleted conversation into the list.
+   */
+  const restore = useCallback((item: ConversationDto) => {
+    dispatch({ type: "restore", item });
+  }, []);
+
+  /**
+   * Call the delete API for an already-soft-deleted conversation.
+   * Refetch on failure so the UI re-syncs with the backend.
+   */
+  const commitDelete = useCallback(
+    async (id: string) => {
+      if (!client) return;
+      try {
+        await conversationsApi.delete(client, id);
+      } catch (cause) {
+        void refetch();
+        throw cause;
+      }
+    },
+    [client, refetch],
+  );
+
   useEffect(() => {
     void refetch();
   }, [refetch]);
 
-  return { ...state, refetch, create, remove };
+  return { ...state, refetch, create, remove, softDelete, restore, commitDelete };
 }

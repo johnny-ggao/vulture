@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "harness:ui-smoke": "bun test --preload ../../scripts/test-setup.ts src/App.integration.test.tsx --test-name-pattern \"assistant message appears|restores saved active run|keeps completed tool blocks visible\" --timeout 15000",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit"
   },

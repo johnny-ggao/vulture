@@ -5,7 +5,7 @@ use std::{
     io::Write,
     net::TcpListener,
     os::unix::fs::OpenOptionsExt,
-    path::Path,
+    path::{Path, PathBuf},
 };
 use vulture_core::RuntimeDescriptor;
 
@@ -15,6 +15,30 @@ pub const TOKEN_BYTES: usize = 32;
 /// shared `RuntimeDescriptor` schema.
 #[allow(dead_code)] // referenced from tests and as documentation of the contract
 pub const TOKEN_B64_LEN: usize = 43;
+
+pub fn vulture_root_from_env(
+    env: &impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> anyhow::Result<PathBuf> {
+    if let Some(value) = env("VULTURE_DESKTOP_ROOT") {
+        if !value.to_string_lossy().trim().is_empty() {
+            let path = PathBuf::from(value);
+            if !path.is_absolute() {
+                anyhow::bail!("VULTURE_DESKTOP_ROOT must be an absolute path");
+            }
+            return Ok(path);
+        }
+    }
+
+    let home = env("HOME").expect("HOME must be set");
+    Ok(PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("Vulture"))
+}
+
+pub fn should_import_codex_auth(env: &impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    env("VULTURE_DESKTOP_E2E_STUB_LLM").is_none()
+}
 
 pub fn generate_token() -> String {
     let mut bytes = [0u8; TOKEN_BYTES];
@@ -103,6 +127,80 @@ mod tests {
         for _ in 0..1024 {
             assert!(seen.insert(generate_token()), "duplicate token");
         }
+    }
+
+    #[test]
+    fn root_uses_vulture_desktop_root_when_set() {
+        let root = vulture_root_from_env(&|key| match key {
+            "VULTURE_DESKTOP_ROOT" => Some("/tmp/vulture-e2e-root".into()),
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        })
+        .expect("absolute override should resolve");
+
+        assert_eq!(root, std::path::PathBuf::from("/tmp/vulture-e2e-root"));
+    }
+
+    #[test]
+    fn root_falls_back_to_application_support() {
+        let root = vulture_root_from_env(&|key| match key {
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        })
+        .expect("fallback root should resolve");
+
+        assert_eq!(
+            root,
+            std::path::PathBuf::from("/Users/example")
+                .join("Library")
+                .join("Application Support")
+                .join("Vulture")
+        );
+    }
+
+    #[test]
+    fn root_ignores_empty_vulture_desktop_root() {
+        for override_value in ["", "   "] {
+            let root = vulture_root_from_env(&|key| match key {
+                "VULTURE_DESKTOP_ROOT" => Some(override_value.into()),
+                "HOME" => Some("/Users/example".into()),
+                _ => None,
+            })
+            .expect("empty override should fall back");
+
+            assert_eq!(
+                root,
+                std::path::PathBuf::from("/Users/example")
+                    .join("Library")
+                    .join("Application Support")
+                    .join("Vulture")
+            );
+        }
+    }
+
+    #[test]
+    fn root_rejects_relative_vulture_desktop_root() {
+        let err = vulture_root_from_env(&|key| match key {
+            "VULTURE_DESKTOP_ROOT" => Some("relative/root".into()),
+            "HOME" => Some("/Users/example".into()),
+            _ => None,
+        })
+        .expect_err("relative override should fail");
+
+        assert!(
+            err.to_string()
+                .contains("VULTURE_DESKTOP_ROOT must be an absolute path"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    #[test]
+    fn disables_codex_import_for_desktop_e2e_stub_runs() {
+        assert!(!should_import_codex_auth(&|key| match key {
+            "VULTURE_DESKTOP_E2E_STUB_LLM" => Some("1".into()),
+            _ => None,
+        }));
+        assert!(should_import_codex_auth(&|_| None));
     }
 
     #[test]

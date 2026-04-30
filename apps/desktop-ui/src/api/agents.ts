@@ -35,6 +35,7 @@ export interface Agent {
   toolInclude: AgentToolName[];
   toolExclude: AgentToolName[];
   skills?: string[];
+  handoffAgentIds: string[];
   workspace: Workspace;
   instructions: string;
   createdAt: string;
@@ -52,6 +53,7 @@ export interface SaveAgentRequest {
   toolInclude?: AgentToolName[];
   toolExclude?: AgentToolName[];
   skills?: string[] | null;
+  handoffAgentIds?: string[];
   workspace?: Pick<Workspace, "id" | "name" | "path">;
   instructions: string;
 }
