@@ -1,44 +1,30 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Agent,
   AgentCoreFile,
   AgentCoreFilesResponse,
-  AgentToolName,
-  AgentToolPreset,
-  ReasoningLevel,
 } from "../api/agents";
 import type { ToolCatalogGroup } from "../api/tools";
-import { toolPolicyFromPreset, toolPolicyFromSelection } from "../api/tools";
-import { ToolGroupSelector } from "./ToolGroupSelector";
-import { AgentAvatar, Badge, Field, useCursorGloss } from "./components";
+import {
+  AgentAvatar,
+  useCursorGloss,
+} from "./components";
+import {
+  CoreTab,
+  OverviewTab,
+  PersonaTab,
+  SaveStatusIndicator,
+  ToolsTab,
+  draftFromAgent,
+  isDirtyDraft,
+  parseSkills,
+  type AgentConfigPatch,
+  type Draft,
+} from "./editAgentTabs";
+
+export type { AgentConfigPatch };
 
 type AgentsTab = "overview" | "persona" | "tools" | "core";
-
-export interface AgentConfigPatch {
-  name: string;
-  description: string;
-  model: string;
-  reasoning: ReasoningLevel;
-  tools: AgentToolName[];
-  toolPreset: AgentToolPreset;
-  toolInclude: AgentToolName[];
-  toolExclude: AgentToolName[];
-  skills?: string[] | null;
-  instructions: string;
-}
-
-interface Draft {
-  name: string;
-  description: string;
-  model: string;
-  reasoning: ReasoningLevel;
-  tools: AgentToolName[];
-  toolPreset: AgentToolPreset;
-  toolInclude: AgentToolName[];
-  toolExclude: AgentToolName[];
-  skillsText: string;
-  instructions: string;
-}
 
 export interface AgentEditModalProps {
   open: boolean;
@@ -59,10 +45,9 @@ export interface AgentEditModalProps {
 
 /**
  * Drill-in editor for a single agent, presented as a modal overlay matching
- * the Accio "edit-in-modal" pattern. Houses the same tabbed surface
- * (概览 / Persona / 工具 / Agent Core) that previously lived inline on
- * AgentsPage; the move to a modal lets the browse grid stay focused on
- * discovery while keeping the editor a single Esc keypress away.
+ * the Accio "edit-in-modal" pattern. Owns draft + saving + file state; each
+ * tab (Overview / Persona / Tools / Core) lives in its own controlled
+ * component under `./editAgentTabs/`.
  */
 export function AgentEditModal(props: AgentEditModalProps) {
   const { open, agent } = props;
@@ -78,11 +63,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
   const [tab, setTab] = useState<AgentsTab>("overview");
   const [savedFlash, setSavedFlash] = useState(false);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Cursor-tracked gloss for the modal header — shared hook with AgentCard
-  // / SkillCard / ChatView so the four sites can't drift apart.
-  const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
-  // Tracks whether the modal is currently mounted + open. We branch on this
-  // before any state setter that follows an awaited Promise, so a save that
+
+  // Tracks whether the modal is currently mounted + open. Branch on this
+  // before any state setter that follows an awaited Promise so a save that
   // resolves after the user dismissed the modal doesn't poke a dead tree.
   const aliveRef = useRef(true);
   useEffect(() => {
@@ -91,11 +74,19 @@ export function AgentEditModal(props: AgentEditModalProps) {
       aliveRef.current = false;
     };
   }, []);
-  // When the modal closes mid-flight, reset the flash + file status so the
-  // next open doesn't inherit stale UI from a previous session. Also clears
-  // `fileBusy` because the file-load effects branch on `!open` and skip
-  // their own cleanup, otherwise a closed-mid-load modal would reopen with
-  // a stuck "处理中..." button.
+
+  // Reset the draft + scratch state every time the modal opens for a new
+  // agent so edits never leak between sessions.
+  useEffect(() => {
+    if (!open || !agent) return;
+    setDraft(draftFromAgent(agent));
+    setTab("overview");
+    setSavedFlash(false);
+    setFileStatus("");
+  }, [open, agent?.id]);
+
+  // When the modal closes mid-flight, clear flash + file status + busy so
+  // the next open doesn't inherit stale UI.
   useEffect(() => {
     if (open) return;
     if (savedFlashTimer.current !== null) {
@@ -107,34 +98,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
     setFileBusy(false);
   }, [open]);
 
-  // Reset the draft + scratch state every time the modal opens for a new
-  // agent. This avoids leaking edits between agents and ensures the close
-  // button always sees a clean slate next time around.
-  useEffect(() => {
-    if (!open || !agent) return;
-    setDraft(draftFromAgent(agent));
-    setTab("overview");
-    setSavedFlash(false);
-    setFileStatus("");
-  }, [open, agent?.id]);
-
-  // Compare draft to the upstream agent to detect unsaved changes.
-  const isDirty = useMemo(() => {
-    if (!agent) return false;
-    const reference = draftFromAgent(agent);
-    return (
-      draft.name !== reference.name ||
-      draft.description !== reference.description ||
-      draft.model !== reference.model ||
-      draft.reasoning !== reference.reasoning ||
-      draft.toolPreset !== reference.toolPreset ||
-      draft.skillsText !== reference.skillsText ||
-      draft.instructions !== reference.instructions ||
-      !sameStringSet(draft.tools, reference.tools) ||
-      !sameStringSet(draft.toolInclude, reference.toolInclude) ||
-      !sameStringSet(draft.toolExclude, reference.toolExclude)
-    );
-  }, [draft, agent]);
+  const isDirty = useMemo(() => isDirtyDraft(draft, agent), [draft, agent]);
 
   // Cleanup the saved-flash timer on unmount.
   useEffect(() => {
@@ -143,8 +107,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
     };
   }, []);
 
-  // Load core files for the editing agent. Re-runs when the modal opens or
-  // the active agent changes.
+  // Load core files for the editing agent.
   useEffect(() => {
     let cancelled = false;
     setCoreFiles([]);
@@ -194,15 +157,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
     };
   }, [open, agent?.id, selectedFile]);
 
-  // Esc closes the modal, matching the rest of the app's modal contract.
-  // We don't gate on isDirty here — the overlay click stays available for
-  // a confirm-style "are you sure?" UX if we ever need it.
-  //
-  // The handler reads `saving` and `onClose` through a ref so the listener
-  // is bound once per open/close cycle rather than on every parent re-render
-  // (where `onClose` is typically a fresh inline arrow). The ref is written
-  // in a layout effect (commit phase) rather than during render to stay
-  // safe under React 18 StrictMode double-render and concurrent rendering.
+  // Esc closes the modal. The handler reads `saving` and `onClose` through
+  // a ref so the listener is bound once per open/close cycle. The ref is
+  // committed in an effect (commit phase) rather than during render to stay
+  // safe under React 18 StrictMode and concurrent rendering.
   const escDepsRef = useRef({ saving, onClose: props.onClose });
   useEffect(() => {
     escDepsRef.current = { saving, onClose: props.onClose };
@@ -217,6 +175,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  // Cursor-tracked gloss on the modal header — same idiom as AgentCard.
+  const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
 
   async function save() {
     if (!agent || !draft.name.trim() || !draft.instructions.trim() || saving) return;
@@ -364,241 +325,33 @@ export function AgentEditModal(props: AgentEditModalProps) {
           </div>
 
           {tab === "overview" ? (
-            <div className="agent-config-panel" role="tabpanel">
-              <div className="agent-config-grid">
-                <Field label="名称">
-                  <input
-                    value={draft.name}
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  />
-                </Field>
-                <Field label="模型">
-                  <input
-                    value={draft.model}
-                    onChange={(e) => setDraft({ ...draft, model: e.target.value })}
-                  />
-                </Field>
-                <Field label="推理强度">
-                  <select
-                    value={draft.reasoning}
-                    onChange={(e) =>
-                      setDraft({ ...draft, reasoning: e.target.value as ReasoningLevel })
-                    }
-                  >
-                    <option value="low">low</option>
-                    <option value="medium">medium</option>
-                    <option value="high">high</option>
-                  </select>
-                </Field>
-                <Field label="Skills" hint="留空=全部可用，逗号分隔；输入 none 禁用">
-                  <input
-                    aria-label="Skills"
-                    value={draft.skillsText}
-                    onChange={(e) => setDraft({ ...draft, skillsText: e.target.value })}
-                  />
-                </Field>
-              </div>
-              <Field label="描述">
-                <textarea
-                  rows={3}
-                  value={draft.description}
-                  onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                />
-              </Field>
-              <InfoBlock title="Workspace" value={agent.workspace.path} />
-            </div>
+            <OverviewTab agent={agent} draft={draft} onChange={setDraft} />
           ) : null}
-
           {tab === "persona" ? (
-            <div className="agent-config-panel" role="tabpanel">
-              <Field
-                label="Instructions"
-                hint="定义这个智能体的行为边界、工作方式和输出风格。"
-              >
-                <textarea
-                  rows={14}
-                  value={draft.instructions}
-                  onChange={(e) =>
-                    setDraft({ ...draft, instructions: e.target.value })
-                  }
-                />
-              </Field>
-            </div>
+            <PersonaTab draft={draft} onChange={setDraft} />
           ) : null}
-
           {tab === "tools" ? (
-            <div className="agent-config-panel" role="tabpanel">
-              <section className="agent-tools">
-                <div className="agent-tools-head">
-                  <Field label="Tools 预设">
-                    <select
-                      value={draft.toolPreset}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          ...toolPolicyFromPreset(event.target.value as AgentToolPreset),
-                        })
-                      }
-                    >
-                      <option value="minimal">minimal</option>
-                      <option value="standard">standard</option>
-                      <option value="developer">developer</option>
-                      <option value="tl">tl</option>
-                      <option value="full">full</option>
-                      <option value="none">none</option>
-                    </select>
-                  </Field>
-                  <div className="agent-tools-presets">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() =>
-                        setDraft({ ...draft, ...toolPolicyFromPreset("full") })
-                      }
-                    >
-                      全选
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() =>
-                        setDraft({ ...draft, ...toolPolicyFromPreset("none") })
-                      }
-                    >
-                      清空
-                    </button>
-                  </div>
-                </div>
-                <ToolGroupSelector
-                  groups={props.toolGroups}
-                  selected={draft.tools}
-                  onChange={(tools) =>
-                    setDraft({
-                      ...draft,
-                      ...toolPolicyFromSelection(draft.toolPreset, tools),
-                    })
-                  }
-                />
-              </section>
-            </div>
+            <ToolsTab
+              draft={draft}
+              toolGroups={props.toolGroups}
+              onChange={setDraft}
+            />
           ) : null}
-
           {tab === "core" ? (
-            <div className="agent-config-panel" role="tabpanel">
-              <section className="agent-core">
-                <div className="agent-core-head">
-                  <div>
-                    <h3 className="agent-core-title">Agent Core</h3>
-                    <div className="agent-core-path">{corePath || "未加载"}</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={!selectedFile || fileBusy}
-                    onClick={saveCoreFile}
-                  >
-                    {fileBusy ? "处理中..." : "保存文件"}
-                  </button>
-                </div>
-
-                <div className="agent-core-body">
-                  <div className="agent-core-files">
-                    {coreFiles.map((file) => (
-                      <button
-                        key={file.name}
-                        type="button"
-                        className="agent-core-file"
-                        data-active={file.name === selectedFile ? "true" : undefined}
-                        onClick={() => setSelectedFile(file.name)}
-                        aria-pressed={file.name === selectedFile}
-                      >
-                        {file.name}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    aria-label="Agent Core 文件内容"
-                    className="agent-core-editor"
-                    value={fileContent}
-                    onChange={(e) => setFileContent(e.target.value)}
-                    rows={14}
-                    disabled={!selectedFile || fileBusy}
-                  />
-                </div>
-                {fileStatus ? (
-                  <div className="agent-core-status">{fileStatus}</div>
-                ) : null}
-              </section>
-            </div>
+            <CoreTab
+              files={coreFiles}
+              selectedFile={selectedFile}
+              onSelectFile={setSelectedFile}
+              fileContent={fileContent}
+              onChangeFileContent={setFileContent}
+              fileBusy={fileBusy}
+              fileStatus={fileStatus}
+              corePath={corePath}
+              onSave={saveCoreFile}
+            />
           ) : null}
         </div>
       </div>
     </div>
   );
-}
-
-function SaveStatusIndicator({
-  saving,
-  isDirty,
-  savedFlash,
-}: {
-  saving: boolean;
-  isDirty: boolean;
-  savedFlash: boolean;
-}): ReactNode {
-  if (saving) return <Badge tone="info">保存中…</Badge>;
-  if (savedFlash) return <Badge tone="success">已保存</Badge>;
-  if (isDirty) return <Badge tone="warning">未保存</Badge>;
-  return null;
-}
-
-function InfoBlock(props: { title: string; value: string }) {
-  return (
-    <div className="agent-info-block">
-      <div className="agent-info-label">{props.title}</div>
-      <div className="agent-info-value">{props.value}</div>
-    </div>
-  );
-}
-
-function draftFromAgent(agent: Agent | null): Draft {
-  return {
-    name: agent?.name ?? "",
-    description: agent?.description ?? "",
-    model: agent?.model ?? "",
-    reasoning: agent?.reasoning ?? "medium",
-    tools: agent?.tools ? [...agent.tools] : [],
-    toolPreset: agent?.toolPreset ?? "none",
-    toolInclude: agent?.toolInclude ?? agent?.tools ?? [],
-    toolExclude: agent?.toolExclude ?? [],
-    skillsText:
-      agent?.skills === undefined
-        ? ""
-        : agent.skills.length === 0
-        ? "none"
-        : agent.skills.join(", "),
-    instructions: agent?.instructions ?? "",
-  };
-}
-
-function parseSkills(value: string): string[] | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.toLowerCase() === "none") return [];
-  return trimmed
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function sameStringSet(
-  a: ReadonlyArray<string>,
-  b: ReadonlyArray<string>,
-): boolean {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  for (const v of b) {
-    if (!set.has(v)) return false;
-  }
-  return true;
 }

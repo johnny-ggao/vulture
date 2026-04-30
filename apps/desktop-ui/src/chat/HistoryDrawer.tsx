@@ -37,6 +37,9 @@ function bucketFor(updatedAt: string): string {
 
 export function HistoryDrawer(props: HistoryDrawerProps) {
   const [query, setQuery] = useState("");
+  // null = "all agents"; an id pins the list to one agent's conversations.
+  // Reset whenever the drawer closes so reopening lands on a clean view.
+  const [agentFilterId, setAgentFilterId] = useState<string | null>(null);
 
   // O(1) agent lookup for row rendering. Memoised so the map identity is
   // stable across re-renders when the agents array hasn't changed.
@@ -48,10 +51,35 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
     return map;
   }, [props.agents]);
 
+  // Only show filter chips for agents that actually have conversations in
+  // the current item set — avoids pinning to an empty result.
+  const agentsWithConversations = useMemo(() => {
+    if (!props.agents) return [] as Array<{ id: string; name: string; count: number }>;
+    const counts = new Map<string, number>();
+    for (const c of props.items) {
+      counts.set(c.agentId, (counts.get(c.agentId) ?? 0) + 1);
+    }
+    return props.agents
+      .filter((agent) => counts.has(agent.id))
+      .map((agent) => ({ ...agent, count: counts.get(agent.id) ?? 0 }));
+  }, [props.agents, props.items]);
+
+  // If the pinned agent has no remaining conversations (e.g. last one was
+  // deleted), drop the filter rather than showing an empty list.
+  if (
+    agentFilterId !== null &&
+    !agentsWithConversations.some((a) => a.id === agentFilterId)
+  ) {
+    setAgentFilterId(null);
+  }
+
   const grouped = useMemo(() => {
-    const filtered = props.items.filter((c) =>
-      query.trim() ? (c.title || "").toLowerCase().includes(query.toLowerCase()) : true,
-    );
+    const q = query.trim().toLowerCase();
+    const filtered = props.items.filter((c) => {
+      if (agentFilterId !== null && c.agentId !== agentFilterId) return false;
+      if (q && !(c.title || "").toLowerCase().includes(q)) return false;
+      return true;
+    });
     const map = new Map<string, ConversationDto[]>();
     const order: string[] = [];
     for (const c of filtered) {
@@ -63,7 +91,7 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
       map.get(b)!.push(c);
     }
     return order.map((label) => ({ label, rows: map.get(label)! }));
-  }, [props.items, query]);
+  }, [props.items, query, agentFilterId]);
 
   if (!props.open) return null;
 
@@ -102,6 +130,44 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
+        {agentsWithConversations.length >= 2 ? (
+          <div
+            className="history-filter-chips"
+            role="tablist"
+            aria-label="按智能体筛选"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={agentFilterId === null}
+              className={
+                "history-filter-chip" + (agentFilterId === null ? " active" : "")
+              }
+              onClick={() => setAgentFilterId(null)}
+            >
+              <span className="history-filter-label">全部</span>
+              <span className="history-filter-count">{props.items.length}</span>
+            </button>
+            {agentsWithConversations.map((agent) => (
+              <button
+                key={agent.id}
+                type="button"
+                role="tab"
+                aria-selected={agentFilterId === agent.id}
+                className={
+                  "history-filter-chip" +
+                  (agentFilterId === agent.id ? " active" : "")
+                }
+                onClick={() => setAgentFilterId(agent.id)}
+                title={agent.name}
+              >
+                <AgentAvatar agent={agent} size={16} shape="square" />
+                <span className="history-filter-label">{agent.name}</span>
+                <span className="history-filter-count">{agent.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="history-list">
           {grouped.length === 0 ? (
             <div className="group-heading">没有匹配的会话</div>

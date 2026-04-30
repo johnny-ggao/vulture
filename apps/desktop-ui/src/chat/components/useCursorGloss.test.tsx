@@ -64,7 +64,7 @@ describe("useCursorGloss", () => {
     expect(node.style.getPropertyValue("--mouse-y")).toBe(yBefore);
   });
 
-  test("after leave, a fresh enter+move re-binds rect and writes again", () => {
+  test("leave invalidates rect — stray move is a no-op until next enter", () => {
     const { container } = render(<Probe />);
     const node = container.querySelector("[data-testid=probe]") as HTMLDivElement;
     fireEvent.mouseEnter(node);

@@ -1420,6 +1420,59 @@ pre {
   padding: 0;
 }
 .history-drawer .search-field input::placeholder { color: var(--text-tertiary); }
+.history-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 10px;
+  border-bottom: 1px solid var(--fill-quaternary);
+  margin-bottom: 4px;
+}
+.history-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-height: 0;
+  max-width: 100%;
+  transition:
+    background-color var(--duration-medium) var(--ease-standard),
+    color var(--duration-medium) var(--ease-standard);
+}
+.history-filter-chip:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+.history-filter-chip.active {
+  background: var(--brand-050);
+  color: var(--brand-600);
+  font-weight: 600;
+}
+.history-filter-chip .agent-avatar { flex-shrink: 0; }
+.history-filter-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12ch;
+}
+.history-filter-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+}
+.history-filter-chip.active .history-filter-count {
+  color: var(--brand-600);
+}
+
 .history-list {
   flex: 1; min-height: 0; overflow-y: auto;
   padding: 4px 8px 12px;
@@ -1610,8 +1663,9 @@ pre {
 .model-card-warning {
   color: var(--danger);
   margin-bottom: 10px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  align-self: flex-start;
   gap: 6px;
 }
 .model-card-meta {
@@ -1632,7 +1686,7 @@ pre {
   color: var(--text-primary);
   font-size: 14px;
 }
-.model-apikey-input:focus {
+.model-apikey-input:focus-visible {
   outline: 0;
   border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
