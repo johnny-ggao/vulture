@@ -1,11 +1,6 @@
 export { TEMPLATES, type Template, type TemplateKey } from "./templates";
-export {
-  STEPS,
-  StepRail,
-  type StepInfo,
-  type StepRailProps,
-  type WizardStep,
-} from "./StepRail";
+export { STEPS, type StepInfo, type WizardStep } from "./wizardSteps";
+export { StepRail, type StepRailProps } from "./StepRail";
 export { StepSection, type StepSectionProps } from "./StepSection";
 export { TemplateStep, type TemplateStepProps } from "./TemplateStep";
 export { IdentityStep, type IdentityStepProps } from "./IdentityStep";

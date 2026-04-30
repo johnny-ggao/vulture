@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
-import { ChatAgentHeader } from "./ChatAgentHeader";
+import { ChatAgentHeader, isRunningStatus } from "./ChatAgentHeader";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
@@ -36,12 +36,9 @@ export interface ChatViewProps {
 }
 
 export function ChatView(props: ChatViewProps) {
-  const running =
-    props.resumingRun ||
-    props.runStatus === "connecting" ||
-    props.runStatus === "streaming" ||
-    props.runStatus === "reconnecting" ||
-    props.runStatus === "recoverable";
+  // Single source of truth lives in ChatAgentHeader so the header pill
+  // and the composer's "running" affordance can never drift apart.
+  const running = isRunningStatus(props.runStatus, props.resumingRun);
 
   const hasContent = props.messages.length > 0 || props.runEvents.length > 0;
   const activeAgent = props.agents.find((a) => a.id === props.selectedAgentId)

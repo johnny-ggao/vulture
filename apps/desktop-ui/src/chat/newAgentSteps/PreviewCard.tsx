@@ -19,10 +19,12 @@ export interface PreviewCardProps {
  * driven by the synthetic id so colour identity is consistent before
  * and after creation.
  *
- * NOTE: `useCursorGloss` is called inside this component, so PreviewCard
- * MUST be mounted unconditionally — never gated behind a render-time
- * `if`. The wizard handles that by only mounting it inside the modal
- * body, which has its own open/closed gate at the modal root.
+ * Hooks discipline: `useCursorGloss` runs at the top of this component,
+ * so the function body MUST NOT introduce its own early returns above
+ * that call. Mounting the component conditionally from the parent is
+ * fine — the rule is that within ONE render, the hook order can't
+ * change. The wizard takes the safe path of only mounting the modal
+ * body (and therefore PreviewCard) when the modal is open.
  */
 export function PreviewCard({
   agent,

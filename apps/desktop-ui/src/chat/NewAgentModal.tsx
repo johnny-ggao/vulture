@@ -215,8 +215,12 @@ export function NewAgentModal(props: NewAgentModalProps) {
                 <TemplateStep
                   selected={tplKey}
                   onSelect={(key, seed) => {
+                    // Mirror the desc rule: a template only seeds the
+                    // text fields when they're still empty, so users who
+                    // step back from Persona and re-pick a template
+                    // don't lose what they've typed.
                     setTplKey(key);
-                    setInstructions(seed.instructions);
+                    if (!instructions.trim()) setInstructions(seed.instructions);
                     if (!desc.trim()) setDesc(seed.desc);
                   }}
                 />

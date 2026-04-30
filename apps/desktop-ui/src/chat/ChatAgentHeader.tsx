@@ -8,6 +8,25 @@ export interface ChatAgentHeaderProps {
 }
 
 /**
+ * True when a run is in any active phase. Single source of truth so
+ * ChatView, ChatAgentHeader, and any future consumer agree on what
+ * "running" means — adding a new status to the union forces an update
+ * here and the type-check ripples to every call site.
+ */
+export function isRunningStatus(
+  status: RunStreamStatus,
+  resuming: boolean,
+): boolean {
+  return (
+    resuming ||
+    status === "connecting" ||
+    status === "streaming" ||
+    status === "reconnecting" ||
+    status === "recoverable"
+  );
+}
+
+/**
  * Sticky strip at the top of the chat surface that names the active agent
  * and surfaces an in-flight indicator when a run is going. The strip
  * carries its own cursor-tracked spotlight (same idiom as AgentCard) so it
@@ -22,12 +41,7 @@ export function ChatAgentHeader({
   runStatus,
   resuming,
 }: ChatAgentHeaderProps) {
-  const running =
-    resuming ||
-    runStatus === "connecting" ||
-    runStatus === "streaming" ||
-    runStatus === "reconnecting" ||
-    runStatus === "recoverable";
+  const running = isRunningStatus(runStatus, resuming);
   const statusLabel = runStatusLabel(runStatus, resuming);
   const { ref, ...gloss } = useCursorGloss<HTMLDivElement>();
 
@@ -51,9 +65,9 @@ export function ChatAgentHeader({
  * Map a `RunStreamStatus` to a Chinese label for the chat header status
  * pill. Exhaustive over the union — adding a new status will surface a
  * TypeScript error at the `_exhaustive` line so we don't silently fall
- * through to "处理中".
+ * through to "处理中". Module-private — only `ChatAgentHeader` needs it.
  */
-export function runStatusLabel(
+function runStatusLabel(
   status: RunStreamStatus,
   resuming: boolean,
 ): string {
