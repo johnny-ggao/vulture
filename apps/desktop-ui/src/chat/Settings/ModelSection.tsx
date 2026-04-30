@@ -25,14 +25,14 @@ export function ModelSection(props: SettingsPageProps) {
     <>
       <div className="page-card">
         <h3>当前在用</h3>
-        <p style={{ color: "var(--text-secondary)" }}>{describeActive(props.authStatus)}</p>
+        <p className="model-card-body">{describeActive(props.authStatus)}</p>
       </div>
 
       <div className="page-card">
         <h3>ChatGPT 订阅 (推荐)</h3>
         {!codex || codex.state === "not_signed_in" ? (
           <>
-            <p style={{ color: "var(--text-secondary)", marginBottom: 10 }}>使用 ChatGPT 订阅省去 API key 按 token 计费。</p>
+            <p className="model-card-body model-card-spaced">使用 ChatGPT 订阅省去 API key 按 token 计费。</p>
             <button
               type="button"
               className="btn-primary"
@@ -49,8 +49,7 @@ export function ModelSection(props: SettingsPageProps) {
             {codex.importedFrom ? <Row label="来源" value="Codex CLI 导入" /> : null}
             <button
               type="button"
-              className="btn-secondary"
-              style={{ marginTop: 12 }}
+              className="btn-secondary model-card-action"
               disabled={busy !== null}
               onClick={() => safeAction("signout", props.onSignOutCodex)}
             >
@@ -59,10 +58,10 @@ export function ModelSection(props: SettingsPageProps) {
           </>
         ) : codex.state === "expired" ? (
           <>
-            <p style={{ color: "var(--danger)", marginBottom: 10, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <p className="model-card-warning">
               <ExpiredIcon /> 凭据已过期
             </p>
-            {codex.email ? <p style={{ color: "var(--text-tertiary)", fontSize: 12, marginBottom: 10 }}>{codex.email}</p> : null}
+            {codex.email ? <p className="model-card-meta">{codex.email}</p> : null}
             <button
               type="button"
               className="btn-primary"
@@ -85,8 +84,7 @@ export function ModelSection(props: SettingsPageProps) {
             <Row label="来源" value={apiKey.source ?? "keychain"} />
             <button
               type="button"
-              className="btn-secondary"
-              style={{ marginTop: 12 }}
+              className="btn-secondary model-card-action"
               disabled={busy !== null}
               onClick={() => safeAction("savekey", props.onClearApiKey)}
             >
@@ -95,21 +93,14 @@ export function ModelSection(props: SettingsPageProps) {
           </>
         ) : (
           <>
-            <p style={{ color: "var(--text-secondary)", marginBottom: 10 }}>仅在未登录 ChatGPT 时使用。按 token 计费。</p>
-            <div style={{ display: "flex", gap: 8 }}>
+            <p className="model-card-body model-card-spaced">仅在未登录 ChatGPT 时使用。按 token 计费。</p>
+            <div className="model-apikey-row">
               <input
                 type="password"
                 placeholder="sk-..."
+                className="model-apikey-input"
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: "8px 10px",
-                  border: "1px solid var(--fill-tertiary)",
-                  borderRadius: "var(--radius-sm)",
-                  background: "var(--bg-primary)",
-                  fontSize: 14,
-                }}
               />
               <button
                 type="button"

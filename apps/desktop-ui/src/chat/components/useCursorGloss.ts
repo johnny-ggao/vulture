@@ -44,6 +44,14 @@ export function useCursorGloss<T extends HTMLElement>(): {
   // Stable handler identity so consumers can spread `{...gloss}` without
   // tripping React's prop-equality fast paths. We don't memoise via
   // useCallback — the closures are bound to refs that never change identity.
+  //
+  // INVARIANT: the handler closures may ONLY reference refs (whose `.current`
+  // mutates in place) — NOT props or state captured by render. The handlers
+  // are bound at first render and retained across the component lifetime;
+  // closing over a fresh prop here would silently freeze that prop's value
+  // forever. If you need to read a prop or piece of state inside a handler,
+  // either (a) plumb it through a ref written in a `useEffect`, or (b) drop
+  // the `useRef` wrapper and switch to `useCallback([dep])`.
   const handlers = useRef({
     onMouseEnter() {
       rectRef.current = ref.current?.getBoundingClientRect() ?? null;

@@ -4,7 +4,7 @@ import type { AgentToolName, AgentToolPreset, ReasoningLevel } from "../api/agen
 import type { ToolCatalogGroup, ToolPolicyDraft } from "../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../api/tools";
 import { ToolGroupSelector } from "./ToolGroupSelector";
-import { AgentAvatar, Field, hashHue } from "./components";
+import { AgentAvatar, Field, hashHue, useCursorGloss } from "./components";
 
 type TemplateKey = "blank" | "writer" | "reviewer" | "shell";
 
@@ -87,6 +87,13 @@ export function NewAgentModal(props: NewAgentModalProps) {
     id: name.trim() || tpl.key,
     name: name.trim() || "新智能体",
   };
+
+  // Cursor-tracked gloss on the preview card — completes the visual rhyme:
+  // the user hovers the live preview and gets the same Apple-product-card
+  // spotlight they'll see on the real AgentCard once the agent is created.
+  // Must be called before the early-return so the hook order stays stable
+  // across open/closed renders.
+  const { ref: previewRef, ...previewGloss } = useCursorGloss<HTMLDivElement>();
 
   if (!props.open) return null;
 
@@ -322,7 +329,11 @@ export function NewAgentModal(props: NewAgentModalProps) {
 
             <aside className="new-agent-preview" aria-label="实时预览">
               <div className="new-agent-preview-label">Live Preview</div>
-              <div className="new-agent-preview-card">
+              <div
+                className="new-agent-preview-card"
+                ref={previewRef}
+                {...previewGloss}
+              >
                 <div
                   className="new-agent-preview-banner"
                   style={

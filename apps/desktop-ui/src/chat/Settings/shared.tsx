@@ -2,23 +2,15 @@ import type { McpServer, McpToolSummary } from "../../api/mcpServers";
 import type { AuthStatusView } from "../../commandCenterTypes";
 
 export function Row({ label, value }: { label: string; value: string }) {
+  // Long values render in mono so file paths, IDs, and tokens stay
+  // legible without re-flowing on every character. The threshold is
+  // visually-tuned, not semantic — short labels read fine in the inherit
+  // sans stack.
+  const isLong = value.length > 20;
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: "space-between",
-      gap: 12,
-      padding: "10px 0",
-      borderBottom: "1px solid var(--fill-quaternary)",
-      fontSize: 13,
-    }}>
-      <span style={{ color: "var(--text-secondary)" }}>{label}</span>
-      <span style={{
-        color: "var(--text-primary)",
-        fontWeight: 500,
-        fontFamily: value.length > 20 ? "var(--font-mono)" : "inherit",
-        wordBreak: "break-all",
-        textAlign: "right",
-      }}>
+    <div className="settings-row">
+      <span className="settings-row-label">{label}</span>
+      <span className={"settings-row-value" + (isLong ? " mono" : "")}>
         {value}
       </span>
     </div>
@@ -26,19 +18,7 @@ export function Row({ label, value }: { label: string; value: string }) {
 }
 
 export function StatusPill({ label }: { label: string }) {
-  return (
-    <span
-      style={{
-        border: "1px solid var(--fill-tertiary)",
-        borderRadius: "var(--radius-sm)",
-        color: "var(--text-secondary)",
-        fontSize: 12,
-        padding: "4px 8px",
-      }}
-    >
-      {label}
-    </span>
-  );
+  return <span className="settings-status-pill">{label}</span>;
 }
 
 export function Stub({ title, body }: { title: string; body: string }) {

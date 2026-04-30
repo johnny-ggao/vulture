@@ -1576,6 +1576,172 @@ pre {
   text-align: center;
 }
 
+/* ============================================================
+ * Settings shared primitives — Row + StatusPill + ModelSection chrome
+ * ============================================================ */
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--fill-quaternary);
+  font-size: 13px;
+}
+.settings-row-label { color: var(--text-secondary); }
+.settings-row-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  word-break: break-all;
+  text-align: right;
+}
+.settings-row-value.mono { font-family: var(--font-mono); }
+.settings-status-pill {
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.model-card-body { color: var(--text-secondary); }
+.model-card-body.model-card-spaced { margin-bottom: 10px; }
+.model-card-spaced { margin-bottom: 10px; }
+.model-card-action { margin-top: 12px; }
+.model-card-warning {
+  color: var(--danger);
+  margin-bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.model-card-meta {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+.model-apikey-row {
+  display: flex;
+  gap: 8px;
+}
+.model-apikey-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.model-apikey-input:focus {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+/* ============================================================
+ * ToolGroupSelector — capability tiles + collapsible per-tool detail
+ * ============================================================ */
+.tool-group-empty {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.tool-group-root { display: grid; gap: 12px; }
+.tool-capabilities {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.tool-capability {
+  text-align: left;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 0;
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-medium) var(--ease-standard);
+}
+.tool-capability:hover { border-color: var(--fill-secondary); }
+.tool-capability:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.tool-capability[data-tinted="true"] {
+  border-color: var(--brand-500);
+  background: var(--brand-050);
+}
+.tool-capability-meta { display: grid; gap: 4px; min-width: 0; }
+.tool-capability-label { font-weight: 650; font-size: 13px; }
+.tool-capability-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.tool-capability-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+.tool-capability[data-tinted="true"] .tool-capability-count {
+  color: var(--brand-600);
+}
+
+.tool-group-detail summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.tool-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.tool-group {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  transition: background-color var(--duration-medium) var(--ease-standard);
+}
+.tool-group[data-tinted="true"] { background: var(--brand-050); }
+.tool-group-head {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.tool-group-label { font-weight: 650; }
+.tool-group-count { color: var(--text-tertiary); }
+.tool-list { display: grid; gap: 5px; padding-left: 24px; }
+.tool-row {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.tool-row-meta { color: var(--text-tertiary); }
+
+@media (max-width: 720px) {
+  .tool-capabilities,
+  .tool-groups { grid-template-columns: 1fr; }
+}
+
 .settings-layout {
   display: grid;
   grid-template-columns: 13rem 1fr;
@@ -1857,13 +2023,16 @@ pre {
 }
 .skill-card[data-enabled="false"] { opacity: 0.78; }
 .skill-card[data-enabled="false"]:hover { opacity: 1; }
+/* The card establishes its own stacking context unconditionally so any
+ * future `::after` / `::before` that wants to sit behind the surface
+ * (z-index: -1) won't escape the parent — kept outside the reduced-motion
+ * gate for symmetry with `.chat-agent-header` and `.agent-edit-modal
+ * .modal-header`. Negligible cost (one extra stacking context). */
+.skill-card { isolation: isolate; }
 /* Cursor-tracked spotlight — same idiom as AgentCard, scoped to the card
  * and tinted with the brand color so disabled skills feel cooler than
- * active ones on hover. The card establishes its own stacking context
- * via `isolation: isolate` so the `::after` (z-index: -1) sits behind
- * the surface text but cannot escape the parent. */
+ * active ones on hover. */
 @media (prefers-reduced-motion: no-preference) {
-  .skill-card { isolation: isolate; }
   .skill-card::after {
     content: "";
     position: absolute;
@@ -2675,6 +2844,39 @@ pre {
   border-radius: var(--radius-lg);
   overflow: hidden;
   position: relative;
+  isolation: isolate;
+}
+/* Cursor-tracked spotlight on the preview card — same idiom as the live
+ * AgentCard so the WYSIWYG promise extends to hover behaviour. */
+@media (prefers-reduced-motion: no-preference) {
+  .new-agent-preview-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at
+        calc(var(--mouse-x, 0.5) * 100%)
+        calc(var(--mouse-y, 0.5) * 100%),
+      color-mix(in oklab, var(--brand-500) 14%, transparent) 0%,
+      transparent 38%
+    );
+    opacity: 0;
+    transition: opacity var(--duration-medium) var(--ease-standard);
+    pointer-events: none;
+    z-index: -1;
+  }
+  .new-agent-preview-card:hover::after { opacity: 1; }
+  @media (prefers-color-scheme: dark) {
+    .new-agent-preview-card::after {
+      background: radial-gradient(
+        circle at
+          calc(var(--mouse-x, 0.5) * 100%)
+          calc(var(--mouse-y, 0.5) * 100%),
+        color-mix(in oklab, var(--brand-500) 22%, transparent) 0%,
+        transparent 38%
+      );
+    }
+  }
 }
 /* Preview banner mirrors the live AgentCard banner — same 4-layer
  * mesh-style composition driven by --banner-hue, so the user sees
