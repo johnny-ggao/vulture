@@ -2,28 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentsPage, type AgentConfigPatch } from "./AgentsPage";
 import type { Agent, AgentCoreFilesResponse } from "../api/agents";
-
-const baseAgent: Agent = {
-  id: "agent-1",
-  name: "Local Agent",
-  description: "test agent",
-  model: "gpt-5.4",
-  reasoning: "medium",
-  tools: ["files.read"],
-  toolPreset: "developer",
-  toolInclude: ["files.read"],
-  toolExclude: [],
-  workspace: {
-    id: "agent-1",
-    name: "Local Agent",
-    path: "/tmp/workspace",
-    createdAt: "2026-04-28T00:00:00.000Z",
-    updatedAt: "2026-04-28T00:00:00.000Z",
-  },
-  instructions: "behave",
-  createdAt: "2026-04-28T00:00:00.000Z",
-  updatedAt: "2026-04-28T00:00:00.000Z",
-} as Agent;
+import { localAgentFixture as baseAgent } from "./__fixtures__/agent";
 
 const stableProps = {
   toolGroups: [],

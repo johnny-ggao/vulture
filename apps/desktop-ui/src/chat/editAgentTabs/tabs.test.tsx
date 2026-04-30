@@ -4,30 +4,9 @@ import { CoreTab } from "./CoreTab";
 import { OverviewTab } from "./OverviewTab";
 import { PersonaTab } from "./PersonaTab";
 import { ToolsTab } from "./ToolsTab";
-import { draftFromAgent } from "./draft";
-import type { Agent, AgentCoreFile } from "../../api/agents";
-
-const baseAgent: Agent = {
-  id: "agent-1",
-  name: "Local Agent",
-  description: "test agent",
-  model: "gpt-5.4",
-  reasoning: "medium",
-  tools: ["files.read"],
-  toolPreset: "developer",
-  toolInclude: ["files.read"],
-  toolExclude: [],
-  workspace: {
-    id: "agent-1",
-    name: "Local Agent",
-    path: "/tmp/workspace",
-    createdAt: "2026-04-30T00:00:00.000Z",
-    updatedAt: "2026-04-30T00:00:00.000Z",
-  },
-  instructions: "behave",
-  createdAt: "2026-04-30T00:00:00.000Z",
-  updatedAt: "2026-04-30T00:00:00.000Z",
-} as Agent;
+import { draftFromAgent, type Draft } from "./draft";
+import { localAgentFixture as baseAgent } from "../__fixtures__/agent";
+import type { AgentCoreFile } from "../../api/agents";
 
 describe("OverviewTab", () => {
   test("renders all four primary fields and the workspace info block", () => {
@@ -47,7 +26,7 @@ describe("OverviewTab", () => {
   });
 
   test("editing the name calls onChange with a fresh draft", () => {
-    const onChange = mock(() => {});
+    const onChange = mock((_next: Draft) => {});
     render(
       <OverviewTab
         agent={baseAgent}
@@ -64,7 +43,7 @@ describe("OverviewTab", () => {
   });
 
   test("changing reasoning calls onChange with the new level", () => {
-    const onChange = mock(() => {});
+    const onChange = mock((_next: Draft) => {});
     render(
       <OverviewTab
         agent={baseAgent}
@@ -82,7 +61,7 @@ describe("OverviewTab", () => {
 
 describe("PersonaTab", () => {
   test("editing instructions calls onChange with the new text", () => {
-    const onChange = mock(() => {});
+    const onChange = mock((_next: Draft) => {});
     render(
       <PersonaTab
         draft={draftFromAgent(baseAgent)}
@@ -112,7 +91,7 @@ describe("ToolsTab", () => {
   });
 
   test("clicking 清空 calls onChange with the 'none' policy", () => {
-    const onChange = mock(() => {});
+    const onChange = mock((_next: Draft) => {});
     render(
       <ToolsTab
         draft={draftFromAgent(baseAgent)}
@@ -128,7 +107,7 @@ describe("ToolsTab", () => {
   });
 
   test("changing the preset selector cascades into a new tools list", () => {
-    const onChange = mock(() => {});
+    const onChange = mock((_next: Draft) => {});
     render(
       <ToolsTab
         draft={draftFromAgent(baseAgent)}
@@ -146,8 +125,8 @@ describe("ToolsTab", () => {
 
 describe("CoreTab", () => {
   const files: AgentCoreFile[] = [
-    { name: "AGENTS.md", size: 100 } as AgentCoreFile,
-    { name: "memories.md", size: 50 } as AgentCoreFile,
+    { name: "AGENTS.md", path: "/tmp/agents/agent-1/AGENTS.md", missing: false, size: 100 },
+    { name: "memories.md", path: "/tmp/agents/agent-1/memories.md", missing: false, size: 50 },
   ];
 
   test("renders one file button per core file with aria-pressed reflecting selection", () => {

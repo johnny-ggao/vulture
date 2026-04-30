@@ -6,29 +6,7 @@ import {
   sameStringSet,
   type Draft,
 } from "./draft";
-import type { Agent } from "../../api/agents";
-
-const baseAgent: Agent = {
-  id: "agent-1",
-  name: "Local Agent",
-  description: "test agent",
-  model: "gpt-5.4",
-  reasoning: "medium",
-  tools: ["files.read", "shell.exec"],
-  toolPreset: "developer",
-  toolInclude: ["files.read"],
-  toolExclude: [],
-  workspace: {
-    id: "agent-1",
-    name: "Local Agent",
-    path: "/tmp/workspace",
-    createdAt: "2026-04-30T00:00:00.000Z",
-    updatedAt: "2026-04-30T00:00:00.000Z",
-  },
-  instructions: "behave",
-  createdAt: "2026-04-30T00:00:00.000Z",
-  updatedAt: "2026-04-30T00:00:00.000Z",
-} as Agent;
+import { localAgentFixture as baseAgent } from "../__fixtures__/agent";
 
 describe("draftFromAgent", () => {
   test("maps a saved agent into a Draft", () => {
@@ -36,7 +14,7 @@ describe("draftFromAgent", () => {
     expect(draft.name).toBe("Local Agent");
     expect(draft.model).toBe("gpt-5.4");
     expect(draft.reasoning).toBe("medium");
-    expect(draft.tools).toEqual(["files.read", "shell.exec"]);
+    expect(draft.tools).toEqual(["read", "shell.exec"]);
     expect(draft.toolPreset).toBe("developer");
     expect(draft.instructions).toBe("behave");
   });
@@ -61,8 +39,8 @@ describe("draftFromAgent", () => {
 
   test("clones the tools array — mutating the draft must not poison the agent", () => {
     const draft = draftFromAgent(baseAgent);
-    draft.tools.push("shell.exec" as never);
-    expect(baseAgent.tools).toEqual(["files.read", "shell.exec"]);
+    draft.tools.push("write");
+    expect(baseAgent.tools).toEqual(["read", "shell.exec"]);
   });
 });
 
@@ -126,7 +104,7 @@ describe("isDirtyDraft", () => {
   test("detects a tools change even when length is preserved", () => {
     const draft: Draft = {
       ...draftFromAgent(baseAgent),
-      tools: ["files.read", "browser.snapshot"] as never,
+      tools: ["read", "browser.snapshot"],
     };
     expect(isDirtyDraft(draft, baseAgent)).toBe(true);
   });
@@ -134,7 +112,7 @@ describe("isDirtyDraft", () => {
   test("detects a tools reorder as clean (set equality)", () => {
     const draft: Draft = {
       ...draftFromAgent(baseAgent),
-      tools: ["shell.exec", "files.read"] as never,
+      tools: ["shell.exec", "read"],
     };
     expect(isDirtyDraft(draft, baseAgent)).toBe(false);
   });
