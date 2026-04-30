@@ -213,23 +213,48 @@ const DEFAULT_FAILURE_POLICY_BY_HOOK: Partial<
   "tool.beforeCall": "fail-closed",
 };
 
+type HooksByName = {
+  [K in RuntimeHookName]?: ReadonlyArray<Extract<RuntimeHookRegistration, { name: K }>>;
+};
+
+function indexByName(registrations: readonly RuntimeHookRegistration[]): HooksByName {
+  const buckets = new Map<RuntimeHookName, RuntimeHookRegistration[]>();
+  for (const registration of registrations) {
+    const existing = buckets.get(registration.name);
+    if (existing) {
+      existing.push(registration);
+    } else {
+      buckets.set(registration.name, [registration]);
+    }
+  }
+  const result: HooksByName = {};
+  for (const [name, group] of buckets) {
+    group.sort(byPriorityDescending);
+    // Cast is safe: `group` was built from registrations where every entry has
+    // `name === <name>`, so the runtime narrows to the discriminated branch.
+    (result as Record<string, ReadonlyArray<RuntimeHookRegistration>>)[name] = group;
+  }
+  return result;
+}
+
+const EMPTY_HOOKS: ReadonlyArray<never> = Object.freeze([]);
+
 export function createRuntimeHookRunner(
   registrations: readonly RuntimeHookRegistration[] = [],
   opts: RuntimeHookRunnerOptions = {},
 ): RuntimeHookRunner {
   const logger = opts.logger ?? console;
-  const hooks = registrations.slice().sort(byPriorityDescending);
+  const hooksByName = indexByName(registrations);
   const failurePolicyDefaults = {
     ...DEFAULT_FAILURE_POLICY_BY_HOOK,
     ...opts.defaultFailurePolicyByHook,
   };
   const timeoutDefaults = opts.defaultTimeoutMsByHook ?? {};
 
-  function getHooks<K extends RuntimeHookName>(name: K): Extract<RuntimeHookRegistration, { name: K }>[] {
-    return hooks.filter((hook) => hook.name === name) as unknown as Extract<
-      RuntimeHookRegistration,
-      { name: K }
-    >[];
+  function getHooks<K extends RuntimeHookName>(
+    name: K,
+  ): ReadonlyArray<Extract<RuntimeHookRegistration, { name: K }>> {
+    return hooksByName[name] ?? (EMPTY_HOOKS as ReadonlyArray<Extract<RuntimeHookRegistration, { name: K }>>);
   }
 
   function resolveFailurePolicy(hook: RuntimeHookRegistrationBase): "fail-open" | "fail-closed" {

@@ -245,6 +245,37 @@ describe("gateway tool sdk adapter", () => {
     ]);
   });
 
+  test("preserves a hook's explicit null input patch instead of falling back to the original", async () => {
+    const registry = createCoreToolRegistry();
+    const read = registry.get("read");
+    expect(read).toBeDefined();
+    const tool = toSdkTool(read!) as unknown as TestFunctionTool;
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "tool.beforeCall",
+        handler: async () => ({ input: null }),
+      },
+    ]);
+    const observed: Array<{ input: unknown }> = [];
+
+    await tool.invoke(
+      new RunContext({
+        runId: "r-test",
+        workspacePath: "/tmp/work",
+        sdkApprovedToolCalls: new Map(),
+        runtimeHooks,
+        toolCallable: async (call: Parameters<ToolCallable>[0]) => {
+          observed.push({ input: call.input });
+          return "ok";
+        },
+      }),
+      JSON.stringify({ path: "original.txt", maxBytes: null }),
+      { toolCall: { callId: "c-null" } },
+    );
+
+    expect(observed).toEqual([{ input: null }]);
+  });
+
   test("blocks SDK tool execution when runtime hook denies it", async () => {
     const registry = createCoreToolRegistry();
     const write = registry.get("write");

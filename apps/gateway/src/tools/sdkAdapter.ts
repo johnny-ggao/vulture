@@ -54,7 +54,11 @@ async function executeToolWithCheckpoint(
       workspacePath: ctx.workspacePath,
     },
   );
-  const effectiveInput = before?.input ?? input;
+  // Trust the runner's decision: runToolBeforeCall already applied each hook's
+  // patch in priority order using hasOwnProperty semantics. A `??` fallback
+  // here would silently restore the original input when a hook deliberately
+  // cleared it to null/undefined.
+  const effectiveInput = before ? before.input : input;
   if (before?.blocked) {
     await ctx.runtimeHooks?.emit("tool.afterCall", {
       runId: ctx.runId,
