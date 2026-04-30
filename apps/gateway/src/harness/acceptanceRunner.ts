@@ -12,6 +12,26 @@ export type AcceptanceRunStatus = "queued" | "running" | "succeeded" | "failed" 
 
 export type AcceptanceStep =
   | {
+      action: "writeSkill";
+      as: string;
+      name: string;
+      description: string;
+      body: string;
+    }
+  | {
+      action: "createAgent";
+      as: string;
+      id: string;
+      name: string;
+      description: string;
+      model?: string;
+      reasoning?: "low" | "medium" | "high";
+      tools: string[];
+      skills?: string[];
+      handoffAgentIds?: string[];
+      instructions: string;
+    }
+  | {
       action: "createConversation";
       as: string;
       agentId?: string;
@@ -174,6 +194,18 @@ export type AcceptanceStep =
       action: "listSubagentMessages";
       session: string;
       as: string;
+    }
+  | {
+      action: "seedApprovedSubagentWorkflow";
+      conversation: string;
+      asRun: string;
+      asSubagent: string;
+      childAgentId: string;
+      label: string;
+      userInput: string;
+      childResult: string;
+      finalText: string;
+      callId?: string;
     };
 
 export interface AcceptanceScenario {
@@ -281,6 +313,23 @@ interface SubagentSessionResource {
   updatedAt: string;
 }
 
+interface AgentResource {
+  id: string;
+  name: string;
+  description: string;
+  model: string;
+  reasoning: "low" | "medium" | "high";
+  tools: string[];
+  skills?: string[];
+  handoffAgentIds: string[];
+}
+
+interface SkillResource {
+  name: string;
+  description: string;
+  path: string;
+}
+
 interface RunEventResource {
   id?: string;
   type: string;
@@ -302,6 +351,8 @@ interface AcceptanceResources {
   mcpToolLists: Record<string, McpToolResource[]>;
   subagentSessions: Record<string, SubagentSessionResource>;
   subagentSessionLists: Record<string, SubagentSessionResource[]>;
+  agents: Record<string, AgentResource>;
+  skills: Record<string, SkillResource>;
 }
 
 interface RunnerState {
@@ -327,6 +378,8 @@ export async function runAcceptanceScenario(options: AcceptanceRunnerOptions): P
       mcpToolLists: {},
       subagentSessions: {},
       subagentSessionLists: {},
+      agents: {},
+      skills: {},
     },
     observations: [],
   };
@@ -380,6 +433,47 @@ async function executeStep(
   step: AcceptanceStep,
 ): Promise<void> {
   switch (step.action) {
+    case "writeSkill": {
+      if (!options.profileDir) throw new Error("writeSkill requires profileDir");
+      const skillDir = join(options.profileDir, "skills", safePathSegment(step.name));
+      mkdirSync(skillDir, { recursive: true });
+      const path = join(skillDir, "SKILL.md");
+      writeFileSync(
+        path,
+        [
+          "---",
+          `name: ${step.name}`,
+          `description: ${step.description}`,
+          "---",
+          "",
+          step.body,
+          "",
+        ].join("\n"),
+      );
+      state.resources.skills[step.as] = { name: step.name, description: step.description, path };
+      observe(state, step.action, { alias: step.as, skill: state.resources.skills[step.as] });
+      return;
+    }
+    case "createAgent": {
+      const agent = await requestJson<AgentResource>(options, state, "/v1/agents", {
+        method: "POST",
+        idempotencyKey: `${options.scenario.id}:agent:${step.id}`,
+        body: {
+          id: step.id,
+          name: step.name,
+          description: step.description,
+          model: step.model ?? "gpt-5.4",
+          reasoning: step.reasoning ?? "medium",
+          tools: step.tools,
+          skills: step.skills,
+          handoffAgentIds: step.handoffAgentIds,
+          instructions: step.instructions,
+        },
+      });
+      state.resources.agents[step.as] = agent;
+      observe(state, step.action, { alias: step.as, agent });
+      return;
+    }
     case "createConversation": {
       const conversation = await requestJson<ConversationResource>(options, state, "/v1/conversations", {
         method: "POST",
@@ -742,6 +836,28 @@ async function executeStep(
       observe(state, step.action, { alias: step.as, messages: response.items });
       return;
     }
+    case "seedApprovedSubagentWorkflow": {
+      const conversation = requireAlias(state.resources.conversations, step.conversation, "conversation");
+      const result = seedApprovedSubagentWorkflow(options, {
+        conversationId: conversation.id,
+        parentAgentId: conversation.agentId ?? "local-work-agent",
+        childAgentId: step.childAgentId,
+        label: step.label,
+        userInput: step.userInput,
+        childResult: step.childResult,
+        finalText: step.finalText,
+        callId: step.callId ?? "c-subagent-spawn",
+      });
+      state.resources.runs[step.asRun] = result.run;
+      state.resources.subagentSessions[step.asSubagent] = result.session;
+      observe(state, step.action, {
+        runAlias: step.asRun,
+        subagentAlias: step.asSubagent,
+        run: result.run,
+        session: result.session,
+      });
+      return;
+    }
   }
 }
 
@@ -1007,6 +1123,119 @@ function seedSubagentSession(
       label: input.label,
     });
     return sessions.refreshStatus(session.id) as SubagentSessionResource;
+  } finally {
+    db.close();
+  }
+}
+
+function seedApprovedSubagentWorkflow(
+  options: AcceptanceRunnerOptions,
+  input: {
+    conversationId: string;
+    parentAgentId: string;
+    childAgentId: string;
+    label: string;
+    userInput: string;
+    childResult: string;
+    finalText: string;
+    callId: string;
+  },
+): { run: RunResource; session: SubagentSessionResource } {
+  if (!options.profileDir) throw new Error("seedApprovedSubagentWorkflow requires profileDir");
+  const db = openDatabase(join(options.profileDir, "data.sqlite"));
+  applyMigrations(db);
+  try {
+    const conversations = new ConversationStore(db);
+    const messages = new MessageStore(db);
+    const runs = new RunStore(db);
+    const sessions = new SubagentSessionStore(db, { runs, messages });
+    const userMessage = messages.append({
+      conversationId: input.conversationId,
+      role: "user",
+      content: input.userInput,
+      runId: null,
+    });
+    const run = runs.create({
+      conversationId: input.conversationId,
+      agentId: input.parentAgentId,
+      triggeredByMessageId: userMessage.id,
+    });
+    runs.markRunning(run.id);
+    runs.appendEvent(run.id, {
+      type: "run.started",
+      agentId: input.parentAgentId,
+      model: "gpt-5.4",
+    });
+    const toolInput = {
+      agentId: input.childAgentId,
+      label: input.label,
+      title: input.label,
+      message: input.userInput,
+    };
+    runs.appendEvent(run.id, {
+      type: "tool.planned",
+      callId: input.callId,
+      tool: "sessions_spawn",
+      input: toolInput,
+    });
+    runs.appendEvent(run.id, {
+      type: "tool.ask",
+      callId: input.callId,
+      tool: "sessions_spawn",
+      reason: `建议开启子智能体 ${input.label}：${input.label}`,
+      approvalToken: "acceptance-approved-subagent",
+    });
+    runs.appendEvent(run.id, { type: "tool.started", callId: input.callId });
+
+    const child = conversations.create({
+      agentId: input.childAgentId,
+      title: input.label,
+    });
+    messages.append({
+      conversationId: child.id,
+      role: "user",
+      content: input.userInput,
+      runId: null,
+    });
+    messages.append({
+      conversationId: child.id,
+      role: "assistant",
+      content: input.childResult,
+      runId: null,
+    });
+    const session = sessions.create({
+      parentConversationId: input.conversationId,
+      parentRunId: run.id,
+      agentId: input.childAgentId,
+      conversationId: child.id,
+      label: input.label,
+    });
+    runs.appendEvent(run.id, {
+      type: "tool.completed",
+      callId: input.callId,
+      output: {
+        sessionId: session.id,
+        conversationId: child.id,
+        runId: null,
+      },
+    });
+    runs.appendEvent(run.id, { type: "text.delta", text: input.finalText });
+    const assistantMessage = messages.append({
+      conversationId: input.conversationId,
+      role: "assistant",
+      content: input.finalText,
+      runId: run.id,
+    });
+    runs.markSucceeded(run.id, assistantMessage.id);
+    runs.appendEvent(run.id, {
+      type: "run.completed",
+      resultMessageId: assistantMessage.id,
+      finalText: input.finalText,
+    });
+    return {
+      run: runs.get(run.id) as RunResource,
+      session: sessions.refreshStatus(session.id) as SubagentSessionResource,
+    };
   } finally {
     db.close();
   }

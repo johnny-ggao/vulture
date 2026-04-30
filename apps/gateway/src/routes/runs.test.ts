@@ -634,6 +634,9 @@ describe("/v1/runs", () => {
     expect(seenContextPrompts[0]).toContain("Project codename is Vulture.");
     expect(seenContextPrompts[0]).toContain("<available_skills>");
     expect(seenContextPrompts[0]).toContain("csv-insights");
+    expect(seenContextPrompts[0]!.indexOf("<memories>")).toBeLessThan(
+      seenContextPrompts[0]!.indexOf("<available_skills>"),
+    );
     cleanup();
   });
 

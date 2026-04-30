@@ -130,6 +130,37 @@ describe("acceptance suite", () => {
     ]);
   });
 
+  test("ships a real product workflow scenario for configured subagents", () => {
+    expect(defaultAcceptanceScenarios.map((scenario) => scenario.id)).toContain(
+      "agent-configured-subagent-product-workflow",
+    );
+    const scenario = defaultAcceptanceScenarios.find(
+      (item) => item.id === "agent-configured-subagent-product-workflow",
+    );
+    expect(scenario?.tags).toEqual(expect.arrayContaining(["product", "subagents", "skills"]));
+    expect(scenario?.steps.map((step) => step.action)).toEqual([
+      "writeSkill",
+      "createAgent",
+      "createAgent",
+      "createConversation",
+      "seedApprovedSubagentWorkflow",
+      "readRunEvents",
+      "assertRunEvents",
+      "listSubagentSessions",
+      "assertSubagentSessions",
+      "listSubagentMessages",
+      "assertMessages",
+      "listMessages",
+      "assertMessages",
+    ]);
+  });
+
+  test("filters product scenarios by tag", () => {
+    expect(filterAcceptanceScenariosByTags(["product"], defaultAcceptanceScenarios).map((scenario) => scenario.id)).toEqual([
+      "agent-configured-subagent-product-workflow",
+    ]);
+  });
+
   test("summarizes multiple scenario results for CLI output", () => {
     const summary = summarizeAcceptanceResults([
       {
@@ -308,5 +339,7 @@ function emptyResources() {
     mcpToolLists: {},
     subagentSessions: {},
     subagentSessionLists: {},
+    agents: {},
+    skills: {},
   };
 }

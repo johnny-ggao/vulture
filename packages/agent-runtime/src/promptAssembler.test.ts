@@ -80,4 +80,40 @@ describe("promptAssembler", () => {
     expect(text).toContain("the approval card is the user confirmation");
     rmSync(dir, { recursive: true });
   });
+
+  test("keeps agent configuration, tools, and handoffs in a stable prompt order", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-pack-"));
+    const packDir = fakePack(dir);
+    const text = assembleAgentInstructions({
+      packDir,
+      agent: {
+        ...agent,
+        tools: ["read", "sessions_spawn"],
+        handoffs: [{ id: "researcher", name: "Researcher", description: "Finds facts" }],
+      },
+      workspace,
+    });
+
+    expect(indexesInOrder(text, [
+      "### Selected Agent",
+      "### Agent Instructions",
+      "## USER.md",
+      "## AGENTS.md",
+      "## TOOLS.md",
+      "### Granted Tools",
+      "### Available Handoffs",
+    ])).toBe(true);
+    expect(text).toContain("MCP tools may be granted dynamically");
+    rmSync(dir, { recursive: true });
+  });
 });
+
+function indexesInOrder(text: string, needles: string[]): boolean {
+  let last = -1;
+  for (const needle of needles) {
+    const index = text.indexOf(needle);
+    if (index <= last) return false;
+    last = index;
+  }
+  return true;
+}

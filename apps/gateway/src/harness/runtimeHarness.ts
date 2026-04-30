@@ -137,6 +137,32 @@ export const defaultRuntimeHarnessScenarios: RuntimeHarnessScenario[] = [
       };
     },
   },
+  {
+    id: "subagent-suggestion-confirmation",
+    name: "Subagent suggestion confirmation",
+    description: "Models the parent agent autonomously suggesting a subagent and proceeding after sessions_spawn approval.",
+    tags: ["runtime", "subagents", "approval", "product"],
+    expectedStatus: "succeeded",
+    expectedFinalText: "subagent summary integrated",
+    llm: () => async function* () {
+      const toolInput = {
+        agentId: "researcher",
+        label: "Researcher",
+        title: "Audit prompt and harness readiness",
+        message: "Inspect prompt injection order and harness coverage, then return concise findings.",
+      };
+      yield { kind: "tool.plan", callId: "c-subagent-spawn", tool: "sessions_spawn", input: toolInput };
+      const result = yield { kind: "await.tool", callId: "c-subagent-spawn" };
+      if ((result as { sessionId?: string }).sessionId !== "subagent-1") {
+        throw new Error("subagent-suggestion-confirmation expected spawned session");
+      }
+      yield { kind: "final", text: "subagent summary integrated" };
+    },
+    tool: async (call) => {
+      if (call.tool !== "sessions_spawn") throw new Error(`unexpected tool ${call.tool}`);
+      return { sessionId: "subagent-1", conversationId: "c-subagent", runId: "r-subagent" };
+    },
+  },
 ];
 
 export async function runRuntimeHarness(

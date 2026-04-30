@@ -121,6 +121,9 @@ ${agentCoreHeartbeat || "No heartbeat instructions are configured."}
 ### Granted Tools
 ${agent.tools.join(", ")}
 
+### Dynamic MCP Tools
+MCP tools may be granted dynamically by connected MCP servers. When present, use their namespaced tool names exactly as provided by the runtime.
+
 ### Available Handoffs
 ${handoffs}
 `.trim();

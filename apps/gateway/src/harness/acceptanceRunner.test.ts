@@ -435,4 +435,81 @@ describe("acceptance harness runner", () => {
     expect(result.resources.mcpToolLists.tools).toEqual([]);
     cleanup();
   });
+
+  test("runs a configured subagent product workflow fixture", async () => {
+    const { app, artifactDir, profileDir, cleanup } = makeHarness();
+    const scenario: AcceptanceScenario = {
+      id: "agent-configured-subagent-product-workflow",
+      name: "Agent configured subagent product workflow",
+      steps: [
+        {
+          action: "writeSkill",
+          as: "skill",
+          name: "harness-review",
+          description: "Reviews harness readiness.",
+          body: "Check runtime, tool contracts, and product acceptance.",
+        },
+        {
+          action: "createAgent",
+          as: "researcher",
+          id: "researcher",
+          name: "Researcher",
+          description: "Finds focused facts.",
+          tools: ["read", "web_search", "sessions_yield"],
+          skills: [],
+          handoffAgentIds: [],
+          instructions: "Return concise research findings.",
+        },
+        {
+          action: "createAgent",
+          as: "lead",
+          id: "lead-agent",
+          name: "Lead Agent",
+          description: "Coordinates product work.",
+          tools: ["read", "sessions_spawn", "sessions_yield", "sessions_history", "update_plan"],
+          skills: ["harness-review"],
+          handoffAgentIds: ["researcher"],
+          instructions: "Suggest subagents only when useful and summarize their results.",
+        },
+        { action: "createConversation", as: "conversation", agentId: "lead-agent" },
+        {
+          action: "seedApprovedSubagentWorkflow",
+          conversation: "conversation",
+          asRun: "run",
+          asSubagent: "subagent",
+          childAgentId: "researcher",
+          label: "Harness review",
+          userInput: "Audit harness engineering and summarize the next risks.",
+          childResult: "Runtime, tool contract, and product acceptance lanes are covered.",
+          finalText: "子智能体完成审计：runtime、tool contract、product acceptance 已覆盖。",
+        },
+        { action: "readRunEvents", run: "run", as: "events" },
+        { action: "assertRunEvents", events: "events", types: ["tool.ask", "tool.started", "tool.completed", "run.completed"] },
+        { action: "listSubagentSessions", parentConversation: "conversation", parentRun: "run", as: "subagents" },
+        { action: "assertSubagentSessions", sessions: "subagents", containsSession: "subagent", parentConversation: "conversation", parentRun: "run", statuses: ["active"] },
+        { action: "listSubagentMessages", session: "subagent", as: "subagentMessages" },
+        { action: "assertMessages", messages: "subagentMessages", roles: ["user", "assistant"], contains: ["Runtime, tool contract"] },
+        { action: "listMessages", conversation: "conversation", as: "messages" },
+        { action: "assertMessages", messages: "messages", roles: ["user", "assistant"], contains: ["子智能体完成审计"] },
+      ],
+    };
+
+    const result = await runAcceptanceScenario({
+      app,
+      token: TOKEN,
+      scenario,
+      artifactDir,
+      profileDir,
+      pollIntervalMs: 5,
+      timeoutMs: 2_000,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.resources.agents.lead.handoffAgentIds).toEqual(["researcher"]);
+    expect(result.resources.skills.skill.name).toBe("harness-review");
+    expect(result.resources.runEvents.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["tool.ask", "tool.started", "tool.completed", "run.completed"]),
+    );
+    cleanup();
+  });
 });
