@@ -156,20 +156,22 @@ mod tests {
 
     #[test]
     fn root_ignores_empty_vulture_desktop_root() {
-        let root = vulture_root_from_env(&|key| match key {
-            "VULTURE_DESKTOP_ROOT" => Some("   ".into()),
-            "HOME" => Some("/Users/example".into()),
-            _ => None,
-        })
-        .expect("empty override should fall back");
+        for override_value in ["", "   "] {
+            let root = vulture_root_from_env(&|key| match key {
+                "VULTURE_DESKTOP_ROOT" => Some(override_value.into()),
+                "HOME" => Some("/Users/example".into()),
+                _ => None,
+            })
+            .expect("empty override should fall back");
 
-        assert_eq!(
-            root,
-            std::path::PathBuf::from("/Users/example")
-                .join("Library")
-                .join("Application Support")
-                .join("Vulture")
-        );
+            assert_eq!(
+                root,
+                std::path::PathBuf::from("/Users/example")
+                    .join("Library")
+                    .join("Application Support")
+                    .join("Vulture")
+            );
+        }
     }
 
     #[test]
