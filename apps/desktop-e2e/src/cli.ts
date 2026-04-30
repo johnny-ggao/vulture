@@ -45,7 +45,7 @@ export function parseDesktopE2EArgs(
       if (!value) {
         throw new Error("--tag requires a value");
       }
-      parsed.tags.push(...splitList(value));
+      parsed.tags.push(...parseTagValue(value));
       index += 1;
       continue;
     }
@@ -60,7 +60,7 @@ export function parseDesktopE2EArgs(
     }
 
     if (arg.startsWith("--tag=")) {
-      parsed.tags.push(...splitList(arg.slice("--tag=".length)));
+      parsed.tags.push(...parseTagValue(arg.slice("--tag=".length)));
       continue;
     }
 
@@ -75,13 +75,21 @@ export function selectDesktopScenarios(
   scenarios: readonly DesktopScenario[] = desktopScenarios,
 ): DesktopScenario[] {
   if (input.scenarios.length > 0) {
-    return input.scenarios.map((id) => {
+    const seen = new Set<string>();
+    const selected: DesktopScenario[] = [];
+
+    for (const id of input.scenarios) {
       const scenario = scenarios.find((candidate) => candidate.id === id);
       if (!scenario) {
         throw new Error(`Unknown desktop E2E scenario ${id}`);
       }
-      return scenario;
-    });
+      if (!seen.has(id)) {
+        seen.add(id);
+        selected.push(scenario);
+      }
+    }
+
+    return selected;
   }
 
   if (input.tags.length === 0) {
@@ -89,7 +97,11 @@ export function selectDesktopScenarios(
   }
 
   const tags = new Set(input.tags);
-  return scenarios.filter((scenario) => scenario.tags.some((tag) => tags.has(tag)));
+  const selected = scenarios.filter((scenario) => scenario.tags.some((tag) => tags.has(tag)));
+  if (selected.length === 0) {
+    throw new Error(`No desktop E2E scenarios match tags: ${input.tags.join(", ")}`);
+  }
+  return selected;
 }
 
 export function main(argv = process.argv.slice(2), io: DesktopE2EIO = {}): number {
@@ -120,6 +132,14 @@ function splitList(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseTagValue(value: string): string[] {
+  const tags = splitList(value);
+  if (tags.length === 0) {
+    throw new Error("--tag requires a value");
+  }
+  return tags;
 }
 
 if (import.meta.main) {

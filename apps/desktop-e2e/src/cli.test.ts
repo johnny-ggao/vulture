@@ -22,6 +22,11 @@ describe("desktop e2e cli", () => {
     });
   });
 
+  test("rejects empty tag values from separated and equals syntax", () => {
+    expect(() => parseDesktopE2EArgs(["--tag", " , "])).toThrow("--tag requires a value");
+    expect(() => parseDesktopE2EArgs(["--tag="])).toThrow("--tag requires a value");
+  });
+
   test("uses environment defaults for scenarios and tags", () => {
     expect(
       parseDesktopE2EArgs([], {
@@ -43,6 +48,15 @@ describe("desktop e2e cli", () => {
     ).toEqual(["chat-send-smoke", "launch-smoke"]);
   });
 
+  test("dedupes explicit scenarios while preserving first-seen order", () => {
+    expect(
+      selectDesktopScenarios(
+        { scenarios: ["launch-smoke", "chat-send-smoke", "launch-smoke", "chat-send-smoke"], tags: [] },
+        desktopScenarios,
+      ).map((scenario) => scenario.id),
+    ).toEqual(["launch-smoke", "chat-send-smoke"]);
+  });
+
   test("selects scenarios by tag when no explicit scenario ids are provided", () => {
     expect(
       selectDesktopScenarios({ scenarios: [], tags: ["navigation"] }, desktopScenarios).map((scenario) => scenario.id),
@@ -55,6 +69,12 @@ describe("desktop e2e cli", () => {
         (scenario) => scenario.id,
       ),
     ).toEqual(["launch-smoke"]);
+  });
+
+  test("throws when tag filters match no scenarios", () => {
+    expect(() => selectDesktopScenarios({ scenarios: [], tags: ["missing-tag"] }, desktopScenarios)).toThrow(
+      'No desktop E2E scenarios match tags: missing-tag',
+    );
   });
 
   test("throws for unknown scenario ids", () => {
