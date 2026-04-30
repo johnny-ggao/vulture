@@ -1,0 +1,242 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { CoreTab } from "./CoreTab";
+import { OverviewTab } from "./OverviewTab";
+import { PersonaTab } from "./PersonaTab";
+import { ToolsTab } from "./ToolsTab";
+import { draftFromAgent } from "./draft";
+import type { Agent, AgentCoreFile } from "../../api/agents";
+
+const baseAgent: Agent = {
+  id: "agent-1",
+  name: "Local Agent",
+  description: "test agent",
+  model: "gpt-5.4",
+  reasoning: "medium",
+  tools: ["files.read"],
+  toolPreset: "developer",
+  toolInclude: ["files.read"],
+  toolExclude: [],
+  workspace: {
+    id: "agent-1",
+    name: "Local Agent",
+    path: "/tmp/workspace",
+    createdAt: "2026-04-30T00:00:00.000Z",
+    updatedAt: "2026-04-30T00:00:00.000Z",
+  },
+  instructions: "behave",
+  createdAt: "2026-04-30T00:00:00.000Z",
+  updatedAt: "2026-04-30T00:00:00.000Z",
+} as Agent;
+
+describe("OverviewTab", () => {
+  test("renders all four primary fields and the workspace info block", () => {
+    render(
+      <OverviewTab
+        agent={baseAgent}
+        draft={draftFromAgent(baseAgent)}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText("名称")).toBeDefined();
+    expect(screen.getByLabelText("模型")).toBeDefined();
+    expect(screen.getByLabelText("推理强度")).toBeDefined();
+    expect(screen.getByLabelText("Skills")).toBeDefined();
+    expect(screen.getByText("Workspace")).toBeDefined();
+    expect(screen.getByText("/tmp/workspace")).toBeDefined();
+  });
+
+  test("editing the name calls onChange with a fresh draft", () => {
+    const onChange = mock(() => {});
+    render(
+      <OverviewTab
+        agent={baseAgent}
+        draft={draftFromAgent(baseAgent)}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Renamed" },
+    });
+    expect(onChange).toHaveBeenCalled();
+    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
+    expect(next.name).toBe("Renamed");
+  });
+
+  test("changing reasoning calls onChange with the new level", () => {
+    const onChange = mock(() => {});
+    render(
+      <OverviewTab
+        agent={baseAgent}
+        draft={draftFromAgent(baseAgent)}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("推理强度"), {
+      target: { value: "high" },
+    });
+    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
+    expect(next.reasoning).toBe("high");
+  });
+});
+
+describe("PersonaTab", () => {
+  test("editing instructions calls onChange with the new text", () => {
+    const onChange = mock(() => {});
+    render(
+      <PersonaTab
+        draft={draftFromAgent(baseAgent)}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Instructions"), {
+      target: { value: "be thoughtful" },
+    });
+    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
+    expect(next.instructions).toBe("be thoughtful");
+  });
+});
+
+describe("ToolsTab", () => {
+  test("renders the preset selector + 全选 / 清空 buttons", () => {
+    render(
+      <ToolsTab
+        draft={draftFromAgent(baseAgent)}
+        toolGroups={[]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText("Tools 预设")).toBeDefined();
+    expect(screen.getByRole("button", { name: "全选" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "清空" })).toBeDefined();
+  });
+
+  test("clicking 清空 calls onChange with the 'none' policy", () => {
+    const onChange = mock(() => {});
+    render(
+      <ToolsTab
+        draft={draftFromAgent(baseAgent)}
+        toolGroups={[]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "清空" }));
+    expect(onChange).toHaveBeenCalled();
+    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
+    expect(next.toolPreset).toBe("none");
+    expect(next.tools).toEqual([]);
+  });
+
+  test("changing the preset selector cascades into a new tools list", () => {
+    const onChange = mock(() => {});
+    render(
+      <ToolsTab
+        draft={draftFromAgent(baseAgent)}
+        toolGroups={[]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Tools 预设"), {
+      target: { value: "minimal" },
+    });
+    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
+    expect(next.toolPreset).toBe("minimal");
+  });
+});
+
+describe("CoreTab", () => {
+  const files: AgentCoreFile[] = [
+    { name: "AGENTS.md", size: 100 } as AgentCoreFile,
+    { name: "memories.md", size: 50 } as AgentCoreFile,
+  ];
+
+  test("renders one file button per core file with aria-pressed reflecting selection", () => {
+    render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent="# hello"
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    const a = screen.getByRole("button", { name: "AGENTS.md", pressed: true });
+    const b = screen.getByRole("button", { name: "memories.md", pressed: false });
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+  });
+
+  test("clicking a file invokes onSelectFile with the file name", () => {
+    const onSelectFile = mock((_n: string) => {});
+    render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={onSelectFile}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "memories.md" }));
+    expect(onSelectFile).toHaveBeenCalledWith("memories.md");
+  });
+
+  test("save button disabled when no file is selected OR fileBusy is true", () => {
+    const { rerender } = render(
+      <CoreTab
+        files={files}
+        selectedFile=""
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    const noSel = screen.getByRole("button", { name: "保存文件" }) as HTMLButtonElement;
+    expect(noSel.disabled).toBe(true);
+
+    rerender(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={true}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    const busy = screen.getByRole("button", { name: "处理中..." }) as HTMLButtonElement;
+    expect(busy.disabled).toBe(true);
+  });
+
+  test("renders fileStatus when provided", () => {
+    render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus="已保存"
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    expect(screen.getByText("已保存")).toBeDefined();
+  });
+});
