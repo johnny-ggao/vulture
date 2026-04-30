@@ -1,6 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 export interface StartProcessOptions {
   name: string;
@@ -26,8 +28,9 @@ export interface ProcessExitResult {
 export function startProcess(options: StartProcessOptions): ManagedProcess {
   mkdirSync(options.logsDir, { recursive: true });
 
-  const stdoutLogPath = join(options.logsDir, `${options.name}.stdout.log`);
-  const stderrLogPath = join(options.logsDir, `${options.name}.stderr.log`);
+  const safeName = sanitizeProcessName(options.name);
+  const stdoutLogPath = join(options.logsDir, `${safeName}.stdout.log`);
+  const stderrLogPath = join(options.logsDir, `${safeName}.stderr.log`);
 
   writeFileSync(stdoutLogPath, "");
   writeFileSync(stderrLogPath, "");
@@ -51,7 +54,7 @@ export function startProcess(options: StartProcessOptions): ManagedProcess {
   let stopPromise: Promise<ProcessExitResult> | null = null;
 
   return {
-    name: options.name,
+    name: safeName,
     pid: child.pid,
     stdoutLogPath,
     stderrLogPath,
@@ -96,36 +99,13 @@ async function pipeStreamToFile(stream: ReadableStream<Uint8Array> | null, path:
     return;
   }
 
-  const writer = createWriteStream(path, { flags: "a" });
-  const reader = stream.getReader();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      if (!writer.write(Buffer.from(value))) {
-        await onceDrain(writer);
-      }
-    }
-  } finally {
-    reader.releaseLock();
-    await new Promise<void>((resolve, reject) => {
-      writer.end((error?: Error | null) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-  }
+  await pipeline(
+    Readable.fromWeb(stream as unknown as NodeReadableStream<Uint8Array>),
+    createWriteStream(path, { flags: "a" }),
+  );
 }
 
-async function onceDrain(writer: NodeJS.WritableStream): Promise<void> {
-  await new Promise<void>((resolve) => {
-    writer.once("drain", () => resolve());
-  });
+function sanitizeProcessName(value: string): string {
+  const safeName = value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return safeName.length > 0 ? safeName : "process";
 }

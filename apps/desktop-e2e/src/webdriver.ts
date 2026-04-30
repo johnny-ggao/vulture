@@ -4,6 +4,7 @@ const NO_SESSION_ERROR = "WebDriver session has not been created. Call createSes
 type FetchLike = typeof fetch;
 
 interface WebDriverEnvelope<T> {
+  sessionId?: unknown;
   value: T;
 }
 
@@ -18,7 +19,7 @@ export class WebDriverClient {
   }
 
   async createSession(alwaysMatch: Record<string, unknown> = {}): Promise<string> {
-    const value = await this.#request<{
+    const envelope = await this.#requestEnvelope<{
       sessionId?: unknown;
       capabilities?: unknown;
     }>("POST", "session", {
@@ -28,7 +29,7 @@ export class WebDriverClient {
       },
     });
 
-    const sessionId = extractSessionId(value);
+    const sessionId = extractSessionId(envelope);
     if (!sessionId) {
       throw new Error("WebDriver createSession response missing sessionId");
     }
@@ -83,7 +84,7 @@ export class WebDriverClient {
     }
 
     try {
-      await this.#request("DELETE", `session/${encodeURIComponent(sessionId)}`);
+      await this.#requestValue("DELETE", `session/${encodeURIComponent(sessionId)}`);
     } finally {
       if (this.#sessionId === sessionId) {
         this.#sessionId = null;
@@ -96,10 +97,15 @@ export class WebDriverClient {
     if (!sessionId) {
       throw new Error(NO_SESSION_ERROR);
     }
-    return await this.#request<T>(method, `session/${encodeURIComponent(sessionId)}/${path}`, body);
+    return await this.#requestValue<T>(method, `session/${encodeURIComponent(sessionId)}/${path}`, body);
   }
 
-  async #request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async #requestValue<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const envelope = await this.#requestEnvelope<T>(method, path, body);
+    return envelope.value;
+  }
+
+  async #requestEnvelope<T>(method: string, path: string, body?: unknown): Promise<WebDriverEnvelope<T>> {
     const response = await this.#fetch(new URL(path, this.#baseUrl), {
       method,
       headers: body === undefined ? undefined : { "content-type": "application/json" },
@@ -117,12 +123,19 @@ export class WebDriverClient {
       throw new Error("WebDriver response missing value payload");
     }
 
-    return (payload as WebDriverEnvelope<T>).value;
+    return payload as WebDriverEnvelope<T>;
   }
 }
 
-function extractSessionId(value: { sessionId?: unknown } | null | undefined): string | null {
-  return typeof value?.sessionId === "string" && value.sessionId.length > 0 ? value.sessionId : null;
+function extractSessionId(
+  envelope: WebDriverEnvelope<{ sessionId?: unknown }> | null | undefined,
+): string | null {
+  if (typeof envelope?.sessionId === "string" && envelope.sessionId.length > 0) {
+    return envelope.sessionId;
+  }
+
+  const nestedSessionId = envelope?.value?.sessionId;
+  return typeof nestedSessionId === "string" && nestedSessionId.length > 0 ? nestedSessionId : null;
 }
 
 function extractElementId(value: Record<string, unknown> | null | undefined): string | null {

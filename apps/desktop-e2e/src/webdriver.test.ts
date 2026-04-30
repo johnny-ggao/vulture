@@ -9,6 +9,7 @@ interface RecordedRequest {
   method: string;
   path: string;
   body: string;
+  headers: Record<string, string | undefined>;
 }
 
 interface MockResponse {
@@ -29,7 +30,7 @@ afterEach(async () => {
 });
 
 describe("WebDriverClient", () => {
-  test("creates a session and sends element commands with WebDriver payloads", async () => {
+  test("supports W3C session responses and sends WebDriver request payloads", async () => {
     const requests: RecordedRequest[] = [];
     const { baseUrl } = await startMockServer(async (req) => {
       requests.push(req);
@@ -89,6 +90,9 @@ describe("WebDriverClient", () => {
             firstMatch: [{}],
           },
         }),
+        headers: {
+          "content-type": "application/json",
+        },
       },
       {
         method: "POST",
@@ -97,11 +101,17 @@ describe("WebDriverClient", () => {
           using: "css selector",
           value: "#chat-input",
         }),
+        headers: {
+          "content-type": "application/json",
+        },
       },
       {
         method: "POST",
         path: "/session/session-123/element/element-456/click",
         body: JSON.stringify({}),
+        headers: {
+          "content-type": "application/json",
+        },
       },
       {
         method: "POST",
@@ -110,22 +120,88 @@ describe("WebDriverClient", () => {
           text: "hello",
           value: ["h", "e", "l", "l", "o"],
         }),
+        headers: {
+          "content-type": "application/json",
+        },
       },
       {
         method: "GET",
         path: "/session/session-123/source",
         body: "",
+        headers: {
+          "content-type": undefined,
+        },
       },
       {
         method: "GET",
         path: "/session/session-123/screenshot",
         body: "",
+        headers: {
+          "content-type": undefined,
+        },
       },
       {
         method: "DELETE",
         path: "/session/session-123",
         body: "",
+        headers: {
+          "content-type": undefined,
+        },
       },
+    ]);
+  });
+
+  test("supports JSON Wire session responses, legacy element ids, and encoded path segments", async () => {
+    const requests: RecordedRequest[] = [];
+    const sessionId = "session/with spaces?#";
+    const elementId = "legacy element/#?";
+    const encodedSessionId = encodeURIComponent(sessionId);
+    const encodedElementId = encodeURIComponent(elementId);
+
+    const { baseUrl } = await startMockServer(async (req) => {
+      requests.push(req);
+
+      switch (req.path) {
+        case "/session":
+          return {
+            body: {
+              sessionId,
+              status: 0,
+              value: {
+                browserName: "desktop",
+              },
+            },
+          };
+        case `/session/${encodedSessionId}/element`:
+          return {
+            body: {
+              value: {
+                ELEMENT: elementId,
+              },
+            },
+          };
+        case `/session/${encodedSessionId}/element/${encodedElementId}/click`:
+          return { body: { value: null } };
+        default:
+          if (req.method === "DELETE" && req.path === `/session/${encodedSessionId}`) {
+            return { body: { value: null } };
+          }
+          return { status: 404, body: { value: { message: `unexpected ${req.method} ${req.path}` } } };
+      }
+    });
+
+    const client = new WebDriverClient(baseUrl);
+
+    await expect(client.createSession()).resolves.toBe(sessionId);
+    await expect(client.findElement("accessibility id", "Send")).resolves.toBe(elementId);
+    await expect(client.click(elementId)).resolves.toBeUndefined();
+    await expect(client.deleteSession()).resolves.toBeUndefined();
+
+    expect(requests.map((request) => request.path)).toEqual([
+      "/session",
+      `/session/${encodedSessionId}/element`,
+      `/session/${encodedSessionId}/element/${encodedElementId}/click`,
+      `/session/${encodedSessionId}`,
     ]);
   });
 
@@ -223,6 +299,9 @@ async function recordRequest(request: IncomingMessage): Promise<RecordedRequest>
     method: request.method ?? "GET",
     path: request.url ?? "/",
     body: Buffer.concat(chunks).toString("utf8"),
+    headers: {
+      "content-type": request.headers["content-type"],
+    },
   };
 }
 
