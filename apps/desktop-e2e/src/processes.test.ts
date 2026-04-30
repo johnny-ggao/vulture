@@ -111,6 +111,47 @@ describe("startProcess", () => {
     expect(stopped.exitCode).not.toBe(0);
     await expect(managed.exit).resolves.toEqual(stopped);
   });
+
+  test("stop can send a later stronger signal while returning the shared exit promise", async () => {
+    const root = makeTempDir();
+    const logsDir = join(root, "logs");
+    const killSignals: NodeJS.Signals[] = [];
+    const exitControl: { resolve: ((value: number) => void) | null } = { resolve: null };
+
+    const managed = startProcess({
+      name: "escalating",
+      cwd: root,
+      logsDir,
+      argv: ["fake-bin"],
+    }, {
+      spawn: () => ({
+        pid: 456,
+        exited: new Promise<number>((resolve) => {
+          exitControl.resolve = resolve;
+        }),
+        stdout: null,
+        stderr: null,
+        kill(signal: NodeJS.Signals) {
+          killSignals.push(signal);
+        },
+      }),
+    });
+
+    const firstStop = managed.stop("SIGTERM");
+    const secondStop = managed.stop("SIGKILL");
+
+    expect(firstStop).toBe(secondStop);
+    expect(killSignals).toEqual(["SIGTERM", "SIGKILL"]);
+
+    if (!exitControl.resolve) {
+      throw new Error("expected resolveExitCode to be assigned");
+    }
+    exitControl.resolve(137);
+
+    await expect(firstStop).resolves.toEqual({ exitCode: 137 });
+    await expect(secondStop).resolves.toEqual({ exitCode: 137 });
+    await expect(managed.exit).resolves.toEqual({ exitCode: 137 });
+  });
 });
 
 function makeTempDir(): string {

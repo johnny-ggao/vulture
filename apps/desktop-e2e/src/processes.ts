@@ -25,7 +25,22 @@ export interface ProcessExitResult {
   exitCode: number;
 }
 
-export function startProcess(options: StartProcessOptions): ManagedProcess {
+interface SpawnedChildLike {
+  readonly pid: number | undefined;
+  readonly exited: Promise<number>;
+  readonly stdout: ReadableStream<Uint8Array> | null;
+  readonly stderr: ReadableStream<Uint8Array> | null;
+  kill(signal?: NodeJS.Signals): void;
+}
+
+export interface StartProcessDependencies {
+  spawn?: (options: StartProcessOptions) => SpawnedChildLike;
+}
+
+export function startProcess(
+  options: StartProcessOptions,
+  dependencies: StartProcessDependencies = {},
+): ManagedProcess {
   mkdirSync(options.logsDir, { recursive: true });
 
   const safeName = sanitizeProcessName(options.name);
@@ -35,21 +50,16 @@ export function startProcess(options: StartProcessOptions): ManagedProcess {
   writeFileSync(stdoutLogPath, "");
   writeFileSync(stderrLogPath, "");
 
-  const child = Bun.spawn({
-    cmd: options.argv,
-    cwd: options.cwd,
-    env: mergeEnv(options.env),
-    stdout: "pipe",
-    stderr: "pipe",
-    stdin: "ignore",
-  });
+  const child = (dependencies.spawn ?? spawnChildProcess)(options);
 
   const stdoutDone = pipeStreamToFile(child.stdout, stdoutLogPath);
   const stderrDone = pipeStreamToFile(child.stderr, stderrLogPath);
 
-  const exit = Promise.all([child.exited, stdoutDone, stderrDone]).then(([exitCode]) => ({
-    exitCode,
-  }));
+  let exitSettled = false;
+  const exit = Promise.all([child.exited, stdoutDone, stderrDone]).then(([exitCode]) => {
+    exitSettled = true;
+    return { exitCode };
+  });
 
   let stopPromise: Promise<ProcessExitResult> | null = null;
 
@@ -59,19 +69,30 @@ export function startProcess(options: StartProcessOptions): ManagedProcess {
     stdoutLogPath,
     stderrLogPath,
     exit,
-    async stop(signal: NodeJS.Signals = "SIGTERM"): Promise<ProcessExitResult> {
-      if (!stopPromise) {
+    stop(signal: NodeJS.Signals = "SIGTERM"): Promise<ProcessExitResult> {
+      if (!exitSettled) {
         try {
           child.kill(signal);
         } catch {
           // Ignore kill errors so callers can still await process exit.
         }
-        stopPromise = exit;
       }
 
-      return await stopPromise;
+      stopPromise ??= exit;
+      return stopPromise;
     },
   };
+}
+
+function spawnChildProcess(options: StartProcessOptions): SpawnedChildLike {
+  return Bun.spawn({
+    cmd: options.argv,
+    cwd: options.cwd,
+    env: mergeEnv(options.env),
+    stdout: "pipe",
+    stderr: "pipe",
+    stdin: "ignore",
+  });
 }
 
 function mergeEnv(env: Record<string, string | undefined> | undefined): Record<string, string> {
