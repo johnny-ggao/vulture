@@ -254,7 +254,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
         return;
       }
       deps.runs.markFailed(args.runId, error);
-      void emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
+      await emitRunFailureHook(deps.runtimeHooks, args, lifecycleEvent(), error);
     }
     deps.runs.clearRecoveryState(args.runId);
   } catch (err) {

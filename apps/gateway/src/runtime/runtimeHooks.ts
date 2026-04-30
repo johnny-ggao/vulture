@@ -1,3 +1,59 @@
+/**
+ * Runtime hooks: a typed event bus for the gateway's run loop.
+ *
+ * ## Three emit modes
+ *
+ * Pick the mode that matches the *control-flow intent* at the call site, not
+ * the hook name:
+ *
+ * 1. `await runner.emit(name, ...)` — pre-flight gates. fail-closed handlers
+ *    propagate their error to the caller, which is the legitimate way to
+ *    veto a run / model call / compaction. Examples: `run.beforeStart`,
+ *    `model.beforeCall`, `context.beforeCompact`.
+ *
+ * 2. `await runner.runToolBeforeCall(...)` — the only modifying hook today.
+ *    Sequential, accumulates `input` patches in priority order (highest
+ *    priority sees the original input first), and any `block: true` short-
+ *    circuits remaining handlers. Default failure policy is fail-closed:
+ *    a thrown handler blocks the call.
+ *
+ * 3. `tryEmitRuntimeHook(runner, name, ...)` — observation-only emits whose
+ *    failure must NOT change the surrounding outcome. Awaits the emit but
+ *    catches every error (including those from fail-closed handlers) and
+ *    routes them to the logger. Use it inside catch blocks, after a
+ *    terminal status flip, or in synchronous callbacks (with a leading
+ *    `void` since the caller can't await). Examples: `run.afterSuccess`,
+ *    `run.afterFailure`, `model.afterCall` in the catch block,
+ *    `checkpoint.written` inside `onCheckpoint`, `subagent.afterEnd`,
+ *    `approval.required` / `approval.resolved`, `context.afterCompact`.
+ *
+ * Never use a bare `void runtimeHooks?.emit(...)` — it would silently drop
+ * fail-closed errors as unhandled rejections. Use `tryEmitRuntimeHook`
+ * instead.
+ *
+ * ## Failure policy resolution
+ *
+ * Per emit, the runner resolves the failure policy in this order:
+ *
+ *   1. `registration.failurePolicy` (if set on the specific hook)
+ *   2. `RuntimeHookRunnerOptions.defaultFailurePolicyByHook[name]`
+ *      (host-wide override)
+ *   3. `DEFAULT_FAILURE_POLICY_BY_HOOK[name]` (built-in — only
+ *      `tool.beforeCall` is fail-closed by default)
+ *   4. `"fail-open"` (terminal default)
+ *
+ * Timeout resolution mirrors the same chain:
+ * `registration.timeoutMs` → `defaultTimeoutMsByHook[name]` →
+ * `DEFAULT_HOOK_TIMEOUT_MS` (15s).
+ *
+ * ## Single tool-hook trigger point
+ *
+ * `tool.beforeCall` / `tool.afterCall` are emitted exclusively from
+ * `sdkAdapter.executeToolWithCheckpoint`. The orchestrator no longer wraps
+ * `runConversation`'s `args.tools` — non-SDK LLM providers must emit these
+ * hooks themselves if they need policy/audit coverage.
+ */
+
 import type { LlmCheckpoint } from "@vulture/agent-runtime";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 import type { TokenUsage } from "@vulture/protocol/src/v1/run";

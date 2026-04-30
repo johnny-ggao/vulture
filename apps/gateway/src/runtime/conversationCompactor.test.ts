@@ -270,6 +270,64 @@ describe("compactConversationContext", () => {
     expect(phases).toEqual(["before", "after"]);
   });
 
+  test("beforeCompact fail-closed handler vetoes the compaction (afterCompact does not run)", async () => {
+    const phases: string[] = [];
+    const runtimeHooks = createRuntimeHookRunner(
+      [
+        {
+          name: "context.beforeCompact",
+          failurePolicy: "fail-closed",
+          handler: () => {
+            phases.push("before");
+            throw new Error("retention policy denies compaction");
+          },
+        },
+        {
+          name: "context.afterCompact",
+          handler: () => {
+            phases.push("after");
+          },
+        },
+      ],
+      { logger: { warn: () => undefined, error: () => undefined } },
+    );
+    const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      phases.push("llm");
+      yield { kind: "final", text: "should not run" };
+    });
+    const { input, upserts } = baseInput({ llm, runtimeHooks });
+
+    await expect(compactConversationContext(input)).rejects.toThrow(
+      "retention policy denies compaction",
+    );
+
+    // beforeCompact is a gate, not just an observation: a veto means the
+    // compaction never started, so afterCompact must not fire either.
+    expect(phases).toEqual(["before"]);
+    expect(upserts).toEqual([]);
+    expect(llm).not.toHaveBeenCalled();
+  });
+
+  test("afterCompact handler failure does not surface to the caller", async () => {
+    const runtimeHooks = createRuntimeHookRunner(
+      [
+        {
+          name: "context.afterCompact",
+          failurePolicy: "fail-closed",
+          handler: () => {
+            throw new Error("audit sink down");
+          },
+        },
+      ],
+      { logger: { warn: () => undefined, error: () => undefined } },
+    );
+    const { input, upserts } = baseInput({ runtimeHooks });
+
+    await expect(compactConversationContext(input)).resolves.toBeUndefined();
+    // Compaction still wrote the summary even though the audit hook crashed.
+    expect(upserts).toHaveLength(1);
+  });
+
   test("does not emit hooks when there are no older items to compact", async () => {
     const phases: string[] = [];
     const runtimeHooks = createRuntimeHookRunner([

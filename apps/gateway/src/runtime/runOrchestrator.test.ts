@@ -288,6 +288,77 @@ describe("orchestrateRun recovery persistence", () => {
     }
   });
 
+  test("pre-flight run.beforeStart fail-closed handler aborts the run before the LLM is called", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const phases: string[] = [];
+      const runtimeHooks = createRuntimeHookRunner(
+        [
+          {
+            name: "run.beforeStart",
+            failurePolicy: "fail-closed",
+            handler: () => {
+              phases.push("beforeStart");
+              throw new Error("preflight rejected");
+            },
+          },
+          {
+            name: "run.afterFailure",
+            handler: () => {
+              phases.push("afterFailure");
+            },
+          },
+          {
+            name: "model.beforeCall",
+            handler: () => {
+              phases.push("modelBeforeCall");
+            },
+          },
+          {
+            name: "model.afterCall",
+            handler: () => {
+              phases.push("modelAfterCall");
+            },
+          },
+        ],
+        { logger: { warn: () => undefined, error: () => undefined } },
+      );
+      const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+        phases.push("llm");
+        yield { kind: "final", text: "should not be emitted" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools: async () => ({}),
+          cancelSignals: new Map(),
+          runtimeHooks,
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+        },
+      );
+
+      expect(deps.runs.get(run.id)?.status).toBe("failed");
+      expect(deps.runs.get(run.id)?.error?.message).toContain("preflight rejected");
+      expect(phases).toEqual(["beforeStart", "afterFailure"]);
+      expect(llm).not.toHaveBeenCalled();
+    } finally {
+      deps.cleanup();
+    }
+  });
+
   test("run.afterSuccess hook failure does not flip the run status to failed", async () => {
     const deps = freshDeps();
     try {

@@ -2,7 +2,7 @@ import type { AgentInputItem } from "@openai/agents";
 import type { LlmCallable } from "@vulture/agent-runtime";
 import type { UpsertConversationContextInput } from "../domain/conversationContextStore";
 import { estimateSessionTextChars, messageIdFromItem, textFromItem } from "./conversationContext";
-import type { RuntimeHookRunner } from "./runtimeHooks";
+import { tryEmitRuntimeHook, type RuntimeHookRunner } from "./runtimeHooks";
 
 const DEFAULT_RECENT_MESSAGE_LIMIT = 6;
 const MAX_SUMMARY_CHARS = 2000;
@@ -39,12 +39,23 @@ export async function compactConversationContext(input: CompactConversationConte
     model: input.model,
     workspacePath: input.workspacePath,
   };
+  // Pre-flight gate: a fail-closed beforeCompact handler can legitimately
+  // veto a compaction (e.g. retention/policy block). The thrown error is
+  // surfaced to the caller, which already wraps the call in a `.catch`.
   await input.runtimeHooks?.emit("context.beforeCompact", compactEvent, hookContext);
 
   try {
     return await runCompaction(input, olderItems);
   } finally {
-    await input.runtimeHooks?.emit("context.afterCompact", compactEvent, hookContext);
+    // Observation-only: a failing afterCompact handler must NOT hide the
+    // original compaction error (would also flip a successful run into the
+    // outer .catch). tryEmit logs and swallows.
+    await tryEmitRuntimeHook(
+      input.runtimeHooks,
+      "context.afterCompact",
+      compactEvent,
+      hookContext,
+    );
   }
 }
 
