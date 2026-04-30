@@ -1,0 +1,13 @@
+{
+  "id": "json-conversation-happy-path",
+  "name": "JSON Conversation Happy Path",
+  "description": "Example file-backed acceptance scenario.",
+  "tags": ["json", "chat"],
+  "steps": [
+    { "action": "createConversation", "as": "conversation", "agentId": "local-work-agent" },
+    { "action": "sendMessage", "conversation": "conversation", "input": "ping", "asRun": "run" },
+    { "action": "waitForRun", "run": "run", "status": "succeeded" },
+    { "action": "listMessages", "conversation": "conversation", "as": "messages" },
+    { "action": "assertMessages", "messages": "messages", "roles": ["user", "assistant"], "contains": ["ping"] }
+  ]
+}

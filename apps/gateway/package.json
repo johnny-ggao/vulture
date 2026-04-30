@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun src/main.ts",
     "test": "bun test src",
+    "harness:acceptance": "bun src/harness/acceptanceCli.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },
