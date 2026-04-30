@@ -139,7 +139,9 @@ describe("IdentityStep", () => {
     );
     expect(screen.getByLabelText(/名称/)).toBeDefined();
     expect(screen.getByLabelText("模型")).toBeDefined();
-    expect(screen.getByLabelText("推理强度")).toBeDefined();
+    // Round 16: reasoning is now a Segmented radiogroup, matching
+    // the AgentEditModal's OverviewTab — assert by role.
+    expect(screen.getByRole("radiogroup", { name: "推理强度" })).toBeDefined();
     expect(screen.getByLabelText("描述")).toBeDefined();
   });
 
@@ -179,9 +181,8 @@ describe("IdentityStep", () => {
         onDesc={() => {}}
       />,
     );
-    fireEvent.change(screen.getByLabelText("推理强度"), {
-      target: { value: "high" },
-    });
+    // Round 16: click the Segmented "深度" radio (value=high).
+    fireEvent.click(screen.getByRole("radio", { name: "深度" }));
     expect(onReasoning).toHaveBeenCalledWith("high");
   });
 
@@ -231,6 +232,58 @@ describe("PersonaStep", () => {
     const ta = screen.getByLabelText("Instructions") as HTMLTextAreaElement;
     expect(ta.placeholder).toBe("my-hint");
   });
+
+  // ---- Round 16: structural hint + counter + starter chips ----
+
+  test("renders structural hint and char counter (matches PersonaTab)", () => {
+    const { container } = render(
+      <PersonaStep
+        instructions="abc"
+        placeholder=""
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByText(/角色 → 目标 → 行为边界/)).toBeDefined();
+    const counter = container.querySelector(".agent-persona-counter");
+    expect(counter?.textContent).toBe("3 字符");
+  });
+
+  test("starter chips appear only when instructions is empty", () => {
+    const { rerender } = render(
+      <PersonaStep
+        instructions=""
+        placeholder=""
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByText("从模板开始：")).toBeDefined();
+    expect(screen.getByRole("button", { name: "通用助手" })).toBeDefined();
+
+    rerender(
+      <PersonaStep
+        instructions="something"
+        placeholder=""
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.queryByText("从模板开始：")).toBeNull();
+  });
+
+  test("clicking a starter chip invokes onChange with its scaffold body", () => {
+    const onChange = mock((_: string) => {});
+    render(
+      <PersonaStep
+        instructions=""
+        placeholder=""
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "代码审阅" }));
+    expect(onChange).toHaveBeenCalled();
+    const value = onChange.mock.calls[0]![0] as string;
+    expect(value).toContain("代码审阅者");
+    expect(value.length).toBeGreaterThan(50);
+  });
 });
 
 describe("SkillsStep", () => {
@@ -242,6 +295,24 @@ describe("SkillsStep", () => {
     });
     expect(onChange).toHaveBeenCalledWith("weather, search");
   });
+
+  test("renders the default-state preview pill when text is empty", () => {
+    render(<SkillsStep skillsText="" onChange={() => {}} />);
+    expect(screen.getByText("全部 Skills 可用")).toBeDefined();
+  });
+
+  test("renders 已禁用 pill when text is 'none'", () => {
+    render(<SkillsStep skillsText="none" onChange={() => {}} />);
+    expect(screen.getByText("已禁用")).toBeDefined();
+  });
+
+  test("renders one chip per parsed entry", () => {
+    const { container } = render(
+      <SkillsStep skillsText="alpha, beta, gamma" onChange={() => {}} />,
+    );
+    const chips = container.querySelectorAll(".agent-skills-chip");
+    expect(chips.length).toBe(3);
+  });
 });
 
 describe("ToolsStep", () => {
@@ -251,7 +322,8 @@ describe("ToolsStep", () => {
     render(
       <ToolsStep toolGroups={[]} toolPolicy={policy} onChange={() => {}} />,
     );
-    expect(screen.getByLabelText("工具预设")).toBeDefined();
+    // Round 16: preset moved from <select> to a Segmented radiogroup.
+    expect(screen.getByRole("radiogroup", { name: "工具预设" })).toBeDefined();
     expect(screen.getByRole("button", { name: "全选" })).toBeDefined();
     expect(screen.getByRole("button", { name: "清空" })).toBeDefined();
   });
@@ -273,9 +345,8 @@ describe("ToolsStep", () => {
     render(
       <ToolsStep toolGroups={[]} toolPolicy={policy} onChange={onChange} />,
     );
-    fireEvent.change(screen.getByLabelText("工具预设"), {
-      target: { value: "minimal" },
-    });
+    // Round 16: click the "最小" Segmented radio (value=minimal).
+    fireEvent.click(screen.getByRole("radio", { name: "最小" }));
     const next = onChange.mock.calls[0]![0];
     expect(next.toolPreset).toBe("minimal");
   });

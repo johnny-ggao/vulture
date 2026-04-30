@@ -16,3 +16,4 @@ export {
   type DraftTabKey,
   type AgentConfigPatch,
 } from "./draft";
+export { PERSONA_STARTERS, type PersonaStarter } from "./personaStarters";

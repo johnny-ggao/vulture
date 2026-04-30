@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentToolName,
   AgentToolPreset,
@@ -59,6 +59,32 @@ export function NewAgentModal(props: NewAgentModalProps) {
   const [skillsText, setSkillsText] = useState("");
   const [instructions, setInstructions] = useState("");
   const [busy, setBusy] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Round 16: focus management — snapshot the trigger so we can
+  // return focus to it after close (WAI-ARIA modal-dialog pattern,
+  // matching AgentEditModal). aliveRef guards async setState after
+  // unmount so a slow create doesn't poke a torn-down tree.
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!props.open) return;
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    return () => {
+      const node = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      queueMicrotask(() => node?.focus({ preventScroll: true }));
+    };
+  }, [props.open]);
 
   const tpl = TEMPLATES.find((t) => t.key === tplKey)!;
   const stepIndex = STEPS.findIndex((item) => item.id === step);
@@ -82,6 +108,18 @@ export function NewAgentModal(props: NewAgentModalProps) {
     name: name.trim() || "新智能体",
   };
 
+  // Round 16: dirty signal for the create wizard. "Touched" means the
+  // user has typed something we'd lose on close — name / description
+  // / instructions / skills text. Identity-tweak fields like model /
+  // reasoning / tool preset reset to defaults on cancel and aren't
+  // worth confirming for. Tool selection from the default preset is
+  // a wash; we don't try to detect it here.
+  const isDirty =
+    name.trim().length > 0 ||
+    desc.trim().length > 0 ||
+    instructions.trim().length > 0 ||
+    skillsText.trim().length > 0;
+
   if (!props.open) return null;
 
   function reset() {
@@ -94,10 +132,15 @@ export function NewAgentModal(props: NewAgentModalProps) {
     setToolPolicy(toolPolicyFromPreset("developer"));
     setSkillsText("");
     setInstructions("");
+    setSubmitError(null);
   }
 
   function close() {
     if (busy) return;
+    // Match AgentEditModal: dirty close prompts before discarding work.
+    if (isDirty) {
+      if (!window.confirm("有未保存的修改，确定要关闭吗？")) return;
+    }
     reset();
     props.onClose();
   }
@@ -128,6 +171,7 @@ export function NewAgentModal(props: NewAgentModalProps) {
     const trimmedName = name.trim();
     if (!trimmedName || busy) return;
     setBusy(true);
+    setSubmitError(null);
     try {
       await props.onCreate({
         name: trimmedName,
@@ -141,10 +185,22 @@ export function NewAgentModal(props: NewAgentModalProps) {
         toolExclude: toolPolicy.toolExclude,
         skills: parseSkills(skillsText),
       });
+      if (!aliveRef.current) return;
       reset();
       props.onClose();
+    } catch (cause) {
+      // Round 16: surface the error inline (matches AgentEditModal
+      // round 15) instead of silently swallowing it. The user keeps
+      // their draft and can hit "重试" to re-submit.
+      if (!aliveRef.current) return;
+      const message =
+        cause instanceof Error && cause.message
+          ? cause.message
+          : "创建失败，请重试。";
+      setSubmitError(message);
+      console.error("Agent create failed", cause);
     } finally {
-      setBusy(false);
+      if (aliveRef.current) setBusy(false);
     }
   }
 
@@ -275,6 +331,35 @@ export function NewAgentModal(props: NewAgentModalProps) {
           </div>
         </div>
 
+        {submitError ? (
+          <div
+            className="agent-edit-error new-agent-error"
+            role="alert"
+            aria-live="assertive"
+          >
+            <span className="agent-edit-error-icon" aria-hidden="true">
+              <NewAgentErrorIcon />
+            </span>
+            <span className="agent-edit-error-message">{submitError}</span>
+            <button
+              type="button"
+              className="agent-edit-error-retry"
+              disabled={busy}
+              onClick={submit}
+            >
+              重试
+            </button>
+            <button
+              type="button"
+              className="agent-edit-error-dismiss"
+              aria-label="关闭"
+              onClick={() => setSubmitError(null)}
+            >
+              <NewAgentCloseSmallIcon />
+            </button>
+          </div>
+        ) : null}
+
         <div className="modal-footer">
           <button
             type="button"
@@ -290,7 +375,14 @@ export function NewAgentModal(props: NewAgentModalProps) {
               onClick={submit}
               disabled={busy || !name.trim()}
             >
-              {busy ? "创建中..." : "创建"}
+              {busy ? (
+                <>
+                  <span className="agent-edit-save-spinner" aria-hidden="true" />
+                  创建中…
+                </>
+              ) : (
+                "创建"
+              )}
             </button>
           ) : (
             <button
@@ -305,5 +397,43 @@ export function NewAgentModal(props: NewAgentModalProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function NewAgentErrorIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v3.5" />
+      <circle cx="8" cy="11" r="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function NewAgentCloseSmallIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4l8 8M4 12l8-8" />
+    </svg>
   );
 }

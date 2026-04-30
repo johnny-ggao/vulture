@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Agent, ReasoningLevel } from "../../api/agents";
-import { Field, Segmented } from "../components";
+import { Field, Segmented, SkillsPreview } from "../components";
 import type { Draft } from "./draft";
-import { parseSkills } from "./draft";
 
 export interface OverviewTabProps {
   agent: Agent;
@@ -75,49 +74,6 @@ export function OverviewTab({ agent, draft, onChange }: OverviewTabProps) {
         />
       </Field>
       <InfoBlock title="Workspace" value={agent.workspace.path} />
-    </div>
-  );
-}
-
-/**
- * Live preview of what the skills input parses into. Three states map
- * to three visual treatments so users can confirm intent at a glance:
- *   null → "全部可用" pill (info tone)
- *   []   → "已禁用" pill (warning tone)
- *   list → one chip per skill name (neutral)
- */
-function SkillsPreview({ text }: { text: string }) {
-  const parsed = parseSkills(text);
-  if (parsed === null) {
-    return (
-      <span
-        className="agent-skills-preview agent-skills-preview-default"
-        aria-label="Skills 默认全部可用"
-      >
-        全部 Skills 可用
-      </span>
-    );
-  }
-  if (parsed.length === 0) {
-    return (
-      <span
-        className="agent-skills-preview agent-skills-preview-disabled"
-        aria-label="Skills 已禁用"
-      >
-        已禁用
-      </span>
-    );
-  }
-  return (
-    <div
-      className="agent-skills-preview agent-skills-preview-list"
-      aria-label={`${parsed.length} 个 Skills`}
-    >
-      {parsed.map((skill) => (
-        <span key={skill} className="agent-skills-chip">
-          {skill}
-        </span>
-      ))}
     </div>
   );
 }

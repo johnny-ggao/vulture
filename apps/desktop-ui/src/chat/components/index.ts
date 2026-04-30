@@ -13,5 +13,6 @@ export {
   type SegmentedProps,
   type SegmentedOption,
 } from "./Segmented";
+export { SkillsPreview, type SkillsPreviewProps } from "./SkillsPreview";
 export { hashHue } from "./agentHue";
 export { useCursorGloss } from "./useCursorGloss";

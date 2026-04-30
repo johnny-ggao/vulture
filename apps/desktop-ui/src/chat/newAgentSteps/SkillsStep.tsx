@@ -1,4 +1,4 @@
-import { Field } from "../components";
+import { Field, SkillsPreview } from "../components";
 import { StepSection } from "./StepSection";
 
 export interface SkillsStepProps {
@@ -6,6 +6,12 @@ export interface SkillsStepProps {
   onChange: (next: string) => void;
 }
 
+/**
+ * Skills step of the new-agent wizard. Round 16: shares the live
+ * tri-state preview with the AgentEditModal's OverviewTab via the
+ * shared `<SkillsPreview>` component, so users see the same visual
+ * confirmation regardless of which surface they typed in.
+ */
 export function SkillsStep({ skillsText, onChange }: SkillsStepProps) {
   return (
     <StepSection
@@ -19,6 +25,7 @@ export function SkillsStep({ skillsText, onChange }: SkillsStepProps) {
           onChange={(e) => onChange(e.target.value)}
           placeholder="留空=全部可用"
         />
+        <SkillsPreview text={skillsText} />
       </Field>
     </StepSection>
   );
