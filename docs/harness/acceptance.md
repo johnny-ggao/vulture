@@ -86,6 +86,18 @@ GitHub Actions runs the same bundle through
 [.github/workflows/harness.yml](/Users/johnny/Work/vulture/.github/workflows/harness.yml)
 and uploads `.artifacts/acceptance` on every run.
 
+Manual GitHub Actions runs can also execute the desktop E2E smoke lane without
+changing the default PR/push CI path:
+
+1. Open the `Harness` workflow in GitHub Actions.
+2. Select `Run workflow`.
+3. Set `runDesktopE2E` to `true`.
+4. Start the run to execute `bun run harness:desktop-e2e -- --tag smoke` on
+   `macos-latest`.
+
+When `runDesktopE2E` stays `false`, the manual run behaves like the default CI
+path and only runs the `harness` job.
+
 ## Desktop E2E
 
 Desktop E2E launches the real Tauri shell through `cargo tauri dev` and drives

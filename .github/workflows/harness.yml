@@ -5,6 +5,13 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      runDesktopE2E:
+        description: Run desktop E2E lane
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   harness:
@@ -30,4 +37,33 @@ jobs:
         with:
           name: acceptance-artifacts
           path: .artifacts/acceptance
+          if-no-files-found: ignore
+
+  desktop-e2e:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.runDesktopE2E == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Tauri driver
+        run: cargo install tauri-driver --locked
+
+      - name: Run desktop E2E smoke lane
+        run: bun run harness:desktop-e2e -- --tag smoke
+
+      - name: Upload desktop E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-e2e-artifacts
+          path: .artifacts/desktop-e2e
           if-no-files-found: ignore
