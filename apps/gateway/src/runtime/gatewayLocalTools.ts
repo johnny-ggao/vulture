@@ -150,7 +150,7 @@ async function executeLocalTool(
       requireApproval(call, "sessions_send requires approval");
       return requireSessions(deps).send(call);
     case "sessions_spawn":
-      requireApproval(call, "sessions_spawn requires approval");
+      requireApproval(call, sessionsSpawnApprovalReason(call.input));
       return requireSessions(deps).spawn(call);
     case "sessions_yield":
       return requireSessions(deps).yield(call);
@@ -385,6 +385,24 @@ function requireApproval(call: Parameters<ToolCallable>[0], message: string): vo
   if (!call.approvalToken) {
     throw new ToolCallError("tool.permission_denied", message);
   }
+}
+
+function sessionsSpawnApprovalReason(input: unknown): string {
+  const value = isRecord(input) ? input : {};
+  const label = stringField(value, "label") || stringField(value, "agentId") || "子智能体";
+  const title = stringField(value, "title") || stringField(value, "message");
+  return title ? `建议开启子智能体 ${label}：${title}` : `建议开启子智能体 ${label}`;
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  const field = value[key];
+  if (typeof field !== "string") return undefined;
+  const trimmed = field.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function resolveToolPath(workspacePath: string, value: unknown): string {

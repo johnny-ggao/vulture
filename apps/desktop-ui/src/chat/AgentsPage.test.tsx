@@ -192,7 +192,10 @@ describe("AgentsPage — edit modal", () => {
     );
     openEditModal();
     fireEvent.click(screen.getByRole("tab", { name: "工具" }));
-    fireEvent.click(screen.getByLabelText("委派给 Researcher"));
+    expect(screen.getByText("可用子智能体")).toBeTruthy();
+    expect(screen.getByText("主智能体会自主判断是否建议开启，用户确认后才会创建子智能体。")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("允许建议开启 Researcher"));
     fireEvent.click(screen.getByRole("button", { name: /^保存/ }));
 
     const [, patch] = onSave.mock.calls[0]!;

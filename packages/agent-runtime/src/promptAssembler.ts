@@ -131,7 +131,10 @@ function formatHandoffs(handoffs: readonly PromptHandoffAgent[]): string {
     return "No handoff agents are configured.";
   }
   return [
-    "Use `sessions_spawn` with the target `agentId` only when delegated work is independent and useful.",
+    "Decide autonomously whether a subagent is useful. The user does not need to manually request or name a subagent.",
+    "Use `sessions_spawn` with the target `agentId` only when the work is independent, parallelizable, and worth the added coordination.",
+    "Before calling `sessions_spawn`, make the title and message explain the proposed delegation; the approval card is the user confirmation.",
+    "If the user denies the approval, continue with the task yourself or explain the limitation briefly.",
     ...handoffs.map((agent) =>
       `- agentId: ${agent.id}; name: ${agent.name}; description: ${agent.description || "No description"}`,
     ),

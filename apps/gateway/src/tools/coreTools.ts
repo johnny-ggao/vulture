@@ -310,7 +310,7 @@ function sessionsSpawnTool(): GatewayToolSpec {
     category: "sessions",
     risk: "approval",
     idempotent: false,
-    needsApproval: () => ({ needsApproval: true, reason: "sessions_spawn requires approval" }),
+    needsApproval: (_ctx, input) => sessionsSpawnApprovalDecision(input),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "sessions_spawn", input),
   };
 }
@@ -469,7 +469,7 @@ export function coreToolApprovalDecision(
     case "sessions_send":
       return { needsApproval: true, reason: "sessions_send requires approval" };
     case "sessions_spawn":
-      return { needsApproval: true, reason: "sessions_spawn requires approval" };
+      return sessionsSpawnApprovalDecision(input);
     case "memory_append":
       return { needsApproval: true, reason: "memory_append requires approval" };
     case "browser.snapshot":
@@ -483,6 +483,27 @@ export function coreToolApprovalDecision(
     default:
       return { needsApproval: false };
   }
+}
+
+function sessionsSpawnApprovalDecision(input: unknown): GatewayToolApprovalDecision {
+  const value = isObjectRecord(input) ? input : {};
+  const label = stringField(value, "label") || stringField(value, "agentId") || "子智能体";
+  const title = stringField(value, "title") || stringField(value, "message");
+  return {
+    needsApproval: true,
+    reason: title ? `建议开启子智能体 ${label}：${title}` : `建议开启子智能体 ${label}`,
+  };
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  const field = value[key];
+  if (typeof field !== "string") return undefined;
+  const trimmed = field.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function pathReadApprovalDecision(

@@ -75,6 +75,9 @@ describe("promptAssembler", () => {
     expect(text).toContain("### Available Handoffs");
     expect(text).toContain("researcher");
     expect(text).toContain("sessions_spawn");
+    expect(text).toContain("Decide autonomously whether a subagent is useful");
+    expect(text).toContain("The user does not need to manually request or name a subagent");
+    expect(text).toContain("the approval card is the user confirmation");
     rmSync(dir, { recursive: true });
   });
 });

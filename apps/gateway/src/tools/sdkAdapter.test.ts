@@ -204,4 +204,22 @@ describe("sdkApprovalDecision", () => {
       reason: "browser.click requires browser approval",
     });
   });
+
+  test("explains subagent spawn approvals as agent suggestions", () => {
+    expect(
+      sdkApprovalDecision(
+        "sessions_spawn",
+        {
+          agentId: "researcher",
+          label: "Researcher",
+          title: "Investigate Openclaw tools",
+          message: "Compare the Openclaw tool system with Vulture.",
+        },
+        "/tmp/work",
+      ),
+    ).toEqual({
+      needsApproval: true,
+      reason: "建议开启子智能体 Researcher：Investigate Openclaw tools",
+    });
+  });
 });

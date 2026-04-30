@@ -76,8 +76,8 @@ export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: Tools
       </section>
       <section className="agent-handoff-config">
         <div className="agent-handoff-head">
-          <h3>可委派智能体</h3>
-          <p>这些目标会进入运行提示，模型可通过 sessions_spawn 委派独立工作。</p>
+          <h3>可用子智能体</h3>
+          <p>主智能体会自主判断是否建议开启，用户确认后才会创建子智能体。</p>
         </div>
         {handoffCandidates.length === 0 ? (
           <div className="tool-group-empty">没有其他智能体可选</div>
@@ -90,7 +90,7 @@ export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: Tools
                   <input
                     type="checkbox"
                     checked={checked}
-                    aria-label={`委派给 ${agent.name}`}
+                    aria-label={`允许建议开启 ${agent.name}`}
                     onChange={(event) => {
                       const next = event.target.checked
                         ? [...draft.handoffAgentIds, agent.id]
