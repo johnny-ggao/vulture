@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
-import { AgentAvatar, useCursorGloss } from "./components";
+import { ChatAgentHeader } from "./ChatAgentHeader";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
@@ -48,30 +48,15 @@ export function ChatView(props: ChatViewProps) {
     ?? props.agents[0]
     ?? null;
   const showAgentHeader = hasContent && activeAgent;
-  const statusLabel = runStatusLabel(props.runStatus, props.resumingRun);
-
-  // Shared cursor-tracked gloss — same idiom as AgentCard / SkillCard.
-  const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
 
   return (
     <main className="chat-main">
       {showAgentHeader ? (
-        <div
-          className="chat-agent-header"
-          ref={headerRef}
-          {...headerGloss}
-        >
-          <AgentAvatar agent={activeAgent} size={28} shape="square" />
-          <div className="chat-agent-meta">
-            <span className="chat-agent-name">{activeAgent.name}</span>
-            {running ? (
-              <span className="chat-agent-status" aria-live="polite">
-                <span className="chat-agent-status-dot" aria-hidden="true" />
-                {statusLabel}
-              </span>
-            ) : null}
-          </div>
-        </div>
+        <ChatAgentHeader
+          agent={activeAgent}
+          runStatus={props.runStatus}
+          resuming={props.resumingRun}
+        />
       ) : null}
       {props.runStatus === "reconnecting" ? (
         <div className="status-banner info" role="status" aria-live="polite">
@@ -148,37 +133,6 @@ export function ChatView(props: ChatViewProps) {
       </section>
     </main>
   );
-}
-
-/**
- * Map a `RunStreamStatus` to a Chinese label for the chat header status
- * pill. Exhaustive over the union — adding a new status will surface a
- * TypeScript error at the `_exhaustive` line so we don't silently fall
- * through to "处理中".
- */
-function runStatusLabel(
-  status: RunStreamStatus,
-  resuming: boolean,
-): string {
-  if (resuming) return "恢复中";
-  switch (status) {
-    case "streaming":    return "回应中";
-    case "reconnecting": return "重连中";
-    case "recoverable":  return "等待恢复";
-    case "connecting":   return "连接中";
-    // Terminal / quiescent states never display the indicator (the call
-    // site gates on `running`), but listing them here makes the switch
-    // exhaustive: a new RunStreamStatus value would fail to compile.
-    case "idle":
-    case "succeeded":
-    case "failed":
-    case "cancelled":
-      return "处理中";
-    default: {
-      const _exhaustive: never = status;
-      return _exhaustive;
-    }
-  }
 }
 
 function ReconnectIcon() {
