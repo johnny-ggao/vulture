@@ -5,7 +5,7 @@ const TERMINAL_STATUSES = new Set<RunStreamStatus>(["succeeded", "failed", "canc
 export function retainedRunEventsForTerminalRun(
   events: ReadonlyArray<AnyRunEvent>,
 ): AnyRunEvent[] {
-  return events.filter((event) => event.type.startsWith("tool."));
+  return events.filter((event) => event.type.startsWith("tool.") || event.type === "run.failed");
 }
 
 export function visibleRunEventsForChat(opts: {

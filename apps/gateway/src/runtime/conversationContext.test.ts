@@ -60,6 +60,9 @@ describe("conversationContext", () => {
     expect(text).toContain("recent 2");
     expect(text).toContain("trimmed after summary");
     expect(text).toContain("what is project code?");
+    expect(text).not.toContain("providerData");
+    expect(text).not.toContain("messageId");
+    expect(text).not.toContain("message_id");
   });
 
   test("returns recent history plus new items without synthetic summary when no summary exists", async () => {
@@ -73,8 +76,52 @@ describe("conversationContext", () => {
       [msg("user", "new", "m-3")],
     );
 
-    expect(shaped).toEqual([msg("assistant", "recent", "m-2"), msg("user", "new", "m-3")]);
+    expect(JSON.stringify(shaped)).toBe(JSON.stringify([
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "recent" }],
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "new" }],
+      },
+    ]));
     expect(JSON.stringify(shaped)).not.toContain("Conversation context summary:");
+  });
+
+  test("strips local provider metadata before returning session input to the SDK", async () => {
+    const callback = buildConversationSessionInputCallback({
+      getContext: () => null,
+      recentMessageLimit: 6,
+    });
+
+    const shaped = await callback(
+      [
+        {
+          type: "message",
+          role: "user",
+          providerData: { messageId: "m-1", message_id: "m-1" },
+          content: [{ type: "input_text", text: "old" }],
+        } as unknown as AgentInputItem,
+      ],
+      [
+        {
+          type: "message",
+          role: "user",
+          providerData: { messageId: "m-2", item_id: "m-2" },
+          content: [{ type: "input_text", text: "new" }],
+        } as unknown as AgentInputItem,
+      ],
+    );
+
+    expect(JSON.stringify(shaped)).toBe(
+      JSON.stringify([
+        { type: "message", role: "user", content: [{ type: "input_text", text: "old" }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "new" }] },
+      ]),
+    );
   });
 
   test("keeps recent tail when summarizedThroughMessageId is missing", async () => {

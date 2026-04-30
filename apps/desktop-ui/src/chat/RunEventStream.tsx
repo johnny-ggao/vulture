@@ -7,6 +7,7 @@ import { RecoveryCard } from "./RecoveryCard";
 
 export type RunBlock =
   | { kind: "text"; content: string; firstSeq: number; usage?: TokenUsageDto }
+  | { kind: "run-error"; message: string; code: string; firstSeq: number }
   | { kind: "recovery"; message: string; reason: string; firstSeq: number }
   | { kind: "recovery-boundary"; firstSeq: number }
   | {
@@ -129,6 +130,16 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         blocks.push({ kind: "recovery-boundary", firstSeq: e.seq });
         break;
       }
+      case "run.failed": {
+        const error = e.error as { code?: unknown; message?: unknown } | undefined;
+        blocks.push({
+          kind: "run-error",
+          message: typeof error?.message === "string" ? error.message : "Run failed.",
+          code: typeof error?.code === "string" ? error.code : "internal",
+          firstSeq: e.seq,
+        });
+        break;
+      }
       case "run.usage": {
         const usage = normalizeUsage(e.usage);
         if (!usage) break;
@@ -138,7 +149,7 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         }
         break;
       }
-      // run.started / run.completed / run.failed / run.cancelled produce no inline block
+      // run.started / run.completed / run.cancelled produce no inline block
     }
   }
 
@@ -216,6 +227,15 @@ export function RunEventStream(props: RunEventStreamProps) {
               content={b.content}
               usage={b.usage}
               streaming={Boolean(props.streaming) && i === lastTextIdx}
+            />
+          );
+        }
+        if (b.kind === "run-error") {
+          return (
+            <MessageBubble
+              key={`run-error-${b.firstSeq}`}
+              role="assistant"
+              content={`运行失败：${b.message}`}
             />
           );
         }
