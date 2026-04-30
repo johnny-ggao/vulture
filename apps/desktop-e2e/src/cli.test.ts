@@ -230,6 +230,7 @@ describe("desktop e2e cli", () => {
 
     const exitCode = await main(["--scenario", "launch-smoke"], {
       cwd: packageCwd,
+      write: () => {},
       writeError: (message) => {
         throw new Error(`did not expect stderr output: ${message}`);
       },

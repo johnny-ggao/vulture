@@ -102,8 +102,8 @@ with `VULTURE_DESKTOP_E2E_ARTIFACT_DIR`. Each scenario artifact directory
 contains:
 
 - `summary.json` - per-scenario status and step results.
-- `dom.html` - most recent DOM snapshot captured by the desktop driver.
-- `screenshots/` - PNG screenshots captured by scenario steps.
+- `dom.html` - present when a capture step runs; stores the most recent DOM snapshot captured by the desktop driver.
+- `screenshots/` - present when capture steps run; stores PNG screenshots captured by scenario steps.
 - `logs/` - stdout/stderr logs for `tauri-driver` and `cargo tauri dev`.
 
 The suite root also writes:

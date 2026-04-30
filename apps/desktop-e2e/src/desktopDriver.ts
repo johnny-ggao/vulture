@@ -1,12 +1,13 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { startProcess, type ManagedProcess, type StartProcessOptions } from "./processes";
+import { startProcess, type ManagedProcess, type ProcessExitResult, type StartProcessOptions } from "./processes";
 import type { DesktopDriver, DesktopDriverContext } from "./runner";
 import { WebDriverClient } from "./webdriver";
 
 const POLL_INTERVAL_MS = 250;
-const CHAT_TEXTAREA_SELECTOR = "textarea";
+const DEFAULT_CLEANUP_TIMEOUT_MS = 2_000;
+const CHAT_TEXTAREA_SELECTOR = 'textarea[placeholder*="输入问题"]';
 const SEND_BUTTON_XPATH = `//button[@aria-label="发送" or normalize-space(.)="发送"]`;
 
 interface WebDriverLike {
@@ -29,6 +30,14 @@ export interface RealDesktopDriverDependencies {
   createWebDriver?: (baseUrl: string) => WebDriverLike;
   now?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  cleanupTimeoutMs?: number;
+}
+
+interface ProcessExitState {
+  process: ManagedProcess;
+  settled: boolean;
+  result: ProcessExitResult | null;
+  observedExit: Promise<ProcessExitResult>;
 }
 
 export class RealDesktopDriver implements DesktopDriver {
@@ -36,9 +45,12 @@ export class RealDesktopDriver implements DesktopDriver {
   readonly #webdriver;
   readonly #now;
   readonly #sleep;
+  readonly #cleanupTimeoutMs;
   readonly #options;
   #app: ManagedProcess | null = null;
+  #appExitState: ProcessExitState | null = null;
   #driver: ManagedProcess | null = null;
+  #driverExitState: ProcessExitState | null = null;
   #shutdownPromise: Promise<void> | null = null;
 
   constructor(options: RealDesktopDriverOptions, dependencies: RealDesktopDriverDependencies = {}) {
@@ -47,6 +59,7 @@ export class RealDesktopDriver implements DesktopDriver {
     this.#webdriver = (dependencies.createWebDriver ?? ((baseUrl) => new WebDriverClient(baseUrl)))(options.webdriverUrl);
     this.#now = dependencies.now ?? Date.now;
     this.#sleep = dependencies.sleep ?? sleepWithAbort;
+    this.#cleanupTimeoutMs = dependencies.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
   }
 
   async launchApp(context: DesktopDriverContext): Promise<void> {
@@ -63,6 +76,7 @@ export class RealDesktopDriver implements DesktopDriver {
       cwd: this.#options.repoRoot,
       logsDir: context.artifacts.logsDir,
     });
+    this.#driverExitState = trackProcessExit(this.#driver);
 
     this.#app = this.#startProcess({
       name: "cargo-tauri-dev",
@@ -75,8 +89,9 @@ export class RealDesktopDriver implements DesktopDriver {
         VULTURE_MEMORY_SUGGESTIONS: "0",
       },
     });
+    this.#appExitState = trackProcessExit(this.#app);
 
-    await this.#retry(context, () => this.#webdriver.createSession({ browserName: "wry" }));
+    await this.#retry(context, () => this.#createSessionWhileWatchingProcesses());
   }
 
   async waitForChatReady(context: DesktopDriverContext): Promise<void> {
@@ -142,16 +157,21 @@ export class RealDesktopDriver implements DesktopDriver {
       const errors: Error[] = [];
 
       try {
-        await this.#webdriver.deleteSession();
+        await withTimeout(
+          this.#webdriver.deleteSession(),
+          this.#cleanupTimeoutMs,
+          "deleting WebDriver session",
+        );
       } catch (error) {
         errors.push(toError(error));
       }
 
       const app = this.#app;
       this.#app = null;
+      this.#appExitState = null;
       if (app) {
         try {
-          await app.stop();
+          await this.#stopProcessWithinTimeout(app);
         } catch (error) {
           errors.push(toError(error));
         }
@@ -159,9 +179,10 @@ export class RealDesktopDriver implements DesktopDriver {
 
       const driver = this.#driver;
       this.#driver = null;
+      this.#driverExitState = null;
       if (driver) {
         try {
-          await driver.stop();
+          await this.#stopProcessWithinTimeout(driver);
         } catch (error) {
           errors.push(toError(error));
         }
@@ -184,6 +205,9 @@ export class RealDesktopDriver implements DesktopDriver {
       try {
         return await operation();
       } catch (error) {
+        if (isNonRetryableError(error)) {
+          throw error;
+        }
         lastError = error;
       }
 
@@ -195,6 +219,62 @@ export class RealDesktopDriver implements DesktopDriver {
 
       await this.#sleep(Math.min(POLL_INTERVAL_MS, remainingMs), context.signal);
     }
+  }
+
+  async #createSessionWhileWatchingProcesses(): Promise<string> {
+    const watched = [this.#driverExitState, this.#appExitState].filter((state): state is ProcessExitState => state !== null);
+    await Promise.resolve();
+    const exited = watched.find((state) => state.settled && state.result) ?? null;
+    if (exited?.result) {
+      throw createProcessExitError(exited.process, exited.result.exitCode);
+    }
+
+    const sessionAttempt = await Promise.race([
+      this.#webdriver.createSession({ browserName: "wry" }).then(
+        (sessionId) => ({ kind: "session" as const, sessionId }),
+        (error) => ({ kind: "error" as const, error }),
+      ),
+      ...watched.map((state) =>
+        state.observedExit.then((result) => ({
+          kind: "process-exit" as const,
+          process: state.process,
+          result,
+        })),
+      ),
+    ]);
+
+    switch (sessionAttempt.kind) {
+      case "session":
+        return sessionAttempt.sessionId;
+      case "error":
+        throw sessionAttempt.error;
+      case "process-exit":
+        throw createProcessExitError(sessionAttempt.process, sessionAttempt.result.exitCode);
+      default:
+        sessionAttempt satisfies never;
+        throw new Error("Unknown session readiness result");
+    }
+  }
+
+  async #stopProcessWithinTimeout(process: ManagedProcess): Promise<void> {
+    try {
+      await withTimeout(
+        process.stop("SIGTERM"),
+        this.#cleanupTimeoutMs,
+        `stopping ${process.name} with SIGTERM`,
+      );
+      return;
+    } catch (error) {
+      if (!isTimeoutError(error)) {
+        throw error;
+      }
+    }
+
+    await withTimeout(
+      process.stop("SIGKILL"),
+      this.#cleanupTimeoutMs,
+      `stopping ${process.name} with SIGKILL`,
+    );
   }
 
   #throwIfAborted(context: DesktopDriverContext): void {
@@ -212,7 +292,7 @@ export class RealDesktopDriver implements DesktopDriver {
 
 function navigationButtonXPath(label: string): string {
   const literal = xpathLiteral(label);
-  return `//button[@aria-label=${literal} or normalize-space(.)=${literal} or .//*[normalize-space(.)=${literal}]]`;
+  return `//aside[@aria-label="主导航"]//button[@aria-label=${literal} or normalize-space(.)=${literal} or .//*[normalize-space(.)=${literal}]]`;
 }
 
 function xpathLiteral(value: string): string {
@@ -246,6 +326,62 @@ function toError(error: unknown): Error {
   }
 
   return new Error(error === undefined ? "Unknown error" : String(error));
+}
+
+function formatEarlyExitError(process: ManagedProcess, exitCode: number): string {
+  return `${process.name} exited before WebDriver session was ready with exit code ${exitCode}. Logs: stdout=${process.stdoutLogPath} stderr=${process.stderrLogPath}`;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.name === "TimeoutError";
+}
+
+function isNonRetryableError(error: unknown): boolean {
+  return error instanceof Error && error.name === "ProcessExitError";
+}
+
+function createProcessExitError(process: ManagedProcess, exitCode: number): Error {
+  const error = new Error(formatEarlyExitError(process, exitCode));
+  error.name = "ProcessExitError";
+  return error;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          const error = new Error(`Timed out after ${timeoutMs}ms while ${label}`);
+          error.name = "TimeoutError";
+          reject(error);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
+function trackProcessExit(process: ManagedProcess): ProcessExitState {
+  const state: ProcessExitState = {
+    process,
+    settled: false,
+    result: null,
+    observedExit: Promise.resolve({ exitCode: 0 }),
+  };
+
+  state.observedExit = process.exit.then((result) => {
+    state.settled = true;
+    state.result = result;
+    return result;
+  });
+
+  return state;
 }
 
 async function sleepWithAbort(ms: number, signal: AbortSignal): Promise<void> {
