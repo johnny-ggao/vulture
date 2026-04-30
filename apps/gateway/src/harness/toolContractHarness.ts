@@ -93,22 +93,31 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
     maxBytes: null,
   }), { url: 1, maxBytes: null }),
   fixture("sessions_list", "sessions", "safe", true, false, () => ({
+    parentConversationId: null,
+    parentRunId: null,
+    agentId: null,
     limit: null,
   }), { limit: "many" }),
   fixture("sessions_history", "sessions", "safe", true, false, () => ({
-    conversationId: "c-1",
+    sessionId: "sub-1",
+    conversationId: null,
     limit: null,
-  }), { conversationId: null, limit: null }),
+  }), { sessionId: 1, conversationId: null, limit: null }),
   fixture("sessions_send", "sessions", "approval", false, true, () => ({
-    conversationId: "c-1",
+    sessionId: "sub-1",
+    conversationId: null,
     message: "hello",
-  }), { conversationId: "c-1" }),
+  }), { sessionId: "sub-1", conversationId: null }),
   fixture("sessions_spawn", "sessions", "approval", false, true, () => ({
     agentId: null,
     title: null,
+    label: null,
     message: null,
   }), { agentId: 1, title: null, message: null }),
   fixture("sessions_yield", "sessions", "safe", true, false, () => ({
+    parentConversationId: null,
+    parentRunId: null,
+    limit: null,
     message: null,
   }), { message: 1 }),
   fixture("update_plan", "agents", "safe", true, false, () => ({

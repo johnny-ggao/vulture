@@ -48,22 +48,31 @@ const webFetchParameters = z.object({
   maxBytes: z.number().int().positive().nullable(),
 });
 const sessionsListParameters = z.object({
+  parentConversationId: z.string().nullable(),
+  parentRunId: z.string().nullable(),
+  agentId: z.string().nullable(),
   limit: z.number().int().positive().nullable(),
 });
 const sessionsHistoryParameters = z.object({
-  conversationId: z.string(),
+  sessionId: z.string().nullable(),
+  conversationId: z.string().nullable(),
   limit: z.number().int().positive().nullable(),
 });
 const sessionsSendParameters = z.object({
-  conversationId: z.string(),
+  sessionId: z.string().nullable(),
+  conversationId: z.string().nullable(),
   message: z.string(),
 });
 const sessionsSpawnParameters = z.object({
   agentId: z.string().nullable(),
   title: z.string().nullable(),
+  label: z.string().nullable(),
   message: z.string().nullable(),
 });
 const sessionsYieldParameters = z.object({
+  parentConversationId: z.string().nullable(),
+  parentRunId: z.string().nullable(),
+  limit: z.number().int().positive().nullable(),
   message: z.string().nullable(),
 });
 const updatePlanParameters = z.object({
@@ -247,7 +256,7 @@ function sessionsListTool(): GatewayToolSpec {
     id: "sessions_list",
     sdkName: "sessions_list",
     label: "Sessions List",
-    description: "List recent conversations/sessions.",
+    description: "List durable subagent sessions for the current parent run/conversation, optionally filtered.",
     parameters: sessionsListParameters,
     source: "core",
     category: "sessions",
@@ -263,7 +272,7 @@ function sessionsHistoryTool(): GatewayToolSpec {
     id: "sessions_history",
     sdkName: "sessions_history",
     label: "Sessions History",
-    description: "Read recent messages from a conversation/session.",
+    description: "Read recent messages from a durable subagent session or conversation.",
     parameters: sessionsHistoryParameters,
     source: "core",
     category: "sessions",
@@ -279,7 +288,7 @@ function sessionsSendTool(): GatewayToolSpec {
     id: "sessions_send",
     sdkName: "sessions_send",
     label: "Sessions Send",
-    description: "Send a message to another conversation/session and start a run.",
+    description: "Send a message to a durable subagent session or conversation and start a run.",
     parameters: sessionsSendParameters,
     source: "core",
     category: "sessions",
@@ -295,7 +304,7 @@ function sessionsSpawnTool(): GatewayToolSpec {
     id: "sessions_spawn",
     sdkName: "sessions_spawn",
     label: "Sessions Spawn",
-    description: "Create a conversation/session, optionally sending an initial message.",
+    description: "Create a durable subagent session under the current run, optionally sending an initial message.",
     parameters: sessionsSpawnParameters,
     source: "core",
     category: "sessions",
@@ -311,7 +320,7 @@ function sessionsYieldTool(): GatewayToolSpec {
     id: "sessions_yield",
     sdkName: "sessions_yield",
     label: "Sessions Yield",
-    description: "Check active spawned/session runs.",
+    description: "Check active durable subagent sessions and child runs for the current parent run/conversation.",
     parameters: sessionsYieldParameters,
     source: "core",
     category: "sessions",
