@@ -8,7 +8,6 @@ import {
   type LlmCallable,
   type LlmRecoveryInput,
   type ToolCallable,
-  ToolCallError,
 } from "@vulture/agent-runtime";
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
@@ -116,7 +115,13 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       attachments: args.attachments,
       workspacePath: args.workspacePath,
       llm: deps.llm,
-      tools: wrapToolCallableWithRuntimeHooks(deps.tools, deps.runtimeHooks),
+      // Runtime hooks for tool calls live in sdkAdapter (the SDK execute path).
+      // The SDK bypasses runner.args.tools, so any hook wiring here would only
+      // fire for non-SDK LLM providers. Keeping a single trigger point avoids
+      // double-emission and concentrates policy on the layer closest to actual
+      // tool execution. Non-SDK providers that bypass the SDK must trigger
+      // tool.beforeCall / tool.afterCall themselves.
+      tools: deps.tools,
       recovery: args.recovery,
       session: args.session,
       sessionInputCallback: args.sessionInputCallback,
@@ -287,70 +292,6 @@ function hookContext(args: OrchestrateArgs) {
     agentId: args.agentId,
     model: args.model,
     workspacePath: args.workspacePath,
-  };
-}
-
-function wrapToolCallableWithRuntimeHooks(
-  tools: ToolCallable,
-  hooks: RuntimeHookRunner | undefined,
-): ToolCallable {
-  if (!hooks) return tools;
-  return async (call) => {
-    const before = await hooks.runToolBeforeCall(
-      {
-        runId: call.runId,
-        workspacePath: call.workspacePath,
-        callId: call.callId,
-        toolId: call.tool,
-        input: call.input,
-      },
-      {
-        runId: call.runId,
-        workspacePath: call.workspacePath,
-      },
-    );
-    const input = before.input;
-    if (before.blocked) {
-      await hooks.emit("tool.afterCall", {
-        runId: call.runId,
-        workspacePath: call.workspacePath,
-        callId: call.callId,
-        toolId: call.tool,
-        input,
-        outcome: "blocked",
-        durationMs: 0,
-        error: before.reason,
-      });
-      throw new ToolCallError("tool.permission_denied", before.reason ?? "tool blocked");
-    }
-
-    const startedAt = Date.now();
-    try {
-      const output = await tools({ ...call, input });
-      await hooks.emit("tool.afterCall", {
-        runId: call.runId,
-        workspacePath: call.workspacePath,
-        callId: call.callId,
-        toolId: call.tool,
-        input,
-        outcome: "completed",
-        durationMs: Date.now() - startedAt,
-        output,
-      });
-      return output;
-    } catch (err) {
-      await hooks.emit("tool.afterCall", {
-        runId: call.runId,
-        workspacePath: call.workspacePath,
-        callId: call.callId,
-        toolId: call.tool,
-        input,
-        outcome: "error",
-        durationMs: Date.now() - startedAt,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
   };
 }
 

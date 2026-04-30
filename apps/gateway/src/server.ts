@@ -68,6 +68,8 @@ import { ArtifactStore } from "./domain/artifactStore";
 import { makeOpenAIEmbeddingProvider } from "./runtime/openaiEmbeddings";
 import { McpClientManager } from "./runtime/mcpClientManager";
 import { createRuntimeHookRunner } from "./runtime/runtimeHooks";
+import { makePermissionPolicyHook } from "./runtime/permissionPolicyHook";
+import { makeArtifactAuditHooks } from "./runtime/artifactAuditHooks";
 
 export function buildServer(cfg: GatewayConfig): Hono {
   const dbPath = join(cfg.profileDir, "data.sqlite");
@@ -98,9 +100,31 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const attachmentStore = new AttachmentStore(db, cfg.profileDir);
   const runStore = new RunStore(db);
   const conversationContextStore = new ConversationContextStore(db);
+  // runtimeHooks is created below, but SubagentSessionStore needs to fire
+  // subagent.afterEnd through it. Bind via late-set ref to break the cycle.
+  let runtimeHooksRef: ReturnType<typeof createRuntimeHookRunner> | undefined;
   const subagentSessionStore = new SubagentSessionStore(db, {
     runs: runStore,
     messages: messageStore,
+    onStatusChange: ({ session, previousStatus }) => {
+      void runtimeHooksRef?.emit(
+        "subagent.afterEnd",
+        {
+          parentRunId: session.parentRunId,
+          sessionId: session.id,
+          status:
+            session.status === "completed" || session.status === "failed" || session.status === "cancelled"
+              ? session.status
+              : "completed",
+        },
+        {
+          runId: session.parentRunId,
+          conversationId: session.parentConversationId,
+          agentId: session.agentId,
+        },
+      );
+      void previousStatus;
+    },
   });
   const memoryStore = new MemoryStore(db);
   const mcpServerStore = new McpServerStore(db);
@@ -109,7 +133,11 @@ export function buildServer(cfg: GatewayConfig): Hono {
     join(cfg.profileDir, "policies", "permission-policies.json"),
   );
   const artifactStore = new ArtifactStore(join(cfg.profileDir, "artifacts", "index.json"));
-  const runtimeHooks = createRuntimeHookRunner();
+  const runtimeHooks = createRuntimeHookRunner([
+    makePermissionPolicyHook({ policies: permissionPolicyStore, runs: runStore }),
+    ...makeArtifactAuditHooks({ artifacts: artifactStore, runs: runStore }),
+  ]);
+  runtimeHooksRef = runtimeHooks;
   const mcpClientManager = new McpClientManager(mcpServerStore);
   const embedMemoryText = makeOpenAIEmbeddingProvider();
   const memoryFileStore = new MemoryFileStore({ db, legacy: memoryStore, embed: embedMemoryText });
@@ -156,6 +184,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     approvalQueue,
     cancelSignals,
     interactiveApprovalFallback: false,
+    runtimeHooks,
   });
   let llm: ReturnType<typeof makeLazyLlm>;
   let tools: ToolCallable;
@@ -349,13 +378,29 @@ export function buildServer(cfg: GatewayConfig): Hono {
           agentId,
           title,
         });
+        const label = subagentLabel(value, title, agentId);
         const session = subagentSessionStore.create({
           parentConversationId: parentRun.conversationId,
           parentRunId: parentRun.id,
           agentId,
           conversationId: conversation.id,
-          label: subagentLabel(value, title, agentId),
+          label,
         });
+        void runtimeHooksRef?.emit(
+          "subagent.beforeSpawn",
+          {
+            parentRunId: parentRun.id,
+            parentConversationId: parentRun.conversationId,
+            agentId,
+            label,
+            message: typeof value.message === "string" ? value.message : undefined,
+          },
+          {
+            runId: parentRun.id,
+            conversationId: parentRun.conversationId,
+            agentId,
+          },
+        );
         if (typeof value.message === "string" && value.message.length > 0) {
           const run = await startConversationRun(conversation.id, value.message);
           return {
@@ -455,6 +500,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
     approvalQueue,
     cancelSignals,
+    runtimeHooks,
   });
 
   llm = makeLazyLlm({

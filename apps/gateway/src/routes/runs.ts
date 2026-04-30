@@ -578,6 +578,7 @@ function addAssistantSessionItemIfMissing(
 function scheduleCompactionIfNeeded(
   deps: RunsDeps,
   input: {
+    runId: string;
     conversationId: string;
     agentId: string;
     model: string;
@@ -600,6 +601,8 @@ function scheduleCompactionIfNeeded(
       items,
       existingSummary: existing?.summary ?? null,
       llm: deps.noToolsLlm as LlmCallable,
+      runtimeHooks: deps.runtimeHooks,
+      runId: input.runId,
       upsertContext: (context) => {
         if (!deps.contexts) return;
         if (isRegressiveContextCutoff(deps.contexts, input.conversationId, context.summarizedThroughMessageId ?? null)) {

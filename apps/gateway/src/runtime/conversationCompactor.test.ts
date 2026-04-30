@@ -3,6 +3,7 @@ import type { AgentInputItem } from "@openai/agents";
 import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
 import { estimateSessionTextChars } from "./conversationContext";
 import { compactConversationContext } from "./conversationCompactor";
+import { createRuntimeHookRunner } from "./runtimeHooks";
 
 function msg(role: "user" | "assistant", text: string, id: string): AgentInputItem {
   return {
@@ -217,6 +218,93 @@ describe("compactConversationContext", () => {
     await compactConversationContext(input);
 
     expect(upserts).toEqual([]);
+  });
+
+  test("emits context.beforeCompact / context.afterCompact around the work", async () => {
+    const phases: string[] = [];
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "context.beforeCompact",
+        handler: () => {
+          phases.push("before");
+        },
+      },
+      {
+        name: "context.afterCompact",
+        handler: () => {
+          phases.push("after");
+        },
+      },
+    ]);
+
+    const { input } = baseInput({ runtimeHooks, runId: "r-compact" });
+    await compactConversationContext(input);
+
+    expect(phases).toEqual(["before", "after"]);
+  });
+
+  test("emits afterCompact even when summarization fails", async () => {
+    const phases: string[] = [];
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "context.beforeCompact",
+        handler: () => {
+          phases.push("before");
+        },
+      },
+      {
+        name: "context.afterCompact",
+        handler: () => {
+          phases.push("after");
+        },
+      },
+    ]);
+    const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      throw new Error("model unavailable");
+    });
+    const { input, upserts } = baseInput({ llm, runtimeHooks, runId: "r-fail" });
+
+    await compactConversationContext(input);
+
+    expect(upserts).toEqual([]);
+    expect(phases).toEqual(["before", "after"]);
+  });
+
+  test("does not emit hooks when there are no older items to compact", async () => {
+    const phases: string[] = [];
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "context.beforeCompact",
+        handler: () => {
+          phases.push("before");
+        },
+      },
+      {
+        name: "context.afterCompact",
+        handler: () => {
+          phases.push("after");
+        },
+      },
+    ]);
+    const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+      yield { kind: "final", text: "unused" };
+    });
+
+    await compactConversationContext({
+      conversationId: "c-1",
+      agentId: "a-1",
+      model: "gpt-5.4",
+      workspacePath: "/tmp/workspace",
+      items: [msg("user", "one", "m-1"), msg("assistant", "two", "m-2")],
+      recentMessageLimit: 2,
+      existingSummary: null,
+      llm,
+      upsertContext: () => {},
+      runtimeHooks,
+    });
+
+    expect(phases).toEqual([]);
+    expect(llm).not.toHaveBeenCalled();
   });
 
   test("final event overrides deltas if non-empty and empty final keeps accumulated deltas", async () => {

@@ -3,6 +3,7 @@ import type { PartialRunEvent } from "../domain/runStore";
 import { ApprovalTimeoutError, type ApprovalQueue } from "./approvalQueue";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 import type { SdkApprovalCallable } from "./openaiLlm";
+import type { RuntimeHookRunner } from "./runtimeHooks";
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -18,6 +19,8 @@ export interface ShellCallbackToolsOpts {
   callerPid?: number;
   /** Maximum time to wait for user approval before failing the tool call. */
   approvalTimeoutMs?: number;
+  /** Optional runtime hooks for emitting approval.required / approval.resolved. */
+  runtimeHooks?: RuntimeHookRunner;
   /**
    * Legacy non-SDK fallback: when true/default, a Rust `ask` response emits
    * tool.ask and blocks until /approvals resolves the in-memory queue.
@@ -166,6 +169,16 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           reason: body.reason,
           approvalToken: nextApprovalToken,
         });
+        void opts.runtimeHooks?.emit(
+          "approval.required",
+          {
+            runId: call.runId,
+            callId: call.callId,
+            toolId: call.tool,
+            reason: body.reason,
+          },
+          { runId: call.runId, workspacePath: call.workspacePath },
+        );
         const ac = opts.cancelSignals.get(call.runId);
         if (!ac) {
           throw new ToolCallError(
@@ -193,6 +206,17 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           }
           throw err;
         }
+        void opts.runtimeHooks?.emit(
+          "approval.resolved",
+          {
+            runId: call.runId,
+            callId: call.callId,
+            toolId: call.tool,
+            reason: body.reason,
+            decision,
+          },
+          { runId: call.runId, workspacePath: call.workspacePath },
+        );
         if (decision === "deny") {
           opts.appendEvent(call.runId, {
             type: "tool.failed",
@@ -238,6 +262,16 @@ export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkAppro
       reason: request.reason,
       approvalToken: request.approvalToken,
     });
+    void opts.runtimeHooks?.emit(
+      "approval.required",
+      {
+        runId: request.runId,
+        callId: request.callId,
+        toolId: request.tool,
+        reason: request.reason,
+      },
+      { runId: request.runId, workspacePath: request.workspacePath },
+    );
     const ac = opts.cancelSignals.get(request.runId);
     if (!ac) {
       throw new ToolCallError(
@@ -249,6 +283,17 @@ export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkAppro
       const decision = await opts.approvalQueue.wait(request.callId, ac.signal, {
         timeoutMs: opts.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS,
       });
+      void opts.runtimeHooks?.emit(
+        "approval.resolved",
+        {
+          runId: request.runId,
+          callId: request.callId,
+          toolId: request.tool,
+          reason: request.reason,
+          decision,
+        },
+        { runId: request.runId, workspacePath: request.workspacePath },
+      );
       if (decision === "deny") {
         opts.appendEvent(request.runId, {
           type: "tool.failed",

@@ -71,10 +71,26 @@ function genId(): string {
   return `sub-${crypto.randomUUID()}`;
 }
 
+export interface SubagentSessionStatusChange {
+  session: SubagentSession;
+  previousStatus: SubagentSessionStatus;
+}
+
+export interface SubagentSessionStoreDeps {
+  runs: RunStore;
+  messages: MessageStore;
+  /**
+   * Fires when refreshStatus observes a transition from "active" to a terminal
+   * status (completed / failed / cancelled). Best-effort; errors are caught by
+   * the caller's hook layer.
+   */
+  onStatusChange?: (change: SubagentSessionStatusChange) => void;
+}
+
 export class SubagentSessionStore {
   constructor(
     private readonly db: DB,
-    private readonly deps: { runs: RunStore; messages: MessageStore },
+    private readonly deps: SubagentSessionStoreDeps,
   ) {}
 
   create(input: CreateSubagentSessionInput): SubagentSession {
@@ -153,7 +169,20 @@ export class SubagentSessionStore {
         "UPDATE subagent_sessions SET status = ?, message_count = ?, updated_at = ? WHERE id = ?",
       )
       .run(status, messageCount, now, id);
-    return this.get(id);
+    const next = this.get(id);
+    if (
+      next &&
+      session.status === "active" &&
+      next.status !== "active" &&
+      this.deps.onStatusChange
+    ) {
+      try {
+        this.deps.onStatusChange({ session: next, previousStatus: session.status });
+      } catch {
+        // onStatusChange failures should not derail status reads.
+      }
+    }
+    return next;
   }
 
   private deriveStatus(conversationId: string): SubagentSessionStatus {

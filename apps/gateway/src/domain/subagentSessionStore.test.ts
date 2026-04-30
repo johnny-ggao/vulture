@@ -191,4 +191,75 @@ describe("SubagentSessionStore", () => {
     expect(stores.sessions.refreshStatus(session.id)?.status).toBe("cancelled");
     stores.cleanup();
   });
+
+  test("onStatusChange fires once when an active session reaches a terminal state", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-subagent-status-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    const conversations = new ConversationStore(db);
+    const messages = new MessageStore(db);
+    const runs = new RunStore(db);
+    const changes: Array<{ status: string; previousStatus: string }> = [];
+    const sessions = new SubagentSessionStore(db, {
+      runs,
+      messages,
+      onStatusChange: ({ session, previousStatus }) => {
+        changes.push({ status: session.status, previousStatus });
+      },
+    });
+    const parent = conversations.create({ agentId: "parent-agent", title: "Parent" });
+    const parentMsg = messages.append({
+      conversationId: parent.id,
+      role: "user",
+      content: "delegate",
+      runId: null,
+    });
+    const parentRun = runs.create({
+      conversationId: parent.id,
+      agentId: parent.agentId,
+      triggeredByMessageId: parentMsg.id,
+    });
+    const child = conversations.create({ agentId: "child-agent", title: "Child" });
+    const childMsg = messages.append({
+      conversationId: child.id,
+      role: "user",
+      content: "go",
+      runId: null,
+    });
+    const childRun = runs.create({
+      conversationId: child.id,
+      agentId: child.agentId,
+      triggeredByMessageId: childMsg.id,
+    });
+    runs.markRunning(childRun.id);
+
+    const session = sessions.create({
+      parentConversationId: parent.id,
+      parentRunId: parentRun.id,
+      agentId: child.agentId,
+      conversationId: child.id,
+      label: "Worker",
+    });
+
+    expect(sessions.refreshStatus(session.id)?.status).toBe("active");
+    expect(changes).toEqual([]);
+
+    const result = messages.append({
+      conversationId: child.id,
+      role: "assistant",
+      content: "done",
+      runId: childRun.id,
+    });
+    runs.markSucceeded(childRun.id, result.id);
+
+    expect(sessions.refreshStatus(session.id)?.status).toBe("completed");
+    expect(changes).toEqual([{ status: "completed", previousStatus: "active" }]);
+
+    // A second refresh on a non-active session should NOT re-fire the callback.
+    expect(sessions.refreshStatus(session.id)?.status).toBe("completed");
+    expect(changes).toHaveLength(1);
+
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
 });

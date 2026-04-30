@@ -2,6 +2,7 @@ import type { AgentInputItem } from "@openai/agents";
 import type { LlmCallable } from "@vulture/agent-runtime";
 import type { UpsertConversationContextInput } from "../domain/conversationContextStore";
 import { estimateSessionTextChars, messageIdFromItem, textFromItem } from "./conversationContext";
+import type { RuntimeHookRunner } from "./runtimeHooks";
 
 const DEFAULT_RECENT_MESSAGE_LIMIT = 6;
 const MAX_SUMMARY_CHARS = 2000;
@@ -16,6 +17,9 @@ export interface CompactConversationContextInput {
   existingSummary?: string | null;
   llm: LlmCallable;
   upsertContext: (input: UpsertConversationContextInput) => void | Promise<void>;
+  runtimeHooks?: RuntimeHookRunner;
+  /** Optional run id propagated to context.beforeCompact / afterCompact hooks. */
+  runId?: string;
 }
 
 export async function compactConversationContext(input: CompactConversationContextInput): Promise<void> {
@@ -23,6 +27,31 @@ export async function compactConversationContext(input: CompactConversationConte
   const olderItems = input.items.slice(0, Math.max(0, input.items.length - recentLimit));
   if (olderItems.length === 0) return;
 
+  const compactEvent = {
+    conversationId: input.conversationId,
+    agentId: input.agentId,
+    runId: input.runId,
+  };
+  const hookContext = {
+    runId: input.runId,
+    conversationId: input.conversationId,
+    agentId: input.agentId,
+    model: input.model,
+    workspacePath: input.workspacePath,
+  };
+  await input.runtimeHooks?.emit("context.beforeCompact", compactEvent, hookContext);
+
+  try {
+    return await runCompaction(input, olderItems);
+  } finally {
+    await input.runtimeHooks?.emit("context.afterCompact", compactEvent, hookContext);
+  }
+}
+
+async function runCompaction(
+  input: CompactConversationContextInput,
+  olderItems: readonly AgentInputItem[],
+): Promise<void> {
   let accumulated = "";
   let finalText: string | null = null;
   try {

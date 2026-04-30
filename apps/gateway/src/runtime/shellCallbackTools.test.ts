@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { makeShellCallbackTools } from "./shellCallbackTools";
+import { makeShellApprovalHandler, makeShellCallbackTools } from "./shellCallbackTools";
 import { ApprovalQueue } from "./approvalQueue";
 import { ToolCallError } from "@vulture/agent-runtime";
+import { createRuntimeHookRunner } from "./runtimeHooks";
 import type { PartialRunEvent } from "../domain/runStore";
 
 interface CallRecord {
@@ -338,6 +339,117 @@ describe("makeShellCallbackTools", () => {
       code: "tool.execution_failed",
       message: "boom",
     });
+  });
+
+  test("emits approval.required / approval.resolved hooks around the wait", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-1", new AbortController());
+    const calls: Array<{ phase: string; payload: unknown }> = [];
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "approval.required",
+        handler: (event) => {
+          calls.push({ phase: "required", payload: event });
+        },
+      },
+      {
+        name: "approval.resolved",
+        handler: (event) => {
+          calls.push({ phase: "resolved", payload: event });
+        },
+      },
+    ]);
+    const { fetchFn } = fakeFetchSequence([
+      {
+        status: 200,
+        body: {
+          status: "ask",
+          callId: "c1",
+          approvalToken: "tok-1",
+          reason: "outside workspace",
+        },
+      },
+      { status: 200, body: { status: "completed", callId: "c1", output: { ok: true } } },
+    ]);
+
+    const tools = makeShellCallbackTools({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: () => undefined,
+      approvalQueue: queue,
+      cancelSignals,
+      fetch: fetchFn,
+      runtimeHooks,
+    });
+
+    const promise = tools({
+      callId: "c1",
+      runId: "r-1",
+      tool: "shell.exec",
+      input: { argv: ["pwd"] },
+      workspacePath: "/tmp/work",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls.map((c) => c.phase)).toEqual(["required"]);
+    expect(queue.resolve("c1", "allow")).toBe(true);
+    await promise;
+
+    expect(calls.map((c) => c.phase)).toEqual(["required", "resolved"]);
+    expect(calls[0].payload).toMatchObject({
+      runId: "r-1",
+      callId: "c1",
+      toolId: "shell.exec",
+      reason: "outside workspace",
+    });
+    expect(calls[1].payload).toMatchObject({
+      decision: "allow",
+      callId: "c1",
+    });
+  });
+
+  test("makeShellApprovalHandler emits approval hooks for the SDK approval path", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-sdk", new AbortController());
+    const phases: string[] = [];
+    const runtimeHooks = createRuntimeHookRunner([
+      {
+        name: "approval.required",
+        handler: () => {
+          phases.push("required");
+        },
+      },
+      {
+        name: "approval.resolved",
+        handler: () => {
+          phases.push("resolved");
+        },
+      },
+    ]);
+
+    const handler = makeShellApprovalHandler({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: () => undefined,
+      approvalQueue: queue,
+      cancelSignals,
+      runtimeHooks,
+    });
+
+    const decisionPromise = handler({
+      callId: "c-sdk",
+      tool: "shell.exec",
+      input: { argv: ["pwd"] },
+      runId: "r-sdk",
+      workspacePath: "/tmp/work",
+      reason: "needs approval",
+      approvalToken: "tok-sdk",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(queue.resolve("c-sdk", "deny")).toBe(true);
+    expect(await decisionPromise).toBe("deny");
+    expect(phases).toEqual(["required", "resolved"]);
   });
 
   test("non-2xx HTTP throws ToolCallError(tool.execution_failed)", async () => {

@@ -288,6 +288,69 @@ describe("orchestrateRun recovery persistence", () => {
     }
   });
 
+  test("does not wrap the tool callable with runtime hooks (sdkAdapter is the single trigger point)", async () => {
+    const deps = freshDeps();
+    try {
+      const { conv, run, userInput } = createRunFixture(deps);
+      const hookCalls: string[] = [];
+      const runtimeHooks = createRuntimeHookRunner([
+        {
+          name: "tool.beforeCall",
+          handler: () => {
+            hookCalls.push("before");
+          },
+        },
+        {
+          name: "tool.afterCall",
+          handler: () => {
+            hookCalls.push("after");
+          },
+        },
+      ]);
+      const toolInvocations: string[] = [];
+      const tools: ToolCallable = mock(async (call) => {
+        toolInvocations.push(call.tool);
+        return { ok: true };
+      });
+      const llm: LlmCallable = mock(async function* (): AsyncGenerator<LlmYield, void, unknown> {
+        yield {
+          kind: "tool.plan",
+          callId: "call-1",
+          tool: "shell.exec",
+          input: { argv: ["pwd"] },
+        };
+        yield { kind: "await.tool", callId: "call-1" };
+        yield { kind: "final", text: "ok" };
+      });
+
+      await orchestrateRun(
+        {
+          runs: deps.runs,
+          messages: deps.messages,
+          conversations: deps.conversations,
+          llm,
+          tools,
+          cancelSignals: new Map(),
+          runtimeHooks,
+        },
+        {
+          runId: run.id,
+          agentId: "a-1",
+          model: "gpt-5.4",
+          systemPrompt: "main",
+          conversationId: conv.id,
+          userInput,
+          workspacePath: "/tmp/work",
+        },
+      );
+
+      expect(toolInvocations).toEqual(["shell.exec"]);
+      expect(hookCalls).toEqual([]);
+    } finally {
+      deps.cleanup();
+    }
+  });
+
   test("emits runtime lifecycle, model, checkpoint, and success hooks", async () => {
     const deps = freshDeps();
     try {
