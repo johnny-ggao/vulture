@@ -79,6 +79,8 @@ async fn main() -> Result<()> {
     .await?;
 
     // 6. Spawn Bun gateway as a background task with restart loop.
+    let default_workspace =
+        std::env::var_os("VULTURE_DESKTOP_DEFAULT_WORKSPACE").map(PathBuf::from);
     let spawn_spec = SpawnSpec {
         bun_bin: PathBuf::from("bun"),
         gateway_entry: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -94,6 +96,7 @@ async fn main() -> Result<()> {
         token,
         shell_pid: std::process::id(),
         profile_dir: profile_dir_handle,
+        default_workspace,
     };
     let restart_signal = app_state.restart_signal();
     let shutdown_signal = app_state.shutdown_signal();
