@@ -4,6 +4,7 @@ import { MessageBubble } from "./MessageBubble";
 import { ToolBlock, type ToolBlockStatus } from "./ToolBlock";
 import { ApprovalCard } from "./ApprovalCard";
 import { RecoveryCard } from "./RecoveryCard";
+import { RunErrorCard } from "./RunErrorCard";
 
 export type RunBlock =
   | { kind: "text"; content: string; firstSeq: number; usage?: TokenUsageDto }
@@ -25,6 +26,14 @@ export type RunBlock =
       callId: string;
       tool: string;
       reason: string;
+      /**
+       * Snapshot of the tool input at ask time. The gateway may emit
+       * `tool.planned` before `tool.ask` (with input populated) or send
+       * input alongside `tool.ask`; we prefer ask's own input but fall
+       * back to the planned-side snapshot when missing so the user
+       * always sees what's about to run.
+       */
+      input?: unknown;
       approvalToken: string;
       firstSeq: number;
     };
@@ -106,11 +115,21 @@ export function reduceRunEvents(events: readonly AnyRunEvent[]): RunBlock[] {
         const callId = String(e.callId);
         const idx = blocks.length;
         approvalIndex.set(callId, idx);
+        // Prefer the ask payload's own input; fall back to whatever
+        // tool.planned recorded if ask omitted it (some gateway versions
+        // do that to avoid duplicating large argv on every event).
+        const askInput = "input" in e && e.input !== undefined ? e.input : undefined;
+        const plannedIdx = toolIndex.get(callId);
+        const plannedBlock =
+          plannedIdx !== undefined ? blocks[plannedIdx] : undefined;
+        const plannedInput =
+          plannedBlock?.kind === "tool" ? plannedBlock.input : undefined;
         blocks.push({
           kind: "approval",
           callId,
           tool: String(e.tool ?? ""),
           reason: String(e.reason ?? ""),
+          input: askInput ?? plannedInput,
           approvalToken: String(e.approvalToken ?? ""),
           firstSeq: e.seq,
         });
@@ -232,10 +251,10 @@ export function RunEventStream(props: RunEventStreamProps) {
         }
         if (b.kind === "run-error") {
           return (
-            <MessageBubble
+            <RunErrorCard
               key={`run-error-${b.firstSeq}`}
-              role="assistant"
-              content={`运行失败：${b.message}`}
+              code={b.code}
+              message={b.message}
             />
           );
         }
@@ -276,6 +295,7 @@ export function RunEventStream(props: RunEventStreamProps) {
             callId={b.callId}
             tool={b.tool}
             reason={b.reason}
+            input={b.input}
             submitting={props.submittingApprovals.has(b.callId)}
             onDecide={props.onDecide}
           />

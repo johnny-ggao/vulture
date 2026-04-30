@@ -773,7 +773,16 @@ pre {
   padding: 10px 14px;
   border-radius: 14px;
 }
-.message.user .message-bubble pre { white-space: pre-wrap; }
+/* Legacy alias — user bubbles used to wrap content in <pre>. Now they
+ * wrap in <div class="message-text">; keep both selectors so any third-
+ * party message renderer that still uses <pre> doesn't lose wrapping. */
+.message.user .message-bubble pre,
+.message.user .message-bubble .message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin: 0;
+}
 .message.assistant .message-bubble { padding: 0; }
 
 /* Streaming caret — visible inside an actively-being-produced assistant
@@ -899,6 +908,16 @@ pre {
   background: var(--fill-tertiary);
   color: var(--text-primary);
 }
+/* User-text wrapper (replaces the old `<pre>` so user input doesn't
+ * render in monospace). The bubble's white-space rules already apply,
+ * but keeping a class lets us refine if we ever want a scroll cap. */
+.message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin: 0;
+}
+
 .message-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -908,31 +927,45 @@ pre {
 .message-attachment {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   max-width: 260px;
-  padding: 5px 7px;
+  padding: 6px 10px;
   border: 1px solid var(--fill-secondary);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   text-decoration: none;
   background: var(--bg-primary);
+  font-size: 12px;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
 }
-.message-attachment span {
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-weight: 700;
+.message-attachment:hover {
+  border-color: var(--text-tertiary);
+  background: var(--fill-quaternary);
 }
-.message-attachment strong {
+.message-attachment-icon {
+  display: inline-grid; place-items: center;
+  width: 18px; height: 18px;
+  border-radius: 4px;
+  background: var(--fill-quaternary);
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+.message-attachment-image .message-attachment-icon { color: var(--info); background: var(--info-bg); }
+.message-attachment-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
 }
-.message-attachment em {
+.message-attachment-size {
   color: var(--text-tertiary);
   font-size: 11px;
   font-style: normal;
   flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
 }
 .message-meta {
   margin-top: 6px;
@@ -1207,48 +1240,153 @@ pre {
   to   { opacity: 1; transform: translateY(0)   scale(1);     }
 }
 
+/* ----- Tool block ------------------------------------------------ */
+
 .tool-block {
   border: 1px solid var(--fill-tertiary);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   overflow: hidden;
-  font-size: 12px;
+  box-shadow: var(--shadow-card-rest);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
-.tool-block-head {
-  display: flex; align-items: center; gap: 8px;
+.tool-block:hover { border-color: var(--fill-secondary); }
+.tool-block-running { border-color: color-mix(in oklab, var(--info) 35%, var(--fill-tertiary)); }
+.tool-block-failed  { border-color: color-mix(in oklab, var(--danger) 32%, var(--fill-tertiary)); }
+.tool-block-completed { border-color: color-mix(in oklab, var(--success) 22%, var(--fill-tertiary)); }
+
+.tool-block-header {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 14px 18px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
   cursor: pointer;
   user-select: none;
+  text-align: left;
+  font: inherit;
+  min-height: 44px; /* touch target floor */
+}
+.tool-block-header:hover { background: var(--fill-quaternary); }
+.tool-block-chevron {
+  display: inline-grid; place-items: center;
+  color: var(--text-tertiary);
+}
+.tool-block-glyph {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   background: var(--fill-quaternary);
 }
-.tool-block-head .name { font-weight: 600; color: var(--text-primary); }
-.tool-block-head .preview {
-  flex: 1;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--text-secondary);
+.tool-block-glyph-shell { color: var(--brand-600); background: var(--brand-050); }
+.tool-block-glyph-file  { color: var(--info);      background: var(--info-bg); }
+.tool-block-glyph-web   { color: var(--text-secondary); }
+.tool-block-tool {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+.tool-block-input {
+  min-width: 0;
   font-family: var(--font-mono);
-}
-.tool-block-head .status { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); }
-.tool-block-head .status.planned  { background: var(--fill-tertiary);  color: var(--text-secondary); }
-.tool-block-head .status.running  { background: rgba(15,15,15,0.06);    color: var(--text-primary); }
-.tool-block-head .status.completed { background: var(--success-bg);  color: var(--success); }
-.tool-block-head .status.failed   { background: var(--danger-bg);       color: var(--danger); }
-
-.tool-block-body { padding: 10px 14px; border-top: 1px solid var(--fill-quaternary); }
-.tool-block-body section + section { margin-top: 8px; }
-.tool-block-body h5 {
-  font-size: 11px; font-weight: 600;
+  font-size: 11.5px;
   color: var(--text-tertiary);
-  text-transform: uppercase; letter-spacing: 0.06em;
-  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  padding: 0;
 }
-.tool-block-body pre {
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
-  color: var(--text-secondary);
+.tool-block-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+/* Spinner: a small ring rotating next to the running badge so the user
+ * has a kinetic cue beyond the static "运行中" pill. Respects reduced-
+ * motion (no rotation) via the global media query at the top of the file. */
+.tool-block-spinner {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--info);
+  border-top-color: transparent;
+  animation: tool-block-spin 700ms linear infinite;
+}
+@keyframes tool-block-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tool-block-body {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--fill-quaternary);
+  display: grid;
+  gap: 10px;
+}
+.tool-block-section {
+  display: grid;
+  gap: 4px;
+}
+.tool-block-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+}
+.tool-block-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tool-block-section-error .tool-block-section-label { color: var(--danger); }
+.tool-block-copy {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 0;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.tool-block-copy:hover { background: var(--fill-tertiary); color: var(--text-primary); }
+.tool-block-copy[data-copied="true"] { color: var(--success); }
+.tool-block-pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-primary);
   background: var(--fill-quaternary);
   padding: 8px 10px;
   border-radius: var(--radius-sm);
+  /* Clamp a long stdout / large JSON to a fixed line budget; the body
+   * scrolls within itself so a noisy tool can't push later messages off
+   * screen. The CSS custom property is set inline by ScrollPre so we can
+   * tune per-call later without touching every site. */
+  max-height: calc(var(--max-lines, 24) * 1em * 1.55 + 16px);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+.tool-block-section-error .tool-block-pre {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+/* ----- Subagent panel (existing) -------------------------------- */
+
 
 .subagent-panel {
   border: 1px solid var(--fill-tertiary);
@@ -1368,55 +1506,275 @@ pre {
   overflow-wrap: anywhere;
 }
 
+/* ----- Approval card -------------------------------------------- */
+
 .approval-card {
-  border: 1px solid color-mix(in oklab, var(--warning) 32%, transparent);
+  border: 1px solid color-mix(in oklab, var(--warning) 38%, transparent);
   background: var(--warning-bg);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
-  display: grid; gap: 8px;
+  padding: 14px 14px 12px;
+  display: grid; gap: 10px;
+  box-shadow: var(--shadow-card-rest);
 }
-.approval-card .head { font-weight: 600; font-size: 13px; color: var(--warning); display: inline-flex; align-items: center; gap: 8px; }
-.approval-card .reason { font-size: 13px; color: var(--text-secondary); }
-.approval-card .actions { display: inline-flex; gap: 6px; }
-.approval-card button {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--fill-secondary);
+.approval-card-header {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.approval-card-icon {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--warning) 24%, transparent);
+  color: var(--warning);
+}
+.approval-card-meta {
+  display: flex; align-items: baseline; gap: 8px;
+  min-width: 0;
+}
+.approval-card-meta strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--warning);
+  letter-spacing: -0.01em;
+}
+.approval-card-tool {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
   background: var(--bg-primary);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklab, var(--warning) 22%, transparent);
+  white-space: nowrap;
+}
+.approval-card-risk {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.approval-card-risk-high {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.approval-card-risk-medium {
+  background: color-mix(in oklab, var(--warning) 18%, transparent);
+  color: color-mix(in oklab, var(--warning) 70%, var(--text-primary));
+}
+
+.approval-card-reason {
+  font-size: 13px;
+  line-height: 1.55;
   color: var(--text-primary);
-  padding: 6px 12px;
+  margin: 0;
+}
+
+.approval-card-preview {
+  display: grid;
+  gap: 4px;
+  background: var(--bg-primary);
+  border: 1px solid color-mix(in oklab, var(--warning) 18%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.approval-card-preview-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.approval-card-preview-body {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: calc(8em * 1.55);
+  overflow: auto;
+}
+.approval-card-preview-fade {
+  color: var(--text-tertiary);
+  margin-left: 4px;
+}
+.approval-card-preview-toggle {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--brand-600);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 0;
   cursor: pointer;
-  font-size: 12px; font-weight: 500;
   min-height: 0;
 }
-.approval-card button.allow {
-  background: var(--brand-500); color: var(--button-primary-fg); border-color: var(--brand-500);
+.approval-card-preview-toggle:hover { text-decoration: underline; }
+
+.approval-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
 }
-.approval-card button.allow:hover { background: var(--brand-600); }
-.approval-card button.deny:hover { background: var(--fill-quaternary); }
+.approval-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+  min-height: 36px;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-spring);
+}
+.approval-card-actions button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.approval-card-actions button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.approval-card-deny {
+  background: var(--bg-primary);
+  border-color: var(--fill-secondary);
+  color: var(--text-primary);
+}
+.approval-card-deny:hover:not(:disabled) {
+  background: var(--fill-quaternary);
+  border-color: var(--text-tertiary);
+}
+.approval-card-allow {
+  background: var(--brand-500);
+  border-color: var(--brand-500);
+  color: var(--button-primary-fg);
+}
+.approval-card-allow:hover:not(:disabled) { background: var(--brand-600); border-color: var(--brand-600); }
+.approval-card-action-label { white-space: nowrap; }
+.approval-card-kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(15, 15, 15, 0.12);
+  color: inherit;
+  line-height: 1.2;
+  border: 1px solid rgba(15, 15, 15, 0.06);
+}
+.approval-card-deny .approval-card-kbd {
+  background: var(--fill-quaternary);
+  color: var(--text-tertiary);
+  border-color: var(--fill-tertiary);
+}
+
+/* ----- Recovery card -------------------------------------------- */
 
 .recovery-card {
-  border: 1px solid color-mix(in oklab, var(--info) 28%, transparent);
+  border: 1px solid color-mix(in oklab, var(--info) 32%, transparent);
   background: var(--info-bg);
   border-radius: var(--radius-md);
   padding: 12px 14px;
   display: grid;
   gap: 8px;
 }
-.recovery-card-header { font-size: 13px; color: var(--info); }
-.recovery-card p { font-size: 13px; color: var(--text-secondary); }
-.recovery-card-actions { display: inline-flex; gap: 8px; }
+.recovery-card-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--info);
+}
+.recovery-card-icon {
+  display: inline-grid; place-items: center;
+  width: 20px; height: 20px;
+  color: var(--info);
+}
+.recovery-card-message { font-size: 13px; color: var(--text-primary); margin: 0; line-height: 1.55; }
+.recovery-card-actions {
+  display: inline-flex;
+  justify-self: end;
+  gap: 8px;
+}
 .recovery-card-actions button {
+  display: inline-flex;
+  align-items: center;
   border-radius: var(--radius-md);
   border: 1px solid var(--fill-secondary);
-  padding: 6px 12px;
+  padding: 7px 14px;
   cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  min-height: 32px;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
 }
 .recovery-card-actions button:disabled {
   cursor: default;
   opacity: 0.65;
 }
-.recovery-card-resume { background: var(--brand-500); color: var(--button-primary-fg); border-color: var(--brand-500); }
+.recovery-card-resume {
+  background: var(--brand-500);
+  color: var(--button-primary-fg);
+  border-color: var(--brand-500);
+}
+.recovery-card-resume:hover:not(:disabled) { background: var(--brand-600); border-color: var(--brand-600); }
 .recovery-card-cancel { background: var(--bg-primary); color: var(--text-primary); }
+.recovery-card-cancel:hover:not(:disabled) { background: var(--fill-quaternary); }
+
+/* ----- Run error card ------------------------------------------- */
+
+.run-error-card {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklab, var(--danger) 32%, transparent);
+  background: var(--danger-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card-rest);
+}
+.run-error-card-icon {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+.run-error-card-body {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.run-error-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.run-error-card-code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--danger);
+  background: var(--bg-primary);
+  border: 1px solid color-mix(in oklab, var(--danger) 22%, transparent);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
 
 .recovery-boundary {
   color: var(--text-tertiary);

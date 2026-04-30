@@ -29,7 +29,11 @@ export function MessageBubble({ role, content, attachments = [], usage, streamin
         {role === "assistant" ? (
           <MarkdownContent source={content} />
         ) : (
-          <pre>{content}</pre>
+          // User input: preserve newlines and whitespace via white-space:
+          // pre-wrap on the message-bubble class, but render in the regular
+          // body font (not monospace) — chat input is conversational, not
+          // code, and the old `<pre>` made messages feel like terminal output.
+          <div className="message-text">{content}</div>
         )}
         {showCaret ? (
           <span className="streaming-caret" aria-hidden="true" />
@@ -39,13 +43,19 @@ export function MessageBubble({ role, content, attachments = [], usage, streamin
             {attachments.map((attachment) => (
               <a
                 key={attachment.id}
-                className="message-attachment"
+                className={`message-attachment message-attachment-${attachment.kind === "image" ? "image" : "file"}`}
                 href={attachment.contentUrl}
                 title={attachment.displayName}
               >
-                <span>{attachment.kind === "image" ? "IMG" : "FILE"}</span>
-                <strong>{attachment.displayName}</strong>
-                <em>{formatBytes(attachment.sizeBytes)}</em>
+                <span className="message-attachment-icon" aria-hidden="true">
+                  {attachment.kind === "image" ? <ImageIcon /> : <FileIcon />}
+                </span>
+                <strong className="message-attachment-name">
+                  {attachment.displayName}
+                </strong>
+                <em className="message-attachment-size">
+                  {formatBytes(attachment.sizeBytes)}
+                </em>
               </a>
             ))}
           </div>
@@ -135,6 +145,45 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
         <code>{text}</code>
       </pre>
     </div>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <circle cx="6" cy="6.5" r="1" />
+      <path d="M3 12l3-3 2.5 2.5L11 8l2 2" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 2.5h5l3 3v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" />
+      <path d="M9 2.5v3h3" />
+    </svg>
   );
 }
 
