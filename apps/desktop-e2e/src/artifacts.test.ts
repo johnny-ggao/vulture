@@ -77,4 +77,42 @@ describe("desktop e2e artifacts", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("fences multi-line failure errors in markdown reports", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-desktop-e2e-artifacts-"));
+    try {
+      const result = {
+        id: "launch-smoke",
+        name: "Launch smoke",
+        status: "failed" as const,
+        durationMs: 10,
+        artifactPath: "/tmp/artifact",
+        steps: [
+          {
+            name: "waitForChatReady",
+            status: "failed" as const,
+            error: "first line\n## not a heading\n```inner fence```",
+          },
+        ],
+      };
+
+      writeDesktopFailureReport(root, [result]);
+
+      expect(readFileSync(join(root, "failure-report.md"), "utf8")).toContain(
+        "Error:\n````\nfirst line\n## not a heading\n```inner fence```\n````",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("desktop e2e package exposes runnable skeleton contracts", async () => {
+    const cli = await import("./cli");
+    const packageJson = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8"));
+
+    expect(typeof cli.main).toBe("function");
+    expect(packageJson.scripts.typecheck).toBe("tsc -p tsconfig.json --noEmit");
+    expect(packageJson.scripts.build).toBe("bun run typecheck");
+    expect(existsSync(join(import.meta.dir, "..", "tsconfig.json"))).toBe(true);
+  });
 });

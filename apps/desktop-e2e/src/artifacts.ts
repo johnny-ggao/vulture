@@ -97,7 +97,7 @@ export function writeDesktopFailureReport(
     lines.push(`## ${result.id}`, "", `Name: ${result.name}`, `Artifacts: ${result.artifactPath}`);
 
     if (failedStep) {
-      lines.push(`Failed step: ${failedStep.name}`, `Error: ${failedStep.error ?? "unknown failure"}`);
+      lines.push(`Failed step: ${failedStep.name}`, "Error:", fencedMarkdown(failedStep.error ?? "unknown failure"));
     }
 
     lines.push("");
@@ -111,6 +111,12 @@ export function writeDesktopFailureReport(
 
 function safePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "run";
+}
+
+function fencedMarkdown(value: string): string {
+  const longestFence = Math.max(3, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length));
+  const fence = "`".repeat(longestFence + 1);
+  return `${fence}\n${value}\n${fence}`;
 }
 
 function xml(value: string): string {
