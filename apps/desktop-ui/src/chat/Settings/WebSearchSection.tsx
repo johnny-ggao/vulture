@@ -87,6 +87,19 @@ export function WebSearchSection(props: SettingsPageProps) {
       }
     >
       <ErrorAlert message={error} />
+      {busy === "load" && settings === null ? (
+        <div className="websearch-skeleton" aria-busy="true" aria-label="加载中">
+          <div className="websearch-skeleton-row">
+            <div className="websearch-skeleton-label" />
+            <div className="websearch-skeleton-input" />
+          </div>
+          <div className="websearch-skeleton-row">
+            <div className="websearch-skeleton-label" />
+            <div className="websearch-skeleton-input" />
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="mcp-create-grid">
         <Field label="搜索源">
           <select
@@ -137,12 +150,20 @@ export function WebSearchSection(props: SettingsPageProps) {
         ) : null}
       </div>
       {testResult ? (
-        <div className="settings-feedback" role="status">
+        <div
+          className={
+            "settings-feedback" +
+            (testResult.ok ? " settings-feedback-success" : " settings-feedback-error")
+          }
+          role="status"
+        >
           {testResult.ok
             ? `${testResult.provider} · ${testResult.resultCount} 个结果`
             : testResult.error ?? "测试失败"}
         </div>
       ) : null}
+      </>
+      )}
     </SettingsSection>
   );
 }

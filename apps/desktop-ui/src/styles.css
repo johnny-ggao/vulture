@@ -3128,6 +3128,73 @@ pre {
   margin-inline: auto;
 }
 
+/* Memory list skeleton — shown only on first-load before the
+ * MemorySection has a chance to populate items. Three shimmering
+ * card placeholders mirror the rough shape of a memory row so the
+ * pane doesn't pop layout when real data arrives. */
+.memory-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.memory-skeleton-line {
+  height: 12px;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg,
+    var(--fill-quaternary) 0%,
+    var(--fill-tertiary) 50%,
+    var(--fill-quaternary) 100%);
+  background-size: 200% 100%;
+  animation: skills-shimmer 1.4s linear infinite;
+}
+.memory-skeleton-line-wide { width: 88%; }
+.memory-skeleton-line-mid  { width: 62%; }
+.memory-skeleton-foot {
+  height: 10px;
+  width: 40%;
+  margin-top: 4px;
+  border-radius: var(--radius-xs);
+  background: var(--fill-quaternary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .memory-skeleton-line { animation: none; background: var(--fill-quaternary); }
+}
+
+/* WebSearch first-load skeleton — two label/input rows mirror the
+ * actual form so the panel doesn't jump when settings arrive. */
+.websearch-skeleton {
+  display: grid;
+  gap: 14px;
+  padding: 4px 0;
+}
+.websearch-skeleton-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.websearch-skeleton-label {
+  height: 12px;
+  border-radius: var(--radius-xs);
+  background: var(--fill-tertiary);
+}
+.websearch-skeleton-input {
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg,
+    var(--fill-quaternary) 0%,
+    var(--fill-tertiary) 50%,
+    var(--fill-quaternary) 100%);
+  background-size: 200% 100%;
+  animation: skills-shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .websearch-skeleton-input { animation: none; background: var(--fill-quaternary); }
+}
+
 /* Inline feedback chip used by save / test actions. Replaces
  * ad-hoc `.muted` / `.general-row` mixes. Tone variants pick up the
  * semantic success / danger tokens. */
@@ -3432,68 +3499,178 @@ pre {
   font-weight: 300;
 }
 
-/* ----- Channels list + routing rules (ChannelsSection) ----- */
-.inbox-list {
+/* ----- Channel cards grid (ChannelsSection) — auto-fit tile grid
+ * mirrors the bp-list pattern. Each tile carries its own tinted
+ * glyph, account/hint text, stats row, and toggle/config foot.
+ * Off channels (status=off) get reduced opacity so the eye can
+ * scan to the live ones. */
+.channel-grid {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
-}
-.inbox-row {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
-  align-items: start;
-  padding: 12px 14px;
+}
+.channel-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 8px;
+  padding: 14px 16px 12px;
   border: 1px solid var(--fill-tertiary);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
+  box-shadow: var(--shadow-card-rest);
+  transition: border-color var(--duration-medium) var(--ease-standard),
+              box-shadow var(--duration-medium) var(--ease-standard);
 }
-.inbox-glyph {
-  width: 32px;
-  height: 32px;
+.channel-card:hover {
+  border-color: var(--text-quaternary);
+  box-shadow: var(--shadow-card-hover);
+}
+.channel-card-off {
+  opacity: 0.78;
+}
+.channel-card-off:hover { opacity: 1; }
+
+.channel-card-head {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.channel-card-glyph {
+  width: 40px;
+  height: 40px;
   display: inline-grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 18px;
+  font-weight: 700;
   border-radius: var(--radius-sm);
-  background: var(--fill-quaternary);
+  flex-shrink: 0;
+}
+.channel-card-titles {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.channel-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-card-account {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-card-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  /* Reserve a single line so cards with shorter hints stay aligned
+   * with cards that have longer text, keeping the tile grid even. */
+  min-height: 1.5em;
+}
+
+.channel-card-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 0;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--fill-quaternary);
+  font-size: 12px;
   color: var(--text-secondary);
 }
-.inbox-text { display: grid; gap: 3px; min-width: 0; }
-.inbox-line {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.channel-card-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
 }
-.inbox-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.inbox-meta { font-size: 11.5px; color: var(--text-tertiary); }
-.inbox-stats {
-  display: flex;
-  gap: 12px;
-  margin-top: 2px;
-  font-size: 11px;
+.channel-card-stat dt {
+  margin: 0;
   color: var(--text-tertiary);
+  font-weight: 500;
 }
-.inbox-stats b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
-.inbox-actions {
+.channel-card-stat dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.channel-card-stat-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-quaternary);
+}
+
+.channel-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* "+ 添加渠道" tile — dashed variant, takes a card slot in the grid
+ * so the add affordance is right where the user is browsing. */
+.channel-card-add {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: end;
-}
-.inbox-add {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px;
-  border: 1px dashed var(--fill-secondary);
-  border-radius: var(--radius-md);
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
   text-align: center;
   color: var(--text-tertiary);
+  cursor: not-allowed;
+  min-height: 168px;
 }
-.inbox-add-text { font-size: 13px; font-weight: 600; }
-.inbox-add-hint { font-size: 11px; }
+.channel-card-add-glyph {
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1;
+  color: var(--text-quaternary);
+}
+.channel-card-add-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.channel-card-add-hint {
+  font-size: 11px;
+  color: var(--text-quaternary);
+  max-width: 220px;
+  line-height: 1.5;
+}
+
+/* Stagger entrance on first paint matches the kit's grid pattern. */
+@media (prefers-reduced-motion: no-preference) {
+  .channel-grid > .channel-card {
+    animation: stagger-fade-up var(--duration-medium) var(--ease-out) backwards;
+  }
+  .channel-grid > .channel-card:nth-child(1) { animation-delay: 0ms; }
+  .channel-grid > .channel-card:nth-child(2) { animation-delay: 30ms; }
+  .channel-grid > .channel-card:nth-child(3) { animation-delay: 60ms; }
+  .channel-grid > .channel-card:nth-child(4) { animation-delay: 90ms; }
+  .channel-grid > .channel-card:nth-child(5) { animation-delay: 120ms; }
+  .channel-grid > .channel-card:nth-child(n+6) { animation-delay: 150ms; }
+}
 
 .rule-list {
   list-style: none;
@@ -3505,19 +3682,28 @@ pre {
 .rule-row {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto auto;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--fill-tertiary);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--bg-primary);
+  box-shadow: var(--shadow-card-rest);
+  transition: border-color var(--duration-medium) var(--ease-standard),
+              box-shadow var(--duration-medium) var(--ease-standard);
+}
+.rule-row:hover {
+  border-color: var(--text-quaternary);
+  box-shadow: var(--shadow-card-hover);
 }
 .rule-row.off { opacity: 0.6; }
 .rule-no {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-tertiary);
+  font-weight: 600;
+  color: var(--text-quaternary);
   text-align: right;
+  letter-spacing: 0.04em;
 }
 .rule-body { display: grid; gap: 2px; min-width: 0; }
 .rule-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }

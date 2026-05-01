@@ -14,10 +14,12 @@ export function MemorySection(props: SettingsPageProps) {
   const [status, setStatus] = useState<MemoryStatus | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function load(agentId: string) {
     setError(null);
+    setLoading(true);
     try {
       const [nextStatus, nextItems] = await Promise.all([
         props.onGetMemoryStatus(agentId),
@@ -27,6 +29,8 @@ export function MemorySection(props: SettingsPageProps) {
       setItems(nextItems);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -34,6 +38,7 @@ export function MemorySection(props: SettingsPageProps) {
     if (!activeAgent) {
       setItems([]);
       setStatus(null);
+      setLoading(false);
       return;
     }
     void load(activeAgent.id);
@@ -144,7 +149,17 @@ export function MemorySection(props: SettingsPageProps) {
 
       <ErrorAlert message={error} />
 
-      {items.length === 0 ? (
+      {loading && items.length === 0 ? (
+        <div className="memory-list" aria-busy="true" aria-label="加载记忆中">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="memory-skeleton" aria-hidden="true">
+              <div className="memory-skeleton-line memory-skeleton-line-wide" />
+              <div className="memory-skeleton-line memory-skeleton-line-mid" />
+              <div className="memory-skeleton-foot" />
+            </div>
+          ))}
+        </div>
+      ) : items.length === 0 ? (
         <div className="settings-empty">
           <p className="settings-empty-title">还没有记忆</p>
           <p className="settings-empty-sub">
