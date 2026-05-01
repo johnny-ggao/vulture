@@ -76,10 +76,11 @@ describe("conversationContext", () => {
       [msg("user", "new", "m-3")],
     );
 
-    expect(JSON.stringify(shaped)).toBe(JSON.stringify([
+    expect(shaped).toEqual([
       {
         type: "message",
         role: "assistant",
+        status: "completed",
         content: [{ type: "output_text", text: "recent" }],
       },
       {
@@ -87,7 +88,7 @@ describe("conversationContext", () => {
         role: "user",
         content: [{ type: "input_text", text: "new" }],
       },
-    ]));
+    ]);
     expect(JSON.stringify(shaped)).not.toContain("Conversation context summary:");
   });
 
@@ -122,6 +123,19 @@ describe("conversationContext", () => {
         { type: "message", role: "user", content: [{ type: "input_text", text: "new" }] },
       ]),
     );
+  });
+
+  test("normalizes legacy assistant messages so SDK run state can serialize", async () => {
+    const callback = buildConversationSessionInputCallback({ getContext: () => null });
+
+    const shaped = await callback([msg("assistant", "legacy assistant", "m-1")], []);
+
+    expect(shaped[0]).toMatchObject({
+      type: "message",
+      role: "assistant",
+      status: "completed",
+      content: [{ type: "output_text", text: "legacy assistant" }],
+    });
   });
 
   test("keeps recent tail when summarizedThroughMessageId is missing", async () => {

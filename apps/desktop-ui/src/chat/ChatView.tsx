@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { MessageDto } from "../api/conversations";
+import type { ConversationPermissionMode, MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { SubagentSessionDto } from "../api/subagentSessions";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
@@ -15,6 +15,8 @@ export interface ChatViewProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
+  permissionMode?: ConversationPermissionMode;
+  onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
 
   messages: ReadonlyArray<MessageDto>;
   messageUsages?: ReadonlyMap<string, TokenUsageDto>;
@@ -194,6 +196,8 @@ export function ChatView(props: ChatViewProps) {
           agents={props.agents}
           selectedAgentId={props.selectedAgentId}
           onSelectAgent={props.onSelectAgent}
+          permissionMode={props.permissionMode}
+          onChangePermissionMode={props.onChangePermissionMode}
           running={running}
           onSend={props.onSend}
           onCancel={props.onCancel}

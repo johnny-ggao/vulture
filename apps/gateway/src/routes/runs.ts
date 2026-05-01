@@ -442,6 +442,7 @@ export async function startConversationRun(
       systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
       contextPrompt,
       workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
+      permissionMode: conv.permissionMode,
       conversationId: input.conversationId,
       userInput: input.input,
       attachments: runtimeAttachments,
@@ -662,6 +663,7 @@ function messageSessionItem(
   return {
     type: "message",
     role,
+    ...(role === "assistant" ? { status: "completed" as const } : {}),
     providerData: { messageId },
     content: [
       {

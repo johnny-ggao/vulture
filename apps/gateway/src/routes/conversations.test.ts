@@ -37,6 +37,38 @@ describe("/v1/conversations", () => {
     cleanup();
   });
 
+  test("POST can create a policy-mode conversation", async () => {
+    const { app, cleanup } = fresh();
+    const res = await app.request("/v1/conversations", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "k-policy" },
+      body: JSON.stringify({
+        agentId: "local-work-agent",
+        title: "Policy",
+        permissionMode: "policy",
+      }),
+    });
+    expect(res.status).toBe(201);
+    expect((await res.json()).permissionMode).toBe("policy");
+    cleanup();
+  });
+
+  test("PATCH updates the conversation permission mode", async () => {
+    const { app, convs, cleanup } = fresh();
+    const c = convs.create({ agentId: "a-1" });
+
+    const res = await app.request(`/v1/conversations/${c.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ permissionMode: "policy" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).permissionMode).toBe("policy");
+    expect(convs.get(c.id)?.permissionMode).toBe("policy");
+    cleanup();
+  });
+
   test("POST without Idempotency-Key → 400", async () => {
     const { app, cleanup } = fresh();
     const res = await app.request("/v1/conversations", {

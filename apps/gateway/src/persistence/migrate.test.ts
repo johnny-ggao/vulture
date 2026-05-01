@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 14;
+const LATEST_SCHEMA_VERSION = 15;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -281,6 +281,21 @@ describe("migrate", () => {
     const handoffColumn = columns.find((c) => c.name === "handoff_agent_ids_json");
     expect(handoffColumn?.notnull).toBe(1);
     expect(handoffColumn?.dflt_value).toBe("'[]'");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("015 adds conversation permission mode", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v15-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(conversations)")
+      .all() as { name: string; notnull: number; dflt_value: string | null }[];
+    const permissionMode = columns.find((c) => c.name === "permission_mode");
+    expect(permissionMode?.notnull).toBe(1);
+    expect(permissionMode?.dflt_value).toBe("'full_access'");
     db.close();
     rmSync(dir, { recursive: true });
   });

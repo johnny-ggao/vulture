@@ -1,6 +1,7 @@
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { TokenUsage } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type { Session, SessionInputCallback } from "@openai/agents";
 import { nowIso8601 } from "@vulture/protocol/src/v1/index";
 
@@ -63,6 +64,7 @@ export type LlmCallable = (input: {
   model: string;
   runId: string;
   workspacePath: string;
+  permissionMode?: ConversationPermissionMode;
   attachments?: LlmAttachment[];
   recovery?: LlmRecoveryInput;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
@@ -88,6 +90,7 @@ export interface RunConversationArgs {
   userInput: string;
   attachments?: LlmAttachment[];
   workspacePath: string;
+  permissionMode?: ConversationPermissionMode;
   llm: LlmCallable;
   tools: ToolCallable;
   onEvent: (e: RunEvent) => void;
@@ -128,6 +131,7 @@ export async function runConversation(
       model: args.model,
       runId: args.runId,
       workspacePath: args.workspacePath,
+      permissionMode: args.permissionMode,
       attachments: args.attachments,
       recovery: args.recovery,
       onCheckpoint: args.onCheckpoint,

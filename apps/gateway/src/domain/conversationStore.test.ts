@@ -48,6 +48,20 @@ describe("ConversationStore", () => {
     cleanup();
   });
 
+  test("defaults permission mode to full access", () => {
+    const { store, cleanup } = freshStore();
+    const c = store.create({ agentId: "a-1" });
+    expect(c.permissionMode).toBe("full_access");
+    cleanup();
+  });
+
+  test("persists policy permission mode", () => {
+    const { store, cleanup } = freshStore();
+    const c = store.create({ agentId: "a-1", permissionMode: "policy" });
+    expect(store.get(c.id)?.permissionMode).toBe("policy");
+    cleanup();
+  });
+
   test("updateTitle changes title and touches updatedAt", async () => {
     const { store, cleanup } = freshStore();
     const c = store.create({ agentId: "a-1", title: "old" });
@@ -56,6 +70,18 @@ describe("ConversationStore", () => {
     const updated = store.updateTitle(c.id, "new title");
 
     expect(updated?.title).toBe("new title");
+    expect(updated?.updatedAt).not.toBe(c.updatedAt);
+    cleanup();
+  });
+
+  test("updatePermissionMode changes mode and touches updatedAt", async () => {
+    const { store, cleanup } = freshStore();
+    const c = store.create({ agentId: "a-1" });
+    await new Promise((r) => setTimeout(r, 2));
+
+    const updated = store.updatePermissionMode(c.id, "policy");
+
+    expect(updated?.permissionMode).toBe("policy");
     expect(updated?.updatedAt).not.toBe(c.updatedAt);
     cleanup();
   });

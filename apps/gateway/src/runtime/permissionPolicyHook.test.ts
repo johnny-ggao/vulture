@@ -11,7 +11,7 @@ import { PermissionPolicyStore } from "../domain/permissionPolicyStore";
 import { makePermissionPolicyHook } from "./permissionPolicyHook";
 import { createRuntimeHookRunner } from "./runtimeHooks";
 
-function freshFixtures() {
+function freshFixtures(permissionMode: "full_access" | "policy" = "policy") {
   const dir = mkdtempSync(join(tmpdir(), "vulture-policy-hook-"));
   const db = openDatabase(join(dir, "data.sqlite"));
   applyMigrations(db);
@@ -19,7 +19,7 @@ function freshFixtures() {
   const messages = new MessageStore(db);
   const runs = new RunStore(db);
   const policies = new PermissionPolicyStore(join(dir, "policies.json"));
-  const conv = conversations.create({ agentId: "a-1", title: "" });
+  const conv = conversations.create({ agentId: "a-1", title: "", permissionMode });
   const userMsg = messages.append({
     conversationId: conv.id,
     role: "user",
@@ -33,6 +33,7 @@ function freshFixtures() {
   });
   return {
     runs,
+    conversations,
     policies,
     runId: run.id,
     cleanup: () => {
@@ -53,7 +54,7 @@ describe("permissionPolicyHook", () => {
         reason: "shell disabled",
       });
       const runner = createRuntimeHookRunner([
-        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs }),
+        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs, conversations: fx.conversations }),
       ]);
 
       const decision = await runner.runToolBeforeCall({
@@ -82,7 +83,7 @@ describe("permissionPolicyHook", () => {
         action: "deny",
       });
       const runner = createRuntimeHookRunner([
-        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs }),
+        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs, conversations: fx.conversations }),
       ]);
 
       const decision = await runner.runToolBeforeCall({
@@ -110,7 +111,7 @@ describe("permissionPolicyHook", () => {
         reason: "no rm",
       });
       const runner = createRuntimeHookRunner([
-        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs }),
+        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs, conversations: fx.conversations }),
       ]);
 
       const decision = await runner.runToolBeforeCall({
@@ -135,7 +136,7 @@ describe("permissionPolicyHook", () => {
       fx.policies.upsert({ scope: "global", toolId: "read", action: "allow" });
       fx.policies.upsert({ scope: "global", toolId: "write", action: "ask" });
       const runner = createRuntimeHookRunner([
-        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs }),
+        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs, conversations: fx.conversations }),
       ]);
 
       for (const tool of ["read", "write"] as const) {
@@ -149,6 +150,34 @@ describe("permissionPolicyHook", () => {
         });
         expect(decision.blocked).toBe(false);
       }
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  test("full access conversation bypasses deny rules", async () => {
+    const fx = freshFixtures("full_access");
+    try {
+      fx.policies.upsert({
+        scope: "global",
+        toolId: "shell.exec",
+        action: "deny",
+        reason: "shell disabled",
+      });
+      const runner = createRuntimeHookRunner([
+        makePermissionPolicyHook({ policies: fx.policies, runs: fx.runs, conversations: fx.conversations }),
+      ]);
+
+      const decision = await runner.runToolBeforeCall({
+        runId: fx.runId,
+        workspacePath: "/tmp/work",
+        callId: "c-1",
+        toolId: "shell.exec",
+        category: "runtime",
+        input: { argv: ["pwd"] },
+      });
+
+      expect(decision.blocked).toBe(false);
     } finally {
       fx.cleanup();
     }

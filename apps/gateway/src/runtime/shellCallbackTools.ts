@@ -2,6 +2,7 @@ import { ToolCallError, type ToolCallable } from "@vulture/agent-runtime";
 import type { PartialRunEvent } from "../domain/runStore";
 import { ApprovalTimeoutError, type ApprovalQueue } from "./approvalQueue";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type { SdkApprovalCallable } from "./openaiLlm";
 import { tryEmitRuntimeHook, type RuntimeHookRunner } from "./runtimeHooks";
 
@@ -21,6 +22,8 @@ export interface ShellCallbackToolsOpts {
   approvalTimeoutMs?: number;
   /** Optional runtime hooks for emitting approval.required / approval.resolved. */
   runtimeHooks?: RuntimeHookRunner;
+  /** Per-run permission mode. full_access skips local ApprovalCard flow. */
+  permissionModeForRun?: (runId: string) => ConversationPermissionMode;
   /**
    * Legacy non-SDK fallback: when true/default, a Rust `ask` response emits
    * tool.ask and blocks until /approvals resolves the in-memory queue.
@@ -149,6 +152,11 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           });
           throw new ToolCallError(err.code, err.message);
         }
+        if (opts.permissionModeForRun?.(call.runId) === "full_access") {
+          approvalToken = nextApprovalToken;
+          markStarted();
+          continue;
+        }
         if (opts.interactiveApprovalFallback === false) {
           const err: AppError = {
             code: "tool.execution_failed",
@@ -257,6 +265,9 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
 
 export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkApprovalCallable {
   return async (request) => {
+    if (opts.permissionModeForRun?.(request.runId) === "full_access") {
+      return "allow";
+    }
     opts.appendEvent(request.runId, {
       type: "tool.ask",
       callId: request.callId,

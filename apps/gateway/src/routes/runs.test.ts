@@ -261,6 +261,7 @@ describe("/v1/runs", () => {
     expect(assistantItem?.item).toMatchObject({
       type: "message",
       role: "assistant",
+      status: "completed",
       providerData: { messageId: finalRun?.resultMessageId },
     });
     expect(JSON.stringify(assistantItem?.item)).toContain("ok");

@@ -17,6 +17,7 @@ const sample: ConversationDto = {
   title: "Hello",
   createdAt: "2026-04-27T00:00:00.000Z",
   updatedAt: "2026-04-27T00:00:00.000Z",
+  permissionMode: "full_access",
 };
 
 describe("conversationsApi", () => {
@@ -49,6 +50,32 @@ describe("conversationsApi", () => {
       },
     });
     expect(await conversationsApi.create(client, { agentId: "a-1", title: "Hi" })).toEqual(sample);
+  });
+
+  test("create can send a conversation permission mode", async () => {
+    const client = fakeClient({
+      post: async <T>(path: string, body: unknown) => {
+        expect(path).toBe("/v1/conversations");
+        expect(body).toEqual({ agentId: "a-1", permissionMode: "policy" });
+        return { ...sample, permissionMode: "policy" } as T;
+      },
+    });
+    expect(await conversationsApi.create(client, { agentId: "a-1", permissionMode: "policy" })).toMatchObject({
+      permissionMode: "policy",
+    });
+  });
+
+  test("update patches permission mode", async () => {
+    const client = fakeClient({
+      patch: async <T>(path: string, body: unknown) => {
+        expect(path).toBe("/v1/conversations/c-1");
+        expect(body).toEqual({ permissionMode: "policy" });
+        return { ...sample, permissionMode: "policy" } as T;
+      },
+    });
+    expect(await conversationsApi.update(client, "c-1", { permissionMode: "policy" })).toMatchObject({
+      permissionMode: "policy",
+    });
   });
 
   test("listMessages without afterMessageId omits query", async () => {

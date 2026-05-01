@@ -1,9 +1,12 @@
 import type { ApiClient } from "./client";
 
+export type ConversationPermissionMode = "full_access" | "policy";
+
 export interface ConversationDto {
   id: string;
   agentId: string;
   title: string;
+  permissionMode: ConversationPermissionMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,6 +35,11 @@ export interface MessageAttachmentDto {
 export interface CreateConversationRequest {
   agentId: string;
   title?: string;
+  permissionMode?: ConversationPermissionMode;
+}
+
+export interface UpdateConversationRequest {
+  permissionMode?: ConversationPermissionMode;
 }
 
 export const conversationsApi = {
@@ -46,6 +54,9 @@ export const conversationsApi = {
     client.post<ConversationDto>("/v1/conversations", body),
 
   get: (client: ApiClient, id: string) => client.get<ConversationDto>(`/v1/conversations/${id}`),
+
+  update: (client: ApiClient, id: string, body: UpdateConversationRequest) =>
+    client.patch<ConversationDto>(`/v1/conversations/${id}`, body),
 
   listMessages: async (client: ApiClient, id: string, afterMessageId?: string) => {
     const path = afterMessageId

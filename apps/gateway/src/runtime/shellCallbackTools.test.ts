@@ -93,6 +93,55 @@ describe("makeShellCallbackTools", () => {
     ]);
   });
 
+  test("full access mode auto-approves callback ask without emitting tool.ask", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-1", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+    const { fetchFn, calls } = fakeFetchSequence([
+      {
+        status: 200,
+        body: {
+          status: "ask",
+          callId: "c1",
+          approvalToken: "tok-abc",
+          reason: "outside workspace",
+        },
+      },
+      {
+        status: 200,
+        body: { status: "completed", callId: "c1", output: { stdout: "hi" } },
+      },
+    ]);
+
+    const tools = makeShellCallbackTools({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      fetch: fetchFn,
+      permissionModeForRun: () => "full_access",
+    });
+
+    const result = await tools({
+      callId: "c1",
+      runId: "r-1",
+      tool: "shell.exec",
+      input: { argv: ["x"] },
+      workspacePath: "",
+    });
+
+    expect(result).toEqual({ stdout: "hi" });
+    expect(calls.length).toBe(2);
+    expect(calls[1].body.approvalToken).toBe("tok-abc");
+    expect(events.map((e) => e.partial.type)).toEqual([
+      "tool.planned",
+      "tool.started",
+      "tool.completed",
+    ]);
+  });
+
   test("ask response accepts Rust snake_case approval_token", async () => {
     const queue = new ApprovalQueue();
     const cancelSignals = new Map<string, AbortController>();
@@ -450,6 +499,35 @@ describe("makeShellCallbackTools", () => {
     expect(queue.resolve("c-sdk", "deny")).toBe(true);
     expect(await decisionPromise).toBe("deny");
     expect(phases).toEqual(["required", "resolved"]);
+  });
+
+  test("makeShellApprovalHandler auto-allows SDK approval in full access mode", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-sdk", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const handler = makeShellApprovalHandler({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      permissionModeForRun: () => "full_access",
+    });
+
+    const decision = await handler({
+      callId: "c-sdk",
+      tool: "shell.exec",
+      input: { argv: ["pwd"] },
+      runId: "r-sdk",
+      workspacePath: "/tmp/work",
+      reason: "needs approval",
+      approvalToken: "tok-sdk",
+    });
+
+    expect(decision).toBe("allow");
+    expect(events).toEqual([]);
   });
 
   test("non-2xx HTTP throws ToolCallError(tool.execution_failed)", async () => {

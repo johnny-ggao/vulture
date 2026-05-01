@@ -149,6 +149,13 @@ function stripLocalProviderMetadata(value: unknown): unknown {
     }
     result[key] = stripLocalProviderMetadata(entry);
   }
+  if (
+    result.type === "message" &&
+    result.role === "assistant" &&
+    result.status === undefined
+  ) {
+    result.status = "completed";
+  }
   return result;
 }
 

@@ -82,7 +82,11 @@ export function buildServer(cfg: GatewayConfig): Hono {
     memoryFileStore,
   } = stores;
   const runtimeHooks = createRuntimeHookRunner([
-    makePermissionPolicyHook({ policies: permissionPolicyStore, runs: runStore }),
+    makePermissionPolicyHook({
+      policies: permissionPolicyStore,
+      runs: runStore,
+      conversations: conversationStore,
+    }),
     ...makeArtifactAuditHooks({ artifacts: artifactStore, runs: runStore }),
   ]);
   runtimeHooksRef = runtimeHooks;
@@ -122,6 +126,11 @@ export function buildServer(cfg: GatewayConfig): Hono {
 
   const approvalQueue = new ApprovalQueue();
   const cancelSignals = new Map<string, AbortController>();
+  const permissionModeForRun = (runId: string) => {
+    const run = runStore.get(runId);
+    if (!run) return "policy" as const;
+    return conversationStore.get(run.conversationId)?.permissionMode ?? "policy";
+  };
 
   const shellTools: ToolCallable = makeShellCallbackTools({
     callbackUrl: cfg.shellCallbackUrl,
@@ -131,6 +140,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     cancelSignals,
     interactiveApprovalFallback: false,
     runtimeHooks,
+    permissionModeForRun,
   });
   let llm: ReturnType<typeof makeLazyLlm>;
   let tools: ToolCallable;
@@ -263,6 +273,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
     approvalQueue,
     cancelSignals,
     runtimeHooks,
+    permissionModeForRun,
   });
 
   llm = makeLazyLlm({
@@ -314,6 +325,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
         systemPrompt: state.metadata.systemPrompt,
         contextPrompt: state.metadata.contextPrompt,
         workspacePath: state.metadata.workspacePath,
+        permissionMode: conversationStore.get(state.metadata.conversationId)?.permissionMode,
         conversationId: state.metadata.conversationId,
         userInput: state.metadata.userInput,
         recovery: {

@@ -1,4 +1,5 @@
 import type { PermissionPolicyStore } from "../domain/permissionPolicyStore";
+import type { ConversationStore } from "../domain/conversationStore";
 import type { RunStore } from "../domain/runStore";
 import type {
   RuntimeHookRegistration,
@@ -9,6 +10,7 @@ import type {
 export interface PermissionPolicyHookDeps {
   policies: PermissionPolicyStore;
   runs: RunStore;
+  conversations: ConversationStore;
 }
 
 /**
@@ -32,6 +34,8 @@ function evaluate(
   event: ToolBeforeCallEvent,
 ): ToolBeforeCallResult | undefined {
   const run = deps.runs.get(event.runId);
+  const conversation = run ? deps.conversations.get(run.conversationId) : null;
+  if (conversation?.permissionMode === "full_access") return undefined;
   const decision = deps.policies.explain({
     agentId: run?.agentId ?? null,
     toolId: event.toolId,

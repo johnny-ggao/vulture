@@ -7,10 +7,14 @@ export type ConversationId = BrandedId<"ConversationId">;
 export type MessageId = BrandedId<"MessageId">;
 export type RunId = BrandedId<"RunId">;
 
+export const ConversationPermissionModeSchema = z.enum(["full_access", "policy"]);
+export type ConversationPermissionMode = z.infer<typeof ConversationPermissionModeSchema>;
+
 export const ConversationSchema = z.object({
   id: z.string().min(1),
   agentId: z.string().min(1),
   title: z.string(),
+  permissionMode: ConversationPermissionModeSchema,
   createdAt: Iso8601Schema,
   updatedAt: Iso8601Schema,
 });
@@ -74,9 +78,20 @@ export const CreateConversationRequestSchema = z
   .object({
     agentId: z.string().min(1),
     title: z.string().optional(),
+    permissionMode: ConversationPermissionModeSchema.default("full_access"),
   })
   .strict();
-export type CreateConversationRequest = z.infer<typeof CreateConversationRequestSchema>;
+export type CreateConversationRequest = z.input<typeof CreateConversationRequestSchema>;
+
+export const UpdateConversationRequestSchema = z
+  .object({
+    permissionMode: ConversationPermissionModeSchema.optional(),
+  })
+  .strict()
+  .refine((value) => value.permissionMode !== undefined, {
+    message: "at least one field is required",
+  });
+export type UpdateConversationRequest = z.infer<typeof UpdateConversationRequestSchema>;
 
 export const PostMessageRequestSchema = z
   .object({

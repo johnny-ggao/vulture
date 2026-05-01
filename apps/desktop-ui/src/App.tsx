@@ -508,6 +508,8 @@ export function App() {
               agents={agents.map((a) => ({ id: a.id, name: a.name }))}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
+              permissionMode={runController.permissionMode}
+              onChangePermissionMode={runController.changePermissionMode}
               messages={runController.messages.items}
               messageUsages={runController.messageUsages}
               subagentSessions={runController.subagentSessions}

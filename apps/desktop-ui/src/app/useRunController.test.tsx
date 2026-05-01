@@ -13,6 +13,7 @@ const conversation: ConversationDto = {
   title: "hello",
   createdAt: now,
   updatedAt: now,
+  permissionMode: "full_access",
 };
 
 const message: MessageDto = {
@@ -42,8 +43,12 @@ const streamFetch: typeof fetch = async () =>
     headers: { "content-type": "text/event-stream" },
   });
 
+let createRequests: CreateConversationRequest[] = [];
 const conversationActions = {
-  create: async (_req: CreateConversationRequest) => conversation,
+  create: async (req: CreateConversationRequest) => {
+    createRequests.push(req);
+    return { ...conversation, permissionMode: req.permissionMode ?? "full_access" };
+  },
   refetch: async () => undefined,
 };
 
@@ -74,8 +79,10 @@ function Probe(props: { client: ApiClient }) {
   return (
     <div>
       <button onClick={() => void controller.send("hello world")}>send</button>
+      <button onClick={() => void controller.changePermissionMode("policy")}>policy</button>
       <span data-testid="conversation">{controller.activeConversationId ?? ""}</span>
       <span data-testid="run">{controller.activeRunId ?? ""}</span>
+      <span data-testid="permission">{controller.permissionMode}</span>
       <span data-testid="messages">{controller.messages.items.map((item) => item.id).join(",")}</span>
     </div>
   );
@@ -84,6 +91,7 @@ function Probe(props: { client: ApiClient }) {
 describe("useRunController", () => {
   beforeEach(() => {
     localStorage.clear();
+    createRequests = [];
   });
 
   test("creates a conversation and starts a run when sending without an active conversation", async () => {
@@ -110,5 +118,31 @@ describe("useRunController", () => {
     await waitFor(() => expect(screen.getByTestId("conversation").textContent).toBe("conversation-a"));
     await waitFor(() => expect(screen.getByTestId("run").textContent).toBe("run-a"));
     await waitFor(() => expect(screen.getByTestId("messages").textContent).toBe("message-a"));
+  });
+
+  test("uses the selected permission mode when creating a new conversation", async () => {
+    render(
+      <Probe
+        client={clientReturning({
+          get: {
+            "/v1/conversations/conversation-a": { ...conversation, permissionMode: "policy" },
+            "/v1/conversations/conversation-a/messages": { items: [message] },
+            "/v1/conversations/conversation-a/runs": { items: [] },
+            "/v1/conversations/conversation-a/runs?status=active": { items: [run] },
+            "/v1/runs/run-a": run,
+            "/v1/subagent-sessions?parentConversationId=conversation-a&limit=20": { items: [] },
+          },
+          post: {
+            "/v1/conversations/conversation-a/runs": { run, message },
+          },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("policy"));
+    await waitFor(() => expect(screen.getByTestId("permission").textContent).toBe("policy"));
+    fireEvent.click(screen.getByText("send"));
+
+    await waitFor(() => expect(createRequests[0]).toMatchObject({ permissionMode: "policy" }));
   });
 });

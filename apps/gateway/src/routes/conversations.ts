@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { ConversationContextStore } from "../domain/conversationContextStore";
-import { CreateConversationRequestSchema } from "@vulture/protocol/src/v1/conversation";
+import {
+  CreateConversationRequestSchema,
+  UpdateConversationRequestSchema,
+} from "@vulture/protocol/src/v1/conversation";
 import { requireIdempotencyKey, idempotencyCache } from "../middleware/idempotency";
 
 export interface ConversationsDeps {
@@ -37,6 +40,18 @@ export function conversationsRouter(deps: ConversationsDeps): Hono {
     const conv = deps.conversations.get(c.req.param("id"));
     if (!conv) return c.json({ code: "conversation.not_found", message: c.req.param("id") }, 404);
     return c.json(conv);
+  });
+
+  app.patch("/v1/conversations/:id", async (c) => {
+    const id = c.req.param("id");
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = UpdateConversationRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ code: "internal", message: parsed.error.message }, 400);
+    }
+    const updated = deps.conversations.updatePermissionMode(id, parsed.data.permissionMode!);
+    if (!updated) return c.json({ code: "conversation.not_found", message: id }, 404);
+    return c.json(updated);
   });
 
   app.get("/v1/conversations/:id/messages", (c) => {

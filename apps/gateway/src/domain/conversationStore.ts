@@ -2,6 +2,7 @@ import type { DB } from "../persistence/sqlite";
 import type {
   Conversation,
   ConversationId,
+  ConversationPermissionMode,
   CreateConversationRequest,
 } from "@vulture/protocol/src/v1/conversation";
 import type { AgentId } from "@vulture/protocol/src/v1/agent";
@@ -12,6 +13,7 @@ interface Row {
   id: string;
   agent_id: string;
   title: string;
+  permission_mode: string;
   created_at: string;
   updated_at: string;
 }
@@ -21,9 +23,14 @@ function rowToConversation(r: Row): Conversation {
     id: r.id as ConversationId,
     agentId: r.agent_id as AgentId,
     title: r.title,
+    permissionMode: normalizePermissionMode(r.permission_mode),
     createdAt: r.created_at as Iso8601,
     updatedAt: r.updated_at as Iso8601,
   };
+}
+
+function normalizePermissionMode(value: string | null | undefined): ConversationPermissionMode {
+  return value === "policy" ? "policy" : "full_access";
 }
 
 function genId(): ConversationId {
@@ -38,9 +45,9 @@ export class ConversationStore {
     const id = genId();
     this.db
       .query(
-        "INSERT INTO conversations(id, agent_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO conversations(id, agent_id, title, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(id, req.agentId, req.title ?? "", now, now);
+      .run(id, req.agentId, req.title ?? "", req.permissionMode ?? "full_access", now, now);
     return this.get(id) as Conversation;
   }
 
@@ -76,6 +83,16 @@ export class ConversationStore {
     this.db
       .query("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?")
       .run(title, nowIso8601(), id);
+    return this.get(id);
+  }
+
+  updatePermissionMode(
+    id: string,
+    permissionMode: ConversationPermissionMode,
+  ): Conversation | null {
+    this.db
+      .query("UPDATE conversations SET permission_mode = ?, updated_at = ? WHERE id = ?")
+      .run(permissionMode, nowIso8601(), id);
     return this.get(id);
   }
 }

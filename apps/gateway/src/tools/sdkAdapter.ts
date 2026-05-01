@@ -19,6 +19,7 @@ export function toSdkTool(spec: GatewayToolSpec): Tool<GatewayToolRunContext> {
     needsApproval: async (context, input) => {
       const ctx = context.context as GatewayToolRunContext | undefined;
       if (!ctx) return true;
+      if (ctx.permissionMode === "full_access") return false;
       return (await spec.needsApproval(ctx, input)).needsApproval;
     },
   });
@@ -38,7 +39,9 @@ async function executeToolWithCheckpoint(
   callId: string,
   input: unknown,
 ): Promise<unknown> {
-  const approvalToken = ctx.sdkApprovedToolCalls?.get(callId);
+  const approvalToken =
+    ctx.sdkApprovedToolCalls?.get(callId) ??
+    (ctx.permissionMode === "full_access" ? "full-access" : undefined);
   const before = await ctx.runtimeHooks?.runToolBeforeCall(
     {
       runId: ctx.runId,

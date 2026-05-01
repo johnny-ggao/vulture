@@ -19,6 +19,7 @@ import type {
   ToolCallable,
 } from "@vulture/agent-runtime";
 import type { TokenUsage } from "@vulture/protocol/src/v1/run";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type { RuntimeHookRunner } from "./runtimeHooks";
 import { createCoreToolRegistry } from "../tools/coreTools";
 import { resolveEffectiveTools } from "../tools/registry";
@@ -68,6 +69,7 @@ export interface RunFactoryInput {
   toolCallable: ToolCallable;
   runId: string;
   workspacePath: string;
+  permissionMode?: ConversationPermissionMode;
   modelProvider: ModelProvider;
   tracingDisabled: boolean;
   approvalCallable?: SdkApprovalCallable;
@@ -111,6 +113,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
       toolCallable: opts.toolCallable,
       runId: input.runId,
       workspacePath: input.workspacePath,
+      permissionMode: input.permissionMode,
       modelProvider,
       tracingDisabled: opts.tracingDisabled ?? true,
       approvalCallable: opts.approvalCallable,
@@ -162,6 +165,7 @@ export async function* defaultRunFactory(
   const context: SdkRunContext = {
     runId: input.runId,
     workspacePath: input.workspacePath,
+    permissionMode: input.permissionMode,
     toolCallable: input.toolCallable,
     sdkApprovedToolCalls: new Map(),
     onCheckpoint: input.onCheckpoint,

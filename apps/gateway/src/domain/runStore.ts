@@ -10,6 +10,7 @@ import type {
   RunId,
   ConversationId,
   MessageId,
+  ConversationPermissionMode,
 } from "@vulture/protocol/src/v1/conversation";
 import type { AgentId } from "@vulture/protocol/src/v1/agent";
 import { nowIso8601, type Iso8601 } from "@vulture/protocol/src/v1/index";
@@ -92,6 +93,7 @@ export interface RunRecoveryMetadata {
   contextPrompt?: string;
   userInput: string;
   workspacePath: string;
+  permissionMode?: ConversationPermissionMode;
   providerKind: "codex" | "api_key" | "stub";
   updatedAt: string;
 }
@@ -148,6 +150,9 @@ function isRunRecoveryMetadata(value: unknown): value is RunRecoveryMetadata {
     (value.contextPrompt === undefined || typeof value.contextPrompt === "string") &&
     typeof value.userInput === "string" &&
     typeof value.workspacePath === "string" &&
+    (value.permissionMode === undefined ||
+      value.permissionMode === "full_access" ||
+      value.permissionMode === "policy") &&
     isRecoveryProviderKind(value.providerKind) &&
     typeof value.updatedAt === "string"
   );

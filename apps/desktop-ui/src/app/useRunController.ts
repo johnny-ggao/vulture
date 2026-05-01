@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
-import type { ConversationDto, CreateConversationRequest, MessageDto } from "../api/conversations";
+import type {
+  ConversationDto,
+  ConversationPermissionMode,
+  CreateConversationRequest,
+  MessageDto,
+} from "../api/conversations";
 import { conversationsApi } from "../api/conversations";
 import { runsApi, type RunDto, type TokenUsageDto } from "../api/runs";
 import { subagentSessionsApi, type SubagentSessionDto } from "../api/subagentSessions";
@@ -55,6 +60,7 @@ export function useRunController({
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [permissionMode, setPermissionMode] = useState<ConversationPermissionMode>("full_access");
   const sendingRunRef = useRef(false);
 
   const messages = useMessages(apiClient, activeConversationId);
@@ -122,7 +128,8 @@ export function useRunController({
     let cancelled = false;
     (async () => {
       try {
-        await conversationsApi.get(apiClient, activeConversationId);
+        const conversation = await conversationsApi.get(apiClient, activeConversationId);
+        if (!cancelled) setPermissionMode(conversation.permissionMode);
       } catch {
         if (cancelled) return;
         setActiveConversationId(null);
@@ -223,8 +230,10 @@ export function useRunController({
         const created = await conversations.create({
           agentId: selectedAgentId,
           title: input.slice(0, 40),
+          permissionMode,
         });
         cid = created.id;
+        setPermissionMode(created.permissionMode);
         setActiveConversationId(cid);
       }
       const uploaded = await uploadAttachmentsRetry(apiClient, files);
@@ -296,6 +305,7 @@ export function useRunController({
   function startNewConversation() {
     setActiveConversationId(null);
     setActiveRunId(null);
+    setPermissionMode("full_access");
     setRetainedRunEvents({ conversationId: null, events: [] });
     writeActiveChatState({ conversationId: null, runId: null });
   }
@@ -318,6 +328,20 @@ export function useRunController({
     startNewConversation();
   }
 
+  async function changePermissionMode(next: ConversationPermissionMode) {
+    setPermissionMode(next);
+    if (!apiClient || !activeConversationId) return;
+    try {
+      const updated = await conversationsApi.update(apiClient, activeConversationId, {
+        permissionMode: next,
+      });
+      setPermissionMode(updated.permissionMode);
+      void refetchConversationsRef.current();
+    } catch (cause) {
+      console.error("Conversation permission mode update failed", cause);
+    }
+  }
+
   return {
     activeConversationId,
     activeRunId,
@@ -331,6 +355,7 @@ export function useRunController({
     loadingSubagentMessages,
     resumingRun,
     sendError,
+    permissionMode,
     send,
     cancel,
     resume,
@@ -339,6 +364,7 @@ export function useRunController({
     selectConversation,
     clearActiveConversationIfMatches,
     resetForProfileSwitch,
+    changePermissionMode,
   };
 }
 

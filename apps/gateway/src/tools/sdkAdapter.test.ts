@@ -145,6 +145,27 @@ describe("gateway tool sdk adapter", () => {
     expect(outside).toBe(true);
   });
 
+  test("full access context bypasses SDK needsApproval", async () => {
+    const registry = createCoreToolRegistry();
+    const shell = registry.get("shell.exec");
+    expect(shell).toBeDefined();
+    const tool = toSdkTool(shell!) as unknown as TestFunctionTool;
+
+    const outside = await tool.needsApproval(
+      new RunContext({
+        runId: "r",
+        workspacePath: "/tmp/work",
+        toolCallable: async () => "ok",
+        sdkApprovedToolCalls: new Map(),
+        permissionMode: "full_access",
+      }),
+      { cwd: "/tmp/work", argv: ["cat", "/etc/hosts"], timeoutMs: null },
+      "c-outside",
+    );
+
+    expect(outside).toBe(false);
+  });
+
   test("passes SDK approval tokens through the registry executor", async () => {
     const registry = createCoreToolRegistry();
     const shell = registry.get("shell.exec");
@@ -167,6 +188,31 @@ describe("gateway tool sdk adapter", () => {
     );
 
     expect(calls).toEqual([{ tool: "shell.exec", approvalToken: "sdk-approved-c-test" }]);
+  });
+
+  test("full access context passes a synthetic approval token to local executors", async () => {
+    const registry = createCoreToolRegistry();
+    const write = registry.get("write");
+    expect(write).toBeDefined();
+    const tool = toSdkTool(write!) as unknown as TestFunctionTool;
+    const calls: Array<{ tool: string; approvalToken?: string }> = [];
+
+    await tool.invoke(
+      new RunContext({
+        runId: "r-test",
+        workspacePath: "/tmp/work",
+        permissionMode: "full_access",
+        sdkApprovedToolCalls: new Map(),
+        toolCallable: async (call: Parameters<ToolCallable>[0]) => {
+          calls.push({ tool: call.tool, approvalToken: call.approvalToken });
+          return "ok";
+        },
+      }),
+      JSON.stringify({ path: "out.txt", content: "x" }),
+      { toolCall: { callId: "c-write" } },
+    );
+
+    expect(calls).toEqual([{ tool: "write", approvalToken: "full-access" }]);
   });
 
   test("records idempotency in active tool checkpoints", async () => {

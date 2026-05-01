@@ -11,6 +11,7 @@ import {
 } from "@vulture/agent-runtime";
 import type { RunEvent } from "@vulture/protocol/src/v1/run";
 import type { AppError } from "@vulture/protocol/src/v1/error";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import {
   tryEmitRuntimeHook,
   type RuntimeHookRunner,
@@ -47,6 +48,7 @@ export interface OrchestrateArgs {
   userInput: string;
   attachments?: LlmAttachment[];
   workspacePath: string;
+  permissionMode?: ConversationPermissionMode;
   recovery?: LlmRecoveryInput;
   session?: Session;
   sessionInputCallback?: SessionInputCallback;
@@ -81,6 +83,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       contextPrompt: args.contextPrompt,
       userInput: args.userInput,
       workspacePath: args.workspacePath,
+      permissionMode: args.permissionMode,
       providerKind: args.providerKind ?? "api_key",
       updatedAt: new Date().toISOString(),
     };
@@ -118,6 +121,7 @@ export async function orchestrateRun(deps: OrchestratorDeps, args: OrchestrateAr
       userInput: args.userInput,
       attachments: args.attachments,
       workspacePath: args.workspacePath,
+      permissionMode: args.permissionMode,
       llm: deps.llm,
       // Runtime hooks for tool calls live in sdkAdapter (the SDK execute path).
       // The SDK bypasses runner.args.tools, so any hook wiring here would only

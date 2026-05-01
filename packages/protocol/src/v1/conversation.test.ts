@@ -13,6 +13,7 @@ describe("Conversation + Message schemas", () => {
     id: "c-01" as Conversation["id"],
     agentId: "local-work-agent" as Conversation["agentId"],
     title: "Hello",
+    permissionMode: "full_access",
     createdAt: "2026-04-26T00:00:00.000Z" as Conversation["createdAt"],
     updatedAt: "2026-04-26T00:00:00.000Z" as Conversation["updatedAt"],
   };
@@ -65,6 +66,15 @@ describe("Conversation + Message schemas", () => {
     const r = CreateConversationRequestSchema.parse({ agentId: "x" });
     expect(r.agentId).toBe("x");
     expect(r.title).toBeUndefined();
+    expect(r.permissionMode).toBe("full_access");
+  });
+
+  test("CreateConversationRequest accepts policy permission mode", () => {
+    const r = CreateConversationRequestSchema.parse({
+      agentId: "x",
+      permissionMode: "policy",
+    });
+    expect(r.permissionMode).toBe("policy");
   });
 
   test("PostMessageRequest requires non-empty input", () => {

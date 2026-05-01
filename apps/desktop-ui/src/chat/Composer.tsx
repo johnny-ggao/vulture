@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ConversationPermissionMode } from "../api/conversations";
 import { AgentAvatar } from "./components";
 
 export type ThinkingMode = "low" | "medium" | "high";
@@ -10,6 +11,11 @@ const THINKING_OPTIONS: Array<{ value: ThinkingMode; label: string }> = [
   { value: "high", label: "深度" },
 ];
 
+const PERMISSION_OPTIONS: Array<{ value: ConversationPermissionMode; label: string }> = [
+  { value: "full_access", label: "完全权限" },
+  { value: "policy", label: "策略模式" },
+];
+
 const TEXTAREA_MIN_HEIGHT = 56;
 const TEXTAREA_MAX_HEIGHT = 280;
 
@@ -17,6 +23,8 @@ export interface ComposerProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
+  permissionMode?: ConversationPermissionMode;
+  onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
   running: boolean;
   onSend: (input: string, files: File[]) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
@@ -102,6 +110,7 @@ export function Composer(props: ComposerProps) {
   }
 
   const canSend = Boolean(value.trim() && props.selectedAgentId && !props.running);
+  const permissionMode = props.permissionMode ?? "full_access";
 
   return (
     <div
@@ -141,6 +150,22 @@ export function Composer(props: ComposerProps) {
           selectedAgentId={props.selectedAgentId}
           onSelectAgent={props.onSelectAgent}
         />
+        <div className="permission-segmented" role="radiogroup" aria-label="工具权限">
+          {PERMISSION_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={option.value === permissionMode}
+              className={"permission-segment" + (option.value === permissionMode ? " active" : "")}
+              onClick={() => {
+                void props.onChangePermissionMode?.(option.value);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div className="thinking-segmented" role="radiogroup" aria-label="思考模式">
           {THINKING_OPTIONS.map((option) => (
             <button

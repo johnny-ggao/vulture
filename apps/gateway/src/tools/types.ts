@@ -1,4 +1,5 @@
 import type { ToolCallable, LlmCheckpoint } from "@vulture/agent-runtime";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type { RuntimeHookRunner } from "../runtime/runtimeHooks";
 import type { z } from "zod";
 
@@ -19,6 +20,7 @@ export interface GatewayToolRunContext {
   workspacePath: string;
   toolCallable: ToolCallable;
   sdkApprovedToolCalls: Map<string, string>;
+  permissionMode?: ConversationPermissionMode;
   onCheckpoint?: (checkpoint: LlmCheckpoint) => void;
   runtimeHooks?: RuntimeHookRunner;
 }

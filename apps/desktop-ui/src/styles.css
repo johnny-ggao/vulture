@@ -1388,8 +1388,9 @@ pre {
 .chip.brand { background: var(--brand-050); color: var(--brand-600); font-weight: 600; }
 .chip svg { width: 13px; height: 13px; }
 
-/* Thinking-mode segmented control */
-.thinking-segmented {
+/* Composer segmented controls */
+.thinking-segmented,
+.permission-segmented {
   display: inline-flex;
   align-items: center;
   gap: 0;
@@ -1399,7 +1400,8 @@ pre {
   border-radius: var(--radius-pill);
   user-select: none;
 }
-.thinking-segment {
+.thinking-segment,
+.permission-segment {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1417,14 +1419,17 @@ pre {
     color            var(--duration-medium) var(--ease-standard);
   min-height: 0;
 }
-.thinking-segment:hover { color: var(--text-primary); }
-.thinking-segment.active {
+.thinking-segment:hover,
+.permission-segment:hover { color: var(--text-primary); }
+.thinking-segment.active,
+.permission-segment.active {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(15, 15, 15, 0.06);
 }
-.thinking-segment:focus-visible {
+.thinking-segment:focus-visible,
+.permission-segment:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
