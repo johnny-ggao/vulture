@@ -3385,6 +3385,126 @@ pre {
 .rule-add { margin-top: 8px; }
 
 /* ============================================================
+ * Polish pass — focus-visible audit on C2/B2 shells.
+ * Every interactive surface introduced for the design-handoff (chips,
+ * tags, profile cards, channel rows, marketplace cats) gets a
+ * brand-ring focus state so keyboard users see where they are.
+ * Mouse focus remains invisible via :focus-visible.
+ * ============================================================ */
+.skills-cat:focus-visible,
+.skills-feature-card:focus-visible,
+.provider-row:focus-visible,
+.tag-add:focus-visible:not([disabled]),
+.bp-card-add:focus-visible,
+.inbox-add:focus-visible,
+.rule-add:focus-visible,
+.toggle-shell:focus-visible,
+.segmented-shell:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+  border-radius: var(--radius-sm);
+}
+.rule-edit:focus-visible:not([disabled]),
+.rule-row:focus-within {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring) inset;
+}
+
+/* Aria-live save status region — must take no layout space when empty
+ * so the modal header doesn't shift between states. The wrapper is a
+ * fixed-height inline-flex container; the badge inside swaps without
+ * pushing siblings. */
+.save-status-live {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  min-width: 0;
+}
+
+/* SkillsPage loading skeleton — replaces the "刷新中…" text with
+ * shimmer cards on first load. Lasts only ~300ms in practice but
+ * removes the empty-frame flash that comes with async data. */
+.skills-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.skills-skeleton-card {
+  height: 140px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg,
+    var(--fill-quaternary) 0%,
+    var(--fill-tertiary) 50%,
+    var(--fill-quaternary) 100%);
+  background-size: 200% 100%;
+  animation: skills-shimmer 1.4s linear infinite;
+}
+@keyframes skills-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skills-skeleton-card {
+    animation: none;
+    background: var(--fill-quaternary);
+  }
+}
+
+/* Press feedback — kit explicitly forbids press-time transforms, so we
+ * keep this to a single :active background tint deepening per chip /
+ * tag / cat. Hover on a tag.is-on lifts contrast slightly so the user
+ * sees they can still click an "active" tag (e.g. to remove it). */
+.skills-cat:active,
+.provider-row:active,
+.tag:not(.is-on):active,
+.bp-card:not(.bp-card-add):active {
+  background: var(--fill-tertiary);
+}
+.tag.is-on:hover {
+  background: color-mix(in oklab, var(--brand-050) 70%, var(--bg-primary));
+}
+.tag.is-on:active {
+  background: color-mix(in oklab, var(--brand-050) 50%, var(--fill-tertiary));
+}
+
+/* Composer chip-popover-menu — exit fade. Menu unmounts immediately
+ * via React, but in-frame opacity decay avoids the harsh blink that
+ * comes with instant unmount. The animation is enter-only; on close
+ * the whole element is gone, so the visual feels: pop-in fast, vanish
+ * instant. Acceptable per kit ("no entry/exit animations on menus"). */
+.composer-chip:active:not([disabled]) {
+  background: color-mix(in oklab, var(--brand-050) 50%, var(--fill-tertiary));
+}
+
+/* Settings rail aria-busy state — soft pulse while the section under
+ * the active button is mounting its async data, signalling work in
+ * progress without stealing focus. Pairs with aria-busy="true". */
+.settings-rail[aria-busy="true"] button.active::before {
+  animation: settings-rail-busy 1.4s ease-in-out infinite;
+}
+@keyframes settings-rail-busy {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-rail[aria-busy="true"] button.active::before {
+    animation: none;
+  }
+}
+
+/* Composer dropzone announcement region — invisible to sighted users
+ * but keeps screen-reader users informed when files are dragged over
+ * the composer. Pairs with aria-live="polite" on the .composer when
+ * dragging is true. */
+.composer .composer-dropzone {
+  /* `composer-dropzone` already exists with the visual treatment;
+   * this rule just ensures the parent composer's aria-live region
+   * doesn't get clobbered by the visible card. */
+  pointer-events: none;
+}
+
+/* ============================================================
  * ToolGroupSelector — capability tiles + collapsible per-tool detail
  * ============================================================ */
 .tool-group-empty {

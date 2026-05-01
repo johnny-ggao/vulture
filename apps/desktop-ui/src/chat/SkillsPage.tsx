@@ -255,7 +255,16 @@ export function SkillsPage(props: SkillsPageProps) {
             </span>
           </div>
 
-          {sourceFiltered.length === 0 && state.status !== "loading" ? (
+          {state.status === "loading" && items.length === 0 ? (
+            // First-load shimmer — replaces the empty axis frame so the
+            // user gets immediate visual feedback that data is on its
+            // way (per HIG progressive-loading guidance).
+            <div className="skills-skeleton-grid" aria-hidden="true">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skills-skeleton-card" />
+              ))}
+            </div>
+          ) : sourceFiltered.length === 0 && state.status !== "loading" ? (
             <div className="placeholder placeholder-tall">
               <span>
                 {items.length === 0

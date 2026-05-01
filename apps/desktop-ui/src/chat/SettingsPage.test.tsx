@@ -134,7 +134,7 @@ describe("SettingsPage MCP tools", () => {
     const onUpdateMcpServer = mock(async (_id: string, patch) => ({ ...baseServer, ...patch }));
     render(<SettingsPage {...props({ onUpdateMcpServer })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "MCP 服务器" }));
+    fireEvent.click(screen.getByRole("tab", { name: "MCP 服务器" }));
 
     await waitFor(() => {
       expect(screen.getByText("Official Filesystem")).toBeDefined();
@@ -157,7 +157,7 @@ describe("SettingsPage MCP tools", () => {
     const onUpdateMcpServer = mock(async (_id: string, patch) => ({ ...baseServer, ...patch }));
     render(<SettingsPage {...props({ onUpdateMcpServer })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "MCP 服务器" }));
+    fireEvent.click(screen.getByRole("tab", { name: "MCP 服务器" }));
 
     await waitFor(() => {
       expect(screen.getByText("Official Filesystem")).toBeDefined();
@@ -187,7 +187,7 @@ describe("SettingsPage MCP tools", () => {
       ]),
     })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "MCP 服务器" }));
+    fireEvent.click(screen.getByRole("tab", { name: "MCP 服务器" }));
 
     await waitFor(() => {
       expect(screen.getByText("Official Filesystem")).toBeDefined();
@@ -223,7 +223,7 @@ describe("SettingsPage Web Search", () => {
     }));
     render(<SettingsPage {...props({ onUpdateWebSearchSettings, onTestWebSearchSettings })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "联网" }));
+    fireEvent.click(screen.getByRole("tab", { name: "联网" }));
 
     await waitFor(() => {
       expect(screen.getByRole("combobox", { name: "搜索源" })).toBeDefined();

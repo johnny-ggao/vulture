@@ -474,7 +474,7 @@ describe("App integration", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    fireEvent.click(screen.getByRole("button", { name: "运行日志" }));
+    fireEvent.click(screen.getByRole("tab", { name: "运行日志" }));
 
     await waitFor(
       () => {
