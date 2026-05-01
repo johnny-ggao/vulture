@@ -28,6 +28,13 @@ export type { AgentConfigPatch };
 
 type AgentsTab = "overview" | "persona" | "tools" | "core";
 
+const TAB_ORDER: ReadonlyArray<AgentsTab> = [
+  "overview",
+  "persona",
+  "tools",
+  "core",
+];
+
 export interface AgentEditModalProps {
   open: boolean;
   /**
@@ -73,6 +80,20 @@ export function AgentEditModal(props: AgentEditModalProps) {
   // pattern. Without this, keyboard users find themselves dumped at
   // document.body when the modal goes away.
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  // Round 17: track the last tab-switch source. When the user arrows
+  // between tabs we want focus to follow (otherwise the keyboard
+  // pattern strands focus on the previously-active button). Mouse
+  // clicks set 'mouse' so we don't steal focus mid-form.
+  const tabSwitchSourceRef = useRef<"keyboard" | "mouse" | null>(null);
+  // Refs per tab button so the keyboard handler can re-focus the
+  // newly-active tab AFTER React commits its tabIndex flip.
+  const tabRefs = useRef<Record<AgentsTab, HTMLButtonElement | null>>({
+    overview: null,
+    persona: null,
+    tools: null,
+    core: null,
+  });
 
   // Tracks whether the modal is currently mounted + open. Branch on this
   // before any state setter that follows an awaited Promise so a save that
@@ -131,6 +152,18 @@ export function AgentEditModal(props: AgentEditModalProps) {
 
   const isDirty = useMemo(() => isDirtyDraft(draft, agent), [draft, agent]);
   const dirtyTabSet = useMemo(() => dirtyTabs(draft, agent), [draft, agent]);
+
+  // Round 17 — when the user arrows between tabs, follow focus so
+  // the next ArrowLeft/Right keystroke goes to the right element.
+  // We only do this when tabSwitchSourceRef.current === "keyboard"
+  // so mouse clicks (or programmatic resets when the modal opens)
+  // don't steal focus from form inputs.
+  useEffect(() => {
+    if (tabSwitchSourceRef.current !== "keyboard") return;
+    tabSwitchSourceRef.current = null;
+    const node = tabRefs.current[tab];
+    node?.focus({ preventScroll: true });
+  }, [tab]);
 
   // Cleanup the saved-flash timer on unmount.
   useEffect(() => {
@@ -372,6 +405,27 @@ export function AgentEditModal(props: AgentEditModalProps) {
               isDirty={isDirty}
               savedFlash={savedFlash}
             />
+            {/* Round 17: revert-changes button. Visible only while
+              * dirty + not saving; clicking restores the draft to the
+              * last saved agent state. Confirms first to match the
+              * close-when-dirty UX so users can't lose work to a
+              * stray click. */}
+            {isDirty && !saving ? (
+              <button
+                type="button"
+                className="btn-secondary agent-edit-revert"
+                onClick={() => {
+                  if (!agent) return;
+                  if (window.confirm("放弃当前修改？此操作无法撤销。")) {
+                    setDraft(draftFromAgent(agent));
+                    setSaveError(null);
+                  }
+                }}
+                title="撤销所有未保存的修改"
+              >
+                撤销修改
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn-secondary"
@@ -433,11 +487,37 @@ export function AgentEditModal(props: AgentEditModalProps) {
             * for cross-surface consistency with AgentsPage sort and
             * the tool preset, but keep role="tab" / aria-selected so
             * screen readers still announce them as tabs and the
-            * tablist arrow-key navigation pattern stays correct. */}
+            * tablist arrow-key navigation pattern stays correct.
+            *
+            * Round 17: full WAI-ARIA tablist keyboard pattern wired
+            * up — Left/Right move between tabs (with wrap), Home/End
+            * jump to the first/last tab. Activates as you arrow,
+            * matching the "automatic activation" pattern most modal
+            * editors use; the tab body re-renders on every change so
+            * there's no surprise lazy-load behind the tab. */}
           <div
             className="agent-config-tabs segmented segmented-cozy"
             role="tablist"
             aria-label="智能体配置"
+            onKeyDown={(event) => {
+              const idx = TAB_ORDER.indexOf(tab);
+              if (idx < 0) return;
+              let next: AgentsTab | null = null;
+              if (event.key === "ArrowRight") {
+                next = TAB_ORDER[(idx + 1) % TAB_ORDER.length];
+              } else if (event.key === "ArrowLeft") {
+                next =
+                  TAB_ORDER[(idx - 1 + TAB_ORDER.length) % TAB_ORDER.length];
+              } else if (event.key === "Home") {
+                next = TAB_ORDER[0];
+              } else if (event.key === "End") {
+                next = TAB_ORDER[TAB_ORDER.length - 1];
+              }
+              if (next === null) return;
+              event.preventDefault();
+              tabSwitchSourceRef.current = "keyboard";
+              setTab(next);
+            }}
           >
             {(
               [
@@ -452,6 +532,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
               return (
                 <button
                   key={entry.key}
+                  ref={(node) => {
+                    tabRefs.current[entry.key] = node;
+                  }}
                   type="button"
                   role="tab"
                   aria-selected={tab === entry.key}
@@ -461,7 +544,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
                     (tab === entry.key ? " active" : "") +
                     (isDirtyTab ? " has-changes" : "")
                   }
-                  onClick={() => setTab(entry.key)}
+                  onClick={() => {
+                    tabSwitchSourceRef.current = "mouse";
+                    setTab(entry.key);
+                  }}
                 >
                   {entry.label}
                   {isDirtyTab ? (

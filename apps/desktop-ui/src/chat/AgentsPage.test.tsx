@@ -1,8 +1,23 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentsPage, type AgentConfigPatch } from "./AgentsPage";
 import type { Agent, AgentCoreFilesResponse } from "../api/agents";
 import { localAgentFixture as baseAgent } from "./__fixtures__/agent";
+
+// Round 17: AgentsPage now persists sort + search via localStorage.
+// Clear those keys before every test so writes from one test don't
+// leak into the next (sort=alpha persisted by an earlier test made
+// "Local Agent" sort to a non-default position and broke the
+// open-modal helper that finds the agent by name).
+beforeEach(() => {
+  try {
+    localStorage.removeItem("vulture.agents.sort");
+    localStorage.removeItem("vulture.agents.search");
+  } catch {
+    // happy-dom always provides localStorage; the catch is for the
+    // remote chance the host disabled it.
+  }
+});
 
 const stableProps = {
   toolGroups: [],
@@ -679,6 +694,199 @@ describe("AgentsPage — edit modal", () => {
       `button[aria-label="复制 ${baseAgent.workspace.path}"]`,
     );
     expect(copyBtn).not.toBeNull();
+  });
+
+  // ---- Round 17: sort persistence + tablist arrow keys + revert ----
+
+  test("sort choice persists across remounts via localStorage", () => {
+    try {
+      localStorage.removeItem("vulture.agents.sort");
+    } catch {
+      // ignore — happy-dom always provides localStorage
+    }
+    const robin: Agent = { ...baseAgent, id: "robin", name: "Robin" };
+    const adam: Agent = {
+      ...baseAgent,
+      id: "adam",
+      name: "Adam",
+      updatedAt: "2026-05-01T00:00:00Z",
+    };
+    const { unmount, container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin, adam]}
+        selectedAgentId="robin"
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "名称" }));
+    // Adam first by name (alpha order, A < R).
+    let names = Array.from(container.querySelectorAll(".agent-card-name")).map(
+      (n) => n.textContent,
+    );
+    expect(names).toEqual(["Adam", "Robin"]);
+    unmount();
+
+    const { container: c2 } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin, adam]}
+        selectedAgentId="robin"
+      />,
+    );
+    // Sort selection survived the remount.
+    expect(
+      screen
+        .getByRole("radio", { name: "名称" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    names = Array.from(c2.querySelectorAll(".agent-card-name")).map(
+      (n) => n.textContent,
+    );
+    expect(names).toEqual(["Adam", "Robin"]);
+  });
+
+  test("search query persists across remounts via localStorage", () => {
+    try {
+      localStorage.removeItem("vulture.agents.search");
+      localStorage.removeItem("vulture.agents.sort");
+    } catch {
+      // ignore
+    }
+    const robin: Agent = { ...baseAgent, id: "robin", name: "Robin" };
+    const sage: Agent = { ...baseAgent, id: "sage", name: "Sage" };
+    const { unmount, container } = render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin, sage]}
+        selectedAgentId="robin"
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("搜索智能体"), {
+      target: { value: "rob" },
+    });
+    expect(container.querySelectorAll(".agent-card").length).toBe(1);
+    unmount();
+
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[robin, sage]}
+        selectedAgentId="robin"
+      />,
+    );
+    // Search input retains the persisted value.
+    const input = screen.getByLabelText("搜索智能体") as HTMLInputElement;
+    expect(input.value).toBe("rob");
+  });
+
+  // ---- Round 17: tablist arrow keys + revert + tool filter + sort persist
+
+  test("ArrowRight on the modal tablist moves to the next tab; ArrowLeft goes back", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    // Initially Overview is selected.
+    expect(
+      (
+        screen.getByRole("tab", { name: "概览" }) as HTMLElement
+      ).getAttribute("aria-selected"),
+    ).toBe("true");
+    // Fire ArrowRight on the tablist; aria-selected should flip to Persona.
+    const tablist = screen.getByRole("tablist", { name: "智能体配置" });
+    fireEvent.keyDown(tablist, { key: "ArrowRight" });
+    expect(
+      screen
+        .getByRole("tab", { name: "Persona" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.keyDown(tablist, { key: "ArrowLeft" });
+    expect(
+      (
+        screen.getByRole("tab", { name: "概览" }) as HTMLElement
+      ).getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  test("End jumps to the last tab; Home jumps to the first", () => {
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    const tablist = screen.getByRole("tablist", { name: "智能体配置" });
+    fireEvent.keyDown(tablist, { key: "End" });
+    expect(
+      screen
+        .getByRole("tab", { name: "Agent Core" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.keyDown(tablist, { key: "Home" });
+    expect(
+      (
+        screen.getByRole("tab", { name: "概览" }) as HTMLElement
+      ).getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  test("revert-changes button appears only while dirty and restores the draft on confirm", () => {
+    const originalConfirm = window.confirm;
+    (window as unknown as { confirm: () => boolean }).confirm = () => true;
+    try {
+      render(
+        <AgentsPage
+          {...stableProps}
+          agents={[baseAgent]}
+          selectedAgentId="agent-1"
+        />,
+      );
+      openEditModal();
+      // Not dirty → no revert button.
+      expect(screen.queryByRole("button", { name: "撤销修改" })).toBeNull();
+
+      // Edit name → revert button appears.
+      const nameInput = screen.getByLabelText("名称") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "Renamed" } });
+      expect(screen.getByRole("button", { name: "撤销修改" })).toBeDefined();
+
+      // Click revert → confirms (mocked true) → name resets to fixture's name.
+      fireEvent.click(screen.getByRole("button", { name: "撤销修改" }));
+      expect(nameInput.value).toBe(baseAgent.name);
+      // Revert button gone again.
+      expect(screen.queryByRole("button", { name: "撤销修改" })).toBeNull();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("revert cancellation keeps the dirty draft intact", () => {
+    const originalConfirm = window.confirm;
+    (window as unknown as { confirm: () => boolean }).confirm = () => false;
+    try {
+      render(
+        <AgentsPage
+          {...stableProps}
+          agents={[baseAgent]}
+          selectedAgentId="agent-1"
+        />,
+      );
+      openEditModal();
+      const nameInput = screen.getByLabelText("名称") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "Renamed" } });
+      fireEvent.click(screen.getByRole("button", { name: "撤销修改" }));
+      // confirm returned false → draft stays dirty, name stays "Renamed".
+      expect(nameInput.value).toBe("Renamed");
+      expect(screen.getByRole("button", { name: "撤销修改" })).toBeDefined();
+    } finally {
+      window.confirm = originalConfirm;
+    }
   });
 
   test("modal closes if the agent disappears (e.g. delete-undo committed)", () => {

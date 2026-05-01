@@ -2537,6 +2537,25 @@ pre {
   color: var(--text-tertiary);
 }
 .tool-group-root { display: grid; gap: 12px; }
+
+/* Round 17: filter input above the capability tiles. Lays out as a
+ * single row when there's space (filter + count chip), wraps below
+ * 480px so the count never collides with the search box. */
+.tool-group-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tool-group-filter .search-input {
+  flex: 1;
+  min-width: 200px;
+}
+.tool-group-filter-count {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .tool-capabilities {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3460,6 +3479,21 @@ pre {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+/* Round 17: revert-changes affordance. Lives in the action rail,
+ * styled as a quiet ghost so it doesn't compete with 保存. Mounts
+ * with a fade so it doesn't pop in jarringly each time the user
+ * touches a field; respects reduced-motion via the global media
+ * rule that drops animation-delay on the global selector. */
+.agent-edit-revert {
+  animation: agent-edit-revert-enter var(--duration-fast) var(--ease-out) both;
+}
+@keyframes agent-edit-revert-enter {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-edit-revert { animation: none; }
 }
 .agent-edit-modal-body {
   display: flex;
