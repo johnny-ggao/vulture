@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AuthStatusView,
@@ -159,6 +159,14 @@ export function App() {
     void refreshBrowserStatus();
     void refreshProfiles();
   }, [refreshAuthStatus, refreshBrowserStatus, refreshProfiles]);
+
+  useEffect(() => {
+    if (!browserStatus?.enabled) return;
+    const timer = window.setInterval(() => {
+      void refreshBrowserStatus();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [browserStatus?.enabled, refreshBrowserStatus]);
 
   async function handleSignInWithChatGPT() {
     try {
@@ -513,6 +521,75 @@ export function App() {
     agentDelete.dismiss();
   }
 
+  // ---- Keyboard shortcuts ---------------------------------------
+  // ⌘1-6 / Ctrl+1-6 jump between primary views. ⌘N starts a new
+  // conversation (skipped when typing in any input/textarea so the
+  // shortcut never blackholes a keystroke). ⌘K is owned by the
+  // command palette below and not re-handled here.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod || event.shiftKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping =
+        tag === "input" ||
+        tag === "textarea" ||
+        target?.isContentEditable === true;
+
+      const VIEW_KEYS: ViewKey[] = [
+        "chat",
+        "agents",
+        "skills",
+        "plugins",
+        "tasks",
+        "settings",
+      ];
+      if (event.key >= "1" && event.key <= "6") {
+        if (isTyping) return;
+        const idx = Number.parseInt(event.key, 10) - 1;
+        const target = VIEW_KEYS[idx];
+        if (target) {
+          event.preventDefault();
+          setView(target);
+          setHistoryOpen(false);
+        }
+        return;
+      }
+      if (event.key === "n" || event.key === "N") {
+        if (isTyping) return;
+        event.preventDefault();
+        startNewConversation();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // startNewConversation is recreated each render but its identity
+    // doesn't matter for the shortcut — we want the latest closure.
+    // Re-binding on every render is cheap and keeps the closure live.
+  });
+
+  // ---- Skip-link + focus-on-route-change ------------------------
+  // Keyboard users land on the skip-link as the first focusable
+  // element; activating it moves focus into <main>, jumping over
+  // the titlebar/sidebar. We also focus main programmatically when
+  // the view changes so screen-reader users land on the new content
+  // region instead of being stranded on the previously-active tab.
+  const mainRef = useRef<HTMLElement | null>(null);
+  const lastViewRef = useRef<ViewKey | null>(null);
+  useEffect(() => {
+    // Skip the very first render — focusing main on initial load
+    // would steal focus from any auto-focused element on the page
+    // (e.g. the composer textarea). Only react to actual view changes.
+    if (lastViewRef.current === null) {
+      lastViewRef.current = view;
+      return;
+    }
+    if (lastViewRef.current === view) return;
+    lastViewRef.current = view;
+    queueMicrotask(() => mainRef.current?.focus({ preventScroll: true }));
+  }, [view]);
+
   // ---- Command Palette (⌘K) -------------------------------------
   // Global shortcut hook owns the open/close state. The command list
   // is recomputed each render so it always reflects the latest agents,
@@ -522,21 +599,24 @@ export function App() {
   const paletteCommands = useMemo<ReadonlyArray<Command>>(() => {
     const cmds: Command[] = [];
 
-    // Navigate group — primary view switcher.
-    const VIEW_LABELS: Array<{ key: ViewKey; label: string; shortcut?: string }> = [
-      { key: "chat", label: "对话" },
-      { key: "agents", label: "智能体" },
-      { key: "skills", label: "技能" },
-      { key: "plugins", label: "插件" },
-      { key: "tasks", label: "定时任务" },
-      { key: "settings", label: "设置" },
+    // Navigate group — primary view switcher. Shortcut digits mirror
+    // the ⌘1-6 listener so the palette is a discoverability surface
+    // for the same keystrokes (no duplicate handler).
+    const VIEW_LABELS: Array<{ key: ViewKey; label: string; digit: string }> = [
+      { key: "chat", label: "对话", digit: "1" },
+      { key: "agents", label: "智能体", digit: "2" },
+      { key: "skills", label: "技能", digit: "3" },
+      { key: "plugins", label: "插件", digit: "4" },
+      { key: "tasks", label: "定时任务", digit: "5" },
+      { key: "settings", label: "设置", digit: "6" },
     ];
-    for (const { key, label } of VIEW_LABELS) {
+    for (const { key, label, digit } of VIEW_LABELS) {
       cmds.push({
         id: `view:${key}`,
         label: `跳到「${label}」`,
         group: "导航",
         keywords: [key, "view", "switch", "navigate"],
+        shortcut: ["⌘", digit],
         execute: () => {
           setView(key);
           setHistoryOpen(false);
@@ -642,6 +722,19 @@ export function App() {
 
   return (
     <div className="app-shell">
+      {/* Skip-link — invisible until keyboard-focused, then surfaces
+          as a brand-tinted pill at the top-left and jumps the user
+          straight to <main>, bypassing the titlebar + sidebar. */}
+      <a
+        href="#main-content"
+        className="skip-link"
+        onClick={(event) => {
+          event.preventDefault();
+          mainRef.current?.focus({ preventScroll: false });
+        }}
+      >
+        跳到主内容
+      </a>
       <Titlebar />
       <div className="shell-body">
         <div className="sidebar-frame">
@@ -656,7 +749,21 @@ export function App() {
             onToggleHistory={() => setHistoryOpen((o) => !o)}
           />
         </div>
-        <main className="chat-main-wrap content-panel">
+        <main
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          className="chat-main-wrap content-panel"
+          aria-label={
+            view === "chat" ? "对话" :
+            view === "agents" ? "智能体" :
+            view === "skills" ? "技能" :
+            view === "plugins" ? "插件" :
+            view === "tasks" ? "定时任务" :
+            view === "settings" ? "设置" :
+            "主内容"
+          }
+        >
           {runtime.data && (
             <div className="runtime-debug" aria-label="运行时状态">
               <span>gateway:{runtime.data.gateway.port}</span>

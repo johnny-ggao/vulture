@@ -3704,6 +3704,127 @@ pre {
 }
 
 /* ============================================================
+ * Skip-link — visually hidden until keyboard-focused. Lands the
+ * user at <main> in one Tab keystroke, bypassing titlebar +
+ * sidebar. WAI-ARIA "skip navigation" pattern.
+ * ============================================================ */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: var(--z-toast);
+  padding: 8px 14px;
+  background: var(--brand-500);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  /* Pull off-screen until focused — avoids visible chrome on
+   * pointer-only sessions while staying reachable to AT/keyboard. */
+  transform: translateY(calc(-100% - 16px));
+  transition: transform var(--duration-medium) var(--ease-out);
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  outline: 0;
+  transform: translateY(0);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  .skip-link { transition: none; }
+}
+
+/* Programmatic focus on <main> after route change shouldn't show
+ * the default thick focus ring (the user didn't TAB to land here —
+ * we moved them). Hide the ring when focus arrives via JS. */
+.chat-main-wrap:focus { outline: none; }
+.chat-main-wrap:focus-visible {
+  outline: 2px solid var(--brand-ring);
+  outline-offset: -4px;
+}
+
+/* ============================================================
+ * Tabular numbers — applied to data-bearing surfaces so column
+ * widths stay stable as values change (run logs ticking, token
+ * counters, agent counts, etc.). Single utility class so any new
+ * surface can opt in by adding `.num`. We also force tabular-nums
+ * onto every surface that already declares font-variant-numeric
+ * "tnum" so the existing rules don't fight a downstream override.
+ * ============================================================ */
+.num,
+.agent-card-chip-count,
+.agents-toolbar-count,
+.skills-cat-count,
+.provider-models-count,
+.bp-stats,
+.bp-stats b,
+.inbox-stats,
+.inbox-stats b,
+.run-stats,
+.runs-count,
+.profile-id,
+.cmdk-row-shortcut kbd,
+.kbd,
+.time-chip,
+.mini-field,
+.mini-field b {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+ * Stagger entrance for grids (§7 stagger-sequence). Grid items
+ * fade up sequentially at 30ms/item up to a 240ms cap. Honours
+ * prefers-reduced-motion: items appear without delay.
+ *
+ * Already in place for .agents-grid .agent-card via existing
+ * nth-child rules; this block extends the same pattern to the
+ * marketplace grid (skills) and a few list surfaces that benefit
+ * from a calm sequential reveal on first paint.
+ * ============================================================ */
+@keyframes stagger-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skills-grid > .skill-card,
+  .skills-feature-row > .skills-feature-card,
+  .provider-list > li,
+  .inbox-list > .inbox-row,
+  .bp-list > .bp-card {
+    animation: stagger-fade-up var(--duration-medium) var(--ease-out) backwards;
+  }
+  .skills-grid > .skill-card:nth-child(1),
+  .skills-feature-row > .skills-feature-card:nth-child(1),
+  .provider-list > li:nth-child(1),
+  .inbox-list > .inbox-row:nth-child(1),
+  .bp-list > .bp-card:nth-child(1) { animation-delay: 0ms; }
+  .skills-grid > .skill-card:nth-child(2),
+  .skills-feature-row > .skills-feature-card:nth-child(2),
+  .provider-list > li:nth-child(2),
+  .inbox-list > .inbox-row:nth-child(2),
+  .bp-list > .bp-card:nth-child(2) { animation-delay: 30ms; }
+  .skills-grid > .skill-card:nth-child(3),
+  .skills-feature-row > .skills-feature-card:nth-child(3),
+  .provider-list > li:nth-child(3),
+  .inbox-list > .inbox-row:nth-child(3),
+  .bp-list > .bp-card:nth-child(3) { animation-delay: 60ms; }
+  .skills-grid > .skill-card:nth-child(4),
+  .provider-list > li:nth-child(4),
+  .inbox-list > .inbox-row:nth-child(4) { animation-delay: 90ms; }
+  .skills-grid > .skill-card:nth-child(5),
+  .provider-list > li:nth-child(5),
+  .inbox-list > .inbox-row:nth-child(5) { animation-delay: 120ms; }
+  .skills-grid > .skill-card:nth-child(6),
+  .provider-list > li:nth-child(6),
+  .inbox-list > .inbox-row:nth-child(6) { animation-delay: 150ms; }
+  .skills-grid > .skill-card:nth-child(7),
+  .provider-list > li:nth-child(7) { animation-delay: 180ms; }
+  .skills-grid > .skill-card:nth-child(n+8),
+  .provider-list > li:nth-child(n+8) { animation-delay: 210ms; }
+}
+
+/* ============================================================
  * ToolGroupSelector — capability tiles + collapsible per-tool detail
  * ============================================================ */
 .tool-group-empty {
