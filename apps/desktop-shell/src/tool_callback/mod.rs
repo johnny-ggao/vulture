@@ -186,6 +186,21 @@ async fn manifest_handler() -> impl IntoResponse {
                 description: "Click an element by selector",
                 requires_approval: true,
             },
+            ToolManifestEntry {
+                name: "browser.input",
+                description: "Set text into an element by selector",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.scroll",
+                description: "Scroll the active browser page or selected element",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.extract",
+                description: "Extract visible text and links from the active browser tab",
+                requires_approval: true,
+            },
         ],
     })
 }
@@ -332,7 +347,7 @@ async fn execute(state: &ShellState, req: &InvokeRequest) -> impl IntoResponse {
                 }),
             ),
         }
-    } else if matches!(req.tool.as_str(), "browser.snapshot" | "browser.click") {
+    } else if req.tool.starts_with("browser.") {
         let receiver = {
             let mut relay = state
                 .browser_relay
@@ -926,6 +941,119 @@ mod tests {
         let completed = invoke.await.expect("invoke task should complete");
         assert_eq!(completed["status"], "completed");
         assert_eq!(completed["output"]["title"], "Example");
+
+        handle.shutdown().await;
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[tokio::test]
+    async fn browser_input_waits_for_extension_result() {
+        let relay = Arc::new(Mutex::new(
+            crate::browser::relay::BrowserRelayState::default(),
+        ));
+        let pairing_token = {
+            let mut relay_state = relay.lock().expect("relay lock");
+            relay_state
+                .enable_pairing(9444)
+                .expect("pairing should start")
+                .pairing_token
+                .expect("token should be present")
+        };
+        let dir = std::env::temp_dir().join(format!("tcb-browser-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let audit_path = dir.join("audit.sqlite");
+        let token = "x".repeat(43);
+        let handle = serve_with_codex_and_browser_relay(
+            0,
+            token.clone(),
+            Arc::new(RwLock::new(audit_path)),
+            Arc::new(RwLock::new(std::env::temp_dir())),
+            RefreshSingleton::default(),
+            relay,
+        )
+        .await
+        .expect("serve");
+        let port = handle.bound_port;
+
+        let hello: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/browser/hello"))
+            .json(&serde_json::json!({
+                "method": "Extension.hello",
+                "params": {
+                    "protocol_version": 1,
+                    "extension_version": "0.1.0",
+                    "pairing_token": pairing_token
+                }
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(hello["ok"], true);
+
+        let invoke = tokio::spawn({
+            let token = token.clone();
+            async move {
+                reqwest::Client::new()
+                    .post(format!("http://127.0.0.1:{port}/tools/invoke"))
+                    .header("Authorization", format!("Bearer {}", token))
+                    .json(&serde_json::json!({
+                        "callId": "c-browser-input",
+                        "runId": "r-browser",
+                        "tool": "browser.input",
+                        "input": { "selector": "input[name=q]", "text": "hello", "submit": false },
+                        "workspacePath": "",
+                        "approvalToken": "approval-browser"
+                    }))
+                    .send()
+                    .await
+                    .unwrap()
+                    .json::<serde_json::Value>()
+                    .await
+                    .unwrap()
+            }
+        });
+
+        let mut action = serde_json::Value::Null;
+        for _ in 0..20 {
+            let response = reqwest::Client::new()
+                .get(format!(
+                    "http://127.0.0.1:{port}/browser/requests?token={}",
+                    pairing_token
+                ))
+                .send()
+                .await
+                .unwrap();
+            if response.status() == reqwest::StatusCode::OK {
+                action = response.json().await.unwrap();
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(action["tool"], "browser.input");
+        assert_eq!(action["input"]["text"], "hello");
+
+        let result: serde_json::Value = reqwest::Client::new()
+            .post(format!("http://127.0.0.1:{port}/browser/results"))
+            .json(&serde_json::json!({
+                "token": pairing_token,
+                "requestId": action["requestId"],
+                "ok": true,
+                "value": { "input": true, "selector": "input[name=q]" }
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(result["ok"], true);
+
+        let completed = invoke.await.expect("invoke task should complete");
+        assert_eq!(completed["status"], "completed");
+        assert_eq!(completed["output"]["input"], true);
 
         handle.shutdown().await;
         std::fs::remove_dir_all(dir).ok();

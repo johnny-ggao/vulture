@@ -106,7 +106,7 @@ function rowToAgent(r: AgentRow): Agent {
     description: r.description,
     model: r.model,
     reasoning: r.reasoning as ReasoningLevel,
-    tools: storedTools,
+    tools: toolPolicy.tools,
     toolPreset: toolPolicy.toolPreset,
     toolInclude: toolPolicy.toolInclude,
     toolExclude: toolPolicy.toolExclude,
@@ -708,7 +708,7 @@ function normalizeStoredToolPolicy(
     toolPreset,
     toolInclude,
     toolExclude,
-    tools: uniqueTools(storedTools),
+    tools: expandToolPolicy(toolPreset, toolInclude, toolExclude),
   };
 }
 

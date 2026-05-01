@@ -21,7 +21,6 @@ export function browserCapabilitiesRouter(): Hono {
       supportedTools: tools,
       plannedCapabilities: [
         "navigate",
-        "input",
         "wait",
         "screenshot",
         "multi-tab-session",

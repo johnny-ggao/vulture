@@ -20,6 +20,19 @@ const groups: ToolCatalogGroup[] = [
     items: [
       { id: "web_search", label: "web_search", risk: "low", idempotent: true },
       { id: "web_fetch", label: "web_fetch", risk: "low", idempotent: true },
+      { id: "web_extract", label: "web_extract", risk: "low", idempotent: true },
+    ],
+  },
+  {
+    id: "browser",
+    label: "Browser",
+    description: "Browser access",
+    items: [
+      { id: "browser.snapshot", label: "browser.snapshot", risk: "medium", idempotent: true },
+      { id: "browser.click", label: "browser.click", risk: "medium", idempotent: false },
+      { id: "browser.input", label: "browser.input", risk: "medium", idempotent: false },
+      { id: "browser.scroll", label: "browser.scroll", risk: "medium", idempotent: false },
+      { id: "browser.extract", label: "browser.extract", risk: "medium", idempotent: true },
     ],
   },
 ];
@@ -53,7 +66,7 @@ describe("ToolGroupSelector — round 17 filter", () => {
     );
     expect(container.querySelectorAll(".tool-capability").length).toBe(1);
     // Count chip "matched / total" appears.
-    expect(screen.getByText("2 / 4")).toBeDefined();
+    expect(screen.getByText("3 / 10")).toBeDefined();
     // Detail expands automatically when filtering, so the matched
     // tools are visible without extra clicks.
     expect(container.querySelector(".tool-row")).not.toBeNull();
@@ -85,8 +98,8 @@ describe("ToolGroupSelector — round 17 filter", () => {
     fireEvent.change(input, { target: { value: "web" } });
     expect(container.querySelectorAll(".tool-capability").length).toBe(1);
     fireEvent.change(input, { target: { value: "" } });
-    // Both capability tiles are present after clearing.
-    expect(container.querySelectorAll(".tool-capability").length).toBe(2);
+    // All capability tiles are present after clearing.
+    expect(container.querySelectorAll(".tool-capability").length).toBe(3);
   });
 
   test("clicking a capability tile still calls onChange with the right tools", () => {
@@ -99,9 +112,32 @@ describe("ToolGroupSelector — round 17 filter", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Web/ }));
-    // Web capability covers web_search + web_fetch (per TOOL_CAPABILITIES).
+    // Web capability covers search, raw fetch, and structured extract.
     expect(onChange).toHaveBeenCalled();
     const next = onChange.mock.calls[0]![0];
-    expect(next).toEqual(expect.arrayContaining(["web_search", "web_fetch"]));
+    expect(next).toEqual(expect.arrayContaining(["web_search", "web_fetch", "web_extract"]));
+  });
+
+  test("browser capability covers snapshot, click, input, scroll, and extract", () => {
+    const onChange = mock((_: string[]) => {});
+    render(
+      <ToolGroupSelector
+        groups={groups}
+        selected={[]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Browser/ }));
+
+    const next = onChange.mock.calls[0]![0];
+    expect(next).toEqual(
+      expect.arrayContaining([
+        "browser.snapshot",
+        "browser.click",
+        "browser.input",
+        "browser.scroll",
+        "browser.extract",
+      ]),
+    );
   });
 });

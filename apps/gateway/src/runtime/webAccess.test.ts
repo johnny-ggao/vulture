@@ -147,6 +147,71 @@ describe("WebAccessService", () => {
       });
   });
 
+  test("extracts structured text and links from public html", async () => {
+    const service = createWebAccessService({
+      fetch: async () =>
+        new Response(
+          `
+            <html>
+              <head>
+                <title>Example &amp; Docs</title>
+                <meta name="description" content="Agent documentation">
+              </head>
+              <body>
+                <nav>Navigation</nav>
+                <main>
+                  <h1>Agents SDK</h1>
+                  <p>Build useful agents.</p>
+                  <a href="/docs">Docs</a>
+                  <a href="https://example.org/blog">Blog</a>
+                </main>
+                <script>ignored()</script>
+              </body>
+            </html>
+          `,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        ),
+    });
+
+    await expect(
+      service.extract({ url: "https://example.com/start", maxBytes: 1_000, maxLinks: 5 }),
+    ).resolves.toEqual({
+      url: "https://example.com/start",
+      status: 200,
+      contentType: "text/html; charset=utf-8",
+      title: "Example & Docs",
+      description: "Agent documentation",
+      text: "Navigation Agents SDK Build useful agents. Docs Blog",
+      links: [
+        { text: "Docs", url: "https://example.com/docs" },
+        { text: "Blog", url: "https://example.org/blog" },
+      ],
+      truncated: false,
+    });
+  });
+
+  test("extracts plain text responses without html metadata", async () => {
+    const service = createWebAccessService({
+      fetch: async () =>
+        new Response("abcdef", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    });
+
+    await expect(service.extract({ url: "https://example.com/readme.txt", maxBytes: 3 }))
+      .resolves.toEqual({
+        url: "https://example.com/readme.txt",
+        status: 200,
+        contentType: "text/plain",
+        title: null,
+        description: null,
+        text: "abc",
+        links: [],
+        truncated: true,
+      });
+  });
+
   test("rejects private fetches without approval and allows them with approval", async () => {
     const service = createWebAccessService({
       fetch: async () => new Response("private", { status: 200 }),

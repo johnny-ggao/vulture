@@ -48,6 +48,11 @@ const webFetchParameters = z.object({
   url: z.string(),
   maxBytes: z.number().int().positive().nullable(),
 });
+const webExtractParameters = z.object({
+  url: z.string(),
+  maxBytes: z.number().int().positive().nullable(),
+  maxLinks: z.number().int().min(0).nullable(),
+});
 const sessionsListParameters = z.object({
   parentConversationId: z.string().nullable(),
   parentRunId: z.string().nullable(),
@@ -98,6 +103,19 @@ const memoryAppendParameters = z.object({
 });
 const browserSnapshotParameters = z.object({});
 const browserClickParameters = z.object({ selector: z.string() });
+const browserInputParameters = z.object({
+  selector: z.string(),
+  text: z.string(),
+  submit: z.boolean().nullable(),
+});
+const browserScrollParameters = z.object({
+  selector: z.string().nullable(),
+  deltaY: z.number().nullable(),
+});
+const browserExtractParameters = z.object({
+  maxTextChars: z.number().int().positive().nullable(),
+  maxLinks: z.number().int().min(0).nullable(),
+});
 
 export function createCoreToolRegistry(): ToolRegistry {
   return new ToolRegistry([
@@ -109,6 +127,7 @@ export function createCoreToolRegistry(): ToolRegistry {
     processTool(),
     webSearchTool(),
     webFetchTool(),
+    webExtractTool(),
     sessionsListTool(),
     sessionsHistoryTool(),
     sessionsSendTool(),
@@ -120,6 +139,9 @@ export function createCoreToolRegistry(): ToolRegistry {
     memoryAppendTool(),
     browserSnapshotTool(),
     browserClickTool(),
+    browserInputTool(),
+    browserScrollTool(),
+    browserExtractTool(),
   ]);
 }
 
@@ -251,8 +273,24 @@ function webFetchTool(): GatewayToolSpec {
     category: "web",
     risk: "safe",
     idempotent: true,
-    needsApproval: (ctx, input) => webFetchApprovalDecision(input, ctx.permissionMode),
+    needsApproval: (ctx, input) => webReadApprovalDecision("web_fetch", input, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "web_fetch", input),
+  };
+}
+
+function webExtractTool(): GatewayToolSpec {
+  return {
+    id: "web_extract",
+    sdkName: "web_extract",
+    label: "Web Extract",
+    description: "Fetch an http(s) URL and extract structured page text, title, description, and links.",
+    parameters: webExtractParameters,
+    source: "core",
+    category: "web",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: (ctx, input) => webReadApprovalDecision("web_extract", input, ctx.permissionMode),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "web_extract", input),
   };
 }
 
@@ -438,6 +476,61 @@ function browserClickTool(): GatewayToolSpec {
   };
 }
 
+function browserInputTool(): GatewayToolSpec {
+  return {
+    id: "browser.input",
+    sdkName: "browser_input",
+    label: "Browser Input",
+    description: "Set text into an element by selector in the browser.",
+    parameters: browserInputParameters,
+    source: "core",
+    category: "browser",
+    risk: "approval",
+    idempotent: false,
+    needsApproval: () => browserApprovalDecision("browser.input"),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "browser.input", input),
+  };
+}
+
+function browserScrollTool(): GatewayToolSpec {
+  return {
+    id: "browser.scroll",
+    sdkName: "browser_scroll",
+    label: "Browser Scroll",
+    description: "Scroll the current browser page or a selected element.",
+    parameters: browserScrollParameters,
+    source: "core",
+    category: "browser",
+    risk: "approval",
+    idempotent: false,
+    needsApproval: () => browserApprovalDecision("browser.scroll"),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "browser.scroll", input),
+  };
+}
+
+function browserExtractTool(): GatewayToolSpec {
+  return {
+    id: "browser.extract",
+    sdkName: "browser_extract",
+    label: "Browser Extract",
+    description: "Extract visible text and links from the current browser tab.",
+    parameters: browserExtractParameters,
+    source: "core",
+    category: "browser",
+    risk: "approval",
+    idempotent: true,
+    needsApproval: () => browserApprovalDecision("browser.extract"),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "browser.extract", input),
+  };
+}
+
+function browserApprovalDecision(toolName: string): GatewayToolApprovalDecision {
+  return {
+    needsApproval: true,
+    reason: `${toolName} requires browser approval`,
+  };
+}
+
 async function executeViaGatewayTool(
   ctx: GatewayToolExecutionContext,
   tool: string,
@@ -474,7 +567,9 @@ export function coreToolApprovalDecision(
     case "web_search":
       return { needsApproval: false };
     case "web_fetch":
-      return webFetchApprovalDecision(input, permissionMode);
+      return webReadApprovalDecision("web_fetch", input, permissionMode);
+    case "web_extract":
+      return webReadApprovalDecision("web_extract", input, permissionMode);
     case "sessions_send":
       return { needsApproval: true, reason: "sessions_send requires approval" };
     case "sessions_spawn":
@@ -483,10 +578,10 @@ export function coreToolApprovalDecision(
       return { needsApproval: true, reason: "memory_append requires approval" };
     case "browser.snapshot":
     case "browser.click":
-      return {
-        needsApproval: true,
-        reason: `${toolName} requires browser approval`,
-      };
+    case "browser.input":
+    case "browser.scroll":
+    case "browser.extract":
+      return browserApprovalDecision(toolName);
     case "shell.exec":
       return shellExecApprovalDecision(input, workspacePath, permissionMode);
     default:
@@ -595,24 +690,25 @@ function processApprovalDecision(
   return { needsApproval: false };
 }
 
-function webFetchApprovalDecision(
+function webReadApprovalDecision(
+  toolName: "web_fetch" | "web_extract",
   input: unknown,
   _permissionMode: ConversationPermissionMode | undefined,
 ): GatewayToolApprovalDecision {
   const value = input as { url?: unknown };
   if (typeof value.url !== "string") {
-    return { needsApproval: true, reason: "web_fetch missing url" };
+    return { needsApproval: true, reason: `${toolName} missing url` };
   }
   try {
     const url = new URL(value.url);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return { needsApproval: true, reason: "web_fetch requires http(s)" };
+      return { needsApproval: true, reason: `${toolName} requires http(s)` };
     }
     if (isPrivateHostname(url.hostname)) {
-      return { needsApproval: true, reason: "web_fetch targets a private host" };
+      return { needsApproval: true, reason: `${toolName} targets a private host` };
     }
   } catch {
-    return { needsApproval: true, reason: "web_fetch invalid url" };
+    return { needsApproval: true, reason: `${toolName} invalid url` };
   }
   return { needsApproval: false };
 }

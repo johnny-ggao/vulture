@@ -14,6 +14,7 @@ function freshStore(defaultWorkspace?: string) {
   applyMigrations(db);
   return {
     store: new AgentStore(db, dir, defaultWorkspace, dir),
+    db,
     dir,
     cleanup: () => { db.close(); rmSync(dir, { recursive: true }); },
   };
@@ -250,6 +251,36 @@ describe("AgentStore", () => {
     expect(registry).toContain('"preset": "developer"');
     expect(registry).toContain('"exclude": [');
     expect(registry).toContain('"browser.click"');
+    cleanup();
+  });
+
+  test("stored preset agents expand to newly added preset tools", () => {
+    const { store, db, cleanup } = freshStore();
+    const saved = store.save({
+      id: "coder",
+      name: "Coder",
+      description: "Writes code",
+      model: "gpt-5.4",
+      reasoning: "medium",
+      tools: [],
+      toolPreset: "developer",
+      toolInclude: [],
+      toolExclude: ["browser.click"],
+      instructions: "Be careful.",
+    });
+    db.query("UPDATE agents SET tools = ? WHERE id = ?").run(
+      JSON.stringify(["read", "write", "edit", "apply_patch", "shell.exec", "process", "web_search", "web_fetch"]),
+      saved.id,
+    );
+
+    const reloaded = store.get("coder");
+
+    expect(reloaded?.toolPreset).toBe("developer");
+    expect(reloaded?.tools).toContain("web_extract");
+    expect(reloaded?.tools).toContain("browser.input");
+    expect(reloaded?.tools).toContain("browser.scroll");
+    expect(reloaded?.tools).toContain("browser.extract");
+    expect(reloaded?.tools).not.toContain("browser.click");
     cleanup();
   });
 

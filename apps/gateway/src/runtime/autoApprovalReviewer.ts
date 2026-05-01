@@ -64,18 +64,20 @@ const MUTATING_TOOLS = new Set([
   "sessions_send",
   "sessions_spawn",
   "browser.click",
-  "browser.type",
+  "browser.input",
+  "browser.scroll",
   "process.start",
   "process.kill",
 ]);
 
-const NETWORK_READ_TOOLS = new Set(["web_search", "web_fetch"]);
+const NETWORK_READ_TOOLS = new Set(["web_search", "web_fetch", "web_extract"]);
 const READ_ONLY_TOOLS = new Set([
   "read",
   "sessions_list",
   "sessions_read",
   "update_plan",
   "browser.snapshot",
+  "browser.extract",
 ]);
 
 export async function reviewApprovalRequest(

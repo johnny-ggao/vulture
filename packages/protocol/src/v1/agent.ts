@@ -14,6 +14,7 @@ export const AGENT_TOOL_NAMES = [
   "process",
   "web_search",
   "web_fetch",
+  "web_extract",
   "sessions_list",
   "sessions_history",
   "sessions_send",
@@ -25,6 +26,9 @@ export const AGENT_TOOL_NAMES = [
   "memory_append",
   "browser.snapshot",
   "browser.click",
+  "browser.input",
+  "browser.scroll",
+  "browser.extract",
 ] as const;
 export const AgentToolNameSchema = z.enum(AGENT_TOOL_NAMES);
 export type AgentToolName = z.infer<typeof AgentToolNameSchema>;
@@ -41,13 +45,14 @@ export type AgentToolPreset = z.infer<typeof AgentToolPresetSchema>;
 
 export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
   none: [],
-  minimal: ["read", "web_search", "web_fetch"],
+  minimal: ["read", "web_search", "web_fetch", "web_extract"],
   standard: [
     "read",
     "write",
     "edit",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",
@@ -67,6 +72,7 @@ export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[
     "process",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",
@@ -78,6 +84,9 @@ export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[
     "memory_append",
     "browser.snapshot",
     "browser.click",
+    "browser.input",
+    "browser.scroll",
+    "browser.extract",
   ],
   tl: [
     "read",
@@ -85,6 +94,7 @@ export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[
     "edit",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",

@@ -37,6 +37,29 @@ export interface WebFetchResponse {
   truncated: boolean;
 }
 
+export interface WebExtractRequest {
+  url: unknown;
+  maxBytes?: number | null;
+  maxLinks?: number | null;
+  approvalToken?: string;
+}
+
+export interface WebExtractLink {
+  text: string;
+  url: string;
+}
+
+export interface WebExtractResponse {
+  url: string;
+  status: number;
+  contentType: string;
+  title: string | null;
+  description: string | null;
+  text: string;
+  links: WebExtractLink[];
+  truncated: boolean;
+}
+
 export type WebUrlClassification =
   | { ok: true; url: string; isPrivate: boolean; hostname: string }
   | { ok: false; code: AppError["code"]; message: string };
@@ -54,6 +77,7 @@ export interface SearchProviderSettings {
 export interface WebAccessService {
   search(request: WebSearchRequest): Promise<WebSearchResponse>;
   fetch(request: WebFetchRequest): Promise<WebFetchResponse>;
+  extract(request: WebExtractRequest): Promise<WebExtractResponse>;
   classifyUrl(value: unknown): WebUrlClassification;
 }
 
@@ -105,6 +129,49 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
         contentType: response.headers.get("content-type") ?? "",
         content,
         truncated: Buffer.byteLength(text) > limit,
+      };
+    },
+    extract: async (request) => {
+      const classified = classifyUrl(request.url);
+      if (!classified.ok) {
+        throw new ToolCallError(classified.code, classified.message);
+      }
+      if (classified.isPrivate && !request.approvalToken) {
+        throw new ToolCallError(
+          "tool.permission_denied",
+          "web_extract private host requires approval",
+        );
+      }
+
+      const response = await fetchWithTimeout(classified.url);
+      const raw = await response.text();
+      const contentType = response.headers.get("content-type") ?? "";
+      const limit =
+        typeof request.maxBytes === "number" && request.maxBytes > 0
+          ? request.maxBytes
+          : maxTextBytes;
+      const maxLinks =
+        typeof request.maxLinks === "number" && request.maxLinks >= 0
+          ? Math.min(Math.trunc(request.maxLinks), 100)
+          : 30;
+      const extracted = contentType.toLowerCase().includes("html")
+        ? extractHtml(raw, classified.url, maxLinks)
+        : {
+            title: null,
+            description: null,
+            text: normalizeWhitespace(raw),
+            links: [] as WebExtractLink[],
+          };
+      const text = truncateUtf8(extracted.text, limit);
+      return {
+        url: classified.url,
+        status: response.status,
+        contentType,
+        title: extracted.title,
+        description: extracted.description,
+        text,
+        links: extracted.links,
+        truncated: Buffer.byteLength(extracted.text) > limit,
       };
     },
   };
@@ -280,6 +347,75 @@ function parseSearxngResults(payload: unknown): WebSearchResult[] {
   });
 }
 
+function extractHtml(
+  html: string,
+  baseUrl: string,
+  maxLinks: number,
+): {
+  title: string | null;
+  description: string | null;
+  text: string;
+  links: WebExtractLink[];
+} {
+  const withoutHidden = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
+  const bodyLike = withoutHidden.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ");
+  return {
+    title: firstTextMatch(withoutHidden, /<title[^>]*>([\s\S]*?)<\/title>/i),
+    description: metaContent(withoutHidden, "description"),
+    text: normalizeWhitespace(decodeHtml(stripTagsWithSpaces(bodyLike))),
+    links: extractLinks(withoutHidden, baseUrl, maxLinks),
+  };
+}
+
+function firstTextMatch(value: string, pattern: RegExp): string | null {
+  const match = value.match(pattern);
+  const text = decodeHtml(stripTags(match?.[1] ?? "")).trim();
+  return text.length > 0 ? text : null;
+}
+
+function metaContent(html: string, name: string): string | null {
+  const pattern = new RegExp(`<meta\\b(?=[^>]*\\bname=["']${escapeRegExp(name)}["'])([^>]*)>`, "i");
+  const match = html.match(pattern);
+  const attrs = match?.[1] ?? "";
+  const content = attrs.match(/\bcontent=["']([^"']*)["']/i)?.[1] ?? "";
+  const text = decodeHtml(content).trim();
+  return text.length > 0 ? text : null;
+}
+
+function extractLinks(html: string, baseUrl: string, maxLinks: number): WebExtractLink[] {
+  const links: WebExtractLink[] = [];
+  const seen = new Set<string>();
+  const pattern = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(pattern)) {
+    if (links.length >= maxLinks) break;
+    const href = decodeHtml(match[1] ?? "").trim();
+    const text = normalizeWhitespace(decodeHtml(stripTags(match[2] ?? "")));
+    const url = normalizeExtractedUrl(href, baseUrl);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    links.push({ text, url });
+  }
+  return links;
+}
+
+function normalizeExtractedUrl(value: string, baseUrl: string): string | null {
+  if (!value || value.startsWith("#")) return null;
+  try {
+    const url = new URL(value, baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function normalizeDuckDuckGoUrl(value: string): string {
   if (!value.includes("duckduckgo.com/l/?") && !value.startsWith("/l/?")) return value;
   try {
@@ -293,6 +429,10 @@ function stripTags(value: string): string {
   return value.replace(/<[^>]+>/g, "");
 }
 
+function stripTagsWithSpaces(value: string): string {
+  return value.replace(/<[^>]+>/g, " ");
+}
+
 function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -301,6 +441,10 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

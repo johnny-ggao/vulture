@@ -18,6 +18,7 @@ const LOCAL_TOOL_NAMES = new Set([
   "process",
   "web_search",
   "web_fetch",
+  "web_extract",
   "sessions_list",
   "sessions_history",
   "sessions_send",
@@ -144,6 +145,8 @@ async function executeLocalTool(
       return processTool(call, deps.processStore);
     case "web_fetch":
       return webFetchTool(call, deps.webAccess);
+    case "web_extract":
+      return webExtractTool(call, deps.webAccess);
     case "web_search":
       return webSearchTool(call, deps.webAccess);
     case "sessions_list":
@@ -331,6 +334,19 @@ async function webFetchTool(
   return webAccess.fetch({
     url: input.url,
     maxBytes: typeof input.maxBytes === "number" ? input.maxBytes : MAX_TEXT_BYTES,
+    approvalToken: call.approvalToken,
+  });
+}
+
+async function webExtractTool(
+  call: Parameters<ToolCallable>[0],
+  webAccess: WebAccessService,
+): Promise<unknown> {
+  const input = call.input as { url?: unknown; maxBytes?: unknown; maxLinks?: unknown };
+  return webAccess.extract({
+    url: input.url,
+    maxBytes: typeof input.maxBytes === "number" ? input.maxBytes : MAX_TEXT_BYTES,
+    maxLinks: typeof input.maxLinks === "number" ? input.maxLinks : null,
     approvalToken: call.approvalToken,
   });
 }

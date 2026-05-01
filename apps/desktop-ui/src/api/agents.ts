@@ -10,6 +10,7 @@ export type AgentToolName =
   | "process"
   | "web_search"
   | "web_fetch"
+  | "web_extract"
   | "sessions_list"
   | "sessions_history"
   | "sessions_send"
@@ -20,7 +21,10 @@ export type AgentToolName =
   | "memory_get"
   | "memory_append"
   | "browser.snapshot"
-  | "browser.click";
+  | "browser.click"
+  | "browser.input"
+  | "browser.scroll"
+  | "browser.extract";
 export type ReasoningLevel = "low" | "medium" | "high";
 export type AgentToolPreset = "none" | "minimal" | "standard" | "developer" | "tl" | "full";
 
