@@ -235,7 +235,7 @@ function webSearchTool(): GatewayToolSpec {
     category: "web",
     risk: "safe",
     idempotent: true,
-    needsApproval: (ctx) => networkApprovalDecision("web_search", ctx.permissionMode),
+    needsApproval: () => ({ needsApproval: false }),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "web_search", input),
   };
 }
@@ -472,7 +472,7 @@ export function coreToolApprovalDecision(
     case "process":
       return processApprovalDecision(input, permissionMode);
     case "web_search":
-      return networkApprovalDecision("web_search", permissionMode);
+      return { needsApproval: false };
     case "web_fetch":
       return webFetchApprovalDecision(input, permissionMode);
     case "sessions_send":
@@ -595,17 +595,9 @@ function processApprovalDecision(
   return { needsApproval: false };
 }
 
-function networkApprovalDecision(
-  toolName: "web_search" | "web_fetch",
-  permissionMode: ConversationPermissionMode | undefined,
-): GatewayToolApprovalDecision {
-  if (permissionMode === "full_access") return { needsApproval: false };
-  return { needsApproval: true, reason: `${toolName} requires network approval` };
-}
-
 function webFetchApprovalDecision(
   input: unknown,
-  permissionMode: ConversationPermissionMode | undefined,
+  _permissionMode: ConversationPermissionMode | undefined,
 ): GatewayToolApprovalDecision {
   const value = input as { url?: unknown };
   if (typeof value.url !== "string") {
@@ -622,7 +614,7 @@ function webFetchApprovalDecision(
   } catch {
     return { needsApproval: true, reason: "web_fetch invalid url" };
   }
-  return networkApprovalDecision("web_fetch", permissionMode);
+  return { needsApproval: false };
 }
 
 function shellExecApprovalDecision(

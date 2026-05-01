@@ -201,6 +201,36 @@ describe("gateway tool sdk adapter", () => {
     expect(needsApproval).toBe(true);
   });
 
+  test("public web tools do not ask for approval but private web fetch does", async () => {
+    const registry = createCoreToolRegistry();
+    const searchTool = toSdkTool(registry.get("web_search")!) as unknown as TestFunctionTool;
+    const fetchTool = toSdkTool(registry.get("web_fetch")!) as unknown as TestFunctionTool;
+    const context = new RunContext<GatewayToolRunContext>({
+      runId: "r",
+      workspacePath: "/tmp/work",
+      toolCallable: async () => "ok",
+      sdkApprovedToolCalls: new Map(),
+      permissionMode: "default",
+    });
+
+    await expect(searchTool.needsApproval(context, { query: "vulture", limit: null }, "c-search"))
+      .resolves.toBe(false);
+    await expect(
+      fetchTool.needsApproval(
+        context,
+        { url: "https://example.com", maxBytes: null },
+        "c-fetch-public",
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      fetchTool.needsApproval(
+        context,
+        { url: "http://localhost:3000", maxBytes: null },
+        "c-fetch-private",
+      ),
+    ).resolves.toBe(true);
+  });
+
   test("full access context bypasses SDK needsApproval", async () => {
     const registry = createCoreToolRegistry();
     const shell = registry.get("shell.exec");
