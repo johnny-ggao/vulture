@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   AuthStatusView,
@@ -9,11 +9,8 @@ import type {
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
 import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName, type AgentToolPreset, type ReasoningLevel } from "./api/agents";
-import { profileApi } from "./api/profile";
-import { runsApi, type RunDto, type TokenUsageDto } from "./api/runs";
-import { conversationsApi, type ConversationDto, type MessageDto } from "./api/conversations";
-import { subagentSessionsApi, type SubagentSessionDto } from "./api/subagentSessions";
-import { FALLBACK_TOOL_CATALOG, toolsApi, type ToolCatalogGroup } from "./api/tools";
+import { type ConversationDto } from "./api/conversations";
+import { runLogsApi, type ListRunLogsQuery } from "./api/runLogs";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
   mcpServersApi,
@@ -25,19 +22,19 @@ import {
 import {
   authLabel,
   DEFAULT_CHAT_SUGGESTIONS,
-  delay,
   insertAgentByCreatedAt,
   isMissingMcpRoute,
   isMissingMemoriesRoute,
-  isMissingToolsRoute,
+  isMissingRunLogsRoute,
   type ProfileListResponse,
   type ProfileView,
 } from "./app/appHelpers";
 import {
   loadSkillsWithGatewayRestartFallback as loadSkillsRetry,
-  uploadAttachmentsWithGatewayRestartFallback as uploadAttachmentsRetry,
   withGatewayRestartForMissingRoute,
 } from "./app/gatewayRestartFallback";
+import { useGatewayBootstrap } from "./app/useGatewayBootstrap";
+import { useRunController } from "./app/useRunController";
 import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
@@ -50,19 +47,7 @@ import { PlaceholderPage } from "./chat/PlaceholderPage";
 import { SettingsPage } from "./chat/SettingsPage";
 import { Titlebar } from "./chat/Titlebar";
 import { WorkbenchSidebar, type ViewKey } from "./chat/WorkbenchSidebar";
-import {
-  clearActiveRunId,
-  readActiveChatState,
-  writeActiveChatState,
-} from "./chat/recoveryState";
-import {
-  retainedRunEventsForTerminalRun,
-  visibleRunEventsForChat,
-} from "./chat/visibleRunEvents";
 import { useConversations } from "./hooks/useConversations";
-import { useMessages } from "./hooks/useMessages";
-import { useRunStream, type AnyRunEvent } from "./hooks/useRunStream";
-import { useApproval } from "./hooks/useApproval";
 
 export function App() {
   const runtime = useRuntimeDescriptor();
@@ -71,37 +56,32 @@ export function App() {
     [runtime.data],
   );
 
-  const [profile, setProfile] = useState<ProfileView | null>(null);
   const [profiles, setProfiles] = useState<ProfileView[]>([]);
   const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [toolCatalog, setToolCatalog] = useState<ToolCatalogGroup[]>(FALLBACK_TOOL_CATALOG);
-  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
   const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
-  const restoredChatRef = useRef(readActiveChatState());
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
-    restoredChatRef.current.conversationId,
-  );
-  const [activeRunId, setActiveRunId] = useState<string | null>(
-    restoredChatRef.current.runId,
-  );
-  const [retainedRunEvents, setRetainedRunEvents] = useState<{
-    conversationId: string | null;
-    events: AnyRunEvent[];
-  }>({ conversationId: null, events: [] });
-  const [conversationRuns, setConversationRuns] = useState<RunDto[]>([]);
-  const [subagentSessions, setSubagentSessions] = useState<SubagentSessionDto[]>([]);
-  const [subagentMessages, setSubagentMessages] = useState<Record<string, MessageDto[]>>({});
-  const [loadingSubagentMessages, setLoadingSubagentMessages] = useState<Set<string>>(new Set());
-  const [runReconnectKey, setRunReconnectKey] = useState(0);
-  const [resumingRun, setResumingRun] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const sendingRunRef = useRef(false);
   const [view, setView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
   const conversations = useConversations(apiClient);
+  const {
+    profile,
+    setProfile,
+    agents,
+    setAgents,
+    toolCatalog,
+    selectedAgentId,
+    setSelectedAgentId,
+    loadGatewayState,
+  } = useGatewayBootstrap({
+    apiClient,
+    refetchConversations: conversations.refetch,
+  });
+  const runController = useRunController({
+    apiClient,
+    selectedAgentId,
+    conversations,
+  });
 
   // 5s soft-delete + undo for the conversation list. Commit closure
   // re-binds every render so it always sees the current apiClient.
@@ -126,33 +106,6 @@ export function App() {
       }
     },
   });
-
-  const messages = useMessages(apiClient, activeConversationId);
-  const runStream = useRunStream({
-    client: apiClient,
-    runId: activeRunId,
-    reconnectKey: runReconnectKey,
-  });
-  const approvals = useApproval({
-    client: apiClient,
-    runId: activeRunId,
-    events: runStream.events,
-  });
-  const visibleRunEvents = visibleRunEventsForChat({
-    activeRunId,
-    activeConversationId,
-    streamStatus: runStream.status,
-    streamEvents: runStream.events,
-    retained: retainedRunEvents.events,
-    retainedConversationId: retainedRunEvents.conversationId,
-  });
-  const messageUsages = useMemo(() => {
-    const usages = new Map<string, TokenUsageDto>();
-    for (const run of conversationRuns) {
-      if (run.resultMessageId && run.usage) usages.set(run.id, run.usage);
-    }
-    return usages;
-  }, [conversationRuns]);
 
   const refreshAuthStatus = useMemo(
     () => async () => {
@@ -201,188 +154,6 @@ export function App() {
     void refreshProfiles();
   }, [refreshAuthStatus, refreshBrowserStatus, refreshProfiles]);
 
-  // When a run reaches a terminal status, refetch the conversation so the
-  // assistant message persisted by the gateway appears in the chronological
-  // message list (instead of only living in the transient runEvents).
-  // Refetch is held in a ref so the effect only re-runs on status changes,
-  // not on every render (messages object identity is unstable).
-  const refetchMessagesRef = useRef(messages.refetch);
-  refetchMessagesRef.current = messages.refetch;
-  const refetchConversationsRef = useRef(conversations.refetch);
-  refetchConversationsRef.current = conversations.refetch;
-  const refetchRunsRef = useRef<() => Promise<void>>(async () => undefined);
-  const refetchSubagentSessionsRef = useRef<() => Promise<void>>(async () => undefined);
-  useEffect(() => {
-    if (
-      runStream.status === "succeeded" ||
-      runStream.status === "failed" ||
-      runStream.status === "cancelled"
-    ) {
-      setRetainedRunEvents({
-        conversationId: activeConversationId,
-        events: retainedRunEventsForTerminalRun(runStream.events),
-      });
-      void refetchMessagesRef.current();
-      void refetchConversationsRef.current();
-      void refetchRunsRef.current();
-      void refetchSubagentSessionsRef.current();
-      setActiveRunId(null);
-      clearActiveRunId();
-    }
-  }, [activeConversationId, runStream.events, runStream.status]);
-
-  useEffect(() => {
-    writeActiveChatState({ conversationId: activeConversationId, runId: activeRunId });
-  }, [activeConversationId, activeRunId]);
-
-  useEffect(() => {
-    if (!apiClient || !activeConversationId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        await conversationsApi.get(apiClient, activeConversationId);
-      } catch {
-        if (cancelled) return;
-        setActiveConversationId(null);
-        setActiveRunId(null);
-        writeActiveChatState({ conversationId: null, runId: null });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient, activeConversationId]);
-
-  useEffect(() => {
-    if (!apiClient || !activeConversationId) {
-      setSubagentSessions([]);
-      setSubagentMessages({});
-      refetchSubagentSessionsRef.current = async () => undefined;
-      return;
-    }
-    let cancelled = false;
-    const refetch = async () => {
-      try {
-        const items = await subagentSessionsApi.list(apiClient, {
-          parentConversationId: activeConversationId,
-          limit: 20,
-        });
-        if (!cancelled) setSubagentSessions(items);
-      } catch (cause) {
-        console.error("Subagent session load failed", cause);
-        if (!cancelled) setSubagentSessions([]);
-      }
-    };
-    refetchSubagentSessionsRef.current = refetch;
-    void refetch();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient, activeConversationId]);
-
-  useEffect(() => {
-    const last = runStream.events[runStream.events.length - 1];
-    if (!last || last.type !== "tool.completed") return;
-    if (!isSessionsToolName(last.tool)) return;
-    void refetchSubagentSessionsRef.current();
-  }, [runStream.events]);
-
-  useEffect(() => {
-    if (!apiClient || !activeConversationId) {
-      setConversationRuns([]);
-      refetchRunsRef.current = async () => undefined;
-      return;
-    }
-    let cancelled = false;
-    const refetchRuns = async () => {
-      try {
-        const runs = await runsApi.listForConversation(apiClient, activeConversationId);
-        if (!cancelled) setConversationRuns(runs);
-      } catch {
-        if (!cancelled) setConversationRuns([]);
-      }
-    };
-    refetchRunsRef.current = refetchRuns;
-    void refetchRuns();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient, activeConversationId]);
-
-  // Switching away aborts only the local SSE reader. When switching back,
-  // reattach to any queued/running run for that conversation so the in-flight
-  // reply keeps streaming instead of disappearing from the UI.
-  useEffect(() => {
-    if (!apiClient || !activeConversationId) return;
-    if (sendingRunRef.current) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const activeRuns = await runsApi.listForConversation(apiClient, activeConversationId, {
-          status: "active",
-        });
-        if (!cancelled) setActiveRunId(activeRuns[0]?.id ?? null);
-      } catch {
-        if (!cancelled) setActiveRunId(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiClient, activeConversationId]);
-
-  async function loadGatewayState(expectedProfileId?: string): Promise<boolean> {
-    if (!apiClient) return false;
-    let lastError: unknown = null;
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      try {
-        const [profileResult, agentList] = await Promise.all([
-          profileApi.get(apiClient),
-          agentsApi.list(apiClient),
-        ]);
-        if (expectedProfileId && profileResult.id !== expectedProfileId) {
-          throw new Error(`gateway still on profile ${profileResult.id}`);
-        }
-        setProfile({
-          id: profileResult.id,
-          name: profileResult.name,
-          activeAgentId: profileResult.activeAgentId ?? "",
-        });
-        setAgents(agentList);
-        try {
-          const catalog = await toolsApi.catalog(apiClient);
-          setToolCatalog(catalog.length > 0 ? catalog : FALLBACK_TOOL_CATALOG);
-        } catch (catalogCause) {
-          if (!isMissingToolsRoute(catalogCause)) throw catalogCause;
-          setToolCatalog(FALLBACK_TOOL_CATALOG);
-        }
-        setSelectedAgentId(
-          profileResult.activeAgentId || agentList[0]?.id || "",
-        );
-        void conversations.refetch();
-        return true;
-      } catch (cause) {
-        lastError = cause;
-        await delay(200);
-      }
-    }
-    console.error("Failed to load gateway state", lastError);
-    return false;
-  }
-
-  // Bootstrap profile + agents once when apiClient becomes available.
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!apiClient) return;
-      await loadGatewayState();
-      if (!mounted) return;
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [apiClient]);
-
   async function handleSignInWithChatGPT() {
     try {
       await invoke<ChatGPTLoginStart>("start_chatgpt_login");
@@ -422,54 +193,6 @@ export function App() {
       setBrowserStatus(await invoke<BrowserRelayStatus>("start_browser_pairing"));
     } catch (cause) {
       console.error("Browser pairing failed", cause);
-    }
-  }
-
-  async function handleSend(input: string, files: File[] = []): Promise<boolean> {
-    if (!apiClient || !selectedAgentId || runStream.status === "recoverable" || resumingRun) {
-      return false;
-    }
-    setSendError(null);
-    setRetainedRunEvents({ conversationId: null, events: [] });
-    sendingRunRef.current = true;
-    try {
-      let cid = activeConversationId;
-      if (!cid) {
-        const created = await conversations.create({
-          agentId: selectedAgentId,
-          title: input.slice(0, 40),
-        });
-        cid = created.id;
-        setActiveConversationId(cid);
-      }
-      const uploaded = await uploadAttachmentsRetry(apiClient, files);
-      const result = await runsApi.create(apiClient, cid, {
-        input,
-        attachmentIds: uploaded.map((attachment) => attachment.id),
-      });
-      setActiveRunId(result.run.id);
-      messages.append(result.message);
-      setConversationRuns((items) => [
-        result.run,
-        ...items.filter((run) => run.id !== result.run.id),
-      ]);
-      return true;
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      console.error("Send failed", cause);
-      setSendError(message);
-      return false;
-    } finally {
-      sendingRunRef.current = false;
-    }
-  }
-
-  async function handleCancel() {
-    if (!apiClient || !activeRunId) return;
-    try {
-      await runsApi.cancel(apiClient, activeRunId);
-    } catch {
-      // ignore — UI will see run.cancelled via SSE
     }
   }
 
@@ -572,50 +295,22 @@ export function App() {
     );
   }
 
-  async function handleResume() {
-    if (!apiClient || !activeRunId || resumingRun) return;
-    const runId = activeRunId;
-    setResumingRun(true);
-    try {
-      await runsApi.resume(apiClient, runId);
-      setActiveRunId(runId);
-      setRunReconnectKey((v) => v + 1);
-    } catch (cause) {
-      console.error("Run resume failed", cause);
-    } finally {
-      setResumingRun(false);
-    }
+  async function listRunLogs(query: ListRunLogsQuery) {
+    if (!apiClient) return { items: [], nextOffset: null };
+    return withGatewayRestartForMissingRoute(
+      apiClient,
+      () => runLogsApi.list(apiClient, query),
+      isMissingRunLogsRoute,
+    );
   }
 
-  async function handleLoadSubagentMessages(sessionId: string): Promise<void> {
-    if (!apiClient) return;
-    setLoadingSubagentMessages((items) => new Set(items).add(sessionId));
-    try {
-      const result = await subagentSessionsApi.messages(apiClient, sessionId);
-      setSubagentMessages((items) => ({ ...items, [sessionId]: result.items }));
-      setSubagentSessions((items) =>
-        items.map((session) => (session.id === sessionId ? result.session : session)),
-      );
-    } catch (cause) {
-      console.error("Subagent messages load failed", cause);
-    } finally {
-      setLoadingSubagentMessages((items) => {
-        const next = new Set(items);
-        next.delete(sessionId);
-        return next;
-      });
-    }
-  }
-
-  function handleNew() {
-    setActiveConversationId(null);
-    setActiveRunId(null);
-    setRetainedRunEvents({ conversationId: null, events: [] });
-    writeActiveChatState({ conversationId: null, runId: null });
+  async function loadRunTrace(runId: string) {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return runLogsApi.trace(apiClient, runId);
   }
 
   function startNewConversation() {
-    handleNew();
+    runController.startNewConversation();
     setView("chat");
     setHistoryOpen(false);
   }
@@ -630,8 +325,7 @@ export function App() {
       setProfile(switched);
       setAgents([]);
       setSelectedAgentId("");
-      setConversationRuns([]);
-      handleNew();
+      runController.resetForProfileSwitch();
       setView("chat");
       await Promise.all([refreshProfiles(), refreshAuthStatus()]);
       await loadGatewayState(switched.id);
@@ -683,11 +377,7 @@ export function App() {
     if (!target) return;
 
     conversations.softDelete(id);
-    if (id === activeConversationId) {
-      setActiveConversationId(null);
-      setActiveRunId(null);
-      setRetainedRunEvents({ conversationId: null, events: [] });
-    }
+    runController.clearActiveConversationIfMatches(id);
     conversationDelete.startDelete(target);
   }
 
@@ -818,22 +508,22 @@ export function App() {
               agents={agents.map((a) => ({ id: a.id, name: a.name }))}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
-              messages={messages.items}
-              messageUsages={messageUsages}
-              subagentSessions={subagentSessions}
-              subagentMessages={subagentMessages}
-              loadingSubagentMessages={loadingSubagentMessages}
-              onLoadSubagentMessages={handleLoadSubagentMessages}
-              runEvents={visibleRunEvents}
-              runStatus={runStream.status}
-              runError={runStream.error}
-              sendError={sendError}
-              submittingApprovals={approvals.submitting}
-              resumingRun={resumingRun}
-              onSend={handleSend}
-              onCancel={handleCancel}
-              onResume={handleResume}
-              onDecide={approvals.decide}
+              messages={runController.messages.items}
+              messageUsages={runController.messageUsages}
+              subagentSessions={runController.subagentSessions}
+              subagentMessages={runController.subagentMessages}
+              loadingSubagentMessages={runController.loadingSubagentMessages}
+              onLoadSubagentMessages={runController.loadSubagentMessages}
+              runEvents={runController.visibleRunEvents}
+              runStatus={runController.runStream.status}
+              runError={runController.runStream.error}
+              sendError={runController.sendError}
+              submittingApprovals={runController.approvals.submitting}
+              resumingRun={runController.resumingRun}
+              onSend={runController.send}
+              onCancel={runController.cancel}
+              onResume={runController.resume}
+              onDecide={runController.approvals.decide}
               onboardingCard={onboardingCard}
               suggestions={chatSuggestions}
             />
@@ -897,6 +587,8 @@ export function App() {
               onDeleteMcpServer={deleteMcpServer}
               onReconnectMcpServer={reconnectMcpServer}
               onListMcpServerTools={listMcpServerTools}
+              onListRunLogs={listRunLogs}
+              onLoadRunTrace={loadRunTrace}
               onCreateProfile={handleCreateProfile}
               onSwitchProfile={handleSwitchProfile}
               onSignInWithChatGPT={handleSignInWithChatGPT}
@@ -914,11 +606,9 @@ export function App() {
         onClose={() => setHistoryOpen(false)}
         items={conversations.items}
         agents={agents}
-        activeId={activeConversationId}
+        activeId={runController.activeConversationId}
         onSelect={(id) => {
-          setActiveConversationId(id);
-          setActiveRunId(null);
-          setRetainedRunEvents({ conversationId: null, events: [] });
+          runController.selectConversation(id);
           setView("chat");
         }}
         onNew={startNewConversation}
@@ -947,8 +637,4 @@ export function App() {
       />
     </div>
   );
-}
-
-function isSessionsToolName(value: unknown): boolean {
-  return typeof value === "string" && value.startsWith("sessions_");
 }

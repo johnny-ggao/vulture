@@ -158,6 +158,28 @@ export class SubagentSessionStore {
     return rows.map((row) => this.refreshStatus(row.id) ?? rowToSession(row));
   }
 
+  count(filter: Omit<ListSubagentSessionsFilter, "limit"> = {}): number {
+    const clauses: string[] = [];
+    const params: string[] = [];
+    if (filter.parentConversationId) {
+      clauses.push("parent_conversation_id = ?");
+      params.push(filter.parentConversationId);
+    }
+    if (filter.parentRunId) {
+      clauses.push("parent_run_id = ?");
+      params.push(filter.parentRunId);
+    }
+    if (filter.agentId) {
+      clauses.push("agent_id = ?");
+      params.push(filter.agentId);
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const row = this.db
+      .query(`SELECT COUNT(*) AS count FROM subagent_sessions ${where}`)
+      .get(...params) as { count: number };
+    return row.count;
+  }
+
   refreshStatus(id: string): SubagentSession | null {
     const session = this.get(id);
     if (!session) return null;

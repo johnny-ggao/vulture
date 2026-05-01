@@ -4874,6 +4874,234 @@ pre {
   flex-shrink: 0;
 }
 
+/* Run logs — diagnostics view kept out of the chat render path */
+.run-logs-page {
+  max-width: 1280px;
+}
+.run-logs-embedded {
+  max-width: none;
+}
+.run-logs-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.run-logs-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+.run-logs-header p {
+  margin: 5px 0 0;
+  max-width: 560px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.run-logs-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.run-logs-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.run-logs-toolbar select {
+  min-width: 156px;
+}
+.run-logs-count {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  padding-bottom: 9px;
+}
+.run-logs-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
+}
+.run-logs-list,
+.run-log-detail {
+  min-width: 0;
+}
+.run-log-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid var(--fill-tertiary);
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+.run-log-row:hover,
+.run-log-row-active {
+  border-color: var(--brand-400);
+  background: var(--bg-secondary);
+}
+.run-log-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--fill-quaternary);
+}
+.run-log-status-succeeded {
+  color: #166534;
+  background: #dcfce7;
+}
+.run-log-status-failed {
+  color: #991b1b;
+  background: #fee2e2;
+}
+.run-log-status-running,
+.run-log-status-queued,
+.run-log-status-recoverable {
+  color: #854d0e;
+  background: #fef3c7;
+}
+.run-log-status-cancelled {
+  color: var(--text-tertiary);
+  background: var(--fill-tertiary);
+}
+.run-log-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.run-log-main strong,
+.run-log-main span,
+.run-log-metrics {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-log-main span,
+.run-log-metrics {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.run-log-metrics {
+  grid-column: 2;
+}
+.run-logs-more {
+  width: 100%;
+}
+.run-trace-detail {
+  display: grid;
+  gap: 14px;
+}
+.run-trace-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.run-trace-summary > div,
+.run-trace-section {
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.run-trace-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+.run-trace-summary span,
+.run-trace-muted {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.run-trace-summary strong {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.run-trace-error {
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  background: #fff1f2;
+  color: #991b1b;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.run-trace-section {
+  padding: 14px;
+}
+.run-trace-section h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.run-trace-timeline {
+  display: grid;
+  gap: 6px;
+}
+.run-trace-event {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.run-trace-event span,
+.run-trace-event code {
+  color: var(--text-tertiary);
+}
+.run-trace-event strong {
+  overflow-wrap: anywhere;
+}
+.run-trace-json-list {
+  display: grid;
+  gap: 8px;
+}
+.run-trace-json-list details,
+.run-trace-raw {
+  border: 1px solid var(--fill-quaternary);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+}
+.run-trace-json-list summary,
+.run-trace-raw summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.run-trace-json-list pre,
+.run-trace-raw pre {
+  margin: 8px 0 0;
+  max-height: 360px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 980px) {
+  .run-logs-layout {
+    grid-template-columns: 1fr;
+  }
+  .run-trace-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Toast — bottom-anchored transient notification with optional action */
 .toast {
   position: fixed;

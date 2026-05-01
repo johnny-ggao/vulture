@@ -7,6 +7,11 @@ import type {
   SaveMcpServer,
   UpdateMcpServer,
 } from "../../api/mcpServers";
+import type {
+  ListRunLogsQuery,
+  RunLogsListResponse,
+  RunTraceResponse,
+} from "../../api/runLogs";
 
 export interface SettingsPageProps {
   authStatus: AuthStatusView | null;
@@ -28,6 +33,8 @@ export interface SettingsPageProps {
   onDeleteMcpServer: (id: string) => Promise<void>;
   onReconnectMcpServer: (id: string) => Promise<McpServer>;
   onListMcpServerTools: (id: string) => Promise<McpToolSummary[]>;
+  onListRunLogs: (query: ListRunLogsQuery) => Promise<RunLogsListResponse>;
+  onLoadRunTrace: (runId: string) => Promise<RunTraceResponse>;
   onCreateProfile: (name: string) => Promise<void>;
   onSwitchProfile: (profileId: string) => Promise<void>;
   onSignInWithChatGPT: () => Promise<void>;

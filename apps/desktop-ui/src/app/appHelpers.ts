@@ -109,6 +109,14 @@ export function isMissingMcpRoute(cause: unknown): boolean {
   );
 }
 
+export function isMissingRunLogsRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("/v1/run-logs") &&
+    cause.message.includes("HTTP 404")
+  );
+}
+
 export function isGatewayRestarting(cause: unknown): boolean {
   return (
     cause instanceof Error &&

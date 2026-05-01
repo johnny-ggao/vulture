@@ -6,6 +6,7 @@ import {
   isMissingAttachmentRoute,
   isMissingMcpRoute,
   isMissingMemoriesRoute,
+  isMissingRunLogsRoute,
   isMissingSkillsRoute,
   isMissingToolsRoute,
   parseTime,
@@ -171,6 +172,16 @@ describe("missing-route classifiers", () => {
       isMissingMcpRoute(new Error("GET /v1/mcp/servers HTTP 404")),
     ).toBe(true);
     expect(isMissingMcpRoute(new Error("/v1/mcp HTTP 404"))).toBe(false);
+  });
+
+  test("isMissingRunLogsRoute matches run log list 404s", () => {
+    expect(
+      isMissingRunLogsRoute(
+        new Error("GET /v1/run-logs?limit=50 -> HTTP 404"),
+      ),
+    ).toBe(true);
+    expect(isMissingRunLogsRoute(new Error("/v1/runs/r-1/trace HTTP 404"))).toBe(false);
+    expect(isMissingRunLogsRoute(new Error("/v1/run-logs HTTP 500"))).toBe(false);
   });
 
   test("isGatewayRestarting matches 503 OR fetch failure", () => {

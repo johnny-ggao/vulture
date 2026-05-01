@@ -60,6 +60,15 @@ export function BrowserIcon({ size = 14 }: IconProps = {}) {
   );
 }
 
+export function DiagnosticsIcon({ size = 14 }: IconProps = {}) {
+  return (
+    <svg viewBox="0 0 16 16" width={size} height={size} {...baseProps}>
+      <path d="M3 3.5h10M3 8h10M3 12.5h7" />
+      <path d="M2 3.5h.01M2 8h.01M2 12.5h.01" />
+    </svg>
+  );
+}
+
 export function ChannelIcon({ size = 14 }: IconProps = {}) {
   return (
     <svg viewBox="0 0 16 16" width={size} height={size} {...baseProps}>

@@ -113,6 +113,22 @@ export interface RunRecoveryState {
   activeTool: ActiveToolRecovery | null;
 }
 
+export interface RunDiagnosticsFilter {
+  status?: RunStatus | "active";
+  agentId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface RunDiagnosticsSummary {
+  run: Run;
+  conversationTitle: string | null;
+  model: string | null;
+  eventCount: number;
+  toolCallCount: number;
+  approvalCount: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -291,6 +307,81 @@ export class RunStore {
     return rows.map(rowToRun);
   }
 
+  listDiagnostics(filter: RunDiagnosticsFilter = {}): RunDiagnosticsSummary[] {
+    const clauses: string[] = [];
+    const params: Array<string | number> = [];
+    if (filter.status === "active") {
+      clauses.push("r.status IN ('queued', 'running', 'recoverable')");
+    } else if (filter.status) {
+      clauses.push("r.status = ?");
+      params.push(filter.status);
+    }
+    if (filter.agentId) {
+      clauses.push("r.agent_id = ?");
+      params.push(filter.agentId);
+    }
+
+    const limit = normalizeLimit(filter.limit);
+    const offset = normalizeOffset(filter.offset);
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = this.db
+      .query(
+        `SELECT
+           r.*,
+           c.title AS conversation_title,
+           (
+             SELECT COUNT(*)
+             FROM run_events e
+             WHERE e.run_id = r.id
+           ) AS event_count,
+           (
+             SELECT json_extract(e.payload_json, '$.model')
+             FROM run_events e
+             WHERE e.run_id = r.id
+               AND e.type = 'run.started'
+               AND json_valid(e.payload_json)
+             ORDER BY e.seq ASC
+             LIMIT 1
+           ) AS model,
+           (
+             SELECT COUNT(DISTINCT json_extract(e.payload_json, '$.callId'))
+             FROM run_events e
+             WHERE e.run_id = r.id
+               AND e.type IN ('tool.planned', 'tool.started', 'tool.completed', 'tool.failed', 'tool.ask')
+               AND json_valid(e.payload_json)
+           ) AS tool_call_count,
+           (
+             SELECT COUNT(*)
+             FROM run_events e
+             WHERE e.run_id = r.id
+               AND e.type = 'tool.ask'
+           ) AS approval_count
+         FROM runs r
+         LEFT JOIN conversations c ON c.id = r.conversation_id
+         ${where}
+         ORDER BY r.started_at DESC, r.rowid DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset) as Array<
+      RunRow & {
+        conversation_title: string | null;
+        model: string | null;
+        event_count: number;
+        tool_call_count: number;
+        approval_count: number;
+      }
+    >;
+
+    return rows.map((row) => ({
+      run: rowToRun(row),
+      conversationTitle: row.conversation_title,
+      model: typeof row.model === "string" && row.model.trim() ? row.model : null,
+      eventCount: row.event_count,
+      toolCallCount: row.tool_call_count,
+      approvalCount: row.approval_count,
+    }));
+  }
+
   saveRecoveryState(runId: string, state: RunRecoveryState): void {
     this.db
       .query(
@@ -408,4 +499,14 @@ export class RunStore {
       .get(runId) as { s: number | null };
     return (row.s ?? -1) + 1;
   }
+}
+
+function normalizeLimit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 50;
+  return Math.min(Math.trunc(value), 100);
+}
+
+function normalizeOffset(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.trunc(value);
 }

@@ -447,6 +447,47 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
+  test("run logs retries through gateway restart when the new route is missing", async () => {
+    let runLogRequests = 0;
+    const { cleanup } = setup({
+      respond: (path, init) => {
+        if ((init?.method ?? "GET") === "GET" && path === "/v1/run-logs?limit=50") {
+          runLogRequests += 1;
+          if (runLogRequests === 1) {
+            return new Response(JSON.stringify({ code: "not_found" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+        return null;
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行日志" }));
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("没有匹配的运行日志。")).toBeDefined();
+        expect(restartGatewayCalls).toBe(1);
+        expect(runLogRequests).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 8000 },
+    );
+
+    cleanup();
+  }, 15_000);
+
   test("settings can create and switch to a new profile", async () => {
     const { cleanup } = setup();
 

@@ -1,0 +1,347 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import type { ApiClient } from "../api/client";
+import type { ConversationDto, CreateConversationRequest, MessageDto } from "../api/conversations";
+import { conversationsApi } from "../api/conversations";
+import { runsApi, type RunDto, type TokenUsageDto } from "../api/runs";
+import { subagentSessionsApi, type SubagentSessionDto } from "../api/subagentSessions";
+import {
+  clearActiveRunId,
+  readActiveChatState,
+  writeActiveChatState,
+} from "../chat/recoveryState";
+import {
+  retainedRunEventsForTerminalRun,
+  visibleRunEventsForChat,
+} from "../chat/visibleRunEvents";
+import { useApproval } from "../hooks/useApproval";
+import { useMessages } from "../hooks/useMessages";
+import { useRunStream, type AnyRunEvent } from "../hooks/useRunStream";
+import { uploadAttachmentsWithGatewayRestartFallback as uploadAttachmentsRetry } from "./gatewayRestartFallback";
+
+export interface RunControllerConversations {
+  create(req: CreateConversationRequest): Promise<ConversationDto>;
+  refetch(): Promise<void>;
+}
+
+export interface UseRunControllerOptions {
+  apiClient: ApiClient | null;
+  selectedAgentId: string;
+  conversations: RunControllerConversations;
+  streamFetch?: typeof fetch;
+}
+
+export function useRunController({
+  apiClient,
+  selectedAgentId,
+  conversations,
+  streamFetch,
+}: UseRunControllerOptions) {
+  const restoredChatRef = useRef(readActiveChatState());
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    restoredChatRef.current.conversationId,
+  );
+  const [activeRunId, setActiveRunId] = useState<string | null>(
+    restoredChatRef.current.runId,
+  );
+  const [retainedRunEvents, setRetainedRunEvents] = useState<{
+    conversationId: string | null;
+    events: AnyRunEvent[];
+  }>({ conversationId: null, events: [] });
+  const [conversationRuns, setConversationRuns] = useState<RunDto[]>([]);
+  const [subagentSessions, setSubagentSessions] = useState<SubagentSessionDto[]>([]);
+  const [subagentMessages, setSubagentMessages] = useState<Record<string, MessageDto[]>>({});
+  const [loadingSubagentMessages, setLoadingSubagentMessages] = useState<Set<string>>(new Set());
+  const [runReconnectKey, setRunReconnectKey] = useState(0);
+  const [resumingRun, setResumingRun] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const sendingRunRef = useRef(false);
+
+  const messages = useMessages(apiClient, activeConversationId);
+  const runStream = useRunStream({
+    client: apiClient,
+    runId: activeRunId,
+    reconnectKey: runReconnectKey,
+    fetch: streamFetch,
+  });
+  const approvals = useApproval({
+    client: apiClient,
+    runId: activeRunId,
+    events: runStream.events,
+  });
+
+  const visibleRunEvents = visibleRunEventsForChat({
+    activeRunId,
+    activeConversationId,
+    streamStatus: runStream.status,
+    streamEvents: runStream.events,
+    retained: retainedRunEvents.events,
+    retainedConversationId: retainedRunEvents.conversationId,
+  });
+
+  const messageUsages = useMemo(() => {
+    const usages = new Map<string, TokenUsageDto>();
+    for (const run of conversationRuns) {
+      if (run.resultMessageId && run.usage) usages.set(run.id, run.usage);
+    }
+    return usages;
+  }, [conversationRuns]);
+
+  const refetchMessagesRef = useRef(messages.refetch);
+  refetchMessagesRef.current = messages.refetch;
+  const refetchConversationsRef = useRef(conversations.refetch);
+  refetchConversationsRef.current = conversations.refetch;
+  const refetchRunsRef = useRef<() => Promise<void>>(async () => undefined);
+  const refetchSubagentSessionsRef = useRef<() => Promise<void>>(async () => undefined);
+
+  useEffect(() => {
+    if (
+      runStream.status === "succeeded" ||
+      runStream.status === "failed" ||
+      runStream.status === "cancelled"
+    ) {
+      setRetainedRunEvents({
+        conversationId: activeConversationId,
+        events: retainedRunEventsForTerminalRun(runStream.events),
+      });
+      void refetchMessagesRef.current();
+      void refetchConversationsRef.current();
+      void refetchRunsRef.current();
+      void refetchSubagentSessionsRef.current();
+      setActiveRunId(null);
+      clearActiveRunId();
+    }
+  }, [activeConversationId, runStream.events, runStream.status]);
+
+  useEffect(() => {
+    writeActiveChatState({ conversationId: activeConversationId, runId: activeRunId });
+  }, [activeConversationId, activeRunId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await conversationsApi.get(apiClient, activeConversationId);
+      } catch {
+        if (cancelled) return;
+        setActiveConversationId(null);
+        setActiveRunId(null);
+        writeActiveChatState({ conversationId: null, runId: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) {
+      setSubagentSessions([]);
+      setSubagentMessages({});
+      refetchSubagentSessionsRef.current = async () => undefined;
+      return;
+    }
+    let cancelled = false;
+    const refetch = async () => {
+      try {
+        const items = await subagentSessionsApi.list(apiClient, {
+          parentConversationId: activeConversationId,
+          limit: 20,
+        });
+        if (!cancelled) setSubagentSessions(items);
+      } catch (cause) {
+        console.error("Subagent session load failed", cause);
+        if (!cancelled) setSubagentSessions([]);
+      }
+    };
+    refetchSubagentSessionsRef.current = refetch;
+    void refetch();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
+
+  useEffect(() => {
+    const last = runStream.events[runStream.events.length - 1];
+    if (!last || last.type !== "tool.completed") return;
+    if (!isSessionsToolName(last.tool)) return;
+    void refetchSubagentSessionsRef.current();
+  }, [runStream.events]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) {
+      setConversationRuns([]);
+      refetchRunsRef.current = async () => undefined;
+      return;
+    }
+    let cancelled = false;
+    const refetchRuns = async () => {
+      try {
+        const runs = await runsApi.listForConversation(apiClient, activeConversationId);
+        if (!cancelled) setConversationRuns(runs);
+      } catch {
+        if (!cancelled) setConversationRuns([]);
+      }
+    };
+    refetchRunsRef.current = refetchRuns;
+    void refetchRuns();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId) return;
+    if (sendingRunRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const activeRuns = await runsApi.listForConversation(apiClient, activeConversationId, {
+          status: "active",
+        });
+        if (!cancelled) setActiveRunId(activeRuns[0]?.id ?? null);
+      } catch {
+        if (!cancelled) setActiveRunId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, activeConversationId]);
+
+  async function send(input: string, files: File[] = []): Promise<boolean> {
+    if (!apiClient || !selectedAgentId || runStream.status === "recoverable" || resumingRun) {
+      return false;
+    }
+    setSendError(null);
+    setRetainedRunEvents({ conversationId: null, events: [] });
+    sendingRunRef.current = true;
+    try {
+      let cid = activeConversationId;
+      if (!cid) {
+        const created = await conversations.create({
+          agentId: selectedAgentId,
+          title: input.slice(0, 40),
+        });
+        cid = created.id;
+        setActiveConversationId(cid);
+      }
+      const uploaded = await uploadAttachmentsRetry(apiClient, files);
+      const result = await runsApi.create(apiClient, cid, {
+        input,
+        attachmentIds: uploaded.map((attachment) => attachment.id),
+      });
+      setActiveRunId(result.run.id);
+      messages.append(result.message);
+      setConversationRuns((items) => [
+        result.run,
+        ...items.filter((run) => run.id !== result.run.id),
+      ]);
+      return true;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      console.error("Send failed", cause);
+      setSendError(message);
+      return false;
+    } finally {
+      sendingRunRef.current = false;
+    }
+  }
+
+  async function cancel() {
+    if (!apiClient || !activeRunId) return;
+    try {
+      await runsApi.cancel(apiClient, activeRunId);
+    } catch {
+      // UI will see run.cancelled via SSE when the stream catches up.
+    }
+  }
+
+  async function resume() {
+    if (!apiClient || !activeRunId || resumingRun) return;
+    const runId = activeRunId;
+    setResumingRun(true);
+    try {
+      await runsApi.resume(apiClient, runId);
+      setActiveRunId(runId);
+      setRunReconnectKey((v) => v + 1);
+    } catch (cause) {
+      console.error("Run resume failed", cause);
+    } finally {
+      setResumingRun(false);
+    }
+  }
+
+  async function loadSubagentMessages(sessionId: string): Promise<void> {
+    if (!apiClient) return;
+    setLoadingSubagentMessages((items) => new Set(items).add(sessionId));
+    try {
+      const result = await subagentSessionsApi.messages(apiClient, sessionId);
+      setSubagentMessages((items) => ({ ...items, [sessionId]: result.items }));
+      setSubagentSessions((items) =>
+        items.map((session) => (session.id === sessionId ? result.session : session)),
+      );
+    } catch (cause) {
+      console.error("Subagent messages load failed", cause);
+    } finally {
+      setLoadingSubagentMessages((items) => {
+        const next = new Set(items);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+  }
+
+  function startNewConversation() {
+    setActiveConversationId(null);
+    setActiveRunId(null);
+    setRetainedRunEvents({ conversationId: null, events: [] });
+    writeActiveChatState({ conversationId: null, runId: null });
+  }
+
+  function selectConversation(id: string) {
+    setActiveConversationId(id);
+    setActiveRunId(null);
+    setRetainedRunEvents({ conversationId: null, events: [] });
+  }
+
+  function clearActiveConversationIfMatches(id: string) {
+    if (id !== activeConversationId) return;
+    setActiveConversationId(null);
+    setActiveRunId(null);
+    setRetainedRunEvents({ conversationId: null, events: [] });
+  }
+
+  function resetForProfileSwitch() {
+    setConversationRuns([]);
+    startNewConversation();
+  }
+
+  return {
+    activeConversationId,
+    activeRunId,
+    messages,
+    runStream,
+    approvals,
+    visibleRunEvents,
+    messageUsages,
+    subagentSessions,
+    subagentMessages,
+    loadingSubagentMessages,
+    resumingRun,
+    sendError,
+    send,
+    cancel,
+    resume,
+    loadSubagentMessages,
+    startNewConversation,
+    selectConversation,
+    clearActiveConversationIfMatches,
+    resetForProfileSwitch,
+  };
+}
+
+function isSessionsToolName(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith("sessions_");
+}

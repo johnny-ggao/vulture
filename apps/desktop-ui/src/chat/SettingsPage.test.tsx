@@ -78,6 +78,10 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
       { name: "write_file", description: "Write file", enabled: true },
       { name: "delete_file", description: "Delete file", enabled: true },
     ]),
+    onListRunLogs: mock(async () => ({ items: [], nextOffset: null })),
+    onLoadRunTrace: mock(async () => {
+      throw new Error("unused");
+    }),
     onCreateProfile: mock(async () => undefined),
     onSwitchProfile: mock(async () => undefined),
     onSignInWithChatGPT: mock(async () => undefined),
