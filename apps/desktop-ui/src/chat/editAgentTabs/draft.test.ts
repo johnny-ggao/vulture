@@ -152,17 +152,27 @@ describe("dirtyTabs", () => {
     expect(tabs.has("tools")).toBe(false);
   });
 
-  test("returns 'tools' when toolPreset / tools / handoff change", () => {
+  test("returns 'tools' when toolPreset or tools change", () => {
     const tests: Array<Partial<Draft>> = [
       { toolPreset: "minimal" },
       { tools: ["read"] },
-      { handoffAgentIds: ["other"] },
     ];
     for (const patch of tests) {
       const draft = { ...draftFromAgent(baseAgent), ...patch };
       const tabs = dirtyTabs(draft, baseAgent);
       expect(tabs.has("tools")).toBe(true);
+      expect(tabs.has("handoff")).toBe(false);
     }
+  });
+
+  test("returns 'handoff' when handoffAgentIds change (split from 'tools')", () => {
+    const draft = {
+      ...draftFromAgent(baseAgent),
+      handoffAgentIds: ["other"],
+    };
+    const tabs = dirtyTabs(draft, baseAgent);
+    expect(tabs.has("handoff")).toBe(true);
+    expect(tabs.has("tools")).toBe(false);
   });
 
   test("multiple touched tabs all show in the set", () => {

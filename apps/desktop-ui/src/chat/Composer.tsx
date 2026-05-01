@@ -152,36 +152,20 @@ export function Composer(props: ComposerProps) {
           selectedAgentId={props.selectedAgentId}
           onSelectAgent={props.onSelectAgent}
         />
-        <div className="permission-segmented" role="radiogroup" aria-label="工具权限">
-          {PERMISSION_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={option.value === permissionMode}
-              className={"permission-segment" + (option.value === permissionMode ? " active" : "")}
-              onClick={() => {
-                void props.onChangePermissionMode?.(option.value);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        <div className="thinking-segmented" role="radiogroup" aria-label="思考模式">
-          {THINKING_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={option.value === thinking}
-              className={"thinking-segment" + (option.value === thinking ? " active" : "")}
-              onClick={() => setThinking(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <ChipPopover<ConversationPermissionMode>
+          ariaLabel="工具权限"
+          icon={<ShieldIcon />}
+          options={PERMISSION_OPTIONS}
+          value={permissionMode}
+          onChange={(v) => { void props.onChangePermissionMode?.(v); }}
+        />
+        <ChipPopover<ThinkingMode>
+          ariaLabel="思考模式"
+          icon={<BrainIcon />}
+          options={THINKING_OPTIONS}
+          value={thinking}
+          onChange={setThinking}
+        />
         <label className="composer-attach" title="添加附件">
           <input
             type="file"
@@ -402,6 +386,168 @@ function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProp
         </div>
       ) : null}
     </div>
+  );
+}
+
+interface ChipPopoverOption<V extends string> {
+  value: V;
+  label: string;
+  hint?: string;
+}
+
+interface ChipPopoverProps<V extends string> {
+  ariaLabel: string;
+  icon?: React.ReactNode;
+  options: ReadonlyArray<ChipPopoverOption<V>>;
+  value: V;
+  onChange: (value: V) => void;
+}
+
+function ChipPopover<V extends string>({
+  ariaLabel,
+  icon,
+  options,
+  value,
+  onChange,
+}: ChipPopoverProps<V>) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const current = options.find((o) => o.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    function onMouseDown(event: MouseEvent) {
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(event.target as Node)) return;
+      setOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onMouseDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const idx = Math.max(0, options.findIndex((o) => o.value === value));
+    queueMicrotask(() => itemRefs.current[idx]?.focus());
+  }, [open, options, value]);
+
+  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (options.length === 0) return;
+    const focused = itemRefs.current.findIndex((el) => el === document.activeElement);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const next = focused < 0 ? 0 : (focused + 1) % options.length;
+      itemRefs.current[next]?.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const prev = focused <= 0 ? options.length - 1 : focused - 1;
+      itemRefs.current[prev]?.focus();
+    }
+  }
+
+  return (
+    <div className="chip-popover" ref={containerRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="composer-chip"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${ariaLabel}: ${current?.label ?? ""}`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {icon ? <span className="composer-chip-icon" aria-hidden="true">{icon}</span> : null}
+        <span className="composer-chip-label">{current?.label ?? ""}</span>
+        <ChevronDownIcon />
+      </button>
+      {open ? (
+        <div
+          className="chip-popover-menu"
+          role="menu"
+          aria-label={ariaLabel}
+          onKeyDown={handleMenuKeyDown}
+        >
+          {options.map((option, idx) => {
+            const isActive = option.value === value;
+            return (
+              <button
+                key={option.value}
+                ref={(node) => {
+                  itemRefs.current[idx] = node;
+                }}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                className={"chip-popover-item" + (isActive ? " active" : "")}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                  triggerRef.current?.focus();
+                }}
+              >
+                <span className="chip-popover-item-label">{option.label}</span>
+                {option.hint ? (
+                  <span className="chip-popover-item-hint">{option.hint}</span>
+                ) : null}
+                {isActive ? <CheckIcon /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="13"
+      height="13"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 1.5l5.5 2v4.2c0 3.4-2.4 6.2-5.5 7.3-3.1-1.1-5.5-3.9-5.5-7.3V3.5L8 1.5z" />
+    </svg>
+  );
+}
+
+function BrainIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="13"
+      height="13"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 3.2a2 2 0 0 0-2 2v.4a2 2 0 0 0-1.5 1.9V8a2 2 0 0 0 1.5 1.9v.6a2 2 0 0 0 2 2c.6 0 1.1-.3 1.5-.7" />
+      <path d="M10 3.2a2 2 0 0 1 2 2v.4a2 2 0 0 1 1.5 1.9V8a2 2 0 0 1-1.5 1.9v.6a2 2 0 0 1-2 2c-.6 0-1.1-.3-1.5-.7" />
+      <path d="M8 3v9.8" />
+    </svg>
   );
 }
 

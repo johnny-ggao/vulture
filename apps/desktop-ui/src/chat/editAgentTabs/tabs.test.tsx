@@ -125,13 +125,10 @@ describe("PersonaTab", () => {
 });
 
 describe("ToolsTab", () => {
-  // Shared minimal shape — most tests don't care about the handoff
-  // surface, so an empty agents list keeps the body of the test focused
-  // on the preset selector + 清空/全选 affordances.
+  // Round 18: handoff surface moved to its own HandoffTab; ToolsTab now
+  // only carries the preset + tool list + 清空/全选 affordances.
   const toolsTabBaseProps = {
     draft: draftFromAgent(baseAgent),
-    agentId: baseAgent.id,
-    agents: [baseAgent] as ReadonlyArray<typeof baseAgent>,
     toolGroups: [],
   };
 

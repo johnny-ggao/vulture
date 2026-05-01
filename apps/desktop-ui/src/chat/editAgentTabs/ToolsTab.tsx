@@ -1,8 +1,8 @@
-import type { Agent, AgentToolPreset } from "../../api/agents";
+import type { AgentToolPreset } from "../../api/agents";
 import type { ToolCatalogGroup } from "../../api/tools";
 import { toolPolicyFromPreset, toolPolicyFromSelection } from "../../api/tools";
 import { ToolGroupSelector } from "../ToolGroupSelector";
-import { AgentAvatar, Field, Segmented } from "../components";
+import { Field, Segmented } from "../components";
 import type { Draft } from "./draft";
 
 const PRESET_OPTIONS: ReadonlyArray<{
@@ -19,8 +19,6 @@ const PRESET_OPTIONS: ReadonlyArray<{
 
 export interface ToolsTabProps {
   draft: Draft;
-  agentId: string;
-  agents: ReadonlyArray<Agent>;
   toolGroups: ReadonlyArray<ToolCatalogGroup>;
   onChange: (next: Draft) => void;
 }
@@ -29,9 +27,10 @@ export interface ToolsTabProps {
  * Tool preset picker + capability tiles + per-tool detail. Mutations route
  * through the shared policy helpers so the include/exclude lists stay
  * in sync with the surface tool list and preset.
+ *
+ * Round 18: handoff selection moved out to its own 协作 tab.
  */
-export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: ToolsTabProps) {
-  const handoffCandidates = agents.filter((agent) => agent.id !== agentId);
+export function ToolsTab({ draft, toolGroups, onChange }: ToolsTabProps) {
   return (
     <div className="agent-config-panel" role="tabpanel">
       <section className="agent-tools">
@@ -80,48 +79,6 @@ export function ToolsTab({ draft, agentId, agents, toolGroups, onChange }: Tools
             })
           }
         />
-      </section>
-      <section className="agent-handoff-config">
-        <div className="agent-handoff-head">
-          <h3>可用子智能体</h3>
-          <p>主智能体会自主判断是否建议开启，用户确认后才会创建子智能体。</p>
-        </div>
-        {handoffCandidates.length === 0 ? (
-          <div className="tool-group-empty">没有其他智能体可选</div>
-        ) : (
-          <div className="agent-handoff-list">
-            {handoffCandidates.map((agent) => {
-              const checked = draft.handoffAgentIds.includes(agent.id);
-              return (
-                <label
-                  className={
-                    "agent-handoff-row" + (checked ? " agent-handoff-row-checked" : "")
-                  }
-                  key={agent.id}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    aria-label={`允许建议开启 ${agent.name}`}
-                    onChange={(event) => {
-                      const next = event.target.checked
-                        ? [...draft.handoffAgentIds, agent.id]
-                        : draft.handoffAgentIds.filter((id) => id !== agent.id);
-                      onChange({ ...draft, handoffAgentIds: [...new Set(next)] });
-                    }}
-                  />
-                  <span className="agent-handoff-avatar" aria-hidden="true">
-                    <AgentAvatar agent={agent} size={28} shape="square" />
-                  </span>
-                  <span className="agent-handoff-meta">
-                    <strong>{agent.name || agent.id}</strong>
-                    <small>{agent.description || agent.id}</small>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        )}
       </section>
     </div>
   );

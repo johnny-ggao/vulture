@@ -55,7 +55,7 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
           }
         />
         <div className="agent-card-avatar">
-          <AgentAvatar agent={agent} size={56} shape="square" />
+          <AgentAvatar agent={agent} size={44} shape="square" />
         </div>
         <div className="agent-card-body">
           <h3 className="agent-card-name">{agent.name || "未命名智能体"}</h3>

@@ -498,9 +498,11 @@ export function App() {
         </div>
         <main className="chat-main-wrap content-panel">
           {runtime.data && (
-            <div className="runtime-debug">
-              gateway:{runtime.data.gateway.port} shell:{runtime.data.shell.port} · auth:
-              {authLabel(authStatus)} · profile:{profile?.name ?? "Default"}
+            <div className="runtime-debug" aria-label="运行时状态">
+              <span>gateway:{runtime.data.gateway.port}</span>
+              <span>shell:{runtime.data.shell.port}</span>
+              <span>auth:{authLabel(authStatus)}</span>
+              <span>profile:{profile?.name ?? "Default"}</span>
             </div>
           )}
           {view === "chat" ? (

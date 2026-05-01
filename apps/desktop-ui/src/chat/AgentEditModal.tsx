@@ -11,6 +11,7 @@ import {
 } from "./components";
 import {
   CoreTab,
+  HandoffTab,
   OverviewTab,
   PersonaTab,
   SaveStatusIndicator,
@@ -26,12 +27,13 @@ import {
 
 export type { AgentConfigPatch };
 
-type AgentsTab = "overview" | "persona" | "tools" | "core";
+type AgentsTab = "overview" | "persona" | "tools" | "handoff" | "core";
 
 const TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
   "persona",
   "tools",
+  "handoff",
   "core",
 ];
 
@@ -92,6 +94,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
     overview: null,
     persona: null,
     tools: null,
+    handoff: null,
     core: null,
   });
 
@@ -521,10 +524,11 @@ export function AgentEditModal(props: AgentEditModalProps) {
           >
             {(
               [
-                { key: "overview" as const, label: "概览", dirtyKey: "overview" as DraftTabKey },
-                { key: "persona" as const, label: "Persona", dirtyKey: "persona" as DraftTabKey },
-                { key: "tools" as const, label: "工具", dirtyKey: "tools" as DraftTabKey },
-                { key: "core" as const, label: "Agent Core", dirtyKey: null },
+                { key: "overview" as const, label: "基本信息", dirtyKey: "overview" as DraftTabKey },
+                { key: "persona" as const, label: "人格", dirtyKey: "persona" as DraftTabKey },
+                { key: "tools" as const, label: "技能", dirtyKey: "tools" as DraftTabKey },
+                { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey },
+                { key: "core" as const, label: "核心文件", dirtyKey: null },
               ]
             ).map((entry) => {
               const isDirtyTab =
@@ -605,9 +609,15 @@ export function AgentEditModal(props: AgentEditModalProps) {
           {tab === "tools" ? (
             <ToolsTab
               draft={draft}
+              toolGroups={props.toolGroups}
+              onChange={setDraft}
+            />
+          ) : null}
+          {tab === "handoff" ? (
+            <HandoffTab
+              draft={draft}
               agentId={agent.id}
               agents={props.agents}
-              toolGroups={props.toolGroups}
               onChange={setDraft}
             />
           ) : null}

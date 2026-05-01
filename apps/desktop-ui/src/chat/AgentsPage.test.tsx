@@ -69,9 +69,9 @@ describe("AgentsPage — browse view", () => {
         selectedAgentId="agent-1"
       />,
     );
-    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "基本信息" })).toBeNull();
     openEditModal();
-    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "基本信息" })).toBeDefined();
   });
 
   test("card delete button calls onDelete without opening the modal", () => {
@@ -229,7 +229,7 @@ describe("AgentsPage — browse view", () => {
 });
 
 describe("AgentsPage — edit modal", () => {
-  test("modal exposes 概览 / Persona / 工具 / Agent Core tabs", () => {
+  test("modal exposes 基本信息 / 人格 / 技能 / 协作 / 核心文件 tabs", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -238,10 +238,11 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Persona" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "工具" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "Agent Core" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "基本信息" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "人格" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "技能" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "协作" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "核心文件" })).toBeDefined();
   });
 
   test("clicking a tab switches the visible section", () => {
@@ -255,7 +256,7 @@ describe("AgentsPage — edit modal", () => {
     openEditModal();
     expect(screen.getByLabelText("名称")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
     expect(screen.getByLabelText("Instructions")).toBeDefined();
     expect(screen.queryByLabelText("名称")).toBeNull();
   });
@@ -307,7 +308,7 @@ describe("AgentsPage — edit modal", () => {
     expect(patch.name).toBe("Renamed");
   });
 
-  test("tools tab edits handoff agent ids", async () => {
+  test("协作 tab edits handoff agent ids", async () => {
     const onSave = mock(async (_id: string, _patch: AgentConfigPatch) => {});
     const researcher: Agent = {
       ...baseAgent,
@@ -325,9 +326,8 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+    fireEvent.click(screen.getByRole("tab", { name: "协作" }));
     expect(screen.getByText("可用子智能体")).toBeTruthy();
-    expect(screen.getByText("主智能体会自主判断是否建议开启，用户确认后才会创建子智能体。")).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("允许建议开启 Researcher"));
     fireEvent.click(screen.getByRole("button", { name: /^保存/ }));
@@ -345,10 +345,10 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "基本信息" })).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "基本信息" })).toBeNull();
   });
 
   test("Escape closes the modal", () => {
@@ -360,10 +360,10 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "基本信息" })).toBeDefined();
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "基本信息" })).toBeNull();
   });
 
   // ---- Round 12: dirty-close confirm + Cmd+S save shortcut ------
@@ -393,7 +393,7 @@ describe("AgentsPage — edit modal", () => {
       expect(confirmCalls.length).toBe(1);
       expect(confirmCalls[0]).toMatch(/未保存/);
       // Modal stayed open (overview tab still visible).
-      expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+      expect(screen.getByRole("tab", { name: "基本信息" })).toBeDefined();
     } finally {
       window.confirm = originalConfirm;
     }
@@ -418,7 +418,7 @@ describe("AgentsPage — edit modal", () => {
       // No edits → not dirty.
       fireEvent.keyDown(window, { key: "Escape" });
       expect(confirmCalls).toBe(0);
-      expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "基本信息" })).toBeNull();
     } finally {
       window.confirm = originalConfirm;
     }
@@ -526,7 +526,7 @@ describe("AgentsPage — edit modal", () => {
     // but the buttons carry the .segmented-segment class so visual
     // styling stays consistent.
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.length).toBe(4);
+    expect(tabs.length).toBe(5);
     for (const tab of tabs) {
       expect(tab.classList.contains("segmented-segment")).toBe(true);
     }
@@ -544,14 +544,14 @@ describe("AgentsPage — edit modal", () => {
     );
     openEditModal();
     // Switch to Persona tab and edit Instructions.
-    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
     fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "be precise" },
     });
     // The Persona tab now carries a dot; Overview / 工具 do not.
-    const personaTab = screen.getByRole("tab", { name: "Persona" });
+    const personaTab = screen.getByRole("tab", { name: "人格" });
     expect(personaTab.querySelector(".agent-config-tab-dot")).not.toBeNull();
-    const overviewTab = screen.getByRole("tab", { name: "概览" });
+    const overviewTab = screen.getByRole("tab", { name: "基本信息" });
     expect(overviewTab.querySelector(".agent-config-tab-dot")).toBeNull();
     // Tab class also picks up has-changes for CSS hooks.
     expect(personaTab.classList.contains("has-changes")).toBe(true);
@@ -643,7 +643,7 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal({ ...baseAgent, instructions: "" });
-    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
     expect(screen.getByText("从模板开始：")).toBeDefined();
     expect(screen.getByRole("button", { name: "通用助手" })).toBeDefined();
 
@@ -671,7 +671,7 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal({ ...baseAgent, instructions: "" });
-    fireEvent.click(screen.getByRole("tab", { name: "Persona" }));
+    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
     fireEvent.click(screen.getByRole("button", { name: "代码审阅" }));
     const ta = screen.getByLabelText("Instructions") as HTMLTextAreaElement;
     expect(ta.value).toContain("代码审阅者");
@@ -793,7 +793,7 @@ describe("AgentsPage — edit modal", () => {
     // Initially Overview is selected.
     expect(
       (
-        screen.getByRole("tab", { name: "概览" }) as HTMLElement
+        screen.getByRole("tab", { name: "基本信息" }) as HTMLElement
       ).getAttribute("aria-selected"),
     ).toBe("true");
     // Fire ArrowRight on the tablist; aria-selected should flip to Persona.
@@ -801,13 +801,13 @@ describe("AgentsPage — edit modal", () => {
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
     expect(
       screen
-        .getByRole("tab", { name: "Persona" })
+        .getByRole("tab", { name: "人格" })
         .getAttribute("aria-selected"),
     ).toBe("true");
     fireEvent.keyDown(tablist, { key: "ArrowLeft" });
     expect(
       (
-        screen.getByRole("tab", { name: "概览" }) as HTMLElement
+        screen.getByRole("tab", { name: "基本信息" }) as HTMLElement
       ).getAttribute("aria-selected"),
     ).toBe("true");
   });
@@ -825,13 +825,13 @@ describe("AgentsPage — edit modal", () => {
     fireEvent.keyDown(tablist, { key: "End" });
     expect(
       screen
-        .getByRole("tab", { name: "Agent Core" })
+        .getByRole("tab", { name: "核心文件" })
         .getAttribute("aria-selected"),
     ).toBe("true");
     fireEvent.keyDown(tablist, { key: "Home" });
     expect(
       (
-        screen.getByRole("tab", { name: "概览" }) as HTMLElement
+        screen.getByRole("tab", { name: "基本信息" }) as HTMLElement
       ).getAttribute("aria-selected"),
     ).toBe("true");
   });
@@ -898,7 +898,7 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    expect(screen.getByRole("tab", { name: "概览" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "基本信息" })).toBeDefined();
 
     rerender(
       <AgentsPage
@@ -907,6 +907,6 @@ describe("AgentsPage — edit modal", () => {
         selectedAgentId=""
       />,
     );
-    expect(screen.queryByRole("tab", { name: "概览" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "基本信息" })).toBeNull();
   });
 });

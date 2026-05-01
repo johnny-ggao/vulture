@@ -119,8 +119,11 @@ export function isDirtyDraft(draft: Draft, agent: Agent | null): boolean {
  * away mid-edit doesn't lose the cue. CoreTab edits live in their own
  * file-content state outside the Draft, so it's omitted here (the
  * tab's own "保存文件" button is the canonical save path for it).
+ *
+ * Round 18: split "tools" → "tools" (preset + tool list) and "handoff"
+ * (sub-agent enable list) since each now has its own tab.
  */
-export type DraftTabKey = "overview" | "persona" | "tools";
+export type DraftTabKey = "overview" | "persona" | "tools" | "handoff";
 
 export function dirtyTabs(
   draft: Draft,
@@ -148,10 +151,13 @@ export function dirtyTabs(
     draft.toolPreset !== ref.toolPreset ||
     !sameStringSet(draft.tools, ref.tools) ||
     !sameStringSet(draft.toolInclude, ref.toolInclude) ||
-    !sameStringSet(draft.toolExclude, ref.toolExclude) ||
-    !sameStringSet(draft.handoffAgentIds, ref.handoffAgentIds)
+    !sameStringSet(draft.toolExclude, ref.toolExclude)
   ) {
     dirty.add("tools");
+  }
+
+  if (!sameStringSet(draft.handoffAgentIds, ref.handoffAgentIds)) {
+    dirty.add("handoff");
   }
 
   return dirty;

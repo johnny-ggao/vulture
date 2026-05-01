@@ -944,11 +944,13 @@ describe("App integration", () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText("csv-insights")).toBeDefined();
-        expect(screen.getByText("Summarize CSV reports.")).toBeDefined();
-        // Source is shown in the group heading ("Profile (1)") rather than as
-        // a per-row badge. The toggle reflects the enabled state.
-        expect(screen.getByRole("heading", { name: /^profile/i })).toBeDefined();
+        // Marketplace layout (B2): skill renders as a card; source
+        // appears in the rail filter, not a heading. Description shows
+        // in both featured strip + grid card so getAllByText is needed.
+        expect(screen.getAllByText("csv-insights").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("Summarize CSV reports.").length).toBeGreaterThan(0);
+        // The grid card carries the toggle (featured strip is browse-only),
+        // so getByRole on switch is still uniquely matchable.
         const toggle = screen.getByRole("switch", { name: /csv-insights/ });
         expect(toggle.getAttribute("aria-checked")).toBe("true");
       },
@@ -1016,7 +1018,8 @@ describe("App integration", () => {
       () => {
         expect(restartGatewayCalls).toBe(1);
         expect(skillsRequests).toBeGreaterThanOrEqual(2);
-        expect(screen.getByText("csv-insights")).toBeDefined();
+        // Marketplace layout: skill name appears in featured strip + grid card.
+        expect(screen.getAllByText("csv-insights").length).toBeGreaterThan(0);
       },
       { timeout: 5000 },
     );

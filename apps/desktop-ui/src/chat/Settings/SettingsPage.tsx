@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Stub } from "./shared";
 import { GeneralSection } from "./GeneralSection";
 import { ModelSection } from "./ModelSection";
 import { MemorySection } from "./MemorySection";
 import { McpSection } from "./McpSection";
 import { BrowserSection } from "./BrowserSection";
+import { ChannelsSection } from "./ChannelsSection";
 import { RunLogsPanel } from "../RunLogsPage";
 import {
   BrowserIcon,
@@ -75,6 +75,6 @@ function renderSection(section: SectionKey, props: SettingsPageProps): ReactNode
           onLoadRunTrace={props.onLoadRunTrace}
         />
       );
-    case "channels": return <Stub title="消息渠道" body="向微信、飞书等渠道转发会话事件。Phase 4 启用。" />;
+    case "channels": return <ChannelsSection />;
   }
 }

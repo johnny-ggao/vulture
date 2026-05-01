@@ -103,13 +103,31 @@ export function SkillsPage(props: SkillsPageProps) {
     }
   }, [detailSkillName, items]);
 
+  // Round 18 / B2 — marketplace layout: source filter rail + featured
+  // strip (top 3 model-invocable items) + grid of cards. Per-agent
+  // toggle + policy buttons are preserved (the existing per-agent
+  // workflow has no other home), but the visual idiom now reads as a
+  // browseable marketplace rather than a flat allowlist editor.
+  const [sourceFilter, setSourceFilter] = useState<"all" | "workspace" | "profile">("all");
+  const sourceFiltered = sourceFilter === "all"
+    ? filtered
+    : filtered.filter((s) => s.source === sourceFilter);
+  const counts = {
+    all: filtered.length,
+    workspace: filtered.filter((s) => s.source === "workspace").length,
+    profile: filtered.filter((s) => s.source === "profile").length,
+  };
+  const featured = sourceFilter === "all" && !query
+    ? items.filter((s) => s.modelInvocationEnabled).slice(0, 3)
+    : [];
+
   return (
-    <div className="page">
+    <div className="page skills-page-marketplace">
       <header className="page-header">
         <div>
           <h1>技能</h1>
           <p>
-            按智能体配置可加载能力包，控制模型可见的 skill allowlist。
+            浏览可加载的能力包；选择一个智能体后可按需启用。
           </p>
         </div>
       </header>
@@ -166,36 +184,100 @@ export function SkillsPage(props: SkillsPageProps) {
 
       <ErrorAlert message={state.error} />
 
-      {filtered.length === 0 && state.status !== "loading" ? (
-        <div className="placeholder placeholder-tall">
-          <span>
-            {items.length === 0
-              ? "当前智能体没有可加载的 skill。"
-              : `没有找到匹配 "${query}" 的 skill。`}
-          </span>
-        </div>
-      ) : (
-        <div className="skills-groups">
-          {grouped.map((group) => (
-            <div key={group.source} className="skills-group">
-              <h2 className="skills-group-heading">
-                {`${SOURCE_LABEL[group.source]} (${group.items.length})`}
-              </h2>
-              <div className="skills-grid">
-                {group.items.map((skill) => (
-                  <SkillCard
+      <div className="skills-market-body">
+        <aside className="skills-cats" aria-label="技能来源">
+          {(
+            [
+              { id: "all", label: "全部", count: counts.all },
+              { id: "workspace", label: "Workspace", count: counts.workspace },
+              { id: "profile", label: "Profile", count: counts.profile },
+            ] as const
+          ).map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={"skills-cat" + (sourceFilter === c.id ? " active" : "")}
+              onClick={() => setSourceFilter(c.id)}
+            >
+              <span>{c.label}</span>
+              <span className="skills-cat-count">{c.count}</span>
+            </button>
+          ))}
+        </aside>
+
+        <div className="skills-market-main">
+          {featured.length > 0 ? (
+            <section className="skills-feature-block" aria-label="精选">
+              <div className="skills-section-h">
+                <span>精选</span>
+                <span className="skills-section-h-sub">模型可见的高频技能</span>
+              </div>
+              <div className="skills-feature-row">
+                {featured.map((skill) => (
+                  <button
                     key={skill.name}
-                    skill={skill}
-                    saving={saving}
-                    onOpenDetail={() => setDetailSkillName(skill.name)}
-                    onToggle={() => void toggleSkill(skill)}
-                  />
+                    type="button"
+                    className="skills-feature-card"
+                    onClick={() => setDetailSkillName(skill.name)}
+                  >
+                    <div className="skills-feature-name">
+                      {skill.name}
+                      <Badge tone="info">模型可见</Badge>
+                    </div>
+                    <div className="skills-feature-tagline">
+                      {skill.description || "（无描述）"}
+                    </div>
+                    <div className="skills-feature-foot">
+                      <span className="skills-feature-source">
+                        {SOURCE_LABEL[skill.source]}
+                      </span>
+                      <span className="skills-feature-spacer" />
+                      <span
+                        className={"skills-feature-state" + (skill.enabled ? " on" : "")}
+                      >
+                        {skill.enabled ? "已启用" : "未启用"}
+                      </span>
+                    </div>
+                  </button>
                 ))}
               </div>
+            </section>
+          ) : null}
+
+          <div className="skills-section-h skills-section-h-grid">
+            <span>
+              {sourceFilter === "all"
+                ? "全部技能"
+                : SOURCE_LABEL[sourceFilter as keyof typeof SOURCE_LABEL]}
+            </span>
+            <span className="skills-section-h-sub">
+              {sourceFiltered.length === 0 ? "没有匹配的技能" : `${sourceFiltered.length} 项`}
+            </span>
+          </div>
+
+          {sourceFiltered.length === 0 && state.status !== "loading" ? (
+            <div className="placeholder placeholder-tall">
+              <span>
+                {items.length === 0
+                  ? "当前智能体没有可加载的 skill。"
+                  : `没有找到匹配 "${query}" 的 skill。`}
+              </span>
             </div>
-          ))}
+          ) : (
+            <div className="skills-grid">
+              {sourceFiltered.map((skill) => (
+                <SkillCard
+                  key={skill.name}
+                  skill={skill}
+                  saving={saving}
+                  onOpenDetail={() => setDetailSkillName(skill.name)}
+                  onToggle={() => void toggleSkill(skill)}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <SkillDetailModal
         open={detailSkill !== null}

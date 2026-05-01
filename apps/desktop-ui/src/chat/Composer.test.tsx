@@ -240,7 +240,7 @@ describe("Composer", () => {
     expect(ta.value).toBe("hello after switch");
   });
 
-  test("thinking-mode segmented control shows all three options at once", () => {
+  test("thinking-mode chip popover surfaces all three options after click", () => {
     render(
       <Composer
         agents={agents}
@@ -251,12 +251,14 @@ describe("Composer", () => {
         onCancel={() => {}}
       />,
     );
-    expect(screen.getByRole("radio", { name: "快速" })).toBeDefined();
-    expect(screen.getByRole("radio", { name: "标准" })).toBeDefined();
-    expect(screen.getByRole("radio", { name: "深度" })).toBeDefined();
+    // Closed by default — only the trigger is visible.
+    fireEvent.click(screen.getByRole("button", { name: /思考模式/ }));
+    expect(screen.getByRole("menuitemradio", { name: /快速/ })).toBeDefined();
+    expect(screen.getByRole("menuitemradio", { name: /标准/ })).toBeDefined();
+    expect(screen.getByRole("menuitemradio", { name: /深度/ })).toBeDefined();
   });
 
-  test("permission-mode segmented control notifies changes", () => {
+  test("permission-mode chip popover notifies changes through menu items", () => {
     const onChangePermissionMode = mock(
       (_mode: "default" | "read_only" | "auto_review" | "full_access") => {},
     );
@@ -273,14 +275,21 @@ describe("Composer", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: "默认权限" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("radio", { name: "智能审批" }));
+    // Trigger label reflects current selection.
+    expect(screen.getByRole("button", { name: /工具权限.*默认权限/ })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: /工具权限/ }));
+    expect(
+      screen.getByRole("menuitemradio", { name: /默认权限/ }).getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /智能审批/ }));
     expect(onChangePermissionMode).toHaveBeenCalledWith("auto_review");
-    fireEvent.click(screen.getByRole("radio", { name: "整机完全权限" }));
+    // Re-open and pick again — the popover closes after a selection.
+    fireEvent.click(screen.getByRole("button", { name: /工具权限/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /整机完全权限/ }));
     expect(onChangePermissionMode).toHaveBeenCalledWith("full_access");
   });
 
-  test("thinking-mode default is 快速 with aria-checked=true", () => {
+  test("thinking-mode chip defaults to 快速 with aria-checked on the menu item", () => {
     render(
       <Composer
         agents={agents}
@@ -291,13 +300,18 @@ describe("Composer", () => {
         onCancel={() => {}}
       />,
     );
-    const fast = screen.getByRole("radio", { name: "快速" });
+    fireEvent.click(screen.getByRole("button", { name: /思考模式/ }));
+    const fast = screen.getByRole("menuitemradio", { name: /快速/ });
     expect(fast.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("radio", { name: "标准" }).getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByRole("radio", { name: "深度" }).getAttribute("aria-checked")).toBe("false");
+    expect(
+      screen.getByRole("menuitemradio", { name: /标准/ }).getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(
+      screen.getByRole("menuitemradio", { name: /深度/ }).getAttribute("aria-checked"),
+    ).toBe("false");
   });
 
-  test("clicking a thinking-mode option moves the aria-checked state", () => {
+  test("clicking a thinking-mode menu item moves the aria-checked state", () => {
     render(
       <Composer
         agents={agents}
@@ -308,9 +322,16 @@ describe("Composer", () => {
         onCancel={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("radio", { name: "深度" }));
-    expect(screen.getByRole("radio", { name: "快速" }).getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByRole("radio", { name: "深度" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: /思考模式/ }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /深度/ }));
+    // Re-open to inspect new state.
+    fireEvent.click(screen.getByRole("button", { name: /思考模式/ }));
+    expect(
+      screen.getByRole("menuitemradio", { name: /快速/ }).getAttribute("aria-checked"),
+    ).toBe("false");
+    expect(
+      screen.getByRole("menuitemradio", { name: /深度/ }).getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   // ---- Round 10: attachment chips, dedupe, drag-drop --------------
