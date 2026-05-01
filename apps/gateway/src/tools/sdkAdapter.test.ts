@@ -114,7 +114,7 @@ describe("gateway tool sdk adapter", () => {
     expect(resolveEffectiveTools(registry, { allow: [] })).toEqual([]);
   });
 
-  test("uses registry approval policy for shell workspace checks", async () => {
+  test("default mode allows workspace shell commands but asks for outside paths", async () => {
     const registry = createCoreToolRegistry();
     const shell = registry.get("shell.exec");
     expect(shell).toBeDefined();
@@ -126,6 +126,7 @@ describe("gateway tool sdk adapter", () => {
         workspacePath: "/tmp/work",
         toolCallable: async () => "ok",
         sdkApprovedToolCalls: new Map(),
+        permissionMode: "default",
       }),
       { cwd: "/tmp/work", argv: ["cat", "README.md"], timeoutMs: null },
       "c-inside",
@@ -136,6 +137,7 @@ describe("gateway tool sdk adapter", () => {
         workspacePath: "/tmp/work",
         toolCallable: async () => "ok",
         sdkApprovedToolCalls: new Map(),
+        permissionMode: "default",
       }),
       { cwd: "/tmp/work", argv: ["cat", "/etc/hosts"], timeoutMs: null },
       "c-outside",
@@ -143,6 +145,60 @@ describe("gateway tool sdk adapter", () => {
 
     expect(inside).toBe(false);
     expect(outside).toBe(true);
+  });
+
+  test("default mode allows workspace file writes and asks for outside writes", async () => {
+    const registry = createCoreToolRegistry();
+    const write = registry.get("write");
+    expect(write).toBeDefined();
+    const tool = toSdkTool(write!) as unknown as TestFunctionTool;
+
+    const inside = await tool.needsApproval(
+      new RunContext({
+        runId: "r",
+        workspacePath: "/tmp/work",
+        toolCallable: async () => "ok",
+        sdkApprovedToolCalls: new Map(),
+        permissionMode: "default",
+      }),
+      { path: "notes.txt", content: "ok" },
+      "c-inside",
+    );
+    const outside = await tool.needsApproval(
+      new RunContext({
+        runId: "r",
+        workspacePath: "/tmp/work",
+        toolCallable: async () => "ok",
+        sdkApprovedToolCalls: new Map(),
+        permissionMode: "default",
+      }),
+      { path: "/etc/hosts", content: "bad" },
+      "c-outside",
+    );
+
+    expect(inside).toBe(false);
+    expect(outside).toBe(true);
+  });
+
+  test("read-only mode asks before workspace writes", async () => {
+    const registry = createCoreToolRegistry();
+    const write = registry.get("write");
+    expect(write).toBeDefined();
+    const tool = toSdkTool(write!) as unknown as TestFunctionTool;
+
+    const needsApproval = await tool.needsApproval(
+      new RunContext({
+        runId: "r",
+        workspacePath: "/tmp/work",
+        toolCallable: async () => "ok",
+        sdkApprovedToolCalls: new Map(),
+        permissionMode: "read_only",
+      }),
+      { path: "notes.txt", content: "ok" },
+      "c-write",
+    );
+
+    expect(needsApproval).toBe(true);
   });
 
   test("full access context bypasses SDK needsApproval", async () => {
@@ -358,6 +414,15 @@ describe("sdkApprovalDecision", () => {
       needsApproval: true,
       reason: "browser.click requires browser approval",
     });
+  });
+
+  test("compatibility helper uses default workspace-write permissions", () => {
+    expect(
+      sdkApprovalDecision("write", { path: "inside.txt", content: "ok" }, "/tmp/work"),
+    ).toEqual({ needsApproval: false });
+    expect(
+      sdkApprovalDecision("write", { path: "/etc/hosts", content: "bad" }, "/tmp/work"),
+    ).toEqual({ needsApproval: true, reason: "write outside workspace" });
   });
 
   test("explains subagent spawn approvals as agent suggestions", () => {

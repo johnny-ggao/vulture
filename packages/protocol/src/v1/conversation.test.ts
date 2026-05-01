@@ -13,7 +13,7 @@ describe("Conversation + Message schemas", () => {
     id: "c-01" as Conversation["id"],
     agentId: "local-work-agent" as Conversation["agentId"],
     title: "Hello",
-    permissionMode: "full_access",
+    permissionMode: "default",
     createdAt: "2026-04-26T00:00:00.000Z" as Conversation["createdAt"],
     updatedAt: "2026-04-26T00:00:00.000Z" as Conversation["updatedAt"],
   };
@@ -66,15 +66,29 @@ describe("Conversation + Message schemas", () => {
     const r = CreateConversationRequestSchema.parse({ agentId: "x" });
     expect(r.agentId).toBe("x");
     expect(r.title).toBeUndefined();
-    expect(r.permissionMode).toBe("full_access");
+    expect(r.permissionMode).toBe("default");
   });
 
-  test("CreateConversationRequest accepts policy permission mode", () => {
+  test("CreateConversationRequest accepts Codex-style permission modes", () => {
+    const r = CreateConversationRequestSchema.parse({
+      agentId: "x",
+      permissionMode: "read_only",
+    });
+    expect(r.permissionMode).toBe("read_only");
+    expect(
+      CreateConversationRequestSchema.parse({
+        agentId: "x",
+        permissionMode: "full_access",
+      }).permissionMode,
+    ).toBe("full_access");
+  });
+
+  test("CreateConversationRequest maps legacy policy mode to default", () => {
     const r = CreateConversationRequestSchema.parse({
       agentId: "x",
       permissionMode: "policy",
     });
-    expect(r.permissionMode).toBe("policy");
+    expect(r.permissionMode).toBe("default");
   });
 
   test("PostMessageRequest requires non-empty input", () => {

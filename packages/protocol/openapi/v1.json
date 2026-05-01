@@ -1779,8 +1779,9 @@
           "permissionMode": {
             "type": "string",
             "enum": [
-              "full_access",
-              "policy"
+              "default",
+              "read_only",
+              "full_access"
             ]
           },
           "createdAt": {
@@ -1828,11 +1829,12 @@
             "type": "string"
           },
           "permissionMode": {
-            "default": "full_access",
+            "default": "default",
             "type": "string",
             "enum": [
-              "full_access",
-              "policy"
+              "default",
+              "read_only",
+              "full_access"
             ]
           }
         },

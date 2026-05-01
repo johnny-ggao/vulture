@@ -482,7 +482,12 @@ function approvalRequestFromInterruption(
   const sdkToolName = interruption.name ?? "(unknown)";
   const tool = internalToolNameFromSdkName(sdkToolName);
   const parsedInput = parseToolArguments(interruption.arguments);
-  const decision = sdkApprovalDecision(tool, parsedInput, context.workspacePath);
+  const decision = sdkApprovalDecision(
+    tool,
+    parsedInput,
+    context.workspacePath,
+    context.permissionMode,
+  );
   const callId =
     "callId" in interruption.rawItem && typeof interruption.rawItem.callId === "string"
       ? interruption.rawItem.callId

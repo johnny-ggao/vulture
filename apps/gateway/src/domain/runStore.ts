@@ -151,6 +151,8 @@ function isRunRecoveryMetadata(value: unknown): value is RunRecoveryMetadata {
     typeof value.userInput === "string" &&
     typeof value.workspacePath === "string" &&
     (value.permissionMode === undefined ||
+      value.permissionMode === "default" ||
+      value.permissionMode === "read_only" ||
       value.permissionMode === "full_access" ||
       value.permissionMode === "policy") &&
     isRecoveryProviderKind(value.providerKind) &&
@@ -440,10 +442,16 @@ export class RunStore {
       if (!activeToolJson.ok || !isActiveToolRecovery(activeToolJson.value)) return null;
       activeTool = activeToolJson.value;
     }
+    const rawMetadata = metadataJson.value;
+    const rawPermissionMode = (rawMetadata as { permissionMode?: string }).permissionMode;
+    const metadata: RunRecoveryMetadata = {
+      ...rawMetadata,
+      permissionMode: rawPermissionMode === "policy" ? "default" : rawMetadata.permissionMode,
+    };
     return {
       schemaVersion: row.schema_version,
       sdkState: row.sdk_state,
-      metadata: metadataJson.value,
+      metadata,
       checkpointSeq: row.checkpoint_seq,
       activeTool,
     };

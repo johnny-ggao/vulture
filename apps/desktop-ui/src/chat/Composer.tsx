@@ -12,8 +12,9 @@ const THINKING_OPTIONS: Array<{ value: ThinkingMode; label: string }> = [
 ];
 
 const PERMISSION_OPTIONS: Array<{ value: ConversationPermissionMode; label: string }> = [
-  { value: "full_access", label: "完全权限" },
-  { value: "policy", label: "策略模式" },
+  { value: "default", label: "默认权限" },
+  { value: "read_only", label: "只读" },
+  { value: "full_access", label: "整机完全权限" },
 ];
 
 const TEXTAREA_MIN_HEIGHT = 56;
@@ -110,7 +111,7 @@ export function Composer(props: ComposerProps) {
   }
 
   const canSend = Boolean(value.trim() && props.selectedAgentId && !props.running);
-  const permissionMode = props.permissionMode ?? "full_access";
+  const permissionMode = props.permissionMode ?? "default";
 
   return (
     <div

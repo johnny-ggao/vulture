@@ -60,7 +60,7 @@ export function useRunController({
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [permissionMode, setPermissionMode] = useState<ConversationPermissionMode>("full_access");
+  const [permissionMode, setPermissionMode] = useState<ConversationPermissionMode>("default");
   const sendingRunRef = useRef(false);
 
   const messages = useMessages(apiClient, activeConversationId);
@@ -305,7 +305,7 @@ export function useRunController({
   function startNewConversation() {
     setActiveConversationId(null);
     setActiveRunId(null);
-    setPermissionMode("full_access");
+    setPermissionMode("default");
     setRetainedRunEvents({ conversationId: null, events: [] });
     writeActiveChatState({ conversationId: null, runId: null });
   }

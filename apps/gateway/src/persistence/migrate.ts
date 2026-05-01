@@ -19,6 +19,7 @@ const init012 = readFileSync(join(here, "migrations", "012_agent_tool_policy.sql
 const init013 = readFileSync(join(here, "migrations", "013_subagent_sessions.sql"), "utf8");
 const init014 = readFileSync(join(here, "migrations", "014_agent_handoffs.sql"), "utf8");
 const init015 = readFileSync(join(here, "migrations", "015_conversation_permission_mode.sql"), "utf8");
+const init016 = readFileSync(join(here, "migrations", "016_codex_permission_modes.sql"), "utf8");
 
 interface Migration {
   version: number;
@@ -41,6 +42,7 @@ const MIGRATIONS: Migration[] = [
   { version: 13, sql: init013 },
   { version: 14, sql: init014 },
   { version: 15, sql: init015 },
+  { version: 16, sql: init016 },
 ];
 
 export function currentSchemaVersion(db: DB): number {

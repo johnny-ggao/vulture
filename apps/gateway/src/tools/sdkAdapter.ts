@@ -1,5 +1,6 @@
 import { tool, type Tool } from "@openai/agents";
 import { ToolCallError } from "@vulture/agent-runtime";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type { GatewayToolRunContext, GatewayToolSpec } from "./types";
 import { coreToolApprovalDecision } from "./coreTools";
 
@@ -29,8 +30,9 @@ export function sdkApprovalDecision(
   toolName: string,
   input: unknown,
   workspacePath: string | undefined,
+  permissionMode?: ConversationPermissionMode,
 ): { needsApproval: boolean; reason?: string } {
-  return coreToolApprovalDecision(toolName, input, workspacePath);
+  return coreToolApprovalDecision(toolName, input, workspacePath, permissionMode);
 }
 
 async function executeToolWithCheckpoint(

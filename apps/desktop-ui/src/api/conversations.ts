@@ -1,6 +1,6 @@
 import type { ApiClient } from "./client";
 
-export type ConversationPermissionMode = "full_access" | "policy";
+export type ConversationPermissionMode = "default" | "read_only" | "full_access";
 
 export interface ConversationDto {
   id: string;

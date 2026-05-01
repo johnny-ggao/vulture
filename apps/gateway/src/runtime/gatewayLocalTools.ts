@@ -128,19 +128,21 @@ async function executeLocalTool(
     case "read":
       return readTool(call);
     case "write":
-      requireApproval(call, "write requires approval");
+      requireWorkspaceMutationPermission(call, "write", inputPath(call.input));
       return writeTool(call);
     case "edit":
-      requireApproval(call, "edit requires approval");
+      requireWorkspaceMutationPermission(call, "edit", inputPath(call.input));
       return editTool(call);
     case "apply_patch":
-      requireApproval(call, "apply_patch requires approval");
+      requireWorkspaceMutationPermission(call, "apply_patch", inputCwd(call.input));
       return applyPatchTool(call);
     case "process":
       return processTool(call, deps.processStore);
     case "web_fetch":
+      requireNetworkPermission(call, "web_fetch");
       return webFetchTool(call, deps.fetch);
     case "web_search":
+      requireNetworkPermission(call, "web_search");
       return webSearchTool(call, deps.fetch);
     case "sessions_list":
       return wrapItems(requireSessions(deps).list(call));
@@ -250,6 +252,9 @@ async function processTool(
   };
   switch (input.action) {
     case "start": {
+      if (call.permissionMode === "read_only") {
+        requireApproval(call, "process requires approval in read-only mode");
+      }
       requireApproval(call, "process start requires approval");
       const cwd = resolveToolPath(call.workspacePath, input.cwd);
       if (!isInsideWorkspace(cwd, call.workspacePath)) {
@@ -291,12 +296,21 @@ async function processTool(
       return summarizeProcess(record);
     }
     case "list":
+      if (call.permissionMode === "read_only") {
+        requireApproval(call, "process requires approval in read-only mode");
+      }
       return { items: [...store.values()].map((record) => summarizeProcess(record)) };
     case "read": {
+      if (call.permissionMode === "read_only") {
+        requireApproval(call, "process requires approval in read-only mode");
+      }
       const record = getProcess(store, input.processId);
       return summarizeProcess(record, true);
     }
     case "stop": {
+      if (call.permissionMode === "read_only") {
+        requireApproval(call, "process requires approval in read-only mode");
+      }
       requireApproval(call, "process stop requires approval");
       const record = getProcess(store, input.processId);
       const killed = record.child.kill();
@@ -385,6 +399,38 @@ function requireApproval(call: Parameters<ToolCallable>[0], message: string): vo
   if (!call.approvalToken) {
     throw new ToolCallError("tool.permission_denied", message);
   }
+}
+
+function requireWorkspaceMutationPermission(
+  call: Parameters<ToolCallable>[0],
+  toolName: "write" | "edit" | "apply_patch",
+  targetPath: unknown,
+): void {
+  if (call.permissionMode === "full_access") return;
+  if (call.permissionMode === "read_only") {
+    requireApproval(call, `${toolName} requires approval in read-only mode`);
+    return;
+  }
+  const filePath = resolveToolPath(call.workspacePath, targetPath);
+  if (!isInsideWorkspace(filePath, call.workspacePath)) {
+    requireApproval(call, `${toolName} outside workspace`);
+  }
+}
+
+function requireNetworkPermission(
+  call: Parameters<ToolCallable>[0],
+  toolName: "web_search" | "web_fetch",
+): void {
+  if (call.permissionMode === "full_access") return;
+  requireApproval(call, `${toolName} requires network approval`);
+}
+
+function inputPath(input: unknown): unknown {
+  return (input as { path?: unknown }).path;
+}
+
+function inputCwd(input: unknown): unknown {
+  return (input as { cwd?: unknown }).cwd;
 }
 
 function sessionsSpawnApprovalReason(input: unknown): string {

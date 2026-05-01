@@ -13,7 +13,7 @@ const conversation: ConversationDto = {
   title: "hello",
   createdAt: now,
   updatedAt: now,
-  permissionMode: "full_access",
+  permissionMode: "default",
 };
 
 const message: MessageDto = {
@@ -47,7 +47,7 @@ let createRequests: CreateConversationRequest[] = [];
 const conversationActions = {
   create: async (req: CreateConversationRequest) => {
     createRequests.push(req);
-    return { ...conversation, permissionMode: req.permissionMode ?? "full_access" };
+    return { ...conversation, permissionMode: req.permissionMode ?? "default" };
   },
   refetch: async () => undefined,
 };
@@ -79,7 +79,7 @@ function Probe(props: { client: ApiClient }) {
   return (
     <div>
       <button onClick={() => void controller.send("hello world")}>send</button>
-      <button onClick={() => void controller.changePermissionMode("policy")}>policy</button>
+      <button onClick={() => void controller.changePermissionMode("read_only")}>read_only</button>
       <span data-testid="conversation">{controller.activeConversationId ?? ""}</span>
       <span data-testid="run">{controller.activeRunId ?? ""}</span>
       <span data-testid="permission">{controller.permissionMode}</span>
@@ -125,7 +125,7 @@ describe("useRunController", () => {
       <Probe
         client={clientReturning({
           get: {
-            "/v1/conversations/conversation-a": { ...conversation, permissionMode: "policy" },
+            "/v1/conversations/conversation-a": { ...conversation, permissionMode: "read_only" },
             "/v1/conversations/conversation-a/messages": { items: [message] },
             "/v1/conversations/conversation-a/runs": { items: [] },
             "/v1/conversations/conversation-a/runs?status=active": { items: [run] },
@@ -139,10 +139,10 @@ describe("useRunController", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("policy"));
-    await waitFor(() => expect(screen.getByTestId("permission").textContent).toBe("policy"));
+    fireEvent.click(screen.getByText("read_only"));
+    await waitFor(() => expect(screen.getByTestId("permission").textContent).toBe("read_only"));
     fireEvent.click(screen.getByText("send"));
 
-    await waitFor(() => expect(createRequests[0]).toMatchObject({ permissionMode: "policy" }));
+    await waitFor(() => expect(createRequests[0]).toMatchObject({ permissionMode: "read_only" }));
   });
 });

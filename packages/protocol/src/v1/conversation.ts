@@ -7,8 +7,13 @@ export type ConversationId = BrandedId<"ConversationId">;
 export type MessageId = BrandedId<"MessageId">;
 export type RunId = BrandedId<"RunId">;
 
-export const ConversationPermissionModeSchema = z.enum(["full_access", "policy"]);
+export const ConversationPermissionModeSchema = z.enum(["default", "read_only", "full_access"]);
 export type ConversationPermissionMode = z.infer<typeof ConversationPermissionModeSchema>;
+
+const ConversationPermissionModeInputSchema = z.preprocess(
+  (value) => (value === "policy" ? "default" : value),
+  ConversationPermissionModeSchema,
+);
 
 export const ConversationSchema = z.object({
   id: z.string().min(1),
@@ -78,14 +83,18 @@ export const CreateConversationRequestSchema = z
   .object({
     agentId: z.string().min(1),
     title: z.string().optional(),
-    permissionMode: ConversationPermissionModeSchema.default("full_access"),
+    permissionMode: ConversationPermissionModeInputSchema.default("default"),
   })
   .strict();
-export type CreateConversationRequest = z.input<typeof CreateConversationRequestSchema>;
+export type CreateConversationRequest = {
+  agentId: string;
+  title?: string;
+  permissionMode?: ConversationPermissionMode;
+};
 
 export const UpdateConversationRequestSchema = z
   .object({
-    permissionMode: ConversationPermissionModeSchema.optional(),
+    permissionMode: ConversationPermissionModeInputSchema.optional(),
   })
   .strict()
   .refine((value) => value.permissionMode !== undefined, {

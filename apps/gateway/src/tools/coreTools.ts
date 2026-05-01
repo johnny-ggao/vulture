@@ -1,6 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import { ToolRegistry } from "./registry";
+import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type {
   GatewayToolApprovalDecision,
   GatewayToolExecutionContext,
@@ -150,7 +151,8 @@ function writeTool(): GatewayToolSpec {
     category: "fs",
     risk: "approval",
     idempotent: false,
-    needsApproval: () => ({ needsApproval: true, reason: "write requires approval" }),
+    needsApproval: (ctx, input) =>
+      pathMutationApprovalDecision("write", input, ctx.workspacePath, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "write", input),
   };
 }
@@ -166,7 +168,8 @@ function editTool(): GatewayToolSpec {
     category: "fs",
     risk: "approval",
     idempotent: false,
-    needsApproval: () => ({ needsApproval: true, reason: "edit requires approval" }),
+    needsApproval: (ctx, input) =>
+      pathMutationApprovalDecision("edit", input, ctx.workspacePath, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "edit", input),
   };
 }
@@ -182,7 +185,8 @@ function applyPatchTool(): GatewayToolSpec {
     category: "fs",
     risk: "approval",
     idempotent: false,
-    needsApproval: () => ({ needsApproval: true, reason: "apply_patch requires approval" }),
+    needsApproval: (ctx, input) =>
+      applyPatchApprovalDecision(input, ctx.workspacePath, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "apply_patch", input),
   };
 }
@@ -198,7 +202,8 @@ function shellExecTool(): GatewayToolSpec {
     category: "runtime",
     risk: "approval",
     idempotent: false,
-    needsApproval: (ctx, input) => shellExecApprovalDecision(input, ctx.workspacePath),
+    needsApproval: (ctx, input) =>
+      shellExecApprovalDecision(input, ctx.workspacePath, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "shell.exec", input),
   };
 }
@@ -214,7 +219,7 @@ function processTool(): GatewayToolSpec {
     category: "runtime",
     risk: "approval",
     idempotent: false,
-    needsApproval: (_ctx, input) => processApprovalDecision(input),
+    needsApproval: (ctx, input) => processApprovalDecision(input, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "process", input),
   };
 }
@@ -230,7 +235,7 @@ function webSearchTool(): GatewayToolSpec {
     category: "web",
     risk: "safe",
     idempotent: true,
-    needsApproval: () => ({ needsApproval: false }),
+    needsApproval: (ctx) => networkApprovalDecision("web_search", ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "web_search", input),
   };
 }
@@ -246,7 +251,7 @@ function webFetchTool(): GatewayToolSpec {
     category: "web",
     risk: "safe",
     idempotent: true,
-    needsApproval: (_ctx, input) => webFetchApprovalDecision(input),
+    needsApproval: (ctx, input) => webFetchApprovalDecision(input, ctx.permissionMode),
     execute: (ctx, input) => executeViaGatewayTool(ctx, "web_fetch", input),
   };
 }
@@ -444,6 +449,7 @@ async function executeViaGatewayTool(
     input,
     runId: ctx.runId,
     workspacePath: ctx.workspacePath,
+    permissionMode: ctx.permissionMode,
     approvalToken: ctx.approvalToken,
   });
 }
@@ -452,20 +458,23 @@ export function coreToolApprovalDecision(
   toolName: string,
   input: unknown,
   workspacePath: string | undefined,
+  permissionMode: ConversationPermissionMode = "default",
 ): GatewayToolApprovalDecision {
   switch (toolName) {
     case "read":
       return pathReadApprovalDecision(input, workspacePath);
     case "write":
-      return { needsApproval: true, reason: "write requires approval" };
+      return pathMutationApprovalDecision("write", input, workspacePath, permissionMode);
     case "edit":
-      return { needsApproval: true, reason: "edit requires approval" };
+      return pathMutationApprovalDecision("edit", input, workspacePath, permissionMode);
     case "apply_patch":
-      return { needsApproval: true, reason: "apply_patch requires approval" };
+      return applyPatchApprovalDecision(input, workspacePath, permissionMode);
     case "process":
-      return processApprovalDecision(input);
+      return processApprovalDecision(input, permissionMode);
+    case "web_search":
+      return networkApprovalDecision("web_search", permissionMode);
     case "web_fetch":
-      return webFetchApprovalDecision(input);
+      return webFetchApprovalDecision(input, permissionMode);
     case "sessions_send":
       return { needsApproval: true, reason: "sessions_send requires approval" };
     case "sessions_spawn":
@@ -479,7 +488,7 @@ export function coreToolApprovalDecision(
         reason: `${toolName} requires browser approval`,
       };
     case "shell.exec":
-      return shellExecApprovalDecision(input, workspacePath);
+      return shellExecApprovalDecision(input, workspacePath, permissionMode);
     default:
       return { needsApproval: false };
   }
@@ -525,7 +534,60 @@ function pathReadApprovalDecision(
   return { needsApproval: false };
 }
 
-function processApprovalDecision(input: unknown): GatewayToolApprovalDecision {
+function pathMutationApprovalDecision(
+  toolName: "write" | "edit",
+  input: unknown,
+  workspacePath: string | undefined,
+  permissionMode: ConversationPermissionMode | undefined,
+): GatewayToolApprovalDecision {
+  if (permissionMode === "read_only") {
+    return { needsApproval: true, reason: `${toolName} requires approval in read-only mode` };
+  }
+  const value = input as { path?: unknown };
+  if (typeof value.path !== "string") {
+    return { needsApproval: true, reason: `${toolName} missing path` };
+  }
+  return pathWorkspaceApprovalDecision(toolName, value.path, workspacePath);
+}
+
+function applyPatchApprovalDecision(
+  input: unknown,
+  workspacePath: string | undefined,
+  permissionMode: ConversationPermissionMode | undefined,
+): GatewayToolApprovalDecision {
+  if (permissionMode === "read_only") {
+    return { needsApproval: true, reason: "apply_patch requires approval in read-only mode" };
+  }
+  const value = input as { cwd?: unknown };
+  if (typeof value.cwd !== "string") {
+    return { needsApproval: true, reason: "apply_patch missing cwd" };
+  }
+  return pathWorkspaceApprovalDecision("apply_patch", value.cwd, workspacePath);
+}
+
+function pathWorkspaceApprovalDecision(
+  toolName: string,
+  targetPath: string,
+  workspacePath: string | undefined,
+): GatewayToolApprovalDecision {
+  if (!workspacePath) {
+    return { needsApproval: true, reason: `${toolName} outside known workspace` };
+  }
+  const workspaceRoot = path.resolve(workspacePath);
+  const resolved = path.resolve(workspaceRoot, targetPath);
+  if (!isInsidePath(resolved, workspaceRoot)) {
+    return { needsApproval: true, reason: `${toolName} outside workspace` };
+  }
+  return { needsApproval: false };
+}
+
+function processApprovalDecision(
+  input: unknown,
+  permissionMode: ConversationPermissionMode | undefined,
+): GatewayToolApprovalDecision {
+  if (permissionMode === "read_only") {
+    return { needsApproval: true, reason: "process requires approval in read-only mode" };
+  }
   const value = input as { action?: unknown };
   if (value.action === "start" || value.action === "stop") {
     return { needsApproval: true, reason: `process ${value.action} requires approval` };
@@ -533,7 +595,18 @@ function processApprovalDecision(input: unknown): GatewayToolApprovalDecision {
   return { needsApproval: false };
 }
 
-function webFetchApprovalDecision(input: unknown): GatewayToolApprovalDecision {
+function networkApprovalDecision(
+  toolName: "web_search" | "web_fetch",
+  permissionMode: ConversationPermissionMode | undefined,
+): GatewayToolApprovalDecision {
+  if (permissionMode === "full_access") return { needsApproval: false };
+  return { needsApproval: true, reason: `${toolName} requires network approval` };
+}
+
+function webFetchApprovalDecision(
+  input: unknown,
+  permissionMode: ConversationPermissionMode | undefined,
+): GatewayToolApprovalDecision {
   const value = input as { url?: unknown };
   if (typeof value.url !== "string") {
     return { needsApproval: true, reason: "web_fetch missing url" };
@@ -549,13 +622,17 @@ function webFetchApprovalDecision(input: unknown): GatewayToolApprovalDecision {
   } catch {
     return { needsApproval: true, reason: "web_fetch invalid url" };
   }
-  return { needsApproval: false };
+  return networkApprovalDecision("web_fetch", permissionMode);
 }
 
 function shellExecApprovalDecision(
   input: unknown,
   workspacePath: string | undefined,
+  permissionMode: ConversationPermissionMode | undefined,
 ): GatewayToolApprovalDecision {
+  if (permissionMode === "read_only") {
+    return { needsApproval: true, reason: "shell.exec requires approval in read-only mode" };
+  }
   const value = input as { cwd?: unknown; argv?: unknown };
   if (typeof value.cwd !== "string") {
     return { needsApproval: true, reason: "shell.exec missing cwd" };

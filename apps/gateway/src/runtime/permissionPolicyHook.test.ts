@@ -11,7 +11,7 @@ import { PermissionPolicyStore } from "../domain/permissionPolicyStore";
 import { makePermissionPolicyHook } from "./permissionPolicyHook";
 import { createRuntimeHookRunner } from "./runtimeHooks";
 
-function freshFixtures(permissionMode: "full_access" | "policy" = "policy") {
+function freshFixtures(permissionMode: "default" | "read_only" | "full_access" = "default") {
   const dir = mkdtempSync(join(tmpdir(), "vulture-policy-hook-"));
   const db = openDatabase(join(dir, "data.sqlite"));
   applyMigrations(db);

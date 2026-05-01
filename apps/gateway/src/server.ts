@@ -128,8 +128,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
   const cancelSignals = new Map<string, AbortController>();
   const permissionModeForRun = (runId: string) => {
     const run = runStore.get(runId);
-    if (!run) return "policy" as const;
-    return conversationStore.get(run.conversationId)?.permissionMode ?? "policy";
+    if (!run) return "default" as const;
+    return conversationStore.get(run.conversationId)?.permissionMode ?? "default";
   };
 
   const shellTools: ToolCallable = makeShellCallbackTools({

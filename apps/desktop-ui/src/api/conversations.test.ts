@@ -17,7 +17,7 @@ const sample: ConversationDto = {
   title: "Hello",
   createdAt: "2026-04-27T00:00:00.000Z",
   updatedAt: "2026-04-27T00:00:00.000Z",
-  permissionMode: "full_access",
+  permissionMode: "default",
 };
 
 describe("conversationsApi", () => {
@@ -56,12 +56,12 @@ describe("conversationsApi", () => {
     const client = fakeClient({
       post: async <T>(path: string, body: unknown) => {
         expect(path).toBe("/v1/conversations");
-        expect(body).toEqual({ agentId: "a-1", permissionMode: "policy" });
-        return { ...sample, permissionMode: "policy" } as T;
+        expect(body).toEqual({ agentId: "a-1", permissionMode: "read_only" });
+        return { ...sample, permissionMode: "read_only" } as T;
       },
     });
-    expect(await conversationsApi.create(client, { agentId: "a-1", permissionMode: "policy" })).toMatchObject({
-      permissionMode: "policy",
+    expect(await conversationsApi.create(client, { agentId: "a-1", permissionMode: "read_only" })).toMatchObject({
+      permissionMode: "read_only",
     });
   });
 
@@ -69,12 +69,12 @@ describe("conversationsApi", () => {
     const client = fakeClient({
       patch: async <T>(path: string, body: unknown) => {
         expect(path).toBe("/v1/conversations/c-1");
-        expect(body).toEqual({ permissionMode: "policy" });
-        return { ...sample, permissionMode: "policy" } as T;
+        expect(body).toEqual({ permissionMode: "full_access" });
+        return { ...sample, permissionMode: "full_access" } as T;
       },
     });
-    expect(await conversationsApi.update(client, "c-1", { permissionMode: "policy" })).toMatchObject({
-      permissionMode: "policy",
+    expect(await conversationsApi.update(client, "c-1", { permissionMode: "full_access" })).toMatchObject({
+      permissionMode: "full_access",
     });
   });
 

@@ -30,7 +30,8 @@ function rowToConversation(r: Row): Conversation {
 }
 
 function normalizePermissionMode(value: string | null | undefined): ConversationPermissionMode {
-  return value === "policy" ? "policy" : "full_access";
+  if (value === "full_access" || value === "read_only") return value;
+  return "default";
 }
 
 function genId(): ConversationId {
@@ -47,7 +48,7 @@ export class ConversationStore {
       .query(
         "INSERT INTO conversations(id, agent_id, title, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .run(id, req.agentId, req.title ?? "", req.permissionMode ?? "full_access", now, now);
+      .run(id, req.agentId, req.title ?? "", req.permissionMode ?? "default", now, now);
     return this.get(id) as Conversation;
   }
 

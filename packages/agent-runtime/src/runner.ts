@@ -78,6 +78,7 @@ export type ToolCallable = (call: {
   input: unknown;
   runId: string;
   workspacePath: string;
+  permissionMode?: ConversationPermissionMode;
   approvalToken?: string;
 }) => Promise<unknown>;
 

@@ -257,13 +257,13 @@ describe("Composer", () => {
   });
 
   test("permission-mode segmented control notifies changes", () => {
-    const onChangePermissionMode = mock((_mode: "full_access" | "policy") => {});
+    const onChangePermissionMode = mock((_mode: "default" | "read_only" | "full_access") => {});
     render(
       <Composer
         agents={agents}
         selectedAgentId="a1"
         onSelectAgent={() => {}}
-        permissionMode="full_access"
+        permissionMode="default"
         onChangePermissionMode={onChangePermissionMode}
         running={false}
         onSend={() => {}}
@@ -271,9 +271,9 @@ describe("Composer", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: "完全权限" }).getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("radio", { name: "策略模式" }));
-    expect(onChangePermissionMode).toHaveBeenCalledWith("policy");
+    expect(screen.getByRole("radio", { name: "默认权限" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "整机完全权限" }));
+    expect(onChangePermissionMode).toHaveBeenCalledWith("full_access");
   });
 
   test("thinking-mode default is 快速 with aria-checked=true", () => {

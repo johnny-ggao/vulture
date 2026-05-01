@@ -37,19 +37,19 @@ describe("/v1/conversations", () => {
     cleanup();
   });
 
-  test("POST can create a policy-mode conversation", async () => {
+  test("POST can create a read-only conversation", async () => {
     const { app, cleanup } = fresh();
     const res = await app.request("/v1/conversations", {
       method: "POST",
-      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "k-policy" },
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "k-read-only" },
       body: JSON.stringify({
         agentId: "local-work-agent",
-        title: "Policy",
-        permissionMode: "policy",
+        title: "Read only",
+        permissionMode: "read_only",
       }),
     });
     expect(res.status).toBe(201);
-    expect((await res.json()).permissionMode).toBe("policy");
+    expect((await res.json()).permissionMode).toBe("read_only");
     cleanup();
   });
 
@@ -60,12 +60,12 @@ describe("/v1/conversations", () => {
     const res = await app.request(`/v1/conversations/${c.id}`, {
       method: "PATCH",
       headers: { ...auth, "Content-Type": "application/json" },
-      body: JSON.stringify({ permissionMode: "policy" }),
+      body: JSON.stringify({ permissionMode: "full_access" }),
     });
 
     expect(res.status).toBe(200);
-    expect((await res.json()).permissionMode).toBe("policy");
-    expect(convs.get(c.id)?.permissionMode).toBe("policy");
+    expect((await res.json()).permissionMode).toBe("full_access");
+    expect(convs.get(c.id)?.permissionMode).toBe("full_access");
     cleanup();
   });
 

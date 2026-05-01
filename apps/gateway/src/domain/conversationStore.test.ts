@@ -48,17 +48,17 @@ describe("ConversationStore", () => {
     cleanup();
   });
 
-  test("defaults permission mode to full access", () => {
+  test("defaults permission mode to default workspace permissions", () => {
     const { store, cleanup } = freshStore();
     const c = store.create({ agentId: "a-1" });
-    expect(c.permissionMode).toBe("full_access");
+    expect(c.permissionMode).toBe("default");
     cleanup();
   });
 
-  test("persists policy permission mode", () => {
+  test("persists Codex-style permission modes", () => {
     const { store, cleanup } = freshStore();
-    const c = store.create({ agentId: "a-1", permissionMode: "policy" });
-    expect(store.get(c.id)?.permissionMode).toBe("policy");
+    const c = store.create({ agentId: "a-1", permissionMode: "read_only" });
+    expect(store.get(c.id)?.permissionMode).toBe("read_only");
     cleanup();
   });
 
@@ -79,9 +79,9 @@ describe("ConversationStore", () => {
     const c = store.create({ agentId: "a-1" });
     await new Promise((r) => setTimeout(r, 2));
 
-    const updated = store.updatePermissionMode(c.id, "policy");
+    const updated = store.updatePermissionMode(c.id, "full_access");
 
-    expect(updated?.permissionMode).toBe("policy");
+    expect(updated?.permissionMode).toBe("full_access");
     expect(updated?.updatedAt).not.toBe(c.updatedAt);
     cleanup();
   });

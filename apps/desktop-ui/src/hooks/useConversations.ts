@@ -111,7 +111,7 @@ export function useConversations(client: ApiClient | null) {
         id: tempId,
         agentId: req.agentId,
         title: req.title ?? "",
-        permissionMode: req.permissionMode ?? "full_access",
+        permissionMode: req.permissionMode ?? "default",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

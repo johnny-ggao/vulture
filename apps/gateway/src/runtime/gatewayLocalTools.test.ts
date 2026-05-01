@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("gateway local tools", () => {
-  test("read/write/edit operate inside the workspace with write approvals", async () => {
+  test("read/write/edit operate inside the workspace without approvals in default mode", async () => {
     const workspacePath = await tempWorkspace();
     const tools = makeGatewayLocalTools({ shellTools: async () => "shell" });
 
@@ -26,7 +26,6 @@ describe("gateway local tools", () => {
       runId: "r",
       tool: "write",
       workspacePath,
-      approvalToken: "approved",
       input: { path: join(workspacePath, "note.txt"), content: "hello" },
     });
 
@@ -44,7 +43,6 @@ describe("gateway local tools", () => {
       runId: "r",
       tool: "edit",
       workspacePath,
-      approvalToken: "approved",
       input: {
         path: join(workspacePath, "note.txt"),
         oldText: "hello",
@@ -56,7 +54,7 @@ describe("gateway local tools", () => {
     expect(await readFile(join(workspacePath, "note.txt"), "utf8")).toBe("hello world");
   });
 
-  test("write is rejected without an approval token", async () => {
+  test("write outside the workspace is rejected without an approval token", async () => {
     const workspacePath = await tempWorkspace();
     const tools = makeGatewayLocalTools({ shellTools: async () => "shell" });
 
@@ -66,9 +64,25 @@ describe("gateway local tools", () => {
         runId: "r",
         tool: "write",
         workspacePath,
+        input: { path: "/etc/hosts", content: "hello" },
+      }),
+    ).rejects.toThrow("write outside workspace");
+  });
+
+  test("read-only mode requires approval before workspace writes", async () => {
+    const workspacePath = await tempWorkspace();
+    const tools = makeGatewayLocalTools({ shellTools: async () => "shell" });
+
+    await expect(
+      tools({
+        callId: "c-write",
+        runId: "r",
+        tool: "write",
+        workspacePath,
+        permissionMode: "read_only",
         input: { path: join(workspacePath, "note.txt"), content: "hello" },
       }),
-    ).rejects.toThrow("write requires approval");
+    ).rejects.toThrow("write requires approval in read-only mode");
   });
 
   test("apply_patch applies a unified diff in the workspace", async () => {
@@ -166,6 +180,7 @@ describe("gateway local tools", () => {
         runId: "r",
         tool: "web_fetch",
         workspacePath,
+        approvalToken: "approved",
         input: { url: "https://example.com", maxBytes: null },
       }),
     ).resolves.toMatchObject({ url: "https://example.com", content: "<h1>Hello</h1>" });
@@ -176,6 +191,7 @@ describe("gateway local tools", () => {
         runId: "r",
         tool: "web_search",
         workspacePath,
+        approvalToken: "approved",
         input: { query: "example", limit: null },
       }),
     ).resolves.toMatchObject({ results: [{ title: "Example A", url: "https://example.com/a" }] });

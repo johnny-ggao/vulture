@@ -59,17 +59,17 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
     path: "README.md",
     maxBytes: null,
   }), { path: 42, maxBytes: null }),
-  fixture("write", "fs", "approval", false, true, () => ({
+  fixture("write", "fs", "approval", false, false, () => ({
     path: "note.txt",
     content: "hello",
   }), { path: "note.txt" }),
-  fixture("edit", "fs", "approval", false, true, () => ({
+  fixture("edit", "fs", "approval", false, false, () => ({
     path: "note.txt",
     oldText: "hello",
     newText: "hi",
     replaceAll: null,
   }), { path: "note.txt", oldText: "hello" }),
-  fixture("apply_patch", "fs", "approval", false, true, ({ workspacePath }) => ({
+  fixture("apply_patch", "fs", "approval", false, false, ({ workspacePath }) => ({
     cwd: workspacePath,
     patch: "--- a/note.txt\n+++ b/note.txt\n@@ -1 +1 @@\n-old\n+new\n",
   }), { cwd: 10, patch: "" }),
@@ -84,11 +84,11 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
     cwd: null,
     argv: null,
   }), { action: "launch", processId: null, cwd: null, argv: null }),
-  fixture("web_search", "web", "safe", true, false, () => ({
+  fixture("web_search", "web", "safe", true, true, () => ({
     query: "OpenAI Agents SDK",
     limit: null,
   }), { query: 1, limit: null }),
-  fixture("web_fetch", "web", "safe", true, false, () => ({
+  fixture("web_fetch", "web", "safe", true, true, () => ({
     url: "https://example.com",
     maxBytes: null,
   }), { url: 1, maxBytes: null }),
