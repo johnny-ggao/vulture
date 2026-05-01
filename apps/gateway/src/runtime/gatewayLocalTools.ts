@@ -4,8 +4,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { ToolCallError, type ToolCallable } from "@vulture/agent-runtime";
 import type { PartialRunEvent } from "../domain/runStore";
 import type { AppError } from "@vulture/protocol/src/v1/error";
-
-type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+import {
+  createWebAccessService,
+  type FetchLike,
+  type WebAccessService,
+} from "./webAccess";
 
 const LOCAL_TOOL_NAMES = new Set([
   "read",
@@ -51,6 +54,7 @@ export interface GatewayLocalToolsOptions {
   shellTools: ToolCallable;
   appendEvent?: (runId: string, partial: PartialRunEvent) => void;
   fetch?: FetchLike;
+  webAccess?: WebAccessService;
   sessions?: GatewaySessionsTools;
   memory?: GatewayMemoryTools;
   mcp?: GatewayMcpTools;
@@ -71,7 +75,7 @@ interface ManagedProcess {
 
 export function makeGatewayLocalTools(opts: GatewayLocalToolsOptions): ToolCallable {
   const processStore = new Map<string, ManagedProcess>();
-  const f = opts.fetch ?? fetch;
+  const webAccess = opts.webAccess ?? createWebAccessService({ fetch: opts.fetch ?? fetch });
 
   return async (call) => {
     const isMcpTool = opts.mcp?.canHandle(call.tool) ?? false;
@@ -86,7 +90,7 @@ export function makeGatewayLocalTools(opts: GatewayLocalToolsOptions): ToolCalla
     try {
       const output = await executeLocalTool(call, {
         processStore,
-        fetch: f,
+        webAccess,
         sessions: opts.sessions,
         memory: opts.memory,
         mcp: opts.mcp,
@@ -115,7 +119,7 @@ async function executeLocalTool(
   call: Parameters<ToolCallable>[0],
   deps: {
     processStore: Map<string, ManagedProcess>;
-    fetch: FetchLike;
+    webAccess: WebAccessService;
     sessions?: GatewaySessionsTools;
     memory?: GatewayMemoryTools;
     mcp?: GatewayMcpTools;
@@ -139,11 +143,9 @@ async function executeLocalTool(
     case "process":
       return processTool(call, deps.processStore);
     case "web_fetch":
-      requireNetworkPermission(call, "web_fetch");
-      return webFetchTool(call, deps.fetch);
+      return webFetchTool(call, deps.webAccess);
     case "web_search":
-      requireNetworkPermission(call, "web_search");
-      return webSearchTool(call, deps.fetch);
+      return webSearchTool(call, deps.webAccess);
     case "sessions_list":
       return wrapItems(requireSessions(deps).list(call));
     case "sessions_history":
@@ -323,21 +325,14 @@ async function processTool(
 
 async function webFetchTool(
   call: Parameters<ToolCallable>[0],
-  f: FetchLike,
+  webAccess: WebAccessService,
 ): Promise<unknown> {
   const input = call.input as { url?: unknown; maxBytes?: unknown };
-  const url = parseHttpUrl(input.url, call.approvalToken);
-  const res = await f(url);
-  const text = await res.text();
-  const maxBytes = typeof input.maxBytes === "number" ? input.maxBytes : MAX_TEXT_BYTES;
-  const content = truncateUtf8(text, maxBytes);
-  return {
-    url: typeof input.url === "string" ? input.url : url,
-    status: res.status,
-    contentType: res.headers.get("content-type") ?? "",
-    content,
-    truncated: Buffer.byteLength(text) > maxBytes,
-  };
+  return webAccess.fetch({
+    url: input.url,
+    maxBytes: typeof input.maxBytes === "number" ? input.maxBytes : MAX_TEXT_BYTES,
+    approvalToken: call.approvalToken,
+  });
 }
 
 function wrapItems(value: unknown): unknown {
@@ -346,21 +341,13 @@ function wrapItems(value: unknown): unknown {
 
 async function webSearchTool(
   call: Parameters<ToolCallable>[0],
-  f: FetchLike,
+  webAccess: WebAccessService,
 ): Promise<unknown> {
   const input = call.input as { query?: unknown; limit?: unknown };
-  if (typeof input.query !== "string" || input.query.trim().length === 0) {
-    throw new ToolCallError("tool.execution_failed", "web_search missing query");
-  }
-  const limit = Math.min(typeof input.limit === "number" ? input.limit : 5, 10);
-  const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(input.query)}`;
-  const res = await f(url, {
-    headers: {
-      "User-Agent": "Vulture/1.0",
-    },
+  return webAccess.search({
+    query: typeof input.query === "string" ? input.query : "",
+    limit: typeof input.limit === "number" ? input.limit : null,
   });
-  const html = await res.text();
-  return { query: input.query, results: parseDuckDuckGoResults(html).slice(0, limit) };
 }
 
 function updatePlanTool(call: Parameters<ToolCallable>[0]): unknown {
@@ -415,14 +402,6 @@ function requireWorkspaceMutationPermission(
   if (!isInsideWorkspace(filePath, call.workspacePath)) {
     requireApproval(call, `${toolName} outside workspace`);
   }
-}
-
-function requireNetworkPermission(
-  call: Parameters<ToolCallable>[0],
-  toolName: "web_search" | "web_fetch",
-): void {
-  if (call.permissionMode === "full_access") return;
-  requireApproval(call, `${toolName} requires network approval`);
 }
 
 function inputPath(input: unknown): unknown {
@@ -516,62 +495,4 @@ async function runProcess(opts: {
     child.on("exit", (exitCode) => resolvePromise({ exitCode, stdout, stderr }));
     child.stdin.end(opts.stdin ?? "");
   });
-}
-
-function parseHttpUrl(value: unknown, approvalToken?: string): string {
-  if (typeof value !== "string") {
-    throw new ToolCallError("tool.execution_failed", "web_fetch missing url");
-  }
-  const url = new URL(value);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new ToolCallError("tool.permission_denied", "web_fetch requires http(s)");
-  }
-  if (isPrivateHostname(url.hostname) && !approvalToken) {
-    throw new ToolCallError("tool.permission_denied", "web_fetch private host requires approval");
-  }
-  return url.toString();
-}
-
-function isPrivateHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return (
-    host === "localhost" ||
-    host === "0.0.0.0" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host.startsWith("127.") ||
-    host.startsWith("10.") ||
-    host.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-  );
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  const buffer = Buffer.from(value);
-  return buffer.byteLength <= maxBytes ? value : buffer.subarray(0, maxBytes).toString("utf8");
-}
-
-function parseDuckDuckGoResults(html: string): Array<{ title: string; url: string }> {
-  const results: Array<{ title: string; url: string }> = [];
-  const pattern = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis;
-  for (const match of html.matchAll(pattern)) {
-    const url = decodeHtml(match[1] ?? "");
-    const title = decodeHtml(stripTags(match[2] ?? "")).trim();
-    if (url && title) results.push({ title, url });
-  }
-  return results;
-}
-
-function stripTags(value: string): string {
-  return value.replace(/<[^>]+>/g, "");
-}
-
-function decodeHtml(value: string): string {
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
 }

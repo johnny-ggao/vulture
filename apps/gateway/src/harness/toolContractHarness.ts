@@ -84,11 +84,11 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
     cwd: null,
     argv: null,
   }), { action: "launch", processId: null, cwd: null, argv: null }),
-  fixture("web_search", "web", "safe", true, true, () => ({
+  fixture("web_search", "web", "safe", true, false, () => ({
     query: "OpenAI Agents SDK",
     limit: null,
   }), { query: 1, limit: null }),
-  fixture("web_fetch", "web", "safe", true, true, () => ({
+  fixture("web_fetch", "web", "safe", true, false, () => ({
     url: "https://example.com",
     maxBytes: null,
   }), { url: 1, maxBytes: null }),

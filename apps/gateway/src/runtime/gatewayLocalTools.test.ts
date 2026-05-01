@@ -155,7 +155,7 @@ describe("gateway local tools", () => {
     });
   });
 
-  test("web_fetch and web_search use injected fetch", async () => {
+  test("public web_fetch and web_search use injected fetch without approval", async () => {
     const workspacePath = await tempWorkspace();
     const tools = makeGatewayLocalTools({
       shellTools: async () => "shell",
@@ -180,10 +180,9 @@ describe("gateway local tools", () => {
         runId: "r",
         tool: "web_fetch",
         workspacePath,
-        approvalToken: "approved",
         input: { url: "https://example.com", maxBytes: null },
       }),
-    ).resolves.toMatchObject({ url: "https://example.com", content: "<h1>Hello</h1>" });
+    ).resolves.toMatchObject({ url: "https://example.com/", content: "<h1>Hello</h1>" });
 
     await expect(
       tools({
@@ -191,10 +190,41 @@ describe("gateway local tools", () => {
         runId: "r",
         tool: "web_search",
         workspacePath,
-        approvalToken: "approved",
         input: { query: "example", limit: null },
       }),
-    ).resolves.toMatchObject({ results: [{ title: "Example A", url: "https://example.com/a" }] });
+    ).resolves.toMatchObject({
+      provider: "duckduckgo-html",
+      results: [{ title: "Example A", url: "https://example.com/a" }],
+    });
+  });
+
+  test("private web_fetch requires approval", async () => {
+    const workspacePath = await tempWorkspace();
+    const tools = makeGatewayLocalTools({
+      shellTools: async () => "shell",
+      fetch: async () => new Response("private", { status: 200 }),
+    });
+
+    await expect(
+      tools({
+        callId: "c-fetch",
+        runId: "r",
+        tool: "web_fetch",
+        workspacePath,
+        input: { url: "http://localhost:3000", maxBytes: null },
+      }),
+    ).rejects.toThrow("web_fetch private host requires approval");
+
+    await expect(
+      tools({
+        callId: "c-fetch-approved",
+        runId: "r",
+        tool: "web_fetch",
+        workspacePath,
+        approvalToken: "approved",
+        input: { url: "http://localhost:3000", maxBytes: null },
+      }),
+    ).resolves.toMatchObject({ content: "private" });
   });
 
   test("sessions and update_plan use gateway stores when provided", async () => {
