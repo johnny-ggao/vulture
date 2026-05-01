@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 /* ============================================================
@@ -303,14 +304,10 @@ export function ModelSection(props: SettingsPageProps) {
   const isExperimental = active.id !== "openai" && active.id !== "gateway";
 
   return (
-    <div className="model-panel">
-      <header className="model-panel-head">
-        <h2 className="model-panel-title">模型</h2>
-        <p className="model-panel-sub">
-          配置模型提供商与对应的 API Key。每个智能体可在「模型」字段选择具体模型并按需覆盖。
-        </p>
-      </header>
-
+    <SettingsSection
+      title="模型"
+      description="配置模型提供商与对应的 API Key。每个智能体可在「模型」字段选择具体模型并按需覆盖。"
+    >
       <div className="provider-grid">
         <ul className="provider-list" role="listbox" aria-label="模型提供商">
           {PROVIDERS.map((p) => {
@@ -523,7 +520,7 @@ export function ModelSection(props: SettingsPageProps) {
           </FormRow>
         </div>
       </section>
-    </div>
+    </SettingsSection>
   );
 }
 

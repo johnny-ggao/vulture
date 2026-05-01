@@ -535,7 +535,8 @@ describe("App integration", () => {
     fireEvent.click(within(screen.getByLabelText("设置分区")).getByText("记忆"));
 
     await waitFor(() => {
-      expect(screen.getByText("Agent 记忆")).toBeDefined();
+      // Section header is "记忆" (h2) per the unified SettingsSection.
+      expect(screen.getByRole("heading", { level: 2, name: "记忆" })).toBeDefined();
       expect(screen.getByText("记忆根目录")).toBeDefined();
       expect(screen.getByText("文件 1")).toBeDefined();
       expect(screen.getByText("索引块 0")).toBeDefined();
@@ -546,7 +547,9 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加记忆" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "删除记忆" })).toBeDefined();
+      // Per-row delete button now reads just "删除" (the row already
+      // names a memory; "删除记忆" was redundant).
+      expect(screen.getByRole("button", { name: "删除" })).toBeDefined();
       expect(screen.getByText("MEMORY.md # Memory")).toBeDefined();
       expect(screen.getByText("索引块 1")).toBeDefined();
     });
@@ -557,7 +560,7 @@ describe("App integration", () => {
       expect((screen.getByRole("button", { name: "重新索引" }) as HTMLButtonElement).disabled).toBe(false);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "删除记忆" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
     await waitFor(() => {
       expect(screen.getByText("File-backed memories must be edited in Markdown.")).toBeDefined();
     });

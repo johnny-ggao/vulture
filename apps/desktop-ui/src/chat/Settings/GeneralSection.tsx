@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Field, SectionCard } from "../components";
+import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 /* ============================================================
@@ -29,7 +30,10 @@ export function GeneralSection(props: SettingsPageProps) {
   }
 
   return (
-    <>
+    <SettingsSection
+      title="通用"
+      description="Profiles 切换、外观与语言、快捷键、启动、安静时段、隐私与数据。"
+    >
       <SectionCard
         title="Profiles"
         description="切换或新建 profile（独立的 agent 集合 + 设置）"
@@ -148,7 +152,7 @@ export function GeneralSection(props: SettingsPageProps) {
       <p className="settings-shell-note">
         以上分组中标注为禁用的项目尚未接入后端，仅展示规划中的入口位置。
       </p>
-    </>
+    </SettingsSection>
   );
 }
 

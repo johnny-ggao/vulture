@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Memory, MemoryStatus } from "../../api/memories";
 import { ErrorAlert, Field, SectionCard } from "../components";
 import { StatusPill } from "./shared";
+import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 export function MemorySection(props: SettingsPageProps) {
@@ -83,12 +84,10 @@ export function MemorySection(props: SettingsPageProps) {
   }
 
   return (
-    <div className="page-card">
-      <div className="page-card-head">
-        <div>
-          <h3>Agent 记忆</h3>
-          <p className="page-card-desc">Markdown 文件是长期记忆源，索引用于检索与工具读取。</p>
-        </div>
+    <SettingsSection
+      title="记忆"
+      description="Markdown 文件是长期记忆源，索引用于检索与工具读取。"
+      action={
         <Field label="智能体">
           <select
             aria-label="记忆智能体"
@@ -100,8 +99,8 @@ export function MemorySection(props: SettingsPageProps) {
             ))}
           </select>
         </Field>
-      </div>
-
+      }
+    >
       {status ? (
         <SectionCard className="memory-status">
           <Field label="记忆根目录">
@@ -146,8 +145,11 @@ export function MemorySection(props: SettingsPageProps) {
       <ErrorAlert message={error} />
 
       {items.length === 0 ? (
-        <div className="placeholder placeholder-tall">
-          <span>当前智能体没有记忆。</span>
+        <div className="settings-empty">
+          <p className="settings-empty-title">还没有记忆</p>
+          <p className="settings-empty-sub">
+            在上方文本框写下要让 <b>{activeAgent?.name ?? "当前智能体"}</b> 长期记住的事实，回车或点击「添加记忆」即可入库。
+          </p>
         </div>
       ) : (
         <div className="memory-list">
@@ -160,17 +162,17 @@ export function MemorySection(props: SettingsPageProps) {
                 </span>
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-secondary btn-danger-ghost"
                   disabled={busy}
                   onClick={() => remove(memory)}
                 >
-                  删除记忆
+                  删除
                 </button>
               </div>
             </SectionCard>
           ))}
         </div>
       )}
-    </div>
+    </SettingsSection>
   );
 }

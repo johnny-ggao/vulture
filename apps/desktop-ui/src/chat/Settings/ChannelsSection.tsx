@@ -4,6 +4,7 @@ import {
   FormRow,
   SectionGroup,
 } from "./GeneralSection";
+import { SettingsSection } from "./SettingsSection";
 
 /* ============================================================
  * ChannelsSection (C2)
@@ -33,14 +34,10 @@ const RULES = [
 
 export function ChannelsSection() {
   return (
-    <>
-      <header className="model-panel-head">
-        <h2 className="model-panel-title">消息渠道</h2>
-        <p className="model-panel-sub">
-          把外部消息接入工作台 — 邮件、IM、短信、Webhook 都可以触发智能体回复或执行任务。
-        </p>
-      </header>
-
+    <SettingsSection
+      title="消息渠道"
+      description="把外部消息接入工作台 — 邮件、IM、短信、Webhook 都可以触发智能体回复或执行任务。"
+    >
       <SectionGroup title="已连接渠道">
         <ul className="inbox-list">
           {CHANNELS.map((c) => (
@@ -120,6 +117,6 @@ export function ChannelsSection() {
       <p className="settings-shell-note">
         消息渠道与路由规则均为 UI 预览，后端尚未启用；启用后将以本机隔离方式运行。
       </p>
-    </>
+    </SettingsSection>
   );
 }

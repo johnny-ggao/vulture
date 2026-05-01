@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Row } from "./shared";
-import { SectionCard } from "../components";
 import {
   DisabledSelect,
   DisabledToggle,
   FormRow,
   SectionGroup,
 } from "./GeneralSection";
+import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 /* ============================================================
@@ -39,35 +39,46 @@ export function BrowserSection(props: SettingsPageProps) {
     }
   }
 
+  const statusLabel = status?.paired
+    ? "已连接"
+    : status?.enabled
+    ? "等待扩展配对"
+    : "未启用";
+
   return (
-    <>
-      <SectionCard
-        title="浏览器中继 (Browser Relay)"
-        description="通过本地 Chrome 扩展连接桌面浏览器，供 browser.snapshot / browser.click / browser.input / browser.scroll / browser.extract 工具调用。"
-        actions={
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={busy}
-            onClick={startPairing}
-          >
-            {busy ? "..." : "开始配对"}
-          </button>
-        }
-      >
-        <Row
-          label="状态"
-          value={
-            status?.paired ? "已连接" :
-            status?.enabled ? "等待扩展配对" :
-            "未启用"
-          }
-        />
+    <SettingsSection
+      title="浏览器"
+      description="通过本地 Chrome 扩展连接桌面浏览器，供 browser.navigate / browser.wait / browser.screenshot 等工具调用。"
+      action={
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busy}
+          onClick={startPairing}
+        >
+          {busy ? "配对中…" : "开始配对"}
+        </button>
+      }
+    >
+      <SectionGroup title="浏览器中继 (Browser Relay)">
+        <Row label="状态" value={statusLabel} />
         {status?.relayPort ? <Row label="端口" value={String(status.relayPort)} /> : null}
+        {status?.extensionVersion ? (
+          <Row label="扩展版本" value={status.extensionVersion} />
+        ) : null}
+        {typeof status?.tabCount === "number" ? (
+          <Row label="标签页" value={`${status.tabCount} 个`} />
+        ) : null}
+        {status?.activeTab ? (
+          <Row
+            label="当前页面"
+            value={`${status.activeTab.title || "Untitled"} · ${status.activeTab.url}`}
+          />
+        ) : null}
         {status?.pairingToken ? (
           <Row label="配对令牌" value={status.pairingToken} />
         ) : null}
-      </SectionCard>
+      </SectionGroup>
 
       <SectionGroup title="浏览器 Profile" hint="每个 Profile 拥有独立 cookie 与登录态。">
         <ul className="bp-list">
@@ -144,6 +155,6 @@ export function BrowserSection(props: SettingsPageProps) {
       <p className="settings-shell-note">
         Profile 列表与抓取/安全设置为 UI 预留位置；实际生效以「浏览器中继」配对状态为准。
       </p>
-    </>
+    </SettingsSection>
   );
 }

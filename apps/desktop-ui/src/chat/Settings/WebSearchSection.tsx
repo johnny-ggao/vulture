@@ -4,7 +4,8 @@ import type {
   WebSearchSettingsResponse,
   WebSearchTestResult,
 } from "../../api/webSearchSettings";
-import { ErrorAlert, Field, SectionCard } from "../components";
+import { ErrorAlert, Field } from "../components";
+import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 const TEST_QUERY = "OpenAI Agents SDK";
@@ -76,12 +77,12 @@ export function WebSearchSection(props: SettingsPageProps) {
   }
 
   return (
-    <SectionCard
+    <SettingsSection
       title="联网"
       description="配置 agent 自有 web_search 工具使用的搜索源。"
-      actions={
+      action={
         <button type="button" className="btn-secondary" disabled={busy !== null} onClick={load}>
-          刷新
+          {busy === "load" ? "刷新中…" : "刷新"}
         </button>
       }
     >
@@ -129,15 +130,19 @@ export function WebSearchSection(props: SettingsPageProps) {
         <button type="button" className="btn-primary" disabled={busy !== null} onClick={save}>
           {busy === "save" ? "保存中..." : "保存"}
         </button>
-        {saved ? <span className="muted">已保存</span> : null}
+        {saved ? (
+          <span className="settings-feedback settings-feedback-success" role="status">
+            已保存
+          </span>
+        ) : null}
       </div>
       {testResult ? (
-        <div className="general-row general-meta" role="status">
+        <div className="settings-feedback" role="status">
           {testResult.ok
             ? `${testResult.provider} · ${testResult.resultCount} 个结果`
             : testResult.error ?? "测试失败"}
         </div>
       ) : null}
-    </SectionCard>
+    </SettingsSection>
   );
 }

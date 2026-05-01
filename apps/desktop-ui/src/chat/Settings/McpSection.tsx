@@ -15,6 +15,7 @@ import {
   toggleName,
 } from "./shared";
 import { Badge, ErrorAlert, Field, SectionCard } from "../components";
+import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 export function McpSection(props: SettingsPageProps) {
@@ -191,12 +192,12 @@ export function McpSection(props: SettingsPageProps) {
   const canCreate = draft.id.trim() && draft.name.trim() && draft.command.trim();
 
   return (
-    <SectionCard
+    <SettingsSection
       title="MCP 服务器"
       description="本地 stdio MCP server 会作为 agent 工具加载，默认需要审批。"
-      actions={
+      action={
         <button type="button" className="btn-secondary" disabled={busy !== null} onClick={load}>
-          刷新
+          {busy === null ? "刷新" : "刷新中…"}
         </button>
       }
     >
@@ -401,7 +402,7 @@ export function McpSection(props: SettingsPageProps) {
           ))}
         </div>
       )}
-    </SectionCard>
+    </SettingsSection>
   );
 }
 
