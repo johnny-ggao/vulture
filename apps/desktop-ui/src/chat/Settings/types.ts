@@ -12,6 +12,11 @@ import type {
   RunLogsListResponse,
   RunTraceResponse,
 } from "../../api/runLogs";
+import type {
+  UpdateWebSearchSettings,
+  WebSearchSettingsResponse,
+  WebSearchTestResult,
+} from "../../api/webSearchSettings";
 
 export interface SettingsPageProps {
   authStatus: AuthStatusView | null;
@@ -35,6 +40,13 @@ export interface SettingsPageProps {
   onListMcpServerTools: (id: string) => Promise<McpToolSummary[]>;
   onListRunLogs: (query: ListRunLogsQuery) => Promise<RunLogsListResponse>;
   onLoadRunTrace: (runId: string) => Promise<RunTraceResponse>;
+  onGetWebSearchSettings: () => Promise<WebSearchSettingsResponse>;
+  onUpdateWebSearchSettings: (
+    input: UpdateWebSearchSettings,
+  ) => Promise<WebSearchSettingsResponse>;
+  onTestWebSearchSettings: (
+    input: UpdateWebSearchSettings & { query?: string },
+  ) => Promise<WebSearchTestResult>;
   onCreateProfile: (name: string) => Promise<void>;
   onSwitchProfile: (profileId: string) => Promise<void>;
   onSignInWithChatGPT: () => Promise<void>;

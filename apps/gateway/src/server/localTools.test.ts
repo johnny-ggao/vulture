@@ -85,4 +85,82 @@ describe("createGatewayServerLocalTools", () => {
       cleanup();
     }
   });
+
+  test("uses current web search settings for future web_search calls", async () => {
+    const { cfg, cleanup } = freshCfg();
+    try {
+      const { stores } = createGatewayStores({ cfg });
+      const conversation = stores.conversationStore.create({ agentId: "local-work-agent" });
+      const message = stores.messageStore.append({
+        conversationId: conversation.id,
+        role: "user",
+        content: "search",
+        runId: null,
+      });
+      const run = stores.runStore.create({
+        conversationId: conversation.id,
+        agentId: conversation.agentId,
+        triggeredByMessageId: message.id,
+      });
+      const tools = createGatewayServerLocalTools({
+        stores,
+        shellTools: async () => {
+          throw new Error("shell should not be called");
+        },
+        mcp: {
+          canHandle: () => false,
+          execute: async () => undefined,
+        },
+        runtimeHooks: () => undefined,
+        startConversationRun: async () => {
+          throw new Error("unused");
+        },
+        fetch: async (url) => {
+          const href = String(url);
+          if (href.includes("search.example.com")) {
+            return Response.json({
+              results: [{ title: "SearXNG", url: "https://example.com/searxng" }],
+            });
+          }
+          return new Response(
+            '<a class="result__a" href="https://example.com/duck">Duck</a>',
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        },
+      });
+
+      await expect(
+        tools({
+          callId: "web-1",
+          runId: run.id,
+          tool: "web_search",
+          input: { query: "agent", limit: 1 },
+          workspacePath: cfg.profileDir,
+        }),
+      ).resolves.toMatchObject({
+        provider: "duckduckgo-html",
+        results: [{ title: "Duck" }],
+      });
+
+      stores.webSearchSettingsStore.update({
+        provider: "searxng",
+        searxngBaseUrl: "https://search.example.com",
+      });
+
+      await expect(
+        tools({
+          callId: "web-2",
+          runId: run.id,
+          tool: "web_search",
+          input: { query: "agent", limit: 1 },
+          workspacePath: cfg.profileDir,
+        }),
+      ).resolves.toMatchObject({
+        provider: "searxng",
+        results: [{ title: "SearXNG" }],
+      });
+    } finally {
+      cleanup();
+    }
+  });
 });

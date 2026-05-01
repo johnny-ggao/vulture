@@ -21,6 +21,7 @@ import { McpServerStore } from "../domain/mcpServerStore";
 import { SkillCatalogStore } from "../domain/skillCatalogStore";
 import { PermissionPolicyStore } from "../domain/permissionPolicyStore";
 import { ArtifactStore } from "../domain/artifactStore";
+import { WebSearchSettingsStore } from "../domain/webSearchSettingsStore";
 import { makeOpenAIEmbeddingProvider } from "../runtime/openaiEmbeddings";
 
 export interface GatewayStores {
@@ -39,6 +40,7 @@ export interface GatewayStores {
   skillCatalogStore: SkillCatalogStore;
   permissionPolicyStore: PermissionPolicyStore;
   artifactStore: ArtifactStore;
+  webSearchSettingsStore: WebSearchSettingsStore;
   embedMemoryText: ReturnType<typeof makeOpenAIEmbeddingProvider>;
   memoryFileStore: MemoryFileStore;
 }
@@ -87,6 +89,9 @@ export function createGatewayStores(
     join(cfg.profileDir, "policies", "permission-policies.json"),
   );
   const artifactStore = new ArtifactStore(join(cfg.profileDir, "artifacts", "index.json"));
+  const webSearchSettingsStore = new WebSearchSettingsStore(
+    join(cfg.profileDir, "settings", "web-search.json"),
+  );
   const embedMemoryText = makeOpenAIEmbeddingProvider();
   const memoryFileStore = new MemoryFileStore({
     db,
@@ -112,6 +117,7 @@ export function createGatewayStores(
       skillCatalogStore,
       permissionPolicyStore,
       artifactStore,
+      webSearchSettingsStore,
       embedMemoryText,
       memoryFileStore,
     },

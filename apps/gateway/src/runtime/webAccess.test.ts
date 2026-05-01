@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ToolCallError } from "@vulture/agent-runtime";
-import { createWebAccessService } from "./webAccess";
+import { createWebAccessService, SearxngSearchProvider } from "./webAccess";
 
 describe("WebAccessService", () => {
   test("classifies public, private, invalid, and non-http urls", () => {
@@ -62,6 +62,69 @@ describe("WebAccessService", () => {
 
     await expect(service.search({ query: "redirect", limit: 5 })).resolves.toMatchObject({
       results: [{ title: "Redirected", url: "https://example.com/actual?a=1&b=2" }],
+    });
+  });
+
+  test("searches SearXNG JSON results", async () => {
+    const provider = new SearxngSearchProvider({
+      baseUrl: "https://search.example.com/",
+      fetch: async (url) => {
+        const requested = new URL(String(url));
+        expect(requested.origin).toBe("https://search.example.com");
+        expect(requested.pathname).toBe("/search");
+        expect(requested.searchParams.get("q")).toBe("agent search");
+        expect(requested.searchParams.get("format")).toBe("json");
+        return Response.json({
+          results: [
+            {
+              title: "Agents",
+              url: "https://example.com/agents",
+              content: "SDK docs",
+            },
+            {
+              title: "Ignored",
+              url: "",
+            },
+          ],
+        });
+      },
+    });
+
+    await expect(provider.search({ query: "agent search", limit: 5 })).resolves.toEqual({
+      query: "agent search",
+      provider: "searxng",
+      results: [{ title: "Agents", url: "https://example.com/agents", snippet: "SDK docs" }],
+    });
+  });
+
+  test("resolves the configured search provider for each search call", async () => {
+    let useSearxng = false;
+    const service = createWebAccessService({
+      fetch: async (url) => {
+        if (String(url).includes("search.example.com")) {
+          return Response.json({
+            results: [{ title: "SearXNG Result", url: "https://example.com/searxng" }],
+          });
+        }
+        return new Response(
+          '<a class="result__a" href="https://example.com/ddg">Duck Result</a>',
+          { status: 200, headers: { "content-type": "text/html" } },
+        );
+      },
+      resolveSearchProvider: ({ fetch }) =>
+        useSearxng
+          ? new SearxngSearchProvider({ baseUrl: "https://search.example.com", fetch })
+          : null,
+    });
+
+    await expect(service.search({ query: "x", limit: 1 })).resolves.toMatchObject({
+      provider: "duckduckgo-html",
+      results: [{ title: "Duck Result" }],
+    });
+    useSearxng = true;
+    await expect(service.search({ query: "x", limit: 1 })).resolves.toMatchObject({
+      provider: "searxng",
+      results: [{ title: "SearXNG Result" }],
     });
   });
 

@@ -11,6 +11,10 @@ import { createApiClient } from "./api/client";
 import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName, type AgentToolPreset, type ReasoningLevel } from "./api/agents";
 import { type ConversationDto } from "./api/conversations";
 import { runLogsApi, type ListRunLogsQuery } from "./api/runLogs";
+import {
+  webSearchSettingsApi,
+  type UpdateWebSearchSettings,
+} from "./api/webSearchSettings";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
   mcpServersApi,
@@ -26,6 +30,7 @@ import {
   isMissingMcpRoute,
   isMissingMemoriesRoute,
   isMissingRunLogsRoute,
+  isMissingWebSearchRoute,
   type ProfileListResponse,
   type ProfileView,
 } from "./app/appHelpers";
@@ -307,6 +312,33 @@ export function App() {
   async function loadRunTrace(runId: string) {
     if (!apiClient) throw new Error("Gateway is not ready");
     return runLogsApi.trace(apiClient, runId);
+  }
+
+  async function getWebSearchSettings() {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return withGatewayRestartForMissingRoute(
+      apiClient,
+      () => webSearchSettingsApi.get(apiClient),
+      isMissingWebSearchRoute,
+    );
+  }
+
+  async function updateWebSearchSettings(input: UpdateWebSearchSettings) {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return withGatewayRestartForMissingRoute(
+      apiClient,
+      () => webSearchSettingsApi.update(apiClient, input),
+      isMissingWebSearchRoute,
+    );
+  }
+
+  async function testWebSearchSettings(input: UpdateWebSearchSettings & { query?: string }) {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return withGatewayRestartForMissingRoute(
+      apiClient,
+      () => webSearchSettingsApi.test(apiClient, input),
+      isMissingWebSearchRoute,
+    );
   }
 
   function startNewConversation() {
@@ -591,6 +623,9 @@ export function App() {
               onListMcpServerTools={listMcpServerTools}
               onListRunLogs={listRunLogs}
               onLoadRunTrace={loadRunTrace}
+              onGetWebSearchSettings={getWebSearchSettings}
+              onUpdateWebSearchSettings={updateWebSearchSettings}
+              onTestWebSearchSettings={testWebSearchSettings}
               onCreateProfile={handleCreateProfile}
               onSwitchProfile={handleSwitchProfile}
               onSignInWithChatGPT={handleSignInWithChatGPT}

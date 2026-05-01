@@ -2,6 +2,11 @@ import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react/pure";
 import { SettingsPage, type SettingsPageProps } from "./SettingsPage";
 import type { McpServer } from "../api/mcpServers";
+import type {
+  UpdateWebSearchSettings,
+  WebSearchSettingsResponse,
+  WebSearchTestResult,
+} from "../api/webSearchSettings";
 
 const baseServer: McpServer = {
   id: "official-filesystem",
@@ -82,6 +87,37 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
     onLoadRunTrace: mock(async () => {
       throw new Error("unused");
     }),
+    onGetWebSearchSettings: mock(async (): Promise<WebSearchSettingsResponse> => ({
+      settings: {
+        provider: "duckduckgo-html",
+        searxngBaseUrl: null,
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+      providers: [
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+      ],
+    })),
+    onUpdateWebSearchSettings: mock(async (
+      input: UpdateWebSearchSettings,
+    ): Promise<WebSearchSettingsResponse> => ({
+      settings: {
+        provider: input.provider ?? "duckduckgo-html",
+        searxngBaseUrl: input.searxngBaseUrl ?? null,
+        updatedAt: "2026-05-01T00:00:01.000Z",
+      },
+      providers: [
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+      ],
+    })),
+    onTestWebSearchSettings: mock(async (): Promise<WebSearchTestResult> => ({
+      ok: true,
+      provider: "searxng",
+      query: "OpenAI Agents SDK",
+      resultCount: 1,
+      sample: { title: "OpenAI Agents SDK", url: "https://openai.github.io/openai-agents-js/" },
+    })),
     onCreateProfile: mock(async () => undefined),
     onSwitchProfile: mock(async () => undefined),
     onSignInWithChatGPT: mock(async () => undefined),
@@ -160,5 +196,61 @@ describe("SettingsPage MCP tools", () => {
     fireEvent.click(screen.getByRole("button", { name: "工具" }));
 
     expect(await screen.findByRole("checkbox", { name: /read_text_file/ })).toBeDefined();
+  });
+});
+
+describe("SettingsPage Web Search", () => {
+  test("updates SearXNG provider settings and tests the provider", async () => {
+    const onUpdateWebSearchSettings = mock(async (
+      input: UpdateWebSearchSettings,
+    ): Promise<WebSearchSettingsResponse> => ({
+      settings: {
+        provider: input.provider ?? "duckduckgo-html",
+        searxngBaseUrl: input.searxngBaseUrl ?? null,
+        updatedAt: "2026-05-01T00:00:01.000Z",
+      },
+      providers: [
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+      ],
+    }));
+    const onTestWebSearchSettings = mock(async (): Promise<WebSearchTestResult> => ({
+      ok: true,
+      provider: "searxng",
+      query: "OpenAI Agents SDK",
+      resultCount: 2,
+      sample: { title: "Agents SDK", url: "https://example.com/sdk" },
+    }));
+    render(<SettingsPage {...props({ onUpdateWebSearchSettings, onTestWebSearchSettings })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "联网" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "搜索源" })).toBeDefined();
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "搜索源" }), {
+      target: { value: "searxng" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "SearXNG URL" }), {
+      target: { value: "https://search.example.com" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "测试搜索" }));
+    await waitFor(() => {
+      expect(onTestWebSearchSettings).toHaveBeenCalledWith({
+        provider: "searxng",
+        searxngBaseUrl: "https://search.example.com",
+        query: "OpenAI Agents SDK",
+      });
+    });
+    expect(await screen.findByText(/2 个结果/)).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      expect(onUpdateWebSearchSettings).toHaveBeenCalledWith({
+        provider: "searxng",
+        searxngBaseUrl: "https://search.example.com",
+      });
+    });
   });
 });

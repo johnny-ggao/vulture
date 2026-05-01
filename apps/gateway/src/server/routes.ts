@@ -20,6 +20,10 @@ import { runTraceRouter } from "../routes/runTrace";
 import { browserCapabilitiesRouter } from "../routes/browserCapabilities";
 import { mcpProxyRouter } from "../routes/mcpProxy";
 import { runtimeDiagnosticsRouter } from "../routes/runtimeDiagnostics";
+import {
+  makeWebSearchSettingsTester,
+  webSearchSettingsRouter,
+} from "../routes/webSearchSettings";
 import type { McpClientManager } from "../runtime/mcpClientManager";
 
 type StoreRunDeps =
@@ -56,6 +60,7 @@ export function mountGatewayRoutes(opts: MountGatewayRoutesOptions): void {
     skillCatalogStore,
     permissionPolicyStore,
     artifactStore,
+    webSearchSettingsStore,
     embedMemoryText,
     memoryFileStore,
   } = stores;
@@ -64,6 +69,13 @@ export function mountGatewayRoutes(opts: MountGatewayRoutesOptions): void {
   app.route("/", workspacesRouter(workspaceStore));
   app.route("/", agentsRouter(agentStore));
   app.route("/", toolsRouter());
+  app.route(
+    "/",
+    webSearchSettingsRouter({
+      store: webSearchSettingsStore,
+      testSearch: makeWebSearchSettingsTester(),
+    }),
+  );
   app.route("/", skillsRouter(agentStore, cfg.profileDir));
   app.route("/", skillCatalogRouter(skillCatalogStore));
   app.route("/", permissionPoliciesRouter(permissionPolicyStore));

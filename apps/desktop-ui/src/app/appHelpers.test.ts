@@ -9,6 +9,7 @@ import {
   isMissingRunLogsRoute,
   isMissingSkillsRoute,
   isMissingToolsRoute,
+  isMissingWebSearchRoute,
   parseTime,
 } from "./appHelpers";
 import type { Agent } from "../api/agents";
@@ -182,6 +183,14 @@ describe("missing-route classifiers", () => {
     ).toBe(true);
     expect(isMissingRunLogsRoute(new Error("/v1/runs/r-1/trace HTTP 404"))).toBe(false);
     expect(isMissingRunLogsRoute(new Error("/v1/run-logs HTTP 500"))).toBe(false);
+  });
+
+  test("isMissingWebSearchRoute matches web search settings 404s", () => {
+    expect(
+      isMissingWebSearchRoute(new Error("GET /v1/web-search/settings -> HTTP 404")),
+    ).toBe(true);
+    expect(isMissingWebSearchRoute(new Error("GET /v1/web-search/settings HTTP 500")))
+      .toBe(false);
   });
 
   test("isGatewayRestarting matches 503 OR fetch failure", () => {

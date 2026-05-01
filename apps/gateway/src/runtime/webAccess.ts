@@ -14,6 +14,7 @@ export interface WebSearchRequest {
 export interface WebSearchResult {
   title: string;
   url: string;
+  snippet?: string;
 }
 
 export interface WebSearchResponse {
@@ -45,6 +46,11 @@ export interface SearchProvider {
   search(request: WebSearchRequest): Promise<WebSearchResponse>;
 }
 
+export interface SearchProviderSettings {
+  provider: "duckduckgo-html" | "searxng";
+  searxngBaseUrl: string | null;
+}
+
 export interface WebAccessService {
   search(request: WebSearchRequest): Promise<WebSearchResponse>;
   fetch(request: WebFetchRequest): Promise<WebFetchResponse>;
@@ -54,6 +60,7 @@ export interface WebAccessService {
 export interface WebAccessServiceOptions {
   fetch: FetchLike;
   searchProvider?: SearchProvider;
+  resolveSearchProvider?: (ctx: { fetch: FetchLike }) => SearchProvider | null;
   timeoutMs?: number;
   maxTextBytes?: number;
 }
@@ -63,12 +70,16 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
   const maxTextBytes = options.maxTextBytes ?? DEFAULT_MAX_TEXT_BYTES;
   const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) =>
     runFetchWithTimeout(options.fetch, input, init, timeoutMs);
-  const searchProvider =
+  const fallbackSearchProvider =
     options.searchProvider ?? new DuckDuckGoHtmlSearchProvider(fetchWithTimeout);
 
   return {
     classifyUrl,
-    search: async (request) => searchProvider.search(request),
+    search: async (request) => {
+      const provider = options.resolveSearchProvider?.({ fetch: fetchWithTimeout }) ??
+        fallbackSearchProvider;
+      return provider.search(request);
+    },
     fetch: async (request) => {
       const classified = classifyUrl(request.url);
       if (!classified.ok) {
@@ -122,6 +133,47 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
   }
 }
 
+export class SearxngSearchProvider implements SearchProvider {
+  readonly id = "searxng";
+  private readonly baseUrl: string;
+  private readonly fetch: FetchLike;
+
+  constructor(opts: { baseUrl: string; fetch: FetchLike }) {
+    this.baseUrl = normalizeHttpBaseUrl(opts.baseUrl, "SearXNG base URL");
+    this.fetch = opts.fetch;
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = new URL("search", this.baseUrl);
+    url.searchParams.set("q", request.query);
+    url.searchParams.set("format", "json");
+    const response = await this.fetch(url.toString(), {
+      headers: { "User-Agent": "Vulture/1.0", Accept: "application/json" },
+    });
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "web_search invalid SearXNG response");
+    });
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseSearxngResults(payload).slice(0, limit),
+    };
+  }
+}
+
+export function searchProviderFromSettings(
+  settings: SearchProviderSettings,
+  fetch: FetchLike,
+): SearchProvider | null {
+  if (settings.provider !== "searxng") return null;
+  if (!settings.searxngBaseUrl) return null;
+  return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
+}
+
 export function classifyUrl(value: unknown): WebUrlClassification {
   if (typeof value !== "string") {
     return { ok: false, code: "tool.execution_failed", message: "web_fetch missing url" };
@@ -172,6 +224,19 @@ function clampLimit(value: number | null | undefined): number {
   return Math.max(1, Math.min(Math.trunc(value), 10));
 }
 
+function normalizeHttpBaseUrl(value: string, label: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ToolCallError("tool.execution_failed", `${label} is invalid`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new ToolCallError("tool.permission_denied", `${label} must be http(s)`);
+  }
+  return url.toString();
+}
+
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
@@ -202,6 +267,19 @@ function parseDuckDuckGoResults(html: string): WebSearchResult[] {
   return results;
 }
 
+function parseSearxngResults(payload: unknown): WebSearchResult[] {
+  const value = isRecord(payload) ? payload : {};
+  const results = Array.isArray(value.results) ? value.results : [];
+  return results.flatMap((item): WebSearchResult[] => {
+    if (!isRecord(item)) return [];
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const snippet = typeof item.content === "string" ? item.content.trim() : "";
+    if (!title || !url) return [];
+    return [{ title, url, ...(snippet ? { snippet } : {}) }];
+  });
+}
+
 function normalizeDuckDuckGoUrl(value: string): string {
   if (!value.includes("duckduckgo.com/l/?") && !value.startsWith("/l/?")) return value;
   try {
@@ -223,4 +301,8 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
