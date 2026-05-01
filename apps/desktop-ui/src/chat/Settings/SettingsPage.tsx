@@ -5,6 +5,7 @@ import { MemorySection } from "./MemorySection";
 import { McpSection } from "./McpSection";
 import { BrowserSection } from "./BrowserSection";
 import { ChannelsSection } from "./ChannelsSection";
+import { WebSearchSection } from "./WebSearchSection";
 import { RunLogsPanel } from "../RunLogsPage";
 import {
   BrowserIcon,
@@ -22,6 +23,7 @@ const SECTIONS = [
   { key: "model",    label: "模型",       icon: <ModelIcon /> },
   { key: "memory",   label: "记忆",       icon: <MemoryIcon /> },
   { key: "mcp",      label: "MCP 服务器", icon: <PluginIcon /> },
+  { key: "web",      label: "联网",       icon: <BrowserIcon /> },
   { key: "browser",  label: "浏览器",     icon: <BrowserIcon /> },
   { key: "diagnostics", label: "运行日志", icon: <DiagnosticsIcon /> },
   { key: "channels", label: "消息渠道",   icon: <ChannelIcon /> },
@@ -65,6 +67,7 @@ function renderSection(section: SectionKey, props: SettingsPageProps): ReactNode
     case "model":    return <ModelSection {...props} />;
     case "memory":   return <MemorySection {...props} />;
     case "mcp":      return <McpSection {...props} />;
+    case "web":      return <WebSearchSection {...props} />;
     case "browser":  return <BrowserSection {...props} />;
     case "diagnostics":
       return (

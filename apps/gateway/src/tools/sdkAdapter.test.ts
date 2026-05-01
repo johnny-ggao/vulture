@@ -28,14 +28,14 @@ describe("gateway tool sdk adapter", () => {
   test("resolves core tools from the registry before adapting them to SDK tools", () => {
     const registry = createCoreToolRegistry();
     const tools = resolveEffectiveTools(registry, {
-      allow: ["read", "write", "process", "web_fetch", "sessions_list", "update_plan"],
+      allow: ["read", "write", "process", "web_extract", "sessions_list", "update_plan"],
     });
 
     expect(tools.map((tool) => tool.id)).toEqual([
       "read",
       "write",
       "process",
-      "web_fetch",
+      "web_extract",
       "sessions_list",
       "update_plan",
     ]);
@@ -43,7 +43,7 @@ describe("gateway tool sdk adapter", () => {
       "read",
       "write",
       "process",
-      "web_fetch",
+      "web_extract",
       "sessions_list",
       "update_plan",
     ]);
@@ -56,12 +56,16 @@ describe("gateway tool sdk adapter", () => {
     expect(Object.fromEntries(specs.map((spec) => [spec.id, spec.idempotent]))).toMatchObject({
       read: true,
       "shell.exec": false,
+      web_extract: true,
       sessions_list: true,
       sessions_send: false,
       sessions_spawn: false,
       update_plan: true,
       memory_append: false,
       "browser.click": false,
+      "browser.input": false,
+      "browser.scroll": false,
+      "browser.extract": true,
     });
   });
 
@@ -205,6 +209,7 @@ describe("gateway tool sdk adapter", () => {
     const registry = createCoreToolRegistry();
     const searchTool = toSdkTool(registry.get("web_search")!) as unknown as TestFunctionTool;
     const fetchTool = toSdkTool(registry.get("web_fetch")!) as unknown as TestFunctionTool;
+    const extractTool = toSdkTool(registry.get("web_extract")!) as unknown as TestFunctionTool;
     const context = new RunContext<GatewayToolRunContext>({
       runId: "r",
       workspacePath: "/tmp/work",
@@ -220,6 +225,13 @@ describe("gateway tool sdk adapter", () => {
         context,
         { url: "https://example.com", maxBytes: null },
         "c-fetch-public",
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      extractTool.needsApproval(
+        context,
+        { url: "https://example.com", maxBytes: null, maxLinks: null },
+        "c-extract-public",
       ),
     ).resolves.toBe(false);
     await expect(
@@ -443,6 +455,12 @@ describe("sdkApprovalDecision", () => {
     ).toEqual({
       needsApproval: true,
       reason: "browser.click requires browser approval",
+    });
+    expect(
+      sdkApprovalDecision("browser.input", { selector: "input", text: "hello" }, "/tmp/work"),
+    ).toEqual({
+      needsApproval: true,
+      reason: "browser.input requires browser approval",
     });
   });
 

@@ -61,6 +61,7 @@ export const AgentToolName = z.enum([
   "process",
   "web_search",
   "web_fetch",
+  "web_extract",
   "sessions_list",
   "sessions_history",
   "sessions_send",
@@ -72,6 +73,9 @@ export const AgentToolName = z.enum([
   "memory_append",
   "browser.snapshot",
   "browser.click",
+  "browser.input",
+  "browser.scroll",
+  "browser.extract",
 ]);
 
 export const AgentRunConfig = z.object({
@@ -107,6 +111,7 @@ export const ToolName = z.enum([
   "process",
   "web_search",
   "web_fetch",
+  "web_extract",
   "sessions_list",
   "sessions_history",
   "sessions_send",

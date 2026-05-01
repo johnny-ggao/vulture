@@ -92,6 +92,11 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
     url: "https://example.com",
     maxBytes: null,
   }), { url: 1, maxBytes: null }),
+  fixture("web_extract", "web", "safe", true, false, () => ({
+    url: "https://example.com",
+    maxBytes: null,
+    maxLinks: null,
+  }), { url: 1, maxBytes: null, maxLinks: null }),
   fixture("sessions_list", "sessions", "safe", true, false, () => ({
     parentConversationId: null,
     parentRunId: null,
@@ -139,6 +144,19 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
   fixture("browser.click", "browser", "approval", false, true, () => ({
     selector: "button",
   }), { selector: 1 }),
+  fixture("browser.input", "browser", "approval", false, true, () => ({
+    selector: "input[name=q]",
+    text: "hello",
+    submit: null,
+  }), { selector: "input", submit: "no" }),
+  fixture("browser.scroll", "browser", "approval", false, true, () => ({
+    selector: null,
+    deltaY: 800,
+  }), { selector: 1, deltaY: "down" }),
+  fixture("browser.extract", "browser", "approval", true, true, () => ({
+    maxTextChars: null,
+    maxLinks: null,
+  }), { maxTextChars: "many", maxLinks: null }),
 ];
 
 export async function runToolContractHarness(

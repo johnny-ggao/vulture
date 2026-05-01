@@ -117,6 +117,14 @@ export function isMissingRunLogsRoute(cause: unknown): boolean {
   );
 }
 
+export function isMissingWebSearchRoute(cause: unknown): boolean {
+  return (
+    cause instanceof Error &&
+    cause.message.includes("/v1/web-search/") &&
+    cause.message.includes("HTTP 404")
+  );
+}
+
 export function isGatewayRestarting(cause: unknown): boolean {
   return (
     cause instanceof Error &&

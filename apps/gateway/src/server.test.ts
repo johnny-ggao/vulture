@@ -85,4 +85,16 @@ describe("gateway server", () => {
     expect(body.items).toEqual([]);
     cleanup();
   });
+
+  test("with valid token → 200 OK on /v1/web-search/settings", async () => {
+    const { cfg, cleanup } = freshCfg();
+    const app = buildServer(cfg);
+    const res = await app.request("/v1/web-search/settings", {
+      headers: { Authorization: `Bearer ${cfg.token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.settings.provider).toBe("duckduckgo-html");
+    cleanup();
+  });
 });

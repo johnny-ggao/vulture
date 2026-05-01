@@ -32,13 +32,14 @@ export interface ToolCatalogGroup {
 
 export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
   none: [],
-  minimal: ["read", "web_search", "web_fetch"],
+  minimal: ["read", "web_search", "web_fetch", "web_extract"],
   standard: [
     "read",
     "write",
     "edit",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",
@@ -58,6 +59,7 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "process",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",
@@ -69,6 +71,9 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "memory_append",
     "browser.snapshot",
     "browser.click",
+    "browser.input",
+    "browser.scroll",
+    "browser.extract",
   ],
   tl: [
     "read",
@@ -76,6 +81,7 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "edit",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",
@@ -95,6 +101,7 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "process",
     "web_search",
     "web_fetch",
+    "web_extract",
     "sessions_list",
     "sessions_history",
     "sessions_send",
@@ -106,6 +113,9 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "memory_append",
     "browser.snapshot",
     "browser.click",
+    "browser.input",
+    "browser.scroll",
+    "browser.extract",
   ],
 };
 
@@ -134,7 +144,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
     id: "web",
     label: "Web",
     description: "Search the web and fetch pages when current information is needed.",
-    toolIds: ["web_search", "web_fetch"],
+    toolIds: ["web_search", "web_fetch", "web_extract"],
   },
   {
     id: "coding",
@@ -157,8 +167,14 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   {
     id: "browser",
     label: "Browser",
-    description: "Inspect and interact with browser pages through snapshots and clicks.",
-    toolIds: ["browser.snapshot", "browser.click"],
+    description: "Inspect and interact with browser pages through snapshots, clicks, input, scrolling, and extraction.",
+    toolIds: [
+      "browser.snapshot",
+      "browser.click",
+      "browser.input",
+      "browser.scroll",
+      "browser.extract",
+    ],
   },
 ];
 
@@ -236,6 +252,7 @@ export const FALLBACK_TOOL_CATALOG: ToolCatalogGroup[] = [
     items: [
       coreTool("web_search", "Web Search", "web", "safe", true),
       coreTool("web_fetch", "Web Fetch", "web", "safe", true),
+      coreTool("web_extract", "Web Extract", "web", "safe", true),
     ],
   },
   {
@@ -269,6 +286,9 @@ export const FALLBACK_TOOL_CATALOG: ToolCatalogGroup[] = [
     items: [
       coreTool("browser.snapshot", "Browser Snapshot", "browser", "approval", true, "browser_snapshot"),
       coreTool("browser.click", "Browser Click", "browser", "approval", false, "browser_click"),
+      coreTool("browser.input", "Browser Input", "browser", "approval", false, "browser_input"),
+      coreTool("browser.scroll", "Browser Scroll", "browser", "approval", false, "browser_scroll"),
+      coreTool("browser.extract", "Browser Extract", "browser", "approval", true, "browser_extract"),
     ],
   },
 ];

@@ -88,5 +88,27 @@ export async function executeBrowserRequest(request) {
       selector: request.input?.selector,
     });
   }
+  if (request.tool === "browser.input") {
+    return chrome.tabs.sendMessage(tab.id, {
+      type: "input",
+      selector: request.input?.selector,
+      text: request.input?.text,
+      submit: request.input?.submit ?? false,
+    });
+  }
+  if (request.tool === "browser.scroll") {
+    return chrome.tabs.sendMessage(tab.id, {
+      type: "scroll",
+      selector: request.input?.selector ?? null,
+      deltaY: request.input?.deltaY ?? 800,
+    });
+  }
+  if (request.tool === "browser.extract") {
+    return chrome.tabs.sendMessage(tab.id, {
+      type: "extract",
+      maxTextChars: request.input?.maxTextChars ?? 20000,
+      maxLinks: request.input?.maxLinks ?? 50,
+    });
+  }
   throw new Error(`unsupported browser tool: ${request.tool}`);
 }

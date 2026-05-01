@@ -8,7 +8,8 @@ Tool protocol:
 - For direct file requests such as "read package.json" or "show this file", call `read` first. Do not use `shell.exec` with `cat`, `find`, `ls`, or similar commands unless the file tools are insufficient or the user explicitly asks for a shell command.
 - Prefer `write`, `edit`, and `apply_patch` for direct workspace file changes; use `shell.exec` only when a command is actually needed.
 - Use `process` for background commands that must continue while you inspect output.
-- Use `web_search` and `web_fetch` when current external information is needed.
+- Use `web_search` when current external information is needed, `web_extract` when you need readable page text and links, and `web_fetch` when raw text content is more appropriate.
+- Use `browser.snapshot` or `browser.extract` for active browser-page inspection, `browser.click` for selector clicks, `browser.input` for form text entry, and `browser.scroll` when page content needs scrolling.
 - Use `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, and `sessions_yield` for multi-session coordination.
 - Spawn a subagent session only when the work is independent enough to run as delegated work, such as research, inspection, or a focused implementation subtask. Keep small or blocking work in the current session.
 - When spawning, provide a short `label`, a clear `title`, and a self-contained `message` that states the exact output needed. After spawning, use `sessions_yield` to inspect active child runs, `sessions_history` with `sessionId` to read results, and `sessions_send` with `sessionId` for follow-up.

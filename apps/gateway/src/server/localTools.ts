@@ -1,6 +1,11 @@
 import type { ToolCallable } from "@vulture/agent-runtime";
 import type { GatewayMcpTools } from "../runtime/gatewayLocalTools";
 import { makeGatewayLocalTools } from "../runtime/gatewayLocalTools";
+import {
+  createWebAccessService,
+  searchProviderFromSettings,
+  type FetchLike,
+} from "../runtime/webAccess";
 import { tryEmitRuntimeHook, type RuntimeHookRunner } from "../runtime/runtimeHooks";
 import type { GatewayStores } from "./stores";
 
@@ -15,6 +20,7 @@ export interface CreateGatewayServerLocalToolsOptions {
   shellTools: ToolCallable;
   mcp: GatewayMcpTools;
   runtimeHooks: () => RuntimeHookRunner | undefined;
+  fetch?: FetchLike;
   startConversationRun: (
     conversationId: string,
     input: string,
@@ -32,8 +38,10 @@ export function createGatewayServerLocalTools(
       runStore,
       subagentSessionStore,
       memoryFileStore,
+      webSearchSettingsStore,
     },
   } = opts;
+  const fetchImpl = opts.fetch ?? fetch;
 
   const agentForWorkspace = (workspacePath: string) => {
     const agent = agentStore.list().find((candidate) => candidate.workspace.path === workspacePath);
@@ -44,6 +52,13 @@ export function createGatewayServerLocalTools(
   return makeGatewayLocalTools({
     shellTools: opts.shellTools,
     appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
+    webAccess: createWebAccessService({
+      fetch: fetchImpl,
+      resolveSearchProvider: ({ fetch }) => {
+        const settings = webSearchSettingsStore.get();
+        return searchProviderFromSettings(settings, fetch);
+      },
+    }),
     mcp: opts.mcp,
     sessions: {
       list: (call) => {

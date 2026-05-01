@@ -198,6 +198,33 @@ describe("gateway local tools", () => {
     });
   });
 
+  test("public web_extract returns structured page content", async () => {
+    const workspacePath = await tempWorkspace();
+    const tools = makeGatewayLocalTools({
+      shellTools: async () => "shell",
+      fetch: async () =>
+        new Response(
+          '<html><head><title>Hello</title></head><body><main><p>Readable text</p><a href="/next">Next</a></main></body></html>',
+          { status: 200, headers: { "content-type": "text/html" } },
+        ),
+    });
+
+    await expect(
+      tools({
+        callId: "c-extract",
+        runId: "r",
+        tool: "web_extract",
+        workspacePath,
+        input: { url: "https://example.com/page", maxBytes: null, maxLinks: 10 },
+      }),
+    ).resolves.toMatchObject({
+      url: "https://example.com/page",
+      title: "Hello",
+      text: "Readable text Next",
+      links: [{ text: "Next", url: "https://example.com/next" }],
+    });
+  });
+
   test("private web_fetch requires approval", async () => {
     const workspacePath = await tempWorkspace();
     const tools = makeGatewayLocalTools({

@@ -43,7 +43,7 @@ export function BrowserSection(props: SettingsPageProps) {
     <>
       <SectionCard
         title="浏览器中继 (Browser Relay)"
-        description="通过本地 Chrome 扩展连接桌面浏览器，供 browser.snapshot / browser.click 工具调用。"
+        description="通过本地 Chrome 扩展连接桌面浏览器，供 browser.snapshot / browser.click / browser.input / browser.scroll / browser.extract 工具调用。"
         actions={
           <button
             type="button"

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ToolCallError } from "@vulture/agent-runtime";
-import { createWebAccessService } from "./webAccess";
+import { createWebAccessService, SearxngSearchProvider } from "./webAccess";
 
 describe("WebAccessService", () => {
   test("classifies public, private, invalid, and non-http urls", () => {
@@ -65,6 +65,69 @@ describe("WebAccessService", () => {
     });
   });
 
+  test("searches SearXNG JSON results", async () => {
+    const provider = new SearxngSearchProvider({
+      baseUrl: "https://search.example.com/",
+      fetch: async (url) => {
+        const requested = new URL(String(url));
+        expect(requested.origin).toBe("https://search.example.com");
+        expect(requested.pathname).toBe("/search");
+        expect(requested.searchParams.get("q")).toBe("agent search");
+        expect(requested.searchParams.get("format")).toBe("json");
+        return Response.json({
+          results: [
+            {
+              title: "Agents",
+              url: "https://example.com/agents",
+              content: "SDK docs",
+            },
+            {
+              title: "Ignored",
+              url: "",
+            },
+          ],
+        });
+      },
+    });
+
+    await expect(provider.search({ query: "agent search", limit: 5 })).resolves.toEqual({
+      query: "agent search",
+      provider: "searxng",
+      results: [{ title: "Agents", url: "https://example.com/agents", snippet: "SDK docs" }],
+    });
+  });
+
+  test("resolves the configured search provider for each search call", async () => {
+    let useSearxng = false;
+    const service = createWebAccessService({
+      fetch: async (url) => {
+        if (String(url).includes("search.example.com")) {
+          return Response.json({
+            results: [{ title: "SearXNG Result", url: "https://example.com/searxng" }],
+          });
+        }
+        return new Response(
+          '<a class="result__a" href="https://example.com/ddg">Duck Result</a>',
+          { status: 200, headers: { "content-type": "text/html" } },
+        );
+      },
+      resolveSearchProvider: ({ fetch }) =>
+        useSearxng
+          ? new SearxngSearchProvider({ baseUrl: "https://search.example.com", fetch })
+          : null,
+    });
+
+    await expect(service.search({ query: "x", limit: 1 })).resolves.toMatchObject({
+      provider: "duckduckgo-html",
+      results: [{ title: "Duck Result" }],
+    });
+    useSearxng = true;
+    await expect(service.search({ query: "x", limit: 1 })).resolves.toMatchObject({
+      provider: "searxng",
+      results: [{ title: "SearXNG Result" }],
+    });
+  });
+
   test("fetches public urls and truncates content by byte limit", async () => {
     const service = createWebAccessService({
       fetch: async () =>
@@ -80,6 +143,71 @@ describe("WebAccessService", () => {
         status: 203,
         contentType: "text/plain",
         content: "abc",
+        truncated: true,
+      });
+  });
+
+  test("extracts structured text and links from public html", async () => {
+    const service = createWebAccessService({
+      fetch: async () =>
+        new Response(
+          `
+            <html>
+              <head>
+                <title>Example &amp; Docs</title>
+                <meta name="description" content="Agent documentation">
+              </head>
+              <body>
+                <nav>Navigation</nav>
+                <main>
+                  <h1>Agents SDK</h1>
+                  <p>Build useful agents.</p>
+                  <a href="/docs">Docs</a>
+                  <a href="https://example.org/blog">Blog</a>
+                </main>
+                <script>ignored()</script>
+              </body>
+            </html>
+          `,
+          { status: 200, headers: { "content-type": "text/html; charset=utf-8" } },
+        ),
+    });
+
+    await expect(
+      service.extract({ url: "https://example.com/start", maxBytes: 1_000, maxLinks: 5 }),
+    ).resolves.toEqual({
+      url: "https://example.com/start",
+      status: 200,
+      contentType: "text/html; charset=utf-8",
+      title: "Example & Docs",
+      description: "Agent documentation",
+      text: "Navigation Agents SDK Build useful agents. Docs Blog",
+      links: [
+        { text: "Docs", url: "https://example.com/docs" },
+        { text: "Blog", url: "https://example.org/blog" },
+      ],
+      truncated: false,
+    });
+  });
+
+  test("extracts plain text responses without html metadata", async () => {
+    const service = createWebAccessService({
+      fetch: async () =>
+        new Response("abcdef", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        }),
+    });
+
+    await expect(service.extract({ url: "https://example.com/readme.txt", maxBytes: 3 }))
+      .resolves.toEqual({
+        url: "https://example.com/readme.txt",
+        status: 200,
+        contentType: "text/plain",
+        title: null,
+        description: null,
+        text: "abc",
+        links: [],
         truncated: true,
       });
   });

@@ -14,6 +14,7 @@ export interface WebSearchRequest {
 export interface WebSearchResult {
   title: string;
   url: string;
+  snippet?: string;
 }
 
 export interface WebSearchResponse {
@@ -36,6 +37,29 @@ export interface WebFetchResponse {
   truncated: boolean;
 }
 
+export interface WebExtractRequest {
+  url: unknown;
+  maxBytes?: number | null;
+  maxLinks?: number | null;
+  approvalToken?: string;
+}
+
+export interface WebExtractLink {
+  text: string;
+  url: string;
+}
+
+export interface WebExtractResponse {
+  url: string;
+  status: number;
+  contentType: string;
+  title: string | null;
+  description: string | null;
+  text: string;
+  links: WebExtractLink[];
+  truncated: boolean;
+}
+
 export type WebUrlClassification =
   | { ok: true; url: string; isPrivate: boolean; hostname: string }
   | { ok: false; code: AppError["code"]; message: string };
@@ -45,15 +69,22 @@ export interface SearchProvider {
   search(request: WebSearchRequest): Promise<WebSearchResponse>;
 }
 
+export interface SearchProviderSettings {
+  provider: "duckduckgo-html" | "searxng";
+  searxngBaseUrl: string | null;
+}
+
 export interface WebAccessService {
   search(request: WebSearchRequest): Promise<WebSearchResponse>;
   fetch(request: WebFetchRequest): Promise<WebFetchResponse>;
+  extract(request: WebExtractRequest): Promise<WebExtractResponse>;
   classifyUrl(value: unknown): WebUrlClassification;
 }
 
 export interface WebAccessServiceOptions {
   fetch: FetchLike;
   searchProvider?: SearchProvider;
+  resolveSearchProvider?: (ctx: { fetch: FetchLike }) => SearchProvider | null;
   timeoutMs?: number;
   maxTextBytes?: number;
 }
@@ -63,12 +94,16 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
   const maxTextBytes = options.maxTextBytes ?? DEFAULT_MAX_TEXT_BYTES;
   const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) =>
     runFetchWithTimeout(options.fetch, input, init, timeoutMs);
-  const searchProvider =
+  const fallbackSearchProvider =
     options.searchProvider ?? new DuckDuckGoHtmlSearchProvider(fetchWithTimeout);
 
   return {
     classifyUrl,
-    search: async (request) => searchProvider.search(request),
+    search: async (request) => {
+      const provider = options.resolveSearchProvider?.({ fetch: fetchWithTimeout }) ??
+        fallbackSearchProvider;
+      return provider.search(request);
+    },
     fetch: async (request) => {
       const classified = classifyUrl(request.url);
       if (!classified.ok) {
@@ -96,6 +131,49 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
         truncated: Buffer.byteLength(text) > limit,
       };
     },
+    extract: async (request) => {
+      const classified = classifyUrl(request.url);
+      if (!classified.ok) {
+        throw new ToolCallError(classified.code, classified.message);
+      }
+      if (classified.isPrivate && !request.approvalToken) {
+        throw new ToolCallError(
+          "tool.permission_denied",
+          "web_extract private host requires approval",
+        );
+      }
+
+      const response = await fetchWithTimeout(classified.url);
+      const raw = await response.text();
+      const contentType = response.headers.get("content-type") ?? "";
+      const limit =
+        typeof request.maxBytes === "number" && request.maxBytes > 0
+          ? request.maxBytes
+          : maxTextBytes;
+      const maxLinks =
+        typeof request.maxLinks === "number" && request.maxLinks >= 0
+          ? Math.min(Math.trunc(request.maxLinks), 100)
+          : 30;
+      const extracted = contentType.toLowerCase().includes("html")
+        ? extractHtml(raw, classified.url, maxLinks)
+        : {
+            title: null,
+            description: null,
+            text: normalizeWhitespace(raw),
+            links: [] as WebExtractLink[],
+          };
+      const text = truncateUtf8(extracted.text, limit);
+      return {
+        url: classified.url,
+        status: response.status,
+        contentType,
+        title: extracted.title,
+        description: extracted.description,
+        text,
+        links: extracted.links,
+        truncated: Buffer.byteLength(extracted.text) > limit,
+      };
+    },
   };
 }
 
@@ -120,6 +198,47 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
       results: parseDuckDuckGoResults(html).slice(0, limit),
     };
   }
+}
+
+export class SearxngSearchProvider implements SearchProvider {
+  readonly id = "searxng";
+  private readonly baseUrl: string;
+  private readonly fetch: FetchLike;
+
+  constructor(opts: { baseUrl: string; fetch: FetchLike }) {
+    this.baseUrl = normalizeHttpBaseUrl(opts.baseUrl, "SearXNG base URL");
+    this.fetch = opts.fetch;
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = new URL("search", this.baseUrl);
+    url.searchParams.set("q", request.query);
+    url.searchParams.set("format", "json");
+    const response = await this.fetch(url.toString(), {
+      headers: { "User-Agent": "Vulture/1.0", Accept: "application/json" },
+    });
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "web_search invalid SearXNG response");
+    });
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseSearxngResults(payload).slice(0, limit),
+    };
+  }
+}
+
+export function searchProviderFromSettings(
+  settings: SearchProviderSettings,
+  fetch: FetchLike,
+): SearchProvider | null {
+  if (settings.provider !== "searxng") return null;
+  if (!settings.searxngBaseUrl) return null;
+  return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
 }
 
 export function classifyUrl(value: unknown): WebUrlClassification {
@@ -172,6 +291,19 @@ function clampLimit(value: number | null | undefined): number {
   return Math.max(1, Math.min(Math.trunc(value), 10));
 }
 
+function normalizeHttpBaseUrl(value: string, label: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ToolCallError("tool.execution_failed", `${label} is invalid`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new ToolCallError("tool.permission_denied", `${label} must be http(s)`);
+  }
+  return url.toString();
+}
+
 function isPrivateHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
@@ -202,6 +334,88 @@ function parseDuckDuckGoResults(html: string): WebSearchResult[] {
   return results;
 }
 
+function parseSearxngResults(payload: unknown): WebSearchResult[] {
+  const value = isRecord(payload) ? payload : {};
+  const results = Array.isArray(value.results) ? value.results : [];
+  return results.flatMap((item): WebSearchResult[] => {
+    if (!isRecord(item)) return [];
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const snippet = typeof item.content === "string" ? item.content.trim() : "";
+    if (!title || !url) return [];
+    return [{ title, url, ...(snippet ? { snippet } : {}) }];
+  });
+}
+
+function extractHtml(
+  html: string,
+  baseUrl: string,
+  maxLinks: number,
+): {
+  title: string | null;
+  description: string | null;
+  text: string;
+  links: WebExtractLink[];
+} {
+  const withoutHidden = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
+  const bodyLike = withoutHidden.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ");
+  return {
+    title: firstTextMatch(withoutHidden, /<title[^>]*>([\s\S]*?)<\/title>/i),
+    description: metaContent(withoutHidden, "description"),
+    text: normalizeWhitespace(decodeHtml(stripTagsWithSpaces(bodyLike))),
+    links: extractLinks(withoutHidden, baseUrl, maxLinks),
+  };
+}
+
+function firstTextMatch(value: string, pattern: RegExp): string | null {
+  const match = value.match(pattern);
+  const text = decodeHtml(stripTags(match?.[1] ?? "")).trim();
+  return text.length > 0 ? text : null;
+}
+
+function metaContent(html: string, name: string): string | null {
+  const pattern = new RegExp(`<meta\\b(?=[^>]*\\bname=["']${escapeRegExp(name)}["'])([^>]*)>`, "i");
+  const match = html.match(pattern);
+  const attrs = match?.[1] ?? "";
+  const content = attrs.match(/\bcontent=["']([^"']*)["']/i)?.[1] ?? "";
+  const text = decodeHtml(content).trim();
+  return text.length > 0 ? text : null;
+}
+
+function extractLinks(html: string, baseUrl: string, maxLinks: number): WebExtractLink[] {
+  const links: WebExtractLink[] = [];
+  const seen = new Set<string>();
+  const pattern = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(pattern)) {
+    if (links.length >= maxLinks) break;
+    const href = decodeHtml(match[1] ?? "").trim();
+    const text = normalizeWhitespace(decodeHtml(stripTags(match[2] ?? "")));
+    const url = normalizeExtractedUrl(href, baseUrl);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    links.push({ text, url });
+  }
+  return links;
+}
+
+function normalizeExtractedUrl(value: string, baseUrl: string): string | null {
+  if (!value || value.startsWith("#")) return null;
+  try {
+    const url = new URL(value, baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function normalizeDuckDuckGoUrl(value: string): string {
   if (!value.includes("duckduckgo.com/l/?") && !value.startsWith("/l/?")) return value;
   try {
@@ -215,6 +429,10 @@ function stripTags(value: string): string {
   return value.replace(/<[^>]+>/g, "");
 }
 
+function stripTagsWithSpaces(value: string): string {
+  return value.replace(/<[^>]+>/g, " ");
+}
+
 function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -223,4 +441,12 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
