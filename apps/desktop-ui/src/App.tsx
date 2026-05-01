@@ -44,6 +44,7 @@ import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
+import { CommandPalette, useCommandPalette, type Command } from "./chat/CommandPalette";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
 import { NewAgentModal } from "./chat/NewAgentModal";
 import { OnboardingCard } from "./chat/OnboardingCard";
@@ -512,6 +513,133 @@ export function App() {
     agentDelete.dismiss();
   }
 
+  // ---- Command Palette (⌘K) -------------------------------------
+  // Global shortcut hook owns the open/close state. The command list
+  // is recomputed each render so it always reflects the latest agents,
+  // profiles, and view — there's no need to invalidate it manually.
+  const palette = useCommandPalette();
+
+  const paletteCommands = useMemo<ReadonlyArray<Command>>(() => {
+    const cmds: Command[] = [];
+
+    // Navigate group — primary view switcher.
+    const VIEW_LABELS: Array<{ key: ViewKey; label: string; shortcut?: string }> = [
+      { key: "chat", label: "对话" },
+      { key: "agents", label: "智能体" },
+      { key: "skills", label: "技能" },
+      { key: "plugins", label: "插件" },
+      { key: "tasks", label: "定时任务" },
+      { key: "settings", label: "设置" },
+    ];
+    for (const { key, label } of VIEW_LABELS) {
+      cmds.push({
+        id: `view:${key}`,
+        label: `跳到「${label}」`,
+        group: "导航",
+        keywords: [key, "view", "switch", "navigate"],
+        execute: () => {
+          setView(key);
+          setHistoryOpen(false);
+        },
+      });
+    }
+    cmds.push({
+      id: "history:toggle",
+      label: historyOpen ? "关闭历史抽屉" : "打开历史抽屉",
+      group: "导航",
+      keywords: ["history", "drawer", "记录"],
+      execute: () => setHistoryOpen((open) => !open),
+    });
+
+    // Action group — common one-shot operations.
+    cmds.push({
+      id: "action:new-conversation",
+      label: "新建对话",
+      group: "操作",
+      keywords: ["chat", "new", "session", "对话"],
+      shortcut: ["⌘", "N"],
+      execute: () => {
+        startNewConversation();
+      },
+    });
+    cmds.push({
+      id: "action:new-agent",
+      label: "新建智能体",
+      group: "操作",
+      keywords: ["agent", "create", "new"],
+      execute: () => setNewAgentOpen(true),
+    });
+    const runStatus = runController.runStream.status;
+    if (
+      runStatus === "streaming" ||
+      runStatus === "connecting" ||
+      runStatus === "reconnecting"
+    ) {
+      cmds.push({
+        id: "action:cancel-run",
+        label: "取消当前运行",
+        group: "操作",
+        keywords: ["cancel", "stop", "abort", "取消"],
+        execute: () => runController.cancel(),
+      });
+    }
+
+    // Switch agent group — one row per agent in the current profile.
+    if (agents.length > 0) {
+      for (const agent of agents) {
+        const isSelected = agent.id === selectedAgentId;
+        cmds.push({
+          id: `agent:${agent.id}`,
+          label: `切换到 ${agent.name || agent.id}`,
+          description: agent.id,
+          group: "切换智能体",
+          keywords: [agent.id, agent.description ?? "", "agent"],
+          execute: () => {
+            setSelectedAgentId(agent.id);
+            setView("chat");
+            setHistoryOpen(false);
+          },
+        });
+        if (isSelected) {
+          // Surface a hint so the user can tell which agent is current
+          // even when they're searching by name.
+          cmds[cmds.length - 1] = {
+            ...cmds[cmds.length - 1]!,
+            description: `${agent.id} · 当前`,
+          };
+        }
+      }
+    }
+
+    // Switch profile group — only meaningful when more than one profile
+    // exists. Active profile gets a hint in its description.
+    if (profiles.length > 1) {
+      for (const p of profiles) {
+        cmds.push({
+          id: `profile:${p.id}`,
+          label: `切换到 Profile「${p.name}」`,
+          description: p.id === profile?.id ? "当前 profile" : p.id,
+          group: "切换 Profile",
+          keywords: [p.id, p.name, "profile"],
+          execute: () => {
+            void handleSwitchProfile(p.id);
+          },
+        });
+      }
+    }
+
+    return cmds;
+    // Recompute when any input changes; stable list rendering is
+    // guaranteed by stable command ids.
+  }, [
+    agents,
+    selectedAgentId,
+    profiles,
+    profile?.id,
+    historyOpen,
+    runController.runStream.status,
+  ]);
+
   return (
     <div className="app-shell">
       <Titlebar />
@@ -673,6 +801,12 @@ export function App() {
         toolGroups={toolCatalog}
         onClose={() => setNewAgentOpen(false)}
         onCreate={handleCreateAgent}
+      />
+
+      <CommandPalette
+        isOpen={palette.isOpen}
+        onClose={palette.close}
+        commands={paletteCommands}
       />
     </div>
   );

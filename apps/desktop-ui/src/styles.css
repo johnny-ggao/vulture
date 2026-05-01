@@ -3505,6 +3505,205 @@ pre {
 }
 
 /* ============================================================
+ * Command Palette (⌘K) — Linear/Raycast quick switcher.
+ *
+ * Sheet sits ~22vh from the top so the search input lands near the
+ * user's natural typing zone. Backdrop blur + scrim same as modals.
+ * Active row uses brand-050 fill (consistent with sidebar / tablist).
+ * ============================================================ */
+.cmdk-overlay {
+  position: fixed;
+  inset: 32px 0 0 0; /* clear titlebar */
+  z-index: var(--z-toast);
+  background: var(--scrim-modal);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 22vh 24px 24px;
+  animation: hd-fade-in var(--duration-medium) var(--ease-out);
+}
+.cmdk-sheet {
+  width: min(640px, 100%);
+  max-height: min(560px, calc(100vh - 22vh - 48px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+  animation: cmdk-pop var(--duration-slow) var(--ease-spring);
+  transform-origin: top center;
+}
+@keyframes cmdk-pop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);     }
+}
+
+.cmdk-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--fill-quaternary);
+  color: var(--text-tertiary);
+}
+.cmdk-input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: 0;
+  min-width: 0;
+}
+.cmdk-input::placeholder { color: var(--text-quaternary); }
+.cmdk-esc-hint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  background: var(--fill-quaternary);
+  letter-spacing: 0.04em;
+}
+
+.cmdk-list {
+  flex: 1;
+  overflow: auto;
+  padding: 6px 6px 4px;
+  /* Subtle scroll fade so the list doesn't look chopped off when it
+   * overflows. Uses mask-image which is well-supported on Tauri WebKit. */
+  mask-image: linear-gradient(180deg, transparent 0, black 8px, black calc(100% - 8px), transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, black 8px, black calc(100% - 8px), transparent 100%);
+}
+.cmdk-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+.cmdk-group { padding: 2px 0; }
+.cmdk-group + .cmdk-group { border-top: 1px solid var(--fill-quaternary); margin-top: 4px; padding-top: 6px; }
+.cmdk-group-head {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 6px 12px 4px;
+}
+
+.cmdk-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  min-height: 0;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.cmdk-row.is-active {
+  background: var(--brand-050);
+  color: var(--text-primary);
+}
+.cmdk-row.is-active .cmdk-row-icon,
+.cmdk-row.is-active .cmdk-row-shortcut kbd {
+  color: var(--brand-600);
+}
+.cmdk-row-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-tertiary);
+  width: 18px;
+  height: 18px;
+}
+.cmdk-row-label {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-row-desc {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.cmdk-row-shortcut {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+.cmdk-row-shortcut kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fill-tertiary);
+  border-bottom-width: 1.5px;
+  border-radius: var(--radius-xs);
+  background: var(--fill-quaternary);
+  color: var(--text-tertiary);
+}
+
+.cmdk-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--fill-quaternary);
+  background: var(--fill-quaternary);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.cmdk-foot-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cmdk-foot-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+}
+.cmdk-foot-spacer { flex: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-overlay,
+  .cmdk-sheet { animation: none; }
+}
+
+/* ============================================================
  * ToolGroupSelector — capability tiles + collapsible per-tool detail
  * ============================================================ */
 .tool-group-empty {
