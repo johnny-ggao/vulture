@@ -81,6 +81,12 @@ describe("Conversation + Message schemas", () => {
         permissionMode: "full_access",
       }).permissionMode,
     ).toBe("full_access");
+    expect(
+      CreateConversationRequestSchema.parse({
+        agentId: "x",
+        permissionMode: "auto_review",
+      }).permissionMode,
+    ).toBe("auto_review");
   });
 
   test("CreateConversationRequest maps legacy policy mode to default", () => {

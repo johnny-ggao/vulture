@@ -153,6 +153,7 @@ function isRunRecoveryMetadata(value: unknown): value is RunRecoveryMetadata {
     (value.permissionMode === undefined ||
       value.permissionMode === "default" ||
       value.permissionMode === "read_only" ||
+      value.permissionMode === "auto_review" ||
       value.permissionMode === "full_access" ||
       value.permissionMode === "policy") &&
     isRecoveryProviderKind(value.providerKind) &&
@@ -361,7 +362,14 @@ export class RunStore {
              SELECT COUNT(*)
              FROM run_events e
              WHERE e.run_id = r.id
-               AND e.type = 'tool.ask'
+               AND (
+                 e.type = 'tool.ask'
+                 OR (
+                   e.type = 'approval.review'
+                   AND json_valid(e.payload_json)
+                   AND json_extract(e.payload_json, '$.status') IN ('approved', 'denied', 'needs_user', 'error')
+                 )
+               )
            ) AS approval_count
          FROM runs r
          LEFT JOIN conversations c ON c.id = r.conversation_id

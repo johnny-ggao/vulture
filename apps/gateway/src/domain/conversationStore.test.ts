@@ -59,6 +59,8 @@ describe("ConversationStore", () => {
     const { store, cleanup } = freshStore();
     const c = store.create({ agentId: "a-1", permissionMode: "read_only" });
     expect(store.get(c.id)?.permissionMode).toBe("read_only");
+    const smart = store.create({ agentId: "a-1", permissionMode: "auto_review" });
+    expect(store.get(smart.id)?.permissionMode).toBe("auto_review");
     cleanup();
   });
 

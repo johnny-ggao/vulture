@@ -403,6 +403,30 @@ describe("RunStore", () => {
     cleanup();
   });
 
+  test("listDiagnostics counts terminal automatic approval reviews", () => {
+    const { runs, c, userMsg, cleanup } = fresh();
+    const r = freshRun(runs, c, userMsg);
+    runs.appendEvent(r.id, {
+      type: "approval.review",
+      callId: "c1",
+      tool: "web_search",
+      status: "reviewing",
+    });
+    runs.appendEvent(r.id, {
+      type: "approval.review",
+      callId: "c1",
+      tool: "web_search",
+      status: "approved",
+      risk: "medium",
+      reason: "Public network read.",
+    });
+
+    const diagnostic = runs.listDiagnostics().find((item) => item.run.id === r.id);
+
+    expect(diagnostic?.approvalCount).toBe(1);
+    cleanup();
+  });
+
   test("listEventsAfter skips malformed payload_json", () => {
     const { db, runs, c, userMsg, cleanup } = fresh();
     const r = freshRun(runs, c, userMsg);

@@ -14,6 +14,7 @@ const THINKING_OPTIONS: Array<{ value: ThinkingMode; label: string }> = [
 const PERMISSION_OPTIONS: Array<{ value: ConversationPermissionMode; label: string }> = [
   { value: "default", label: "默认权限" },
   { value: "read_only", label: "只读" },
+  { value: "auto_review", label: "智能审批" },
   { value: "full_access", label: "整机完全权限" },
 ];
 

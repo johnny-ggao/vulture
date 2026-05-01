@@ -30,7 +30,7 @@ function rowToConversation(r: Row): Conversation {
 }
 
 function normalizePermissionMode(value: string | null | undefined): ConversationPermissionMode {
-  if (value === "full_access" || value === "read_only") return value;
+  if (value === "full_access" || value === "read_only" || value === "auto_review") return value;
   return "default";
 }
 

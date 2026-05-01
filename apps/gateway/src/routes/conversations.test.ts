@@ -53,6 +53,22 @@ describe("/v1/conversations", () => {
     cleanup();
   });
 
+  test("POST can create a smart-review conversation", async () => {
+    const { app, cleanup } = fresh();
+    const res = await app.request("/v1/conversations", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "k-auto-review" },
+      body: JSON.stringify({
+        agentId: "local-work-agent",
+        title: "Smart approval",
+        permissionMode: "auto_review",
+      }),
+    });
+    expect(res.status).toBe(201);
+    expect((await res.json()).permissionMode).toBe("auto_review");
+    cleanup();
+  });
+
   test("PATCH updates the conversation permission mode", async () => {
     const { app, convs, cleanup } = fresh();
     const c = convs.create({ agentId: "a-1" });

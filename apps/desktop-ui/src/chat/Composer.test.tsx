@@ -257,7 +257,9 @@ describe("Composer", () => {
   });
 
   test("permission-mode segmented control notifies changes", () => {
-    const onChangePermissionMode = mock((_mode: "default" | "read_only" | "full_access") => {});
+    const onChangePermissionMode = mock(
+      (_mode: "default" | "read_only" | "auto_review" | "full_access") => {},
+    );
     render(
       <Composer
         agents={agents}
@@ -272,6 +274,8 @@ describe("Composer", () => {
     );
 
     expect(screen.getByRole("radio", { name: "默认权限" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "智能审批" }));
+    expect(onChangePermissionMode).toHaveBeenCalledWith("auto_review");
     fireEvent.click(screen.getByRole("radio", { name: "整机完全权限" }));
     expect(onChangePermissionMode).toHaveBeenCalledWith("full_access");
   });

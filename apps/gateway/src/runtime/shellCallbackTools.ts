@@ -4,6 +4,12 @@ import { ApprovalTimeoutError, type ApprovalQueue } from "./approvalQueue";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 import type { ConversationPermissionMode } from "@vulture/protocol/src/v1/conversation";
 import type { SdkApprovalCallable } from "./openaiLlm";
+import {
+  defaultAutoApprovalReviewer,
+  type AutoApprovalRequest,
+  type AutoApprovalReviewer,
+  type AutoApprovalReview,
+} from "./autoApprovalReviewer";
 import { tryEmitRuntimeHook, type RuntimeHookRunner } from "./runtimeHooks";
 
 const DEFAULT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -24,6 +30,8 @@ export interface ShellCallbackToolsOpts {
   runtimeHooks?: RuntimeHookRunner;
   /** Per-run permission mode. full_access skips local ApprovalCard flow. */
   permissionModeForRun?: (runId: string) => ConversationPermissionMode;
+  /** Automatic approval reviewer for auto_review mode. */
+  autoApprovalReviewer?: AutoApprovalReviewer;
   /**
    * Legacy non-SDK fallback: when true/default, a Rust `ask` response emits
    * tool.ask and blocks until /approvals resolves the in-memory queue.
@@ -152,10 +160,36 @@ export function makeShellCallbackTools(opts: ShellCallbackToolsOpts): ToolCallab
           });
           throw new ToolCallError(err.code, err.message);
         }
-        if (opts.permissionModeForRun?.(call.runId) === "full_access") {
+        const permissionMode = opts.permissionModeForRun?.(call.runId);
+        if (permissionMode === "full_access") {
           approvalToken = nextApprovalToken;
           markStarted();
           continue;
+        }
+        const autoDecision = await reviewAutomatically(opts, {
+          runId: call.runId,
+          callId: call.callId,
+          tool: call.tool,
+          input: call.input,
+          workspacePath: call.workspacePath,
+          reason: body.reason,
+        });
+        if (autoDecision === "allow") {
+          approvalToken = nextApprovalToken;
+          markStarted();
+          continue;
+        }
+        if (autoDecision === "deny") {
+          const err: AppError = {
+            code: "tool.permission_denied",
+            message: `automatic approval review denied ${call.tool}`,
+          };
+          opts.appendEvent(call.runId, {
+            type: "tool.failed",
+            callId: call.callId,
+            error: err,
+          });
+          throw new ToolCallError(err.code, err.message);
         }
         if (opts.interactiveApprovalFallback === false) {
           const err: AppError = {
@@ -268,6 +302,19 @@ export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkAppro
     if (opts.permissionModeForRun?.(request.runId) === "full_access") {
       return "allow";
     }
+    const autoDecision = await reviewAutomatically(opts, request);
+    if (autoDecision === "allow") return "allow";
+    if (autoDecision === "deny") {
+      opts.appendEvent(request.runId, {
+        type: "tool.failed",
+        callId: request.callId,
+        error: {
+          code: "tool.permission_denied",
+          message: `automatic approval review denied ${request.tool}`,
+        },
+      });
+      return "deny";
+    }
     opts.appendEvent(request.runId, {
       type: "tool.ask",
       callId: request.callId,
@@ -336,4 +383,57 @@ export function makeShellApprovalHandler(opts: ShellCallbackToolsOpts): SdkAppro
       throw err;
     }
   };
+}
+
+async function reviewAutomatically(
+  opts: ShellCallbackToolsOpts,
+  request: AutoApprovalRequest,
+): Promise<"allow" | "deny" | "needs_user" | null> {
+  if (opts.permissionModeForRun?.(request.runId) !== "auto_review") return null;
+  const reviewer = opts.autoApprovalReviewer ?? defaultAutoApprovalReviewer;
+  opts.appendEvent(request.runId, {
+    type: "approval.review",
+    callId: request.callId,
+    tool: request.tool,
+    status: "reviewing",
+  });
+  let review: AutoApprovalReview;
+  try {
+    review = await reviewer.review(request);
+  } catch (cause) {
+    const message = `automatic approval review failed closed for ${request.tool}`;
+    opts.appendEvent(request.runId, {
+      type: "approval.review",
+      callId: request.callId,
+      tool: request.tool,
+      status: "error",
+      risk: "critical",
+      reason: cause instanceof Error ? cause.message : String(cause),
+    });
+    opts.appendEvent(request.runId, {
+      type: "tool.failed",
+      callId: request.callId,
+      error: {
+        code: "tool.permission_denied",
+        message,
+      },
+    });
+    throw new ToolCallError("tool.permission_denied", message);
+  }
+
+  const status =
+    review.decision === "allow"
+      ? "approved"
+      : review.decision === "deny"
+      ? "denied"
+      : "needs_user";
+  opts.appendEvent(request.runId, {
+    type: "approval.review",
+    callId: request.callId,
+    tool: request.tool,
+    status,
+    risk: review.risk,
+    reason: review.reason,
+  });
+  return review.decision;
 }

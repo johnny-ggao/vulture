@@ -530,6 +530,125 @@ describe("makeShellCallbackTools", () => {
     expect(events).toEqual([]);
   });
 
+  test("makeShellApprovalHandler auto-allows medium-risk approvals in smart review mode", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-sdk", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const handler = makeShellApprovalHandler({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      permissionModeForRun: () => "auto_review",
+    });
+
+    const decision = await handler({
+      callId: "c-sdk",
+      tool: "web_search",
+      input: { query: "OpenAI Agents SDK" },
+      runId: "r-sdk",
+      workspacePath: "/tmp/work",
+      reason: "network access requires approval",
+      approvalToken: "tok-sdk",
+    });
+
+    expect(decision).toBe("allow");
+    expect(events.map((e) => e.partial.type)).toEqual(["approval.review", "approval.review"]);
+    expect(events[1].partial).toMatchObject({
+      type: "approval.review",
+      status: "approved",
+      risk: "medium",
+      tool: "web_search",
+    });
+  });
+
+  test("makeShellApprovalHandler falls back to user approval for high-risk smart review decisions", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-sdk", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const handler = makeShellApprovalHandler({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      permissionModeForRun: () => "auto_review",
+    });
+
+    const decisionPromise = handler({
+      callId: "c-sdk",
+      tool: "shell.exec",
+      input: { argv: ["rm", "-rf", "/tmp/outside-workspace"] },
+      runId: "r-sdk",
+      workspacePath: "/tmp/work",
+      reason: "destructive command requires approval",
+      approvalToken: "tok-sdk",
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(events.map((e) => e.partial.type)).toEqual([
+      "approval.review",
+      "approval.review",
+      "tool.ask",
+    ]);
+    expect(events[1].partial).toMatchObject({
+      type: "approval.review",
+      status: "needs_user",
+      risk: "high",
+    });
+    expect(queue.resolve("c-sdk", "allow")).toBe(true);
+    expect(await decisionPromise).toBe("allow");
+  });
+
+  test("makeShellApprovalHandler fails closed and emits tool.failed when smart review errors", async () => {
+    const queue = new ApprovalQueue();
+    const cancelSignals = new Map<string, AbortController>();
+    cancelSignals.set("r-sdk", new AbortController());
+    const events: Array<{ runId: string; partial: PartialRunEvent }> = [];
+
+    const handler = makeShellApprovalHandler({
+      callbackUrl: "http://shell",
+      token: "tok",
+      appendEvent: (runId, partial) => events.push({ runId, partial }),
+      approvalQueue: queue,
+      cancelSignals,
+      permissionModeForRun: () => "auto_review",
+      autoApprovalReviewer: {
+        review: async () => {
+          throw new Error("reviewer unavailable");
+        },
+      },
+    });
+
+    await expect(
+      handler({
+        callId: "c-sdk",
+        tool: "web_search",
+        input: { query: "OpenAI Agents SDK" },
+        runId: "r-sdk",
+        workspacePath: "/tmp/work",
+        reason: "network access requires approval",
+        approvalToken: "tok-sdk",
+      }),
+    ).rejects.toMatchObject({
+      code: "tool.permission_denied",
+    });
+    expect(events.map((e) => e.partial.type)).toEqual([
+      "approval.review",
+      "approval.review",
+      "tool.failed",
+    ]);
+    expect(events[2].partial).toMatchObject({
+      type: "tool.failed",
+      error: { code: "tool.permission_denied" },
+    });
+  });
+
   test("non-2xx HTTP throws ToolCallError(tool.execution_failed)", async () => {
     const queue = new ApprovalQueue();
     const cancelSignals = new Map<string, AbortController>();

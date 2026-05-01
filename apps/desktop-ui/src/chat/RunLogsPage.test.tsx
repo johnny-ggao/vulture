@@ -61,6 +61,17 @@ const trace: RunTraceResponse = {
       tool: "fs.read",
       input: { path: "package.json" },
     },
+    {
+      type: "approval.review",
+      runId: "r-1",
+      seq: 4,
+      createdAt: "2026-04-27T00:00:00.110Z",
+      callId: "call-2",
+      tool: "web_search",
+      status: "approved",
+      risk: "medium",
+      reason: "Public network read.",
+    },
   ],
   recovery: null,
   subagentSessions: [],
@@ -100,6 +111,16 @@ describe("RunLogsPage", () => {
 
     expect(screen.getByText("text stream · 2 chunks · 5 chars")).toBeDefined();
     expect(screen.queryAllByText("text.delta")).toHaveLength(0);
+  });
+
+  test("labels automatic approval review events in the timeline", async () => {
+    renderPage();
+    await screen.findByText("Diagnostics");
+
+    fireEvent.click(screen.getByRole("button", { name: /Diagnostics/ }));
+    await screen.findByText("Timeline");
+
+    expect(screen.getByText("approval.review · approved · medium · web_search")).toBeDefined();
   });
 
   test("sends filters to the summary loader", async () => {

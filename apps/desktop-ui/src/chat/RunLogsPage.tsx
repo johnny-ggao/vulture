@@ -441,6 +441,13 @@ function eventLabel(event: RunTraceEventDto): string {
   if (event.type.startsWith("tool.") && typeof event.tool === "string") {
     return `${event.type} · ${event.tool}`;
   }
+  if (event.type === "approval.review") {
+    const parts = [event.type];
+    if (typeof event.status === "string") parts.push(event.status);
+    if (typeof event.risk === "string") parts.push(event.risk);
+    if (typeof event.tool === "string") parts.push(event.tool);
+    return parts.join(" · ");
+  }
   return event.type;
 }
 

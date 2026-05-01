@@ -93,6 +93,14 @@ export const RunEventSchema = z.discriminatedUnion("type", [
     approvalToken: z.string().min(1),
   }),
   baseEvent.extend({
+    type: z.literal("approval.review"),
+    callId: z.string().min(1),
+    tool: z.string().min(1),
+    status: z.enum(["reviewing", "approved", "denied", "needs_user", "error"]),
+    risk: z.enum(["low", "medium", "high", "critical"]).optional(),
+    reason: z.string().min(1).optional(),
+  }),
+  baseEvent.extend({
     type: z.literal("run.recoverable"),
     reason: z.enum(["gateway_restarted", "incomplete_tool", "approval_pending"]),
     message: z.string().min(1),

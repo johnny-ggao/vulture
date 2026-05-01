@@ -7,7 +7,12 @@ export type ConversationId = BrandedId<"ConversationId">;
 export type MessageId = BrandedId<"MessageId">;
 export type RunId = BrandedId<"RunId">;
 
-export const ConversationPermissionModeSchema = z.enum(["default", "read_only", "full_access"]);
+export const ConversationPermissionModeSchema = z.enum([
+  "default",
+  "read_only",
+  "auto_review",
+  "full_access",
+]);
 export type ConversationPermissionMode = z.infer<typeof ConversationPermissionModeSchema>;
 
 const ConversationPermissionModeInputSchema = z.preprocess(

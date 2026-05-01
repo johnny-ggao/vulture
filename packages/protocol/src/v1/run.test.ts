@@ -64,6 +64,25 @@ describe("Run + RunEvent", () => {
     ).toThrow();
   });
 
+  test("RunEvent — approval.review records automatic approval decisions", () => {
+    const ev = RunEventSchema.parse({
+      type: "approval.review",
+      runId: "r-1",
+      seq: 6,
+      createdAt: "2026-04-26T00:00:00.000Z",
+      callId: "c1",
+      tool: "web_search",
+      status: "approved",
+      risk: "medium",
+      reason: "Public web read is safe to auto-approve.",
+    });
+    expect(ev.type).toBe("approval.review");
+    if (ev.type === "approval.review") {
+      expect(ev.status).toBe("approved");
+      expect(ev.risk).toBe("medium");
+    }
+  });
+
   test("RunEvent — run.completed requires resultMessageId + finalText", () => {
     const ev = RunEventSchema.parse({
       type: "run.completed",
