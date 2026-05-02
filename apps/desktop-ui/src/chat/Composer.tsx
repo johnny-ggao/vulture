@@ -72,6 +72,23 @@ export function Composer(props: ComposerProps) {
     ta.focus({ preventScroll: true });
   }, []);
 
+  // ⌘. — macOS standard "cancel current operation". Wired to the
+  // composer's onCancel so the user can stop a streaming run from
+  // anywhere on the page (no need to find the cancel button).
+  // Active only while running so the keystroke stays free for
+  // selection / cursor moves the rest of the time.
+  useEffect(() => {
+    if (!props.running) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "." || !(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      props.onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props.running, props.onCancel]);
+
   async function send() {
     const trimmed = value.trim();
     if (!trimmed || props.running || !props.selectedAgentId) return;
