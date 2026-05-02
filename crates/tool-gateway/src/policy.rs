@@ -124,6 +124,9 @@ fn is_browser_tool(tool: &str) -> bool {
             | "browser.scroll"
             | "browser.keypress"
             | "browser.extract"
+            | "browser.navigate"
+            | "browser.wait"
+            | "browser.screenshot"
             | "browser.close_agent_tabs"
             | "browser.forward_cdp_limited"
     )
@@ -436,6 +439,9 @@ mod tests {
             "browser.scroll",
             "browser.keypress",
             "browser.extract",
+            "browser.navigate",
+            "browser.wait",
+            "browser.screenshot",
             "browser.close_agent_tabs",
             "browser.forward_cdp_limited",
         ];

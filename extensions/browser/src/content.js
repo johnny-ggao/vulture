@@ -81,6 +81,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "wait") {
+    waitForPage({
+      selector: typeof message.selector === "string" ? message.selector : null,
+      timeoutMs: positiveInteger(message.timeoutMs, 5000),
+    }).then(sendResponse, (error) => {
+      sendResponse({
+        waited: false,
+        message: error instanceof Error ? error.message : String(error),
+        title: document.title,
+        url: location.href,
+      });
+    });
+    return true;
+  }
+
   return false;
 });
 
@@ -123,4 +138,36 @@ function positiveInteger(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
     : fallback;
+}
+
+async function waitForPage({ selector, timeoutMs }) {
+  if (!selector) {
+    await delay(Math.min(timeoutMs, 30_000));
+    return {
+      waited: true,
+      selector: null,
+      title: document.title,
+      url: location.href,
+    };
+  }
+
+  const started = Date.now();
+  while (Date.now() - started <= timeoutMs) {
+    const element = document.querySelector(selector);
+    if (element) {
+      return {
+        waited: true,
+        selector,
+        title: document.title,
+        url: location.href,
+      };
+    }
+    await delay(100);
+  }
+
+  throw new Error(`selector not found before timeout: ${selector}`);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

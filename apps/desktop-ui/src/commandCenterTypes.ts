@@ -44,4 +44,12 @@ export interface BrowserRelayStatus {
   paired: boolean;
   pairingToken?: string | null;
   relayPort?: number | null;
+  extensionVersion?: string | null;
+  tabCount?: number;
+  activeTab?: {
+    id: number;
+    title: string;
+    url: string;
+    active: boolean;
+  } | null;
 }

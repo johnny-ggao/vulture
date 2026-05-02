@@ -74,6 +74,9 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "browser.input",
     "browser.scroll",
     "browser.extract",
+    "browser.navigate",
+    "browser.wait",
+    "browser.screenshot",
   ],
   tl: [
     "read",
@@ -116,6 +119,9 @@ export const TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[]> = {
     "browser.input",
     "browser.scroll",
     "browser.extract",
+    "browser.navigate",
+    "browser.wait",
+    "browser.screenshot",
   ],
 };
 
@@ -167,13 +173,16 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   {
     id: "browser",
     label: "Browser",
-    description: "Inspect and interact with browser pages through snapshots, clicks, input, scrolling, and extraction.",
+    description: "Inspect and interact with browser pages through navigation, snapshots, clicks, input, scrolling, extraction, waits, and screenshots.",
     toolIds: [
       "browser.snapshot",
       "browser.click",
       "browser.input",
       "browser.scroll",
       "browser.extract",
+      "browser.navigate",
+      "browser.wait",
+      "browser.screenshot",
     ],
   },
 ];
@@ -289,6 +298,9 @@ export const FALLBACK_TOOL_CATALOG: ToolCatalogGroup[] = [
       coreTool("browser.input", "Browser Input", "browser", "approval", false, "browser_input"),
       coreTool("browser.scroll", "Browser Scroll", "browser", "approval", false, "browser_scroll"),
       coreTool("browser.extract", "Browser Extract", "browser", "approval", true, "browser_extract"),
+      coreTool("browser.navigate", "Browser Navigate", "browser", "approval", false, "browser_navigate"),
+      coreTool("browser.wait", "Browser Wait", "browser", "approval", true, "browser_wait"),
+      coreTool("browser.screenshot", "Browser Screenshot", "browser", "approval", true, "browser_screenshot"),
     ],
   },
 ];

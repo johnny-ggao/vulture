@@ -116,6 +116,16 @@ const browserExtractParameters = z.object({
   maxTextChars: z.number().int().positive().nullable(),
   maxLinks: z.number().int().min(0).nullable(),
 });
+const browserNavigateParameters = z.object({
+  url: z.string().url(),
+});
+const browserWaitParameters = z.object({
+  selector: z.string().nullable(),
+  timeoutMs: z.number().int().positive().nullable(),
+});
+const browserScreenshotParameters = z.object({
+  fullPage: z.boolean().nullable(),
+});
 
 export function createCoreToolRegistry(): ToolRegistry {
   return new ToolRegistry([
@@ -142,6 +152,9 @@ export function createCoreToolRegistry(): ToolRegistry {
     browserInputTool(),
     browserScrollTool(),
     browserExtractTool(),
+    browserNavigateTool(),
+    browserWaitTool(),
+    browserScreenshotTool(),
   ]);
 }
 
@@ -524,6 +537,54 @@ function browserExtractTool(): GatewayToolSpec {
   };
 }
 
+function browserNavigateTool(): GatewayToolSpec {
+  return {
+    id: "browser.navigate",
+    sdkName: "browser_navigate",
+    label: "Browser Navigate",
+    description: "Navigate the active browser tab to a URL.",
+    parameters: browserNavigateParameters,
+    source: "core",
+    category: "browser",
+    risk: "approval",
+    idempotent: false,
+    needsApproval: () => browserApprovalDecision("browser.navigate"),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "browser.navigate", input),
+  };
+}
+
+function browserWaitTool(): GatewayToolSpec {
+  return {
+    id: "browser.wait",
+    sdkName: "browser_wait",
+    label: "Browser Wait",
+    description: "Wait for page load, a selector, or a short delay in the active browser tab.",
+    parameters: browserWaitParameters,
+    source: "core",
+    category: "browser",
+    risk: "approval",
+    idempotent: true,
+    needsApproval: () => browserApprovalDecision("browser.wait"),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "browser.wait", input),
+  };
+}
+
+function browserScreenshotTool(): GatewayToolSpec {
+  return {
+    id: "browser.screenshot",
+    sdkName: "browser_screenshot",
+    label: "Browser Screenshot",
+    description: "Capture a PNG screenshot of the active browser tab.",
+    parameters: browserScreenshotParameters,
+    source: "core",
+    category: "browser",
+    risk: "approval",
+    idempotent: true,
+    needsApproval: () => browserApprovalDecision("browser.screenshot"),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "browser.screenshot", input),
+  };
+}
+
 function browserApprovalDecision(toolName: string): GatewayToolApprovalDecision {
   return {
     needsApproval: true,
@@ -581,6 +642,9 @@ export function coreToolApprovalDecision(
     case "browser.input":
     case "browser.scroll":
     case "browser.extract":
+    case "browser.navigate":
+    case "browser.wait":
+    case "browser.screenshot":
       return browserApprovalDecision(toolName);
     case "shell.exec":
       return shellExecApprovalDecision(input, workspacePath, permissionMode);

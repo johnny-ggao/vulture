@@ -165,6 +165,30 @@ describe("ToolBlock", () => {
     ).toBe(true);
   });
 
+  test("browser output renders a compact page summary", () => {
+    const { container } = render(
+      <ToolBlock
+        callId="c-browser"
+        tool="browser.screenshot"
+        input={{ fullPage: false }}
+        status="completed"
+        output={{
+          title: "OpenAI Agents SDK",
+          url: "https://openai.github.io/openai-agents-js/",
+          tabId: 3,
+          image: "data:image/png;base64,very-large-payload",
+        }}
+      />,
+    );
+
+    fireEvent.click(container.querySelector(".tool-block-header")!);
+
+    expect(container.textContent).toContain("OpenAI Agents SDK");
+    expect(container.textContent).toContain("https://openai.github.io/openai-agents-js/");
+    expect(container.textContent).toContain("tab 3");
+    expect(container.textContent).not.toContain("very-large-payload");
+  });
+
   test("formatted output shows stderr block + exit code when present", () => {
     const { container } = render(
       <ToolBlock

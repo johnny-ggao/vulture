@@ -29,6 +29,9 @@ export const AGENT_TOOL_NAMES = [
   "browser.input",
   "browser.scroll",
   "browser.extract",
+  "browser.navigate",
+  "browser.wait",
+  "browser.screenshot",
 ] as const;
 export const AgentToolNameSchema = z.enum(AGENT_TOOL_NAMES);
 export type AgentToolName = z.infer<typeof AgentToolNameSchema>;
@@ -87,6 +90,9 @@ export const AGENT_TOOL_PRESETS: Record<AgentToolPreset, readonly AgentToolName[
     "browser.input",
     "browser.scroll",
     "browser.extract",
+    "browser.navigate",
+    "browser.wait",
+    "browser.screenshot",
   ],
   tl: [
     "read",

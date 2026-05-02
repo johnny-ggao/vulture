@@ -49,4 +49,59 @@ describe("executeBrowserRequest", () => {
       },
     ]);
   });
+
+  test("dispatches navigate, wait, and screenshot requests", async () => {
+    const messages = [];
+    const updates = [];
+    const captures = [];
+    globalThis.chrome = {
+      runtime: { getManifest: () => ({ version: "0.1.0" }) },
+      tabs: {
+        query: async () => [{ id: 9, active: true }],
+        update: async (tabId, input) => {
+          updates.push({ tabId, input });
+          return { id: tabId, title: "Example", url: input.url, active: true };
+        },
+        sendMessage: async (tabId, message) => {
+          messages.push({ tabId, message });
+          return { ok: true, type: message.type, selector: message.selector ?? null };
+        },
+        captureVisibleTab: async (_windowId, options) => {
+          captures.push(options);
+          return "data:image/png;base64,abc";
+        },
+      },
+    };
+
+    await expect(
+      executeBrowserRequest({
+        tool: "browser.navigate",
+        input: { url: "https://example.com" },
+      }),
+    ).resolves.toMatchObject({ navigated: true, tabId: 9, url: "https://example.com" });
+    await expect(
+      executeBrowserRequest({
+        tool: "browser.wait",
+        input: { selector: "main", timeoutMs: 1000 },
+      }),
+    ).resolves.toEqual({ ok: true, type: "wait", selector: "main" });
+    await expect(
+      executeBrowserRequest({
+        tool: "browser.screenshot",
+        input: { fullPage: false },
+      }),
+    ).resolves.toMatchObject({
+      image: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      tabId: 9,
+    });
+
+    expect(updates).toEqual([
+      { tabId: 9, input: { url: "https://example.com" } },
+    ]);
+    expect(messages).toEqual([
+      { tabId: 9, message: { type: "wait", selector: "main", timeoutMs: 1000 } },
+    ]);
+    expect(captures).toEqual([{ format: "png" }]);
+  });
 });

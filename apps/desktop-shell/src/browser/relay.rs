@@ -9,6 +9,8 @@ use serde_json::Value;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+use super::protocol::BrowserTab;
+
 const PAIRING_TOKEN_TTL: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -18,6 +20,9 @@ pub struct BrowserRelayStatus {
     pub paired: bool,
     pub pairing_token: Option<String>,
     pub relay_port: Option<u16>,
+    pub extension_version: Option<String>,
+    pub tab_count: usize,
+    pub active_tab: Option<BrowserTab>,
 }
 
 #[derive(Default)]
@@ -28,6 +33,8 @@ pub struct BrowserRelayState {
     pending_actions: VecDeque<BrowserActionRequest>,
     action_waiters: HashMap<String, oneshot::Sender<BrowserActionResult>>,
     relay_port: Option<u16>,
+    extension_version: Option<String>,
+    tabs: Vec<BrowserTab>,
 }
 
 #[derive(Debug)]
@@ -57,6 +64,9 @@ impl BrowserRelayState {
             paired: self.paired,
             pairing_token: self.current_pairing_token(),
             relay_port: self.relay_port,
+            extension_version: self.extension_version.clone(),
+            tab_count: self.tabs.len(),
+            active_tab: self.tabs.iter().find(|tab| tab.active).cloned(),
         }
     }
 
@@ -67,6 +77,8 @@ impl BrowserRelayState {
 
         self.paired = false;
         self.session_token = None;
+        self.extension_version = None;
+        self.tabs.clear();
         self.relay_port = Some(relay_port);
         self.pairing_token = Some(PairingToken {
             value: Uuid::new_v4().to_string(),
@@ -78,7 +90,12 @@ impl BrowserRelayState {
         Ok(self.status())
     }
 
+    #[allow(dead_code)]
     pub fn accept_token(&mut self, token: &str) -> bool {
+        self.accept_token_with_extension(token, "")
+    }
+
+    pub fn accept_token_with_extension(&mut self, token: &str, extension_version: &str) -> bool {
         let Some(pairing_token) = self.pairing_token.as_ref() else {
             return false;
         };
@@ -94,7 +111,24 @@ impl BrowserRelayState {
 
         self.pairing_token = None;
         self.session_token = Some(token.to_string());
+        self.extension_version = if extension_version.trim().is_empty() {
+            None
+        } else {
+            Some(extension_version.trim().to_string())
+        };
         self.paired = true;
+        true
+    }
+
+    pub fn update_tabs(&mut self, tabs: Vec<BrowserTab>) {
+        self.tabs = tabs;
+    }
+
+    pub fn update_tabs_for_token(&mut self, token: &str, tabs: Vec<BrowserTab>) -> bool {
+        if !self.is_authorized(token) {
+            return false;
+        }
+        self.update_tabs(tabs);
         true
     }
 
@@ -211,6 +245,8 @@ mod tests {
             pending_actions: Default::default(),
             action_waiters: Default::default(),
             relay_port: Some(9444),
+            extension_version: None,
+            tabs: Vec::new(),
         };
 
         let status = state.status();
@@ -225,9 +261,7 @@ mod tests {
     #[tokio::test]
     async fn paired_extension_can_take_and_complete_browser_action() {
         let mut state = BrowserRelayState::default();
-        let status = state
-            .enable_pairing(9444)
-            .expect("pairing should start");
+        let status = state.enable_pairing(9444).expect("pairing should start");
         let token = status.pairing_token.expect("token should be present");
         assert!(state.accept_token(&token));
 
@@ -251,5 +285,34 @@ mod tests {
         let result = result.await.expect("result should be delivered");
         assert!(result.ok);
         assert_eq!(result.value["title"], "Example");
+    }
+
+    #[test]
+    fn status_reports_extension_and_active_tab() {
+        let mut state = BrowserRelayState::default();
+        let status = state.enable_pairing(9444).expect("pairing should start");
+        let token = status.pairing_token.expect("token should be present");
+        assert!(state.accept_token_with_extension(&token, "0.2.0"));
+
+        state.update_tabs(vec![
+            crate::browser::protocol::BrowserTab {
+                id: 1,
+                title: "Background".to_string(),
+                url: "https://background.test/".to_string(),
+                active: false,
+            },
+            crate::browser::protocol::BrowserTab {
+                id: 2,
+                title: "Active".to_string(),
+                url: "https://active.test/".to_string(),
+                active: true,
+            },
+        ]);
+
+        let status = state.status();
+
+        assert_eq!(status.extension_version.as_deref(), Some("0.2.0"));
+        assert_eq!(status.tab_count, 2);
+        assert_eq!(status.active_tab.as_ref().map(|tab| tab.id), Some(2));
     }
 }

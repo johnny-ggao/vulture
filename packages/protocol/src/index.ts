@@ -76,6 +76,9 @@ export const AgentToolName = z.enum([
   "browser.input",
   "browser.scroll",
   "browser.extract",
+  "browser.navigate",
+  "browser.wait",
+  "browser.screenshot",
 ]);
 
 export const AgentRunConfig = z.object({
@@ -127,6 +130,9 @@ export const ToolName = z.enum([
   "browser.scroll",
   "browser.keypress",
   "browser.extract",
+  "browser.navigate",
+  "browser.wait",
+  "browser.screenshot",
   "browser.close_agent_tabs",
   "browser.forward_cdp_limited",
   "mcp.invoke",

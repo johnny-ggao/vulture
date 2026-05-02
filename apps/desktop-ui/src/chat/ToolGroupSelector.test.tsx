@@ -33,6 +33,9 @@ const groups: ToolCatalogGroup[] = [
       { id: "browser.input", label: "browser.input", risk: "medium", idempotent: false },
       { id: "browser.scroll", label: "browser.scroll", risk: "medium", idempotent: false },
       { id: "browser.extract", label: "browser.extract", risk: "medium", idempotent: true },
+      { id: "browser.navigate", label: "browser.navigate", risk: "medium", idempotent: false },
+      { id: "browser.wait", label: "browser.wait", risk: "medium", idempotent: true },
+      { id: "browser.screenshot", label: "browser.screenshot", risk: "medium", idempotent: true },
     ],
   },
 ];
@@ -66,7 +69,7 @@ describe("ToolGroupSelector — round 17 filter", () => {
     );
     expect(container.querySelectorAll(".tool-capability").length).toBe(1);
     // Count chip "matched / total" appears.
-    expect(screen.getByText("3 / 10")).toBeDefined();
+    expect(screen.getByText("3 / 13")).toBeDefined();
     // Detail expands automatically when filtering, so the matched
     // tools are visible without extra clicks.
     expect(container.querySelector(".tool-row")).not.toBeNull();
@@ -118,7 +121,7 @@ describe("ToolGroupSelector — round 17 filter", () => {
     expect(next).toEqual(expect.arrayContaining(["web_search", "web_fetch", "web_extract"]));
   });
 
-  test("browser capability covers snapshot, click, input, scroll, and extract", () => {
+  test("browser capability covers navigation, interaction, waiting, extraction, and screenshots", () => {
     const onChange = mock((_: string[]) => {});
     render(
       <ToolGroupSelector
@@ -137,6 +140,9 @@ describe("ToolGroupSelector — round 17 filter", () => {
         "browser.input",
         "browser.scroll",
         "browser.extract",
+        "browser.navigate",
+        "browser.wait",
+        "browser.screenshot",
       ]),
     );
   });

@@ -66,6 +66,7 @@ const MUTATING_TOOLS = new Set([
   "browser.click",
   "browser.input",
   "browser.scroll",
+  "browser.navigate",
   "process.start",
   "process.kill",
 ]);
@@ -78,6 +79,8 @@ const READ_ONLY_TOOLS = new Set([
   "update_plan",
   "browser.snapshot",
   "browser.extract",
+  "browser.wait",
+  "browser.screenshot",
 ]);
 
 export async function reviewApprovalRequest(

@@ -66,7 +66,25 @@ describe("gateway tool sdk adapter", () => {
       "browser.input": false,
       "browser.scroll": false,
       "browser.extract": true,
+      "browser.navigate": false,
+      "browser.wait": true,
+      "browser.screenshot": true,
     });
+  });
+
+  test("browser experience tools expose strict parameters", () => {
+    const registry = createCoreToolRegistry();
+
+    expect(registry.get("browser.navigate")?.parameters.parse({
+      url: "https://example.com",
+    })).toEqual({ url: "https://example.com" });
+    expect(registry.get("browser.wait")?.parameters.parse({
+      selector: "main",
+      timeoutMs: 5000,
+    })).toEqual({ selector: "main", timeoutMs: 5000 });
+    expect(registry.get("browser.screenshot")?.parameters.parse({
+      fullPage: false,
+    })).toEqual({ fullPage: false });
   });
 
   test("sessions tools expose durable subagent session fields to the SDK", () => {

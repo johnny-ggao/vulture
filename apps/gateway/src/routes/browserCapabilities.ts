@@ -20,9 +20,6 @@ export function browserCapabilitiesRouter(): Hono {
       status: tools.length > 0 ? "partial" : "unavailable",
       supportedTools: tools,
       plannedCapabilities: [
-        "navigate",
-        "wait",
-        "screenshot",
         "multi-tab-session",
       ],
     });

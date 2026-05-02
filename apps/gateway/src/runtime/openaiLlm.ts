@@ -520,6 +520,18 @@ function internalToolNameFromSdkName(toolName: string): string {
       return "browser.snapshot";
     case "browser_click":
       return "browser.click";
+    case "browser_input":
+      return "browser.input";
+    case "browser_scroll":
+      return "browser.scroll";
+    case "browser_extract":
+      return "browser.extract";
+    case "browser_navigate":
+      return "browser.navigate";
+    case "browser_wait":
+      return "browser.wait";
+    case "browser_screenshot":
+      return "browser.screenshot";
     default:
       return toolName;
   }

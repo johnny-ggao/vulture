@@ -5,6 +5,7 @@ import {
   pairWithRelay,
   pollBrowserRequest,
   postBrowserResult,
+  postBrowserTabs,
 } from "./relay-client.js";
 
 let pollTimer = null;
@@ -22,6 +23,7 @@ async function pollOnce() {
   const config = await loadRelayConfig();
   if (!config) return;
 
+  await postBrowserTabs(config).catch(() => undefined);
   const request = await pollBrowserRequest(config);
   if (!request) return;
 
@@ -71,6 +73,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     pairWithRelay(message.payload)
       .then(() => {
         startPolling();
+        postBrowserTabs(message.payload).catch(() => undefined);
         sendResponse({ ok: true });
       })
       .catch((error) => {

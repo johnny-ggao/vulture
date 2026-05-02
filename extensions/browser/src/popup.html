@@ -2,35 +2,478 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Vulture</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vulture Browser Relay</title>
     <style>
-      body {
-        width: 280px;
-        font: 13px system-ui, sans-serif;
-        margin: 12px;
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --surface: #f6f3f1;
+        --surface-hover: #eee8e4;
+        --border: #e6ddd8;
+        --text: #201917;
+        --muted: #776d68;
+        --dim: #a39a95;
+        --brand: #b42318;
+        --brand-soft: rgba(180, 35, 24, 0.08);
+        --brand-glow: rgba(180, 35, 24, 0.22);
+        --ok: #15803d;
+        --ok-soft: rgba(21, 128, 61, 0.08);
+        --warn: #b45309;
+        --warn-soft: rgba(180, 83, 9, 0.08);
+        --danger: #b42318;
+        --danger-soft: rgba(180, 35, 24, 0.08);
       }
 
-      input,
-      button {
-        width: 100%;
+      * {
         box-sizing: border-box;
-        margin-top: 8px;
       }
 
-      code {
+      html {
+        background: transparent;
+      }
+
+      body {
+        width: 292px;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .popup {
+        padding: 14px;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .header img {
+        width: 30px;
+        height: 30px;
+        object-fit: contain;
+      }
+
+      .header-title {
+        font-size: 14px;
+        font-weight: 750;
+      }
+
+      .header-sub {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .status-card {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 54px;
+        padding: 10px 11px;
+        overflow: hidden;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      .status-card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .status-card[data-state="connected"] {
+        border-color: rgba(21, 128, 61, 0.24);
+        box-shadow: 0 2px 16px -8px rgba(21, 128, 61, 0.45);
+      }
+
+      .status-card[data-state="connected"]::before {
+        opacity: 1;
+        background: linear-gradient(135deg, var(--ok-soft), transparent 62%);
+      }
+
+      .status-card[data-state="pending"] {
+        border-color: rgba(180, 83, 9, 0.25);
+      }
+
+      .status-card[data-state="pending"]::before {
+        opacity: 1;
+        background: linear-gradient(135deg, var(--warn-soft), transparent 62%);
+      }
+
+      .status-card[data-state="error"] {
+        border-color: rgba(180, 35, 24, 0.26);
+      }
+
+      .status-card[data-state="error"]::before {
+        opacity: 1;
+        background: linear-gradient(135deg, var(--danger-soft), transparent 62%);
+      }
+
+      .status-ring {
+        position: relative;
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+      }
+
+      .status-dot {
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: var(--dim);
+      }
+
+      .status-ring::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 1.5px solid transparent;
+        border-radius: 50%;
+      }
+
+      .status-card[data-state="connected"] .status-dot {
+        background: var(--ok);
+        box-shadow: 0 0 8px rgba(21, 128, 61, 0.36);
+      }
+
+      .status-card[data-state="connected"] .status-ring::after {
+        border-color: rgba(21, 128, 61, 0.26);
+        animation: ring 2.4s ease-out infinite;
+      }
+
+      .status-card[data-state="pending"] .status-dot {
+        background: var(--warn);
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+
+      .status-card[data-state="error"] .status-dot {
+        background: var(--danger);
+      }
+
+      @keyframes ring {
+        0% { transform: scale(1); opacity: 0.7; }
+        60%, 100% { transform: scale(1.65); opacity: 0; }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.38; }
+      }
+
+      .status-copy {
+        position: relative;
+        min-width: 0;
+        flex: 1;
+      }
+
+      .status-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .status-label {
+        font-weight: 700;
+      }
+
+      .status-pill {
+        flex: 0 0 auto;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(119, 109, 104, 0.1);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 650;
+      }
+
+      .status-card[data-state="connected"] .status-pill {
+        background: var(--ok-soft);
+        color: var(--ok);
+      }
+
+      .status-card[data-state="pending"] .status-pill {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+
+      .status-card[data-state="error"] .status-pill {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      .status-detail {
+        color: var(--muted);
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 10px 0;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      .chip strong {
+        color: var(--text);
+      }
+
+      .chip.hot {
+        background: var(--brand-soft);
+        color: var(--brand);
+      }
+
+      .tabs-section {
+        margin-top: 2px;
+      }
+
+      .tabs-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        padding: 7px 0;
+        border: 0;
+        background: transparent;
+        color: var(--dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .tabs-header svg {
+        width: 10px;
+        height: 10px;
+        transition: transform 0.2s ease;
+      }
+
+      .tabs-section[data-open="true"] .tabs-header svg {
+        transform: rotate(90deg);
+      }
+
+      .tabs-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.25s ease, opacity 0.2s ease;
+      }
+
+      .tabs-section[data-open="true"] .tabs-list {
+        max-height: 160px;
+        overflow-y: auto;
+        opacity: 1;
+      }
+
+      .tab-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        padding: 7px 8px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        text-align: left;
+      }
+
+      .tab-item:hover {
+        background: var(--surface-hover);
+      }
+
+      .tab-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--dim);
+        flex: 0 0 auto;
+      }
+
+      .tab-item[data-active="true"] .tab-dot {
+        background: var(--brand);
+        box-shadow: 0 0 7px var(--brand-glow);
+      }
+
+      .tab-title {
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .empty-tabs {
+        padding: 8px;
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .pairing {
+        margin-top: 10px;
+        border-top: 1px solid var(--border);
+        padding-top: 8px;
+      }
+
+      .pairing summary {
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      label {
+        display: block;
+        margin-top: 9px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      input {
+        width: 100%;
+        padding: 8px 9px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        outline: none;
+        background: #fff;
+        color: var(--text);
+        font: inherit;
+      }
+
+      input:focus {
+        border-color: var(--brand);
+        box-shadow: 0 0 0 3px var(--brand-soft);
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        margin-top: 10px;
+      }
+
+      button.action {
+        padding: 8px 9px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-weight: 650;
+      }
+
+      button.primary {
+        border-color: var(--brand);
+        background: var(--brand);
+        color: #fff;
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.62;
+      }
+
+      .debug {
         display: block;
         margin-top: 8px;
+        color: var(--dim);
+        font-size: 10px;
         overflow-wrap: anywhere;
+      }
+
+      [hidden] {
+        display: none !important;
       }
     </style>
   </head>
   <body>
-    <strong>Vulture Browser Relay</strong>
-    <input id="port" placeholder="Relay port" />
-    <input id="token" placeholder="Pairing token" />
-    <button id="save">Pair</button>
-    <button id="tabs">List Tabs</button>
-    <code id="output"></code>
+    <main class="popup">
+      <header class="header">
+        <img src="../icons/128.png" alt="" />
+        <div>
+          <div class="header-title">Vulture</div>
+          <div class="header-sub">Browser Relay</div>
+        </div>
+      </header>
+
+      <section id="status" class="status-card" data-state="idle" aria-live="polite">
+        <div class="status-ring"><span class="status-dot"></span></div>
+        <div class="status-copy">
+          <div class="status-head">
+            <span id="status-label" class="status-label">未配置</span>
+            <span id="status-pill" class="status-pill">Idle</span>
+          </div>
+          <div id="status-detail" class="status-detail">从 Vulture 设置页复制端口和配对令牌。</div>
+        </div>
+      </section>
+
+      <div class="meta" id="meta">
+        <span class="chip"><strong id="tabs-count">0</strong> tabs</span>
+        <span class="chip hot" id="active-tab">No active tab</span>
+      </div>
+
+      <section class="tabs-section" id="tabs-section" data-open="false">
+        <button type="button" class="tabs-header" id="tabs-header">
+          <svg viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
+          <span>Chrome Tabs</span>
+        </button>
+        <div class="tabs-list" id="tabs-list">
+          <div class="empty-tabs">连接后显示可用标签页。</div>
+        </div>
+      </section>
+
+      <details class="pairing" id="pairing-settings">
+        <summary>配对设置</summary>
+        <label for="port">Relay port</label>
+        <input id="port" inputmode="numeric" autocomplete="off" placeholder="例如 9444" />
+
+        <label for="token">Pairing token</label>
+        <input id="token" autocomplete="off" spellcheck="false" placeholder="粘贴配对令牌" />
+
+        <div class="actions">
+          <button id="save" class="action primary">连接</button>
+          <button id="tabs" class="action">刷新</button>
+        </div>
+      </details>
+
+      <code id="debug" class="debug" hidden></code>
+    </main>
     <script type="module" src="./popup.js"></script>
   </body>
 </html>

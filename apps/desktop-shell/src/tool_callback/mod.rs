@@ -23,7 +23,7 @@ use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
 use crate::browser::{
-    protocol::BrowserRelayMessage,
+    protocol::{BrowserRelayMessage, BrowserTab},
     relay::{BrowserActionResult, BrowserRelayState},
 };
 use crate::codex_auth::RefreshSingleton;
@@ -148,6 +148,7 @@ fn build_router(state: ShellState, codex_state: CodexState) -> Router {
 
     let browser_router = Router::new()
         .route("/browser/hello", post(browser_hello_handler))
+        .route("/browser/tabs", post(browser_tabs_handler))
         .route("/browser/requests", get(browser_requests_handler))
         .route("/browser/results", post(browser_results_handler))
         .with_state(state.clone());
@@ -199,6 +200,21 @@ async fn manifest_handler() -> impl IntoResponse {
             ToolManifestEntry {
                 name: "browser.extract",
                 description: "Extract visible text and links from the active browser tab",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.navigate",
+                description: "Navigate the active browser tab to a URL",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.wait",
+                description: "Wait for page load, a selector, or a short delay",
+                requires_approval: true,
+            },
+            ToolManifestEntry {
+                name: "browser.screenshot",
+                description: "Capture a PNG screenshot of the active browser tab",
                 requires_approval: true,
             },
         ],
@@ -431,7 +447,12 @@ async fn browser_hello_handler(
     State(state): State<ShellState>,
     Json(message): Json<BrowserRelayMessage>,
 ) -> impl IntoResponse {
-    let BrowserRelayMessage::ExtensionHello { pairing_token, .. } = message else {
+    let BrowserRelayMessage::ExtensionHello {
+        pairing_token,
+        extension_version,
+        ..
+    } = message
+    else {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "ok": false, "message": "expected Extension.hello" })),
@@ -442,7 +463,31 @@ async fn browser_hello_handler(
         .browser_relay
         .lock()
         .expect("browser relay lock poisoned")
-        .accept_token(&pairing_token);
+        .accept_token_with_extension(&pairing_token, &extension_version);
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::UNAUTHORIZED
+    };
+    (status, Json(json!({ "ok": ok })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserTabsRequest {
+    token: String,
+    tabs: Vec<BrowserTab>,
+}
+
+async fn browser_tabs_handler(
+    State(state): State<ShellState>,
+    Json(req): Json<BrowserTabsRequest>,
+) -> impl IntoResponse {
+    let ok = state
+        .browser_relay
+        .lock()
+        .expect("browser relay lock poisoned")
+        .update_tabs_for_token(&req.token, req.tabs);
     let status = if ok {
         StatusCode::OK
     } else {

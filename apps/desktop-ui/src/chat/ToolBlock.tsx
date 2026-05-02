@@ -43,8 +43,8 @@ export function ToolBlock(props: ToolBlockProps) {
     [props.tool, props.input],
   );
   const fullOutput = useMemo(
-    () => formatToolOutput(props.output),
-    [props.output],
+    () => formatToolOutput(props.tool, props.output),
+    [props.tool, props.output],
   );
 
   const statusLabel = labelFor(props.status);
@@ -303,11 +303,12 @@ function clip(text: string, max: number): string {
   return `${text.slice(0, max - 1)}…`;
 }
 
-function formatToolOutput(output: unknown): string {
+function formatToolOutput(tool: string, output: unknown): string {
   if (output === undefined || output === null) return "";
   if (typeof output === "string") return output;
   if (output && typeof output === "object") {
     const obj = output as Record<string, unknown>;
+    if (tool.startsWith("browser.")) return formatBrowserOutput(obj);
     const stdout = typeof obj.stdout === "string" ? obj.stdout : "";
     const stderr = typeof obj.stderr === "string" ? obj.stderr : "";
     if (stdout || stderr) {
@@ -324,6 +325,47 @@ function formatToolOutput(output: unknown): string {
   } catch {
     return String(output);
   }
+}
+
+function formatBrowserOutput(obj: Record<string, unknown>): string {
+  const lines: string[] = [];
+  if (typeof obj.title === "string" && obj.title.trim()) lines.push(obj.title.trim());
+  if (typeof obj.url === "string" && obj.url.trim()) lines.push(obj.url.trim());
+  if (typeof obj.tabId === "number") lines.push(`tab ${obj.tabId}`);
+  if (typeof obj.selector === "string" && obj.selector.trim()) lines.push(`selector ${obj.selector.trim()}`);
+  if (typeof obj.deltaY === "number") lines.push(`scroll ${obj.deltaY}px`);
+  if (typeof obj.mimeType === "string" && obj.mimeType.trim()) lines.push(obj.mimeType.trim());
+  if (typeof obj.image === "string") {
+    const size = Math.round((obj.image.length * 3) / 4);
+    lines.push(`screenshot ${formatBytes(size)}`);
+  }
+  if (typeof obj.text === "string") lines.push(clip(obj.text, 2000));
+  if (Array.isArray(obj.links)) lines.push(`${obj.links.length} links`);
+  if (lines.length > 0) return lines.join("\n");
+  return safeJsonWithoutLargeBrowserFields(obj);
+}
+
+function safeJsonWithoutLargeBrowserFields(obj: Record<string, unknown>): string {
+  const clone: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === "image") {
+      clone.image = "[omitted]";
+      continue;
+    }
+    clone[key] = value;
+  }
+  try {
+    return JSON.stringify(clone, null, 2);
+  } catch {
+    return String(obj);
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function labelFor(status: ToolBlockStatus): string {

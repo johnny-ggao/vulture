@@ -157,6 +157,16 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
     maxTextChars: null,
     maxLinks: null,
   }), { maxTextChars: "many", maxLinks: null }),
+  fixture("browser.navigate", "browser", "approval", false, true, () => ({
+    url: "https://example.com",
+  }), { url: "not a url" }),
+  fixture("browser.wait", "browser", "approval", true, true, () => ({
+    selector: "main",
+    timeoutMs: 5000,
+  }), { selector: 1, timeoutMs: "soon" }),
+  fixture("browser.screenshot", "browser", "approval", true, true, () => ({
+    fullPage: false,
+  }), { fullPage: "no" }),
 ];
 
 export async function runToolContractHarness(

@@ -24,7 +24,10 @@ export type AgentToolName =
   | "browser.click"
   | "browser.input"
   | "browser.scroll"
-  | "browser.extract";
+  | "browser.extract"
+  | "browser.navigate"
+  | "browser.wait"
+  | "browser.screenshot";
 export type ReasoningLevel = "low" | "medium" | "high";
 export type AgentToolPreset = "none" | "minimal" | "standard" | "developer" | "tl" | "full";
 
