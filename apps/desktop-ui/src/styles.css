@@ -8238,6 +8238,12 @@ pre {
   gap: 8px;
   align-items: stretch;
 }
+/* The "添加" button uses btn-secondary btn-sm (28px) by default, but
+ * the sibling input is 36px tall — stretch can't override an explicit
+ * height. Pin the add button to 36px so the row reads as one bar. */
+.agent-skills-editor-add > button {
+  height: 36px;
+}
 .agent-skills-editor-add input {
   height: 36px;
   padding: 0 12px;

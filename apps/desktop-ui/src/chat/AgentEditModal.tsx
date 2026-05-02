@@ -637,7 +637,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
             {!isCreate && isDirty && !saving ? (
               <button
                 type="button"
-                className="btn-secondary btn-sm agent-edit-revert"
+                className="btn-secondary agent-edit-revert"
                 onClick={() => {
                   if (!agent) return;
                   if (window.confirm("放弃当前修改？此操作无法撤销。")) {

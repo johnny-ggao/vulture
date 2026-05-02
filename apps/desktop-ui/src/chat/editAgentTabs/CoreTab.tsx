@@ -238,7 +238,7 @@ function StyleApplyMenu({ onApply, disabled, hasContent }: StyleApplyMenuProps) 
         type="button"
         ref={triggerRef}
         id={buttonId}
-        className="btn-secondary btn-sm agent-core-style-btn"
+        className="btn-secondary agent-core-style-btn"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
