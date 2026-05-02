@@ -95,6 +95,19 @@ Aggregate the latest harness artifacts into one CI triage report:
 bun run harness:report
 ```
 
+Aggregate recent snapshots into duration / pass-rate / flake trends:
+
+```bash
+bun run harness:trend
+```
+
+Reads `.artifacts/harness-runs/<id>/harness-report/report.json` for each
+retained snapshot, computes per-step P50 / P95 / max duration, per-step and
+per-lane pass rate, and pass→fail→pass flake candidates over the last 30 runs
+(override with `VULTURE_HARNESS_TREND_LIMIT`). Writes `trend.json` and
+`trend.md` next to `report.json`. `harness:ci` invokes this automatically at
+the end of every run when at least one snapshot exists.
+
 Run the CI harness bundle:
 
 ```bash
@@ -412,11 +425,12 @@ varies.
 Desktop E2E starts as nightly-only. Promote it to PR gating only after **all**
 of the following are observed on `main`:
 
-1. **Stability**: 14 consecutive nightly runs pass.
-2. **Speed**: median wallclock ≤ 8 minutes (workflow shows ~10–20 min today
-   from cold-cache CI).
-3. **Flake rate**: < 5% across the prior 30 nightly runs (a flake = a failure
-   that disappears on a clean rerun without code change).
+1. **Stability**: 14 consecutive nightly runs pass. Read off
+   `harness-report/trend.md`'s `desktop-e2e` lane row (Failed = 0).
+2. **Speed**: median wallclock ≤ 8 minutes. Use the `desktop-e2e` row's `P50`
+   in the trend Step durations table.
+3. **Flake rate**: < 5% across the prior 30 nightly runs (a flake = a
+   pass→fail→pass pattern reported under "Flake candidates" in the trend).
 4. **Cost**: nightly cron does not regularly bump up against the 60-minute
    timeout.
 

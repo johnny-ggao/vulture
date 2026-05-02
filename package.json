@@ -20,6 +20,7 @@
     "harness:catalog": "bun scripts/harnessCatalog.ts",
     "harness:doctor": "bun scripts/harnessDoctor.ts",
     "harness:report": "bun scripts/harnessReport.ts",
+    "harness:trend": "bun scripts/harnessTrend.ts",
     "harness:ci": "bun scripts/harnessCi.ts",
     "typecheck": "bun --filter '*' typecheck",
     "build": "bun --filter '*' build",

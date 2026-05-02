@@ -17,6 +17,12 @@ import {
   type HarnessReport,
 } from "@vulture/harness-core";
 import { collectHarnessReportInput } from "./harnessReport";
+import {
+  buildHarnessTrend,
+  parseHarnessTrendLimit,
+  readHarnessTrendSnapshots,
+  writeHarnessTrendReport,
+} from "./harnessTrend";
 
 export interface HarnessCiStep {
   id: string;
@@ -59,6 +65,7 @@ export const HARNESS_CI_STEPS: HarnessCiStep[] = [
       "scripts/harnessCatalog.test.ts",
       "scripts/harnessDoctor.test.ts",
       "scripts/harnessReport.test.ts",
+      "scripts/harnessTrend.test.ts",
       "scripts/harnessCi.test.ts",
       "apps/gateway/src/harness",
     ],
@@ -177,6 +184,18 @@ async function main(): Promise<void> {
   const historyPaths = writeHarnessArtifactHistoryReport(reportDir, history);
   console.log(`History snapshots: ${history.total}`);
   console.log(`History JSON: ${historyPaths.jsonPath}`);
+
+  const archiveRoot = join(artifactRoot, "harness-runs");
+  const trendSnapshots = readHarnessTrendSnapshots(
+    archiveRoot,
+    parseHarnessTrendLimit(process.env.VULTURE_HARNESS_TREND_LIMIT),
+  );
+  if (trendSnapshots.length > 0) {
+    const trend = buildHarnessTrend({ snapshots: trendSnapshots, archiveRoot, generatedAt });
+    const trendPaths = writeHarnessTrendReport(reportDir, trend);
+    console.log(`Trend window: ${trend.window} snapshots, flake candidates: ${trend.flakeCandidates.length}`);
+    console.log(`Trend JSON: ${trendPaths.jsonPath}`);
+  }
 
   const githubSummaryPath = writeHarnessGithubStepSummaryIfConfigured(process.env, {
     artifactRoot,
