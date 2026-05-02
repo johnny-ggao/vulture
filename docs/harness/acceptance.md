@@ -221,7 +221,9 @@ report step:
 - `ci-summary.md` - human-readable status for every `harness:ci` step.
 
 The CI summary is the source of truth for typecheck, unit test, and UI smoke
-failures that do not map to a lane manifest.
+failures that do not map to a lane manifest. After writing the final CI summary,
+`harness:ci` refreshes artifact validation so `artifact-validation.md` reflects
+the final `ci-summary.json`.
 
 ### Artifact Schema Validation
 
@@ -234,7 +236,9 @@ writes these files into `.artifacts/harness-report/`:
 The validator checks required lane manifests, JUnit count consistency, catalog
 shape, doctor status consistency, aggregate report consistency, and
 `ci-summary.json` when it is present. Desktop E2E artifacts are optional because
-that lane is manually dispatched.
+that lane is manually dispatched. Failed checks include the artifact path plus
+expected, actual, and hint fields when the validator can identify a concrete
+mismatch.
 
 Negative artifact fixtures live in the `@vulture/harness-core` tests. They
 intentionally corrupt manifests, JUnit counts, doctor checks, aggregate reports,

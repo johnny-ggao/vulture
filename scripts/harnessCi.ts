@@ -1,7 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { findHarnessRepoRoot } from "../packages/harness-core/src/index";
+import {
+  findHarnessRepoRoot,
+  validateHarnessArtifactBundle,
+  writeHarnessArtifactValidationReport,
+} from "../packages/harness-core/src/index";
 
 export interface HarnessCiStep {
   id: string;
@@ -128,7 +132,16 @@ async function main(): Promise<void> {
   console.log(`Steps: ${summary.passed}/${summary.total} passed`);
   console.log(`CI summary JSON: ${paths.jsonPath}`);
   console.log(`CI summary Markdown: ${paths.markdownPath}`);
-  if (summary.status === "failed") process.exitCode = 1;
+
+  const finalArtifactReport = validateHarnessArtifactBundle(artifactRoot);
+  const finalArtifactPaths = writeHarnessArtifactValidationReport(
+    join(artifactRoot, "harness-report"),
+    finalArtifactReport,
+  );
+  console.log(`Final artifact validation: ${finalArtifactReport.status}`);
+  console.log(`Final artifact validation JSON: ${finalArtifactPaths.jsonPath}`);
+  console.log(`Final artifact validation Markdown: ${finalArtifactPaths.markdownPath}`);
+  if (summary.status === "failed" || finalArtifactReport.status === "failed") process.exitCode = 1;
 }
 
 export function cleanHarnessCiArtifacts(artifactRoot: string): void {
