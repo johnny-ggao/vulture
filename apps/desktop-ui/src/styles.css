@@ -7025,9 +7025,9 @@ pre {
 }
 .agents-empty-title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.022em;
   color: var(--text-primary);
 }
 .agents-empty-desc {
@@ -8475,9 +8475,10 @@ pre {
 }
 .run-trace-summary > div,
 .run-trace-section {
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
+  box-shadow: var(--shadow-card-rest);
 }
 .run-trace-summary > div {
   display: grid;
@@ -8495,10 +8496,12 @@ pre {
   overflow-wrap: anywhere;
 }
 .run-trace-error {
-  border: 1px solid #fecaca;
+  /* Token-aware so dark mode lifts to the brighter danger
+   * variants automatically (was a hardcoded hex pair). */
+  border: 0.5px solid color-mix(in oklab, var(--danger) 32%, var(--glass-border));
   border-radius: var(--radius-md);
-  background: #fff1f2;
-  color: #991b1b;
+  background: var(--danger-bg);
+  color: var(--danger);
   padding: 10px 12px;
   font-size: 13px;
 }
