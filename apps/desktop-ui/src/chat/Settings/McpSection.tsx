@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useEffect, useState } from "react";
 import type {
   McpServer,
@@ -15,9 +16,19 @@ import {
   toggleName,
 } from "./shared";
 import { Badge, ErrorAlert, Field } from "../components";
-import { SectionGroup } from "./GeneralSection";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
+
+const EMPTY_DRAFT = {
+  id: "",
+  name: "",
+  command: "",
+  args: "",
+  cwd: "",
+  env: "",
+  trust: "ask" as McpTrust,
+  enabled: true,
+};
 
 export function McpSection(props: SettingsPageProps) {
   const [items, setItems] = useState<McpServer[]>([]);
@@ -26,16 +37,8 @@ export function McpSection(props: SettingsPageProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState({
-    id: "",
-    name: "",
-    command: "",
-    args: "",
-    cwd: "",
-    env: "",
-    trust: "ask" as McpTrust,
-    enabled: true,
-  });
+  const [draft, setDraft] = useState({ ...EMPTY_DRAFT });
+  const [isAddOpen, setIsAddOpen] = useState(false);
 
   async function load() {
     setError(null);
@@ -69,16 +72,8 @@ export function McpSection(props: SettingsPageProps) {
         trust: draft.trust,
         enabled: draft.enabled,
       });
-      setDraft({
-        id: "",
-        name: "",
-        command: "",
-        args: "",
-        cwd: "",
-        env: "",
-        trust: "ask",
-        enabled: true,
-      });
+      setDraft({ ...EMPTY_DRAFT });
+      setIsAddOpen(false);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -209,9 +204,29 @@ export function McpSection(props: SettingsPageProps) {
       title="MCP 服务器"
       description="本地 stdio MCP server 会作为 agent 工具加载，默认需要审批。"
       action={
-        <button type="button" className="btn-secondary" disabled={busy !== null} onClick={load}>
-          {busy === null ? "刷新" : "刷新中…"}
-        </button>
+        <div className="settings-section-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy !== null}
+            onClick={load}
+            aria-label="刷新 MCP 服务器列表"
+          >
+            {busy === null ? "刷新" : "刷新中…"}
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy !== null}
+            onClick={() => {
+              setDraft({ ...EMPTY_DRAFT });
+              setError(null);
+              setIsAddOpen(true);
+            }}
+          >
+            + 添加服务器
+          </button>
+        </div>
       }
     >
       <ErrorAlert message={error} />
@@ -230,8 +245,19 @@ export function McpSection(props: SettingsPageProps) {
         <div className="settings-empty">
           <p className="settings-empty-title">还没有 MCP 服务器</p>
           <p className="settings-empty-sub">
-            填写下方表单添加一个本地 stdio server，它会作为可调用的工具广播给所有智能体。
+            点击右上角「+ 添加服务器」连接一个本地 stdio server，它会作为可调用的工具广播给所有智能体。
           </p>
+          <button
+            type="button"
+            className="btn-primary settings-empty-cta"
+            onClick={() => {
+              setDraft({ ...EMPTY_DRAFT });
+              setError(null);
+              setIsAddOpen(true);
+            }}
+          >
+            + 添加服务器
+          </button>
         </div>
       ) : (
         <ul className="mcp-card-grid" aria-label="MCP 服务器">
@@ -387,89 +413,223 @@ export function McpSection(props: SettingsPageProps) {
         </ul>
       )}
 
-      <SectionGroup title="添加服务器" hint="本地 stdio 进程；启动后默认 ask 信任。">
-        <div className="mcp-create">
-          <div className="mcp-create-grid">
-            <Field label="ID" required>
+      {isAddOpen ? (
+        <McpAddServerModal
+          draft={draft}
+          setDraft={setDraft}
+          canCreate={Boolean(canCreate)}
+          busy={busy}
+          error={error}
+          onCancel={() => {
+            setIsAddOpen(false);
+            setError(null);
+          }}
+          onSubmit={create}
+        />
+      ) : null}
+    </SettingsSection>
+  );
+}
+
+interface McpAddServerModalProps {
+  draft: typeof EMPTY_DRAFT;
+  setDraft: React.Dispatch<React.SetStateAction<typeof EMPTY_DRAFT>>;
+  canCreate: boolean;
+  busy: string | null;
+  error: string | null;
+  onCancel: () => void;
+  onSubmit: () => void;
+}
+
+function McpAddServerModal({
+  draft,
+  setDraft,
+  canCreate,
+  busy,
+  error,
+  onCancel,
+  onSubmit,
+}: McpAddServerModalProps) {
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
+  const restoreFocusRef = React.useRef<HTMLElement | null>(null);
+
+  // Snapshot the previously-focused element (typically the "+ 添加服务器"
+  // button) so closing the modal returns the user where they came from —
+  // the WAI-ARIA modal contract used everywhere else in the app.
+  React.useEffect(() => {
+    restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null;
+    queueMicrotask(() => {
+      // Focus the first input so keyboard users can start typing immediately.
+      const firstInput = dialogRef.current?.querySelector<HTMLInputElement>("input");
+      firstInput?.focus();
+    });
+    return () => {
+      restoreFocusRef.current?.focus?.();
+      restoreFocusRef.current = null;
+    };
+  }, []);
+
+  // Esc closes the modal. Capture-phase so an open native picker (e.g.
+  // a select) doesn't swallow the key before we see it.
+  React.useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && busy === null) {
+        event.preventDefault();
+        onCancel();
+      }
+    }
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [busy, onCancel]);
+
+  return (
+    <div
+      className="modal-overlay"
+      onClick={() => {
+        if (busy !== null) return;
+        onCancel();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="modal-card mcp-add-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mcp-add-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <span id="mcp-add-modal-title" className="modal-title">
+            添加 MCP 服务器
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onCancel}
+            aria-label="关闭"
+            disabled={busy !== null}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 4l8 8M4 12l8-8" />
+            </svg>
+          </button>
+        </div>
+        <p className="mcp-add-modal-sub">
+          本地 stdio 进程；启动后默认 ask 信任。所有字段保存在本机。
+        </p>
+        <div className="modal-body mcp-add-modal-body">
+          <div className="mcp-create">
+            <div className="mcp-create-grid">
+              <Field label="ID" required>
+                <input
+                  aria-label="MCP ID"
+                  value={draft.id}
+                  placeholder="echo-server"
+                  onChange={(e) => setDraft((v) => ({ ...v, id: e.target.value }))}
+                />
+              </Field>
+              <Field label="名称" required>
+                <input
+                  aria-label="MCP 名称"
+                  value={draft.name}
+                  placeholder="Echo"
+                  onChange={(e) => setDraft((v) => ({ ...v, name: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <Field label="命令" required>
               <input
-                aria-label="MCP ID"
-                value={draft.id}
-                placeholder="echo-server"
-                onChange={(e) => setDraft((v) => ({ ...v, id: e.target.value }))}
+                aria-label="MCP 命令"
+                value={draft.command}
+                placeholder="bun"
+                onChange={(e) => setDraft((v) => ({ ...v, command: e.target.value }))}
               />
             </Field>
-            <Field label="名称" required>
+            <Field label="参数" hint="空格分隔">
               <input
-                aria-label="MCP 名称"
-                value={draft.name}
-                placeholder="Echo"
-                onChange={(e) => setDraft((v) => ({ ...v, name: e.target.value }))}
+                aria-label="MCP 参数"
+                value={draft.args}
+                placeholder="run server.ts"
+                onChange={(e) => setDraft((v) => ({ ...v, args: e.target.value }))}
               />
             </Field>
-          </div>
-          <Field label="命令" required>
-            <input
-              aria-label="MCP 命令"
-              value={draft.command}
-              placeholder="bun"
-              onChange={(e) => setDraft((v) => ({ ...v, command: e.target.value }))}
-            />
-          </Field>
-          <Field label="参数" hint="空格分隔">
-            <input
-              aria-label="MCP 参数"
-              value={draft.args}
-              placeholder="run server.ts"
-              onChange={(e) => setDraft((v) => ({ ...v, args: e.target.value }))}
-            />
-          </Field>
-          <Field label="工作目录" hint="可选，绝对路径">
-            <input
-              aria-label="MCP 工作目录"
-              value={draft.cwd}
-              placeholder="/absolute/path"
-              onChange={(e) => setDraft((v) => ({ ...v, cwd: e.target.value }))}
-            />
-          </Field>
-          <Field label="环境变量" hint="每行一对 KEY=VALUE">
-            <textarea
-              aria-label="MCP 环境变量"
-              rows={3}
-              value={draft.env}
-              placeholder={"KEY=value\nANOTHER=value"}
-              onChange={(e) => setDraft((v) => ({ ...v, env: e.target.value }))}
-            />
-          </Field>
-          <div className="mcp-create-actions">
-            <label className="mcp-checkbox-label">
+            <Field label="工作目录" hint="可选，绝对路径">
               <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(e) => setDraft((v) => ({ ...v, enabled: e.target.checked }))}
+                aria-label="MCP 工作目录"
+                value={draft.cwd}
+                placeholder="/absolute/path"
+                onChange={(e) => setDraft((v) => ({ ...v, cwd: e.target.value }))}
               />
-              启用
-            </label>
-            <select
-              aria-label="MCP 信任级别"
-              value={draft.trust}
-              onChange={(e) => setDraft((v) => ({ ...v, trust: e.target.value as McpTrust }))}
-            >
-              <option value="ask">ask</option>
-              <option value="trusted">trusted</option>
-              <option value="disabled">disabled</option>
-            </select>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busy !== null || !canCreate}
-              onClick={create}
-            >
-              {busy === "create" ? "添加中..." : "添加服务器"}
-            </button>
+            </Field>
+            <Field label="环境变量" hint="每行一对 KEY=VALUE">
+              <textarea
+                aria-label="MCP 环境变量"
+                rows={3}
+                value={draft.env}
+                placeholder={"KEY=value\nANOTHER=value"}
+                onChange={(e) => setDraft((v) => ({ ...v, env: e.target.value }))}
+              />
+            </Field>
+            <div className="mcp-create-options">
+              <label className="mcp-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={draft.enabled}
+                  onChange={(e) => setDraft((v) => ({ ...v, enabled: e.target.checked }))}
+                />
+                创建后立即启用
+              </label>
+              <Field label="信任级别">
+                <select
+                  aria-label="MCP 信任级别"
+                  value={draft.trust}
+                  onChange={(e) =>
+                    setDraft((v) => ({ ...v, trust: e.target.value as McpTrust }))
+                  }
+                >
+                  <option value="ask">ask · 调用前询问</option>
+                  <option value="trusted">trusted · 直接放行</option>
+                  <option value="disabled">disabled · 禁用全部工具</option>
+                </select>
+              </Field>
+            </div>
+            {error ? (
+              <div className="settings-feedback settings-feedback-error" role="alert">
+                {error}
+              </div>
+            ) : null}
           </div>
         </div>
-      </SectionGroup>
-    </SettingsSection>
+        <div className="modal-footer">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onCancel}
+            disabled={busy !== null}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy !== null || !canCreate}
+            onClick={onSubmit}
+          >
+            {busy === "create" ? "添加中…" : "添加服务器"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
