@@ -8091,13 +8091,16 @@ pre {
   box-shadow: 0 0 0 2px var(--brand-ring);
 }
 
-/* SectionCard — bordered card used inside Settings / Skills / Agents pages */
+/* SectionCard — bordered card used inside Settings / Skills / Agents pages.
+ * Uses the unified glass-border edge family + a soft rest shadow so cards
+ * sit above the gradient shell rather than reading as flat panels. */
 .section-card {
   background: var(--bg-primary);
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: 20px 24px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow-card-rest);
 }
 .section-card-head {
   display: flex;
