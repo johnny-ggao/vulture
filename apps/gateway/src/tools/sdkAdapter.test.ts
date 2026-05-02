@@ -87,6 +87,19 @@ describe("gateway tool sdk adapter", () => {
     })).toEqual({ fullPage: false });
   });
 
+  test("browser navigate SDK schema stays within the OpenAI tool schema subset", () => {
+    const registry = createCoreToolRegistry();
+    const tool = toSdkTool(registry.get("browser.navigate")!) as unknown as {
+      parameters: {
+        properties: {
+          url: Record<string, unknown>;
+        };
+      };
+    };
+
+    expect(tool.parameters.properties.url).toEqual({ type: "string" });
+  });
+
   test("sessions tools expose durable subagent session fields to the SDK", () => {
     const registry = createCoreToolRegistry();
 

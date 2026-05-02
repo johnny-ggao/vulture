@@ -18,7 +18,7 @@ function fresh() {
   const messages = new MessageStore(db);
   const runs = new RunStore(db);
   const sessions = new SubagentSessionStore(db, { runs, messages });
-  const app = subagentSessionsRouter({ sessions, messages });
+  const app = subagentSessionsRouter({ sessions, messages, runs });
   const parent = conversations.create({ agentId: "parent-agent", title: "Parent" });
   const parentMessage = messages.append({
     conversationId: parent.id,
@@ -167,6 +167,62 @@ describe("/v1/subagent-sessions", () => {
         expect.objectContaining({ role: "assistant", content: "child answer" }),
       ]),
     );
+    stores.cleanup();
+  });
+
+  test("GET lists pending child approvals for active subagent sessions", async () => {
+    const stores = fresh();
+    const activeChild = stores.conversations.create({ agentId: "child-agent", title: "Active child" });
+    const activeSession = stores.sessions.create({
+      parentConversationId: stores.parent.id,
+      parentRunId: stores.parentRun.id,
+      agentId: activeChild.agentId,
+      conversationId: activeChild.id,
+      label: "Read outside file",
+      title: "Read temp file",
+      task: "Read /tmp/not-exist-vulture-subagent-file.",
+    });
+    const prompt = stores.messages.append({
+      conversationId: activeChild.id,
+      role: "user",
+      content: "go",
+      runId: null,
+    });
+    const run = stores.runs.create({
+      conversationId: activeChild.id,
+      agentId: activeChild.agentId,
+      triggeredByMessageId: prompt.id,
+    });
+    stores.runs.markRunning(run.id);
+    stores.runs.appendEvent(run.id, {
+      type: "tool.ask",
+      callId: "c-read",
+      tool: "read",
+      reason: "read outside workspace requires approval",
+      approvalToken: "tok-read",
+    });
+
+    const res = await stores.app.request(
+      `/v1/subagent-sessions?parentConversationId=${stores.parent.id}&parentRunId=${stores.parentRun.id}&limit=5`,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: activeSession.id,
+        pendingApprovals: [
+          {
+            runId: run.id,
+            callId: "c-read",
+            tool: "read",
+            reason: "read outside workspace requires approval",
+            approvalToken: "tok-read",
+            seq: 0,
+          },
+        ],
+      }),
+    ]));
     stores.cleanup();
   });
 });

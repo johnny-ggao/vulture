@@ -101,6 +101,41 @@ describe("SubagentSessionPanel", () => {
     expect(screen.getByText("child exploded")).toBeDefined();
   });
 
+  test("renders pending approval from an active child run", () => {
+    const decisions: Array<{ runId: string; callId: string; decision: string }> = [];
+    render(
+      <SubagentSessionPanel
+        sessions={[
+          {
+            ...session,
+            pendingApprovals: [
+              {
+                runId: "r-child",
+                callId: "c-read",
+                tool: "read",
+                reason: "read outside workspace requires approval",
+                approvalToken: "tok-read",
+                seq: 0,
+              },
+            ],
+          },
+        ]}
+        messagesBySessionId={{}}
+        loadingSessionIds={new Set()}
+        submittingApprovalIds={new Set()}
+        onLoadMessages={async () => {}}
+        onDecideApproval={(runId, callId, decision) => {
+          decisions.push({ runId, callId, decision });
+        }}
+      />,
+    );
+
+    expect(screen.getByText("需要批准")).toBeDefined();
+    expect(screen.getByText("read outside workspace requires approval")).toBeDefined();
+    fireEvent.click(screen.getByText("允许"));
+    expect(decisions).toEqual([{ runId: "r-child", callId: "c-read", decision: "allow" }]);
+  });
+
   test("does not render fallback failed token as inline detail", () => {
     render(
       <SubagentSessionPanel

@@ -92,8 +92,14 @@ describe("ChatView", () => {
             agentId: "researcher",
             conversationId: "c-child",
             label: "Researcher",
+            title: "Researcher",
+            task: null,
             status: "completed",
             messageCount: 3,
+            resultSummary: null,
+            resultMessageId: null,
+            completedAt: null,
+            lastError: null,
             createdAt: "2026-04-30T00:00:00.000Z",
             updatedAt: "2026-04-30T00:01:00.000Z",
           },
@@ -113,7 +119,7 @@ describe("ChatView", () => {
       />,
     );
 
-    expect(screen.getByLabelText("子智能体会话")).toBeDefined();
+    expect(screen.getByLabelText("子任务")).toBeDefined();
     expect(screen.getByText("Researcher")).toBeDefined();
     expect(screen.getByText("已完成")).toBeDefined();
   });

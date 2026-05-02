@@ -2445,6 +2445,11 @@ pre {
   background: var(--fill-tertiary);
   color: var(--text-secondary);
 }
+.subagent-approvals {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 12px 40px;
+}
 .subagent-messages {
   display: grid;
   gap: 8px;

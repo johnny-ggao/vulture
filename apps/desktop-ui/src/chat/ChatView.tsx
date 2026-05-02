@@ -24,7 +24,13 @@ export interface ChatViewProps {
   subagentSessions?: ReadonlyArray<SubagentSessionDto>;
   subagentMessages?: Readonly<Record<string, ReadonlyArray<MessageDto>>>;
   loadingSubagentMessages?: ReadonlySet<string>;
+  submittingSubagentApprovals?: ReadonlySet<string>;
   onLoadSubagentMessages?: (sessionId: string) => void | Promise<void>;
+  onDecideSubagentApproval?: (
+    runId: string,
+    callId: string,
+    decision: ApprovalDecision,
+  ) => void | Promise<void>;
   runEvents: ReadonlyArray<AnyRunEvent>;
   runStatus: RunStreamStatus;
   runError: string | null;
@@ -149,7 +155,9 @@ export function ChatView(props: ChatViewProps) {
               sessions={props.subagentSessions ?? []}
               messagesBySessionId={props.subagentMessages ?? {}}
               loadingSessionIds={props.loadingSubagentMessages ?? new Set()}
+              submittingApprovalIds={props.submittingSubagentApprovals ?? new Set()}
               onLoadMessages={props.onLoadSubagentMessages ?? (async () => {})}
+              onDecideApproval={props.onDecideSubagentApproval}
             />
           </div>
         ) : props.onboardingCard ? (

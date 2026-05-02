@@ -125,6 +125,7 @@ export function mountGatewayRoutes(opts: MountGatewayRoutesOptions): void {
     subagentSessionsRouter({
       sessions: subagentSessionStore,
       messages: messageStore,
+      runs: runStore,
     }),
   );
   app.route(

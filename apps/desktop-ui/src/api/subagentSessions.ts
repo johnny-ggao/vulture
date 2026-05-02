@@ -3,6 +3,15 @@ import type { MessageDto } from "./conversations";
 
 export type SubagentSessionStatus = "active" | "completed" | "failed" | "cancelled";
 
+export interface SubagentPendingApprovalDto {
+  runId: string;
+  callId: string;
+  tool: string;
+  reason: string;
+  approvalToken: string;
+  seq: number;
+}
+
 export interface SubagentSessionDto {
   id: string;
   parentConversationId: string;
@@ -18,6 +27,7 @@ export interface SubagentSessionDto {
   resultMessageId: string | null;
   completedAt: string | null;
   lastError: string | null;
+  pendingApprovals?: SubagentPendingApprovalDto[];
   createdAt: string;
   updatedAt: string;
 }

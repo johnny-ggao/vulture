@@ -8,7 +8,7 @@ import type {
   MessageDto,
 } from "../api/conversations";
 import { conversationsApi } from "../api/conversations";
-import { runsApi, type RunDto, type TokenUsageDto } from "../api/runs";
+import { runsApi, type ApprovalDecision, type RunDto, type TokenUsageDto } from "../api/runs";
 import { subagentSessionsApi, type SubagentSessionDto } from "../api/subagentSessions";
 import {
   clearActiveRunId,
@@ -59,6 +59,7 @@ export function useRunController({
   const [subagentSessions, setSubagentSessions] = useState<SubagentSessionDto[]>([]);
   const [subagentMessages, setSubagentMessages] = useState<Record<string, MessageDto[]>>({});
   const [loadingSubagentMessages, setLoadingSubagentMessages] = useState<Set<string>>(new Set());
+  const [subagentApprovalSubmitting, setSubagentApprovalSubmitting] = useState<Set<string>>(new Set());
   const [runReconnectKey, setRunReconnectKey] = useState(0);
   const [resumingRun, setResumingRun] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -338,6 +339,25 @@ export function useRunController({
     }
   }
 
+  async function decideSubagentApproval(
+    runId: string,
+    callId: string,
+    decision: ApprovalDecision,
+  ): Promise<void> {
+    if (!apiClient) return;
+    setSubagentApprovalSubmitting((items) => new Set(items).add(callId));
+    try {
+      await runsApi.approve(apiClient, runId, { callId, decision });
+      await refetchSubagentSessionsRef.current();
+    } finally {
+      setSubagentApprovalSubmitting((items) => {
+        const next = new Set(items);
+        next.delete(callId);
+        return next;
+      });
+    }
+  }
+
   function startNewConversation() {
     setActiveConversationId(null);
     setActiveRunId(null);
@@ -389,6 +409,7 @@ export function useRunController({
     subagentSessions,
     subagentMessages,
     loadingSubagentMessages,
+    subagentApprovalSubmitting,
     resumingRun,
     sendError,
     permissionMode,
@@ -396,6 +417,7 @@ export function useRunController({
     cancel,
     resume,
     loadSubagentMessages,
+    decideSubagentApproval,
     startNewConversation,
     selectConversation,
     clearActiveConversationIfMatches,

@@ -812,7 +812,9 @@ export function App() {
               subagentSessions={runController.subagentSessions}
               subagentMessages={runController.subagentMessages}
               loadingSubagentMessages={runController.loadingSubagentMessages}
+              submittingSubagentApprovals={runController.subagentApprovalSubmitting}
               onLoadSubagentMessages={runController.loadSubagentMessages}
+              onDecideSubagentApproval={runController.decideSubagentApproval}
               runEvents={runController.visibleRunEvents}
               runStatus={runController.runStream.status}
               runError={runController.runStream.error}

@@ -1,13 +1,17 @@
 import { useState } from "react";
 import type { MessageDto } from "../api/conversations";
+import type { ApprovalDecision } from "../api/runs";
 import type { SubagentSessionDto, SubagentSessionStatus } from "../api/subagentSessions";
+import { ApprovalCard } from "./ApprovalCard";
 import { AgentAvatar } from "./components";
 
 export interface SubagentSessionPanelProps {
   sessions: ReadonlyArray<SubagentSessionDto>;
   messagesBySessionId: Readonly<Record<string, ReadonlyArray<MessageDto>>>;
   loadingSessionIds: ReadonlySet<string>;
+  submittingApprovalIds?: ReadonlySet<string>;
   onLoadMessages: (sessionId: string) => void | Promise<void>;
+  onDecideApproval?: (runId: string, callId: string, decision: ApprovalDecision) => void | Promise<void>;
 }
 
 /**
@@ -75,6 +79,22 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
                   {statusLabel(session.status)}
                 </span>
               </button>
+              {session.pendingApprovals && session.pendingApprovals.length > 0 ? (
+                <div className="subagent-approvals">
+                  {session.pendingApprovals.map((approval) => (
+                    <ApprovalCard
+                      key={`${approval.runId}:${approval.callId}`}
+                      callId={approval.callId}
+                      tool={approval.tool}
+                      reason={approval.reason}
+                      submitting={props.submittingApprovalIds?.has(approval.callId) ?? false}
+                      onDecide={(callId, decision) => {
+                        void props.onDecideApproval?.(approval.runId, callId, decision);
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
               {open ? (
                 <div className="subagent-messages">
                   {loading ? <p className="subagent-empty">加载中…</p> : null}

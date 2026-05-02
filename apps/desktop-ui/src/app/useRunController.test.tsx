@@ -102,6 +102,9 @@ function Probe(props: { client: ApiClient; subagentSessionsPollMs?: number }) {
       <button onClick={() => void controller.send("hello world")}>send</button>
       <button onClick={() => void controller.changePermissionMode("read_only")}>read_only</button>
       <button onClick={() => void controller.loadSubagentMessages("sub-1")}>load-subagent-1</button>
+      <button onClick={() => void controller.decideSubagentApproval("run-child", "c-read", "allow")}>
+        allow-child
+      </button>
       <span data-testid="conversation">{controller.activeConversationId ?? ""}</span>
       <span data-testid="run">{controller.activeRunId ?? ""}</span>
       <span data-testid="permission">{controller.permissionMode}</span>
@@ -311,5 +314,67 @@ describe("useRunController", () => {
     );
 
     expect(listCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  test("posts child approval decisions to the child run and refetches subagent sessions", async () => {
+    localStorage.setItem(
+      "vulture.chat.active",
+      JSON.stringify({ conversationId: "conversation-a", runId: "run-a" }),
+    );
+    const postCalls: Array<{ path: string; body: unknown }> = [];
+    const getPaths: string[] = [];
+    const client = clientReturning({
+      get: {
+        "/v1/conversations/conversation-a": conversation,
+        "/v1/conversations/conversation-a/messages": { items: [] },
+        "/v1/conversations/conversation-a/runs": { items: [] },
+        "/v1/conversations/conversation-a/runs?status=active": { items: [run] },
+        "/v1/subagent-sessions?parentConversationId=conversation-a&parentRunId=run-a&limit=20": {
+          items: [{
+            ...childSession,
+            pendingApprovals: [{
+              runId: "run-child",
+              callId: "c-read",
+              tool: "read",
+              reason: "approval required",
+              approvalToken: "tok",
+              seq: 0,
+            }],
+          }],
+        },
+      },
+      post: {},
+    });
+    client.get = async (path) => {
+      getPaths.push(path);
+      return ({
+        "/v1/conversations/conversation-a": conversation,
+        "/v1/conversations/conversation-a/messages": { items: [] },
+        "/v1/conversations/conversation-a/runs": { items: [] },
+        "/v1/conversations/conversation-a/runs?status=active": { items: [run] },
+        "/v1/subagent-sessions?parentConversationId=conversation-a&parentRunId=run-a&limit=20": {
+          items: [childSession],
+        },
+      } as Record<string, unknown>)[path] as never;
+    };
+    client.post = async (path, body) => {
+      postCalls.push({ path, body });
+      return undefined as never;
+    };
+
+    render(<Probe client={client} />);
+    fireEvent.click(screen.getByText("allow-child"));
+
+    await waitFor(() =>
+      expect(postCalls).toEqual([
+        {
+          path: "/v1/runs/run-child/approvals",
+          body: { callId: "c-read", decision: "allow" },
+        },
+      ]),
+    );
+    expect(getPaths).toContain(
+      "/v1/subagent-sessions?parentConversationId=conversation-a&parentRunId=run-a&limit=20",
+    );
   });
 });
