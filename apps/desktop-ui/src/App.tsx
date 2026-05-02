@@ -569,6 +569,24 @@ export function App() {
         if (isTyping) return;
         event.preventDefault();
         startNewConversation();
+        return;
+      }
+      // ⌘, — macOS standard "open application preferences". Always
+      // valid (even while typing in the composer); preferences should
+      // not be blackholed by an active text field.
+      if (event.key === ",") {
+        event.preventDefault();
+        setView("settings");
+        setHistoryOpen(false);
+        return;
+      }
+      // ⌘B — toggle history drawer (sidebar-bar mnemonic). Skipped
+      // while typing so it doesn't blackhole the bold-text shortcut.
+      if (event.key === "b" || event.key === "B") {
+        if (isTyping) return;
+        event.preventDefault();
+        setHistoryOpen((open) => !open);
+        return;
       }
     }
     window.addEventListener("keydown", onKey);
@@ -638,7 +656,19 @@ export function App() {
       label: historyOpen ? "关闭历史抽屉" : "打开历史抽屉",
       group: "导航",
       keywords: ["history", "drawer", "记录"],
+      shortcut: ["⌘", "B"],
       execute: () => setHistoryOpen((open) => !open),
+    });
+    cmds.push({
+      id: "view:settings:prefs",
+      label: "打开设置",
+      group: "导航",
+      keywords: ["settings", "preferences", "设置", "config"],
+      shortcut: ["⌘", ","],
+      execute: () => {
+        setView("settings");
+        setHistoryOpen(false);
+      },
     });
 
     // Action group — common one-shot operations.

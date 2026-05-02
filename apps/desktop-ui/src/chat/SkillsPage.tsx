@@ -258,6 +258,7 @@ export function SkillsPage(props: SkillsPageProps) {
               onChange={setQuery}
               placeholder="搜索…"
               ariaLabel="搜索 skill"
+              shortcut
             />
           </div>
           <div className="skills-policy" role="group" aria-label="批量启用策略">
