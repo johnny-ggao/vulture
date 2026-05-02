@@ -165,6 +165,7 @@ describe("createGatewayServerLocalTools", () => {
       ).resolves.toMatchObject({
         active: [
           {
+            sessionId: spawned.session.id,
             id: spawned.session.id,
             parentRunId: parentRun.id,
             agentId: "local-work-agent",
