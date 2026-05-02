@@ -6688,11 +6688,29 @@ pre {
   font-size: 10.5px;
   font-weight: 600;
   font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
   line-height: 1;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.agent-edit-rail-item:hover .agent-edit-rail-count {
+  background: color-mix(in oklab, var(--text-primary) 12%, transparent);
 }
 .agent-edit-rail-item.active .agent-edit-rail-count {
   background: color-mix(in oklab, var(--brand-500) 18%, transparent);
   color: var(--brand-600);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .agent-edit-rail-count {
+    animation: rail-count-pop var(--duration-medium) var(--ease-spring) both;
+  }
+}
+@keyframes rail-count-pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  60%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
 }
 
 /* ---- Content area ---------------------------------------------- */
@@ -7916,12 +7934,18 @@ pre {
 .agent-skills-editor-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   padding: 12px;
   border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
-  min-height: 56px;
+  min-height: 64px;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.agent-skills-editor-list:focus-within {
+  border-color: color-mix(in oklab, var(--brand-500) 30%, var(--glass-border));
 }
 .agent-skills-editor-empty {
   margin: 0;
@@ -7931,6 +7955,7 @@ pre {
   align-self: center;
   width: 100%;
   text-align: center;
+  letter-spacing: -0.005em;
 }
 .agent-skills-editor-chip {
   display: inline-flex;
@@ -7944,6 +7969,25 @@ pre {
   font-size: 12px;
   font-weight: 500;
   box-shadow: var(--shadow-card-rest);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.agent-skills-editor-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
+}
+@media (prefers-reduced-motion: no-preference) {
+  .agent-skills-editor-chip {
+    animation: skill-chip-in var(--duration-medium) var(--ease-spring) both;
+  }
+}
+@keyframes skill-chip-in {
+  0%   { transform: scale(0.85) translateY(2px); opacity: 0; }
+  60%  { transform: scale(1.04) translateY(0);   opacity: 1; }
+  100% { transform: scale(1)    translateY(0);   opacity: 1; }
 }
 .agent-skills-editor-chip-name {
   font-family: var(--font-mono);
@@ -7953,8 +7997,8 @@ pre {
 .agent-skills-editor-chip-remove {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border: 0;
   background: transparent;
   border-radius: 50%;
@@ -7963,11 +8007,15 @@ pre {
   min-height: 0;
   transition:
     background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 .agent-skills-editor-chip-remove:hover {
   background: var(--danger-bg);
   color: var(--danger);
+}
+.agent-skills-editor-chip-remove:active {
+  transform: scale(0.92);
 }
 .agent-skills-editor-chip-remove:focus-visible {
   outline: 0;
@@ -7982,16 +8030,26 @@ pre {
   align-items: stretch;
 }
 .agent-skills-editor-add input {
-  height: 32px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--fill-tertiary);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 13px;
+  font-family: var(--font-mono);
+  letter-spacing: -0.005em;
   transition:
     border-color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.agent-skills-editor-add input::placeholder {
+  font-family: var(--font-system, inherit);
+  color: var(--text-tertiary);
+}
+.agent-skills-editor-add input:hover:not(:focus) {
+  border-color: color-mix(in oklab, var(--text-primary) 20%, var(--fill-tertiary));
 }
 .agent-skills-editor-add input:focus {
   outline: 0;
