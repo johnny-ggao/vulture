@@ -365,6 +365,36 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
       },
     ],
   },
+  {
+    id: "parallel-runs-smoke",
+    name: "Parallel runs across distinct conversations",
+    description:
+      "Fires three runs concurrently across three conversations, verifies each reaches succeeded independently, and asserts the gateway returns three distinct run IDs (no cross-conversation contamination).",
+    tags: ["concurrency", "smoke"],
+    steps: [
+      { action: "createConversation", as: "conv-a" },
+      { action: "createConversation", as: "conv-b" },
+      { action: "createConversation", as: "conv-c" },
+      {
+        action: "parallelRuns",
+        runs: [
+          { conversation: "conv-a", input: "hello A", asRun: "run-a" },
+          { conversation: "conv-b", input: "hello B", asRun: "run-b" },
+          { conversation: "conv-c", input: "hello C", asRun: "run-c" },
+        ],
+      },
+      { action: "waitForRun", run: "run-a", status: "succeeded" },
+      { action: "waitForRun", run: "run-b", status: "succeeded" },
+      { action: "waitForRun", run: "run-c", status: "succeeded" },
+      { action: "assertDistinctRuns", runs: ["run-a", "run-b", "run-c"] },
+      { action: "listMessages", conversation: "conv-a", as: "messages-a" },
+      { action: "assertMessages", messages: "messages-a", roles: ["user", "assistant"], contains: ["hello A"] },
+      { action: "listMessages", conversation: "conv-b", as: "messages-b" },
+      { action: "assertMessages", messages: "messages-b", roles: ["user", "assistant"], contains: ["hello B"] },
+      { action: "listMessages", conversation: "conv-c", as: "messages-c" },
+      { action: "assertMessages", messages: "messages-c", roles: ["user", "assistant"], contains: ["hello C"] },
+    ],
+  },
 ];
 
 export interface AcceptanceSuiteOptions {

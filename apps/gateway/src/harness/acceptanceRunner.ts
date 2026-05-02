@@ -213,6 +213,20 @@ export type AcceptanceStep =
       childResult: string;
       finalText: string;
       callId?: string;
+    }
+  | {
+      action: "parallelRuns";
+      runs: Array<{
+        conversation: string;
+        input: string;
+        asRun: string;
+        asMessage?: string;
+        idempotencyKey?: string;
+      }>;
+    }
+  | {
+      action: "assertDistinctRuns";
+      runs: string[];
     };
 
 export interface AcceptanceScenario {
@@ -893,6 +907,53 @@ async function executeStep(
         run: result.run,
         session: result.session,
       });
+      return;
+    }
+    case "parallelRuns": {
+      const responses = await Promise.all(
+        step.runs.map(async (entry) => {
+          const conversation = requireAlias(
+            state.resources.conversations,
+            entry.conversation,
+            "conversation",
+          );
+          const response = await requestJson<{
+            run: RunResource;
+            message: MessageResource;
+            eventStreamUrl: string;
+          }>(options, state, `/v1/conversations/${conversation.id}/runs`, {
+            method: "POST",
+            idempotencyKey: entry.idempotencyKey,
+            body: { input: entry.input },
+          });
+          return { entry, response };
+        }),
+      );
+      for (const { entry, response } of responses) {
+        state.resources.runs[entry.asRun] = response.run;
+        if (entry.asMessage) state.resources.messages[entry.asMessage] = response.message;
+      }
+      observe(state, step.action, {
+        runs: responses.map(({ entry, response }) => ({
+          conversation: entry.conversation,
+          input: entry.input,
+          runAlias: entry.asRun,
+          run: response.run,
+        })),
+      });
+      return;
+    }
+    case "assertDistinctRuns": {
+      const ids = step.runs.map(
+        (alias) => requireAlias(state.resources.runs, alias, "run").id,
+      );
+      const unique = new Set(ids);
+      if (unique.size !== ids.length) {
+        throw new Error(
+          `Expected distinct run IDs across ${JSON.stringify(step.runs)}, got ${JSON.stringify(ids)}`,
+        );
+      }
+      observe(state, step.action, { runs: step.runs, ids });
       return;
     }
   }
