@@ -4272,11 +4272,49 @@ pre {
   mask-image: linear-gradient(180deg, transparent 0, black 8px, black calc(100% - 8px), transparent 100%);
   -webkit-mask-image: linear-gradient(180deg, transparent 0, black 8px, black calc(100% - 8px), transparent 100%);
 }
+/* Empty state — was a single line of muted text, which made the
+ * palette feel broken when a search didn't match. Now: a tinted
+ * search-with-slash glyph, a definitive "no match" line, and a
+ * second-line hint that echoes the user's query back so they
+ * know exactly what was searched. */
 .cmdk-empty {
-  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 36px 24px 32px;
   text-align: center;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 13px;
+}
+.cmdk-empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--fill-quaternary);
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.cmdk-empty strong {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13.5px;
+}
+.cmdk-empty-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  max-width: 320px;
+}
+.cmdk-empty-hint code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--fill-quaternary);
+  color: var(--text-secondary);
 }
 .cmdk-group { padding: 2px 0; }
 .cmdk-group + .cmdk-group { border-top: 1px solid var(--fill-quaternary); margin-top: 4px; padding-top: 6px; }

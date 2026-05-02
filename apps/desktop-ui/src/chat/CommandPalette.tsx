@@ -227,7 +227,19 @@ export function CommandPalette({
           ref={listRef}
         >
           {flat.length === 0 ? (
-            <div className="cmdk-empty">没有匹配的命令</div>
+            <div className="cmdk-empty" role="status">
+              <span className="cmdk-empty-icon" aria-hidden="true">
+                <SearchEmptyIcon />
+              </span>
+              <strong>没有匹配的命令</strong>
+              {query.trim() ? (
+                <span className="cmdk-empty-hint">
+                  没有匹配 <code>{query.trim()}</code> 的结果，试试更短的关键词
+                </span>
+              ) : (
+                <span className="cmdk-empty-hint">输入命令名、英文别名或关键词</span>
+              )}
+            </div>
           ) : (
             groups.map(({ group, commands: groupCmds }) => (
               <div key={group} className="cmdk-group">
@@ -359,6 +371,26 @@ function DotIcon() {
   return (
     <svg viewBox="0 0 16 16" width="6" height="6" aria-hidden="true">
       <circle cx="8" cy="8" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SearchEmptyIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M16 16l4 4" />
+      <path d="M7.5 10.5h6" />
     </svg>
   );
 }
