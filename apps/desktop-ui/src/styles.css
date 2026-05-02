@@ -1403,6 +1403,15 @@ pre {
   background: var(--fill-quaternary);
   color: var(--text-primary);
 }
+.message-action:active {
+  background: var(--fill-tertiary);
+}
+.message-action:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 .message-action[data-copied="true"] { color: var(--success); }
 
 /* Token-usage pill at the foot of an assistant bubble. */
@@ -4940,6 +4949,12 @@ pre {
     color            var(--duration-medium) var(--ease-standard);
 }
 .settings-rail button:hover { background: var(--fill-quaternary); color: var(--text-primary); }
+.settings-rail button:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 /* Hover gives the icon a tiny spring-eased forward translate so the
  * rail feels physical — borrowed from Linear's nav idiom. */
 .settings-rail button svg {
@@ -7790,6 +7805,9 @@ pre {
   border-radius: var(--radius-pill);
   background: var(--fill-secondary);
   cursor: pointer;
+  /* Inset rim so the track reads as a recessed groove, not a flat
+   * pill — matches macOS NSSwitch's pressed-track look. */
+  box-shadow: inset 0 0.5px 1px rgba(15, 15, 15, 0.10);
   transition: background-color var(--duration-medium) var(--ease-standard);
   min-height: 0;
   flex-shrink: 0;
@@ -7798,20 +7816,48 @@ pre {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--bg-primary);
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.18);
+  /* Layered knob shadow + subtle inner highlight so the thumb has
+   * physical depth rather than reading as a white dot pasted on. */
+  background: linear-gradient(180deg, #ffffff 0%, #f3f1ed 100%);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.85),
+    0 1px 1.5px rgba(15, 15, 15, 0.12),
+    0 1px 3px rgba(15, 15, 15, 0.10);
   transform: translateX(0);
   transition: transform var(--duration-medium) var(--ease-spring);
 }
-.toggle-switch.checked { background: var(--brand-500); }
+.toggle-switch.checked {
+  background: var(--brand-500);
+  /* Drop the inset-groove shadow when checked so the brand fill reads
+   * as a "filled" state rather than a sunken-in track. */
+  box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.10);
+}
 .toggle-switch.checked .toggle-thumb { transform: translateX(12px); }
 .toggle-switch:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  box-shadow:
+    inset 0 0.5px 1px rgba(15, 15, 15, 0.10),
+    0 0 0 3px var(--brand-ring);
+}
+.toggle-switch.checked:focus-visible {
+  box-shadow:
+    inset 0 0.5px 1px rgba(0, 0, 0, 0.10),
+    0 0 0 3px var(--brand-ring);
 }
 .toggle-switch:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+@media (prefers-color-scheme: dark) {
+  .toggle-switch .toggle-thumb {
+    background: linear-gradient(180deg, #f8f6f2 0%, #d8d6d1 100%);
+    box-shadow:
+      inset 0 0.5px 0 rgba(255, 255, 255, 0.50),
+      0 1px 2px rgba(0, 0, 0, 0.50),
+      0 1px 3px rgba(0, 0, 0, 0.30);
+  }
+  .toggle-switch       { box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.40); }
+  .toggle-switch.checked { box-shadow: inset 0 0.5px 1px rgba(0, 0, 0, 0.40); }
 }
 
 .search-input {
