@@ -9042,9 +9042,9 @@ pre {
   box-shadow: 0 0 0 3px var(--brand-ring) inset;
 }
 .agent-card-banner {
-  height: 56px;
+  height: 52px;
   position: relative;
-  margin: -1px -17px 32px; /* extend to card edge + room for avatar */
+  margin: -1px -17px 38px; /* extend to card edge + room for avatar */
   /* Round 19 — Accio per-card identity. Three-layer painted background
    * driven by `--banner-hue`:
    *   1. soft top-edge gloss highlight — catches "light" macOS-style
@@ -9091,17 +9091,17 @@ pre {
       );
   }
 }
-/* Round 19 — floating avatar punches through the banner edge. The
+/* Round 20 — floating avatar punches through the banner edge. The
  * outer ring is a 4px white frame; a 0.5px hairline border on the
- * frame itself makes the cutout precise even on the lightest banner
+ * frame itself keeps the cutout precise even on the lightest banner
  * hues. Layered shadow gives depth without heavy elevation. */
 .agent-card-avatar {
   position: absolute;
   left: 50%;
-  top: 56px; /* sits at the banner-body seam */
+  top: 52px; /* sits at the banner-body seam */
   transform: translate(-50%, -50%);
   padding: 4px;
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--bg-primary);
   border: 0.5px solid var(--glass-border);
   box-shadow:
@@ -9125,9 +9125,12 @@ pre {
 }
 .agent-card-name {
   margin: 0;
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  /* macOS Title 3 rhythm — 15px / 600 with slightly tighter tracking
+   * gives the agent name proper presence without reading as marketing
+   * loud (was 14/650 which felt weighty against a small card). */
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9136,9 +9139,9 @@ pre {
 }
 .agent-card-desc {
   margin: 0;
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.45;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -9156,21 +9159,22 @@ pre {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 10px 16px 14px;
+  padding: 8px 16px 14px;
 }
 .agent-card-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 30px;
+  height: 28px;
   padding: 0 14px;
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--fill-quaternary);
   color: var(--text-primary);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: -0.005em;
   cursor: pointer;
   min-height: 0;
   transition:
