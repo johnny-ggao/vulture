@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { ApiClient } from "../api/client";
 import type {
@@ -34,6 +34,7 @@ export interface UseRunControllerOptions {
   selectedAgentId: string;
   conversations: RunControllerConversations;
   streamFetch?: typeof fetch;
+  subagentSessionsPollMs?: number;
 }
 
 export function useRunController({
@@ -41,6 +42,7 @@ export function useRunController({
   selectedAgentId,
   conversations,
   streamFetch,
+  subagentSessionsPollMs = 2000,
 }: UseRunControllerOptions) {
   const restoredChatRef = useRef(readActiveChatState());
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
@@ -99,6 +101,9 @@ export function useRunController({
   refetchConversationsRef.current = conversations.refetch;
   const refetchRunsRef = useRef<() => Promise<void>>(async () => undefined);
   const refetchSubagentSessionsRef = useRef<() => Promise<void>>(async () => undefined);
+  const activeSubagentScopeRef = useRef(subagentScopeKey(activeConversationId, activeRunId));
+  const previousSubagentScopeRef = useRef(activeSubagentScopeRef.current);
+  const hasActiveSubagentSessions = subagentSessions.some((session) => session.status === "active");
 
   useEffect(() => {
     if (
@@ -146,6 +151,7 @@ export function useRunController({
     if (!apiClient || !activeConversationId) {
       setSubagentSessions([]);
       setSubagentMessages({});
+      setLoadingSubagentMessages(new Set());
       refetchSubagentSessionsRef.current = async () => undefined;
       return;
     }
@@ -154,6 +160,7 @@ export function useRunController({
       try {
         const items = await subagentSessionsApi.list(apiClient, {
           parentConversationId: activeConversationId,
+          parentRunId: activeRunId ?? undefined,
           limit: 20,
         });
         if (!cancelled) setSubagentSessions(items);
@@ -167,7 +174,7 @@ export function useRunController({
     return () => {
       cancelled = true;
     };
-  }, [apiClient, activeConversationId]);
+  }, [activeConversationId, activeRunId, apiClient]);
 
   useEffect(() => {
     const last = runStream.events[runStream.events.length - 1];
@@ -175,6 +182,33 @@ export function useRunController({
     if (!isSessionsToolName(last.tool)) return;
     void refetchSubagentSessionsRef.current();
   }, [runStream.events]);
+
+  useLayoutEffect(() => {
+    const nextScope = subagentScopeKey(activeConversationId, activeRunId);
+    activeSubagentScopeRef.current = nextScope;
+    if (previousSubagentScopeRef.current !== nextScope) {
+      setSubagentSessions([]);
+      setSubagentMessages({});
+      setLoadingSubagentMessages(new Set());
+    }
+    previousSubagentScopeRef.current = nextScope;
+  }, [activeConversationId, activeRunId]);
+
+  useEffect(() => {
+    if (!apiClient || !activeConversationId || !hasActiveSubagentSessions) return;
+    const intervalId = globalThis.setInterval(() => {
+      void refetchSubagentSessionsRef.current();
+    }, subagentSessionsPollMs);
+    return () => {
+      globalThis.clearInterval(intervalId);
+    };
+  }, [
+    activeConversationId,
+    apiClient,
+    hasActiveSubagentSessions,
+    activeRunId,
+    subagentSessionsPollMs,
+  ]);
 
   useEffect(() => {
     if (!apiClient || !activeConversationId) {
@@ -284,9 +318,11 @@ export function useRunController({
 
   async function loadSubagentMessages(sessionId: string): Promise<void> {
     if (!apiClient) return;
+    const scopeAtRequestStart = activeSubagentScopeRef.current;
     setLoadingSubagentMessages((items) => new Set(items).add(sessionId));
     try {
       const result = await subagentSessionsApi.messages(apiClient, sessionId);
+      if (scopeAtRequestStart !== activeSubagentScopeRef.current) return;
       setSubagentMessages((items) => ({ ...items, [sessionId]: result.items }));
       setSubagentSessions((items) =>
         items.map((session) => (session.id === sessionId ? result.session : session)),
@@ -370,4 +406,8 @@ export function useRunController({
 
 function isSessionsToolName(value: unknown): boolean {
   return typeof value === "string" && value.startsWith("sessions_");
+}
+
+function subagentScopeKey(conversationId: string | null, runId: string | null): string {
+  return `${conversationId ?? ""}:${runId ?? ""}`;
 }
