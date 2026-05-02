@@ -1053,9 +1053,15 @@ pre {
 }
 .message.user .message-bubble {
   background: var(--brand-050);
-  border: 1px solid rgba(196,78,84,0.14);
+  /* Token-aware border so dark mode picks up the lifted brand-500
+   * automatically. The mix gives a hairline that reads as a brand
+   * tint rather than a hardcoded RGBA that drifts in dark mode. */
+  border: 0.5px solid color-mix(in oklab, var(--brand-500) 22%, transparent);
   padding: 10px 14px;
   border-radius: 14px;
+  /* Subtle shadow so the tinted bubble lifts from the page even
+   * when the brand-050 fill is barely visible in light-mode. */
+  box-shadow: 0 1px 2px rgba(196, 78, 84, 0.06);
 }
 /* Legacy alias — user bubbles used to wrap content in <pre>. Now they
  * wrap in <div class="message-text">; keep both selectors so any third-
@@ -2555,13 +2561,33 @@ pre {
   opacity: 0.65;
 }
 .recovery-card-resume {
-  background: var(--brand-500);
+  /* Shared primary recipe so resume/allow/send/btn-primary read
+   * as one family. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--brand-500) 96%, white),
+    var(--brand-500)
+  );
   color: var(--button-primary-fg);
   border-color: var(--brand-500);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(196, 78, 84, 0.18);
 }
-.recovery-card-resume:hover:not(:disabled) { background: var(--brand-600); border-color: var(--brand-600); }
+.recovery-card-resume:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-600));
+  border-color: var(--brand-600);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 4px 12px color-mix(in oklab, var(--brand-500) 32%, transparent);
+}
 .recovery-card-cancel { background: var(--bg-primary); color: var(--text-primary); }
 .recovery-card-cancel:hover:not(:disabled) { background: var(--fill-quaternary); }
+.recovery-card-resume:focus-visible,
+.recovery-card-cancel:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
 
 /* ----- Run error card ------------------------------------------- */
 
