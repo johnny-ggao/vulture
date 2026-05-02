@@ -86,6 +86,29 @@ export function NewAgentModal(props: NewAgentModalProps) {
     };
   }, [props.open]);
 
+  // Esc closes the wizard. If the user has typed anything in name /
+  // description / instructions we ask first so a stray keypress can't
+  // wipe a draft. Active only while open so the listener doesn't
+  // compete with other modals' Esc handlers.
+  useEffect(() => {
+    if (!props.open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (busy) return; // wait for the create call to settle
+      const dirty =
+        name.trim().length > 0 ||
+        desc.trim().length > 0 ||
+        instructions.trim().length > 0;
+      if (dirty && !window.confirm("有未提交的修改，确定要关闭吗？")) {
+        return;
+      }
+      event.preventDefault();
+      props.onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props.open, busy, name, desc, instructions, props.onClose]);
+
   const tpl = TEMPLATES.find((t) => t.key === tplKey)!;
   const stepIndex = STEPS.findIndex((item) => item.id === step);
   const canGoNext = step !== "identity" || name.trim().length > 0;
