@@ -68,6 +68,15 @@ bun run harness:desktop-e2e -- --scenario navigation-smoke
 bun run harness:desktop-e2e -- --scenario chat-send-smoke
 ```
 
+Run the live LLM harness (real OpenAI):
+
+```bash
+OPENAI_API_KEY=sk-... bun run harness:live
+OPENAI_API_KEY=sk-... bun run harness:live -- --list
+```
+
+The live lane is opt-in — it skips silently with a `Live harness skipped:` message when `OPENAI_API_KEY` is not set, so it cannot accidentally consume tokens. PR/push CI never runs it; only manual `workflow_dispatch` with `runLiveLlm=true` triggers it on GitHub Actions, where the key is read from the `OPENAI_API_KEY` repository secret.
+
 Generate the harness catalog without executing scenarios:
 
 ```bash
@@ -86,12 +95,6 @@ Aggregate the latest harness artifacts into one CI triage report:
 bun run harness:report
 ```
 
-Validate the latest harness artifact schemas:
-
-```bash
-bun run harness:artifacts
-```
-
 Run the CI harness bundle:
 
 ```bash
@@ -99,27 +102,28 @@ bun run harness:ci
 ```
 
 `harness:ci` includes the shared `@vulture/harness-core` tests, harness catalog,
-doctor, report, artifact validator, and orchestrator tests, and typecheck before
-running the gateway and UI lanes. This keeps CLI parsing, scenario selection,
-JUnit output, failure reports, artifact manifests, catalog generation, coverage
-health checks, aggregate reporting, and artifact schema validation under the
-same contract as the product harnesses.
+doctor, and orchestrator tests, and typecheck before running the gateway and UI
+lanes. This keeps CLI parsing, scenario selection, JUnit output, failure
+reports, artifact manifests, catalog generation, coverage health checks, and
+aggregate reporting under the same contract as the product harnesses.
 
 `harness:ci` is driven by `scripts/harnessCi.ts` instead of a shell `&&` chain.
 It removes stale CI harness artifact directories at the start of the run,
 executes each harness step, keeps going after a failed step when later steps can
-still produce diagnostic artifacts, and exits non-zero only after writing a
-fresh `.artifacts/harness-report/ci-summary.json` and `ci-summary.md`. At the
-end of the run it snapshots the current CI artifact bundle into
+still produce diagnostic artifacts, and writes a single unified
+`.artifacts/harness-report/report.json` (schemaVersion 2) that embeds lane
+status, doctor summary, CI step results, artifact validation, and the failure
+triage. At the end of the run it snapshots the current CI artifact bundle into
 `.artifacts/harness-runs/`, keeps the latest five snapshots plus the latest
-passed and failed snapshots, and writes retention and history reports. Set
-`VULTURE_HARNESS_RETENTION_KEEP_LAST=<n>` to change the recent snapshot count.
+passed and failed snapshots, and writes retention, history, and bundle-manifest
+reports. Set `VULTURE_HARNESS_RETENTION_KEEP_LAST=<n>` to change the recent
+snapshot count.
 
-When GitHub Actions provides `GITHUB_STEP_SUMMARY`, `harness:ci` appends a compact
-Markdown summary to the job page. The summary includes step status, triage
-failures, missing required artifact count, latest retained snapshot, key artifact
-paths, and copy-paste rerun commands for failed items. Local runs without
-`GITHUB_STEP_SUMMARY` do not write this extra file.
+When GitHub Actions provides `GITHUB_STEP_SUMMARY`, `harness:ci` appends a
+compact Markdown summary to the job page. The summary includes step status,
+failure list, missing required artifact count, latest retained snapshot, and
+key artifact paths. Local runs without `GITHUB_STEP_SUMMARY` do not write this
+extra file.
 
 By default the harness uses the gateway's stub LLM path so it stays
 deterministic and does not spend API tokens. Set `VULTURE_ACCEPTANCE_REAL_LLM=1`
@@ -211,73 +215,42 @@ Doctor artifacts:
 - `doctor.json` - machine-readable check results.
 - `doctor.md` - human-readable health report.
 
-### Harness Report
+### Harness Report (single source of truth)
 
-`bun run harness:report` reads the latest lane manifests plus doctor output and
-writes `.artifacts/harness-report/`:
+`harness:ci` writes a single unified report at `.artifacts/harness-report/`:
 
-- `report.json` - machine-readable aggregate status for runtime, tool contract,
-  acceptance, optional desktop E2E, and doctor checks.
+- `report.json` - schemaVersion 2 aggregate document.
 - `report.md` - human-readable CI triage entry point.
 
+The report embeds:
+
+- `lanes` - status of runtime, tool-contract, acceptance, and optional desktop-e2e.
+- `doctor` - aggregated counts from `harness-catalog/doctor.json`.
+- `ci` - every `harness:ci` step with command, status, exit code, and duration.
+  Replaces the previous standalone `ci-summary.json`.
+- `artifactValidation` - schema integrity checks for lane manifests, JUnit,
+  catalog, doctor, aggregate report, and bundle manifest. Replaces the previous
+  standalone `artifact-validation.json`.
+- `failures` - unified triage list aggregating failed CI steps, failed/missing
+  required lanes, and failed artifact-validation checks, each with a rerun
+  command when one is known. Replaces the previous standalone `triage.json`.
+
 The report fails when a required lane manifest is missing, a required lane
-failed, or doctor reports a failed check. Missing desktop E2E is treated as
-optional because that lane only runs from manual GitHub Actions dispatch.
+failed, a CI step failed, an artifact validation check failed, or doctor
+reports a failed check. Missing desktop E2E is treated as optional because that
+lane only runs from manual GitHub Actions dispatch.
 
-`harness:ci` also writes these files into the same directory after the aggregate
-report step:
-
-- `ci-summary.json` - machine-readable status for every `harness:ci` step.
-- `ci-summary.md` - human-readable status for every `harness:ci` step.
-
-The CI summary is the source of truth for typecheck, unit test, and UI smoke
-failures that do not map to a lane manifest. After writing the final CI summary,
-`harness:ci` refreshes artifact validation so `artifact-validation.md` reflects
-the final `ci-summary.json`. When one or more CI steps fail, `ci-summary.md`
-also includes a `Failed Steps` section with copy-paste commands for rerunning
-the failed steps locally.
-
-### Failure Triage
-
-After final artifact validation and before retention, `harness:ci` writes a focused triage bundle into
-`.artifacts/harness-report/`:
-
-- `triage.json` - machine-readable failed CI steps, lanes, and artifact checks.
-- `triage.md` - human-readable failure list with commands and artifact paths.
-
-The triage report aggregates failed CI steps, failed or missing required lanes,
-and failed artifact validation checks. Each item includes the most direct
-rerun command when one is known. Successful runs still write an empty triage
-report with `No failures.` so CI uploads always have the same files.
-
-### Artifact Schema Validation
-
-`bun run harness:artifacts` validates the latest harness artifact bundle and
-writes these files into `.artifacts/harness-report/`:
-
-- `artifact-validation.json` - machine-readable artifact validation checks.
-- `artifact-validation.md` - human-readable artifact validation report.
-
-The validator checks required lane manifests, JUnit count consistency, catalog
-shape, doctor status consistency, aggregate report consistency, and
-`ci-summary.json` when it is present. Desktop E2E artifacts are optional because
-that lane is manually dispatched. Failed checks include the artifact path plus
-expected, actual, hint, and a copy-paste command when the validator can identify
-a concrete mismatch.
-
-During `harness:ci`, the final artifact validation also requires a bundle
-manifest and checks stable artifact contracts. The standalone
-`bun run harness:artifacts` command remains usable before the full CI-only
-artifact set exists.
+`bun run harness:report` produces a thinner standalone variant: it reads only
+the latest lane manifests plus doctor output and writes a v2 report with
+`ci: null` and `artifactValidation: null`. This is for local "what's the lane
+status right now?" lookups; the orchestrator's final report is the canonical
+artifact.
 
 ### Artifact Contracts
 
 The following JSON files are stable harness artifact contracts:
 
-- `harness-report/report.json`
-- `harness-report/ci-summary.json`
-- `harness-report/artifact-validation.json`
-- `harness-report/triage.json`
+- `harness-report/report.json` (schemaVersion 2)
 - `harness-report/retention.json`
 - `harness-report/history.json`
 - `harness-report/bundle-manifest.json`
@@ -287,6 +260,10 @@ consumer-facing protocol. Adding, removing, or renaming a top-level field should
 bump `schemaVersion` and update the contract tests in `@vulture/harness-core`.
 Nested fields inside arrays such as `checks`, `items`, `steps`, and `files`
 remain diagnostic payloads unless they are documented by a narrower contract.
+
+Standalone `ci-summary.json`, `artifact-validation.json`, and `triage.json` no
+longer exist; their content is now embedded in `report.json` as the `ci`,
+`artifactValidation`, and `failures` blocks respectively.
 
 ### Bundle Manifest
 
@@ -323,13 +300,13 @@ an old snapshot.
 After retention, `harness:ci` writes `.artifacts/harness-report/history.json` and
 `history.md`. The history index includes only retained snapshots and lists each
 snapshot's timestamp, status, archive path, artifact directories, retention
-reason, and direct paths to `report.md`, `ci-summary.md`, and
-`artifact-validation.md` when the snapshot contains `harness-report`.
+reason, and a direct path to the snapshot's `report.md` when the snapshot
+contains `harness-report`.
 
 Negative artifact fixtures live in the `@vulture/harness-core` tests. They
-intentionally corrupt manifests, JUnit counts, doctor checks, aggregate reports,
-and CI summaries to verify failure diagnostics without shipping a default
-failing harness command.
+intentionally corrupt manifests, JUnit counts, doctor checks, and embedded
+ci/artifactValidation/failures blocks to verify failure diagnostics without
+shipping a default failing harness command.
 
 ### Acceptance Artifacts
 
@@ -369,30 +346,78 @@ directories. The bundle contains:
 - `.artifacts/harness-runs`
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
-reports, aggregate `harness-report/report.md`, CI summary, failure triage,
-artifact validation, retention, history, bundle manifest reports, and retained
-historical snapshots together for CI triage. GitHub retains the uploaded bundle
-for 14 days. Local and uploaded historical snapshots live under
-`.artifacts/harness-runs/` and are governed by the retention policy above.
+reports, the unified `harness-report/report.{json,md}`, retention, history,
+bundle manifest reports, and retained historical snapshots together for CI
+triage. GitHub retains the uploaded bundle for 14 days. Local and uploaded
+historical snapshots live under `.artifacts/harness-runs/` and are governed by
+the retention policy above.
 
-Manual GitHub Actions runs can also execute the desktop E2E smoke lane without
-changing the default PR/push CI path:
+The desktop E2E lane runs in two modes:
 
-1. Open the `Harness` workflow in GitHub Actions.
-2. Select `Run workflow`.
-3. Set `runDesktopE2E` to `true`.
-4. Start the run to execute `bun run harness:desktop-e2e -- --tag smoke` on
-   `ubuntu-latest` through `xvfb-run`.
-   The workflow installs Tauri CLI, `tauri-driver`, `webkit2gtk-driver`, Xvfb,
-   and the standard Tauri v2 Linux build dependencies before launching the
-   smoke lane.
+- **Nightly soak** (cron `0 7 * * *`, 07:00 UTC / 15:00 Beijing): runs
+  automatically on `main` so the lane stays exercised even though it does not
+  gate PRs. Failures upload `desktop-e2e-artifacts` and surface as a red status
+  on the workflow runs page.
+- **Manual dispatch**: open the `Harness` workflow, click `Run workflow`, set
+  `runDesktopE2E` to `true`, and start the run. Behaves like nightly but
+  triggered on demand. When `runDesktopE2E` stays `false`, the manual run
+  skips desktop E2E and only runs the `harness` job.
 
-When `runDesktopE2E` stays `false`, the manual run behaves like the default CI
-path and only runs the `harness` job.
+Both modes execute `bun run harness:desktop-e2e -- --tag smoke` on
+`ubuntu-latest` through `xvfb-run`. The workflow installs Tauri CLI,
+`tauri-driver`, `webkit2gtk-driver`, Xvfb, and the standard Tauri v2 Linux
+build dependencies before launching the smoke lane.
 
 Both GitHub Actions jobs have explicit timeouts so a stuck harness process does
 not consume a runner indefinitely: 30 minutes for the default harness job and 60
-minutes for the optional desktop E2E lane.
+minutes for the desktop E2E lane.
+
+### Live LLM lane
+
+The `harness:live` lane covers the real OpenAI path that stub-only harnesses
+cannot exercise. A single smoke scenario (`hello-text`) sends one short prompt
+and asserts the assistant returns nonempty text under 200 characters. It runs
+in two situations:
+
+- **Local**: `OPENAI_API_KEY=... bun run harness:live`. Without the key the
+  command exits 0 with an explicit "skipped" message — there is no path that
+  silently bills the user.
+- **GitHub Actions manual dispatch**: open the `Harness` workflow, set
+  `runLiveLlm=true`, and trigger. The job reads `secrets.OPENAI_API_KEY` and
+  uploads `live-llm-artifacts` for 14 days. The job is `if`-gated so it only
+  runs from explicit dispatch — never on PR, push, or schedule.
+
+The live lane writes to `.artifacts/live-harness/` (manifest, junit,
+failure-report, summary, transcripts.jsonl). It is registered in the harness
+lane registry with `required: false`, so its absence from a routine `harness:ci`
+run is treated as expected, not a failure.
+
+Add a new scenario by editing `defaultLiveHarnessScenarios` in
+`apps/gateway/src/harness/liveHarness.ts`. Scenarios should be cheap (one
+small prompt, low max-tokens) and assert behavior that does not depend on
+specific model wording — the assertion runs against a real model whose output
+varies.
+
+### Desktop E2E promotion criteria
+
+Desktop E2E starts as nightly-only. Promote it to PR gating only after **all**
+of the following are observed on `main`:
+
+1. **Stability**: 14 consecutive nightly runs pass.
+2. **Speed**: median wallclock ≤ 8 minutes (workflow shows ~10–20 min today
+   from cold-cache CI).
+3. **Flake rate**: < 5% across the prior 30 nightly runs (a flake = a failure
+   that disappears on a clean rerun without code change).
+4. **Cost**: nightly cron does not regularly bump up against the 60-minute
+   timeout.
+
+Only when **all four** are met for two consecutive weeks should the lane move
+into the default `harness` job (or its own job) and become a PR blocker.
+Document the promotion in the PR that flips the gate so the bar is auditable.
+
+Demotion: if any criterion regresses for more than 7 nightly runs after
+promotion, demote the lane back to nightly-only and open a tracking issue
+before merging further desktop-ui changes that depend on the gate.
 
 ## Desktop E2E
 
