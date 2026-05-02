@@ -7838,23 +7838,41 @@ pre {
   gap: 10px;
   align-items: center;
   min-height: 52px;
-  padding: 10px;
-  border: 1px solid var(--fill-tertiary);
+  padding: 10px 12px;
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
+  box-shadow: var(--shadow-card-rest);
   cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out),
-              background-color var(--duration-fast) var(--ease-out);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 .agent-handoff-row:hover {
-  border-color: var(--text-tertiary);
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+.agent-handoff-row:active { transform: translateY(0); }
+/* The label wraps the native checkbox, so focus-within is what the
+ * keyboard-driven user actually sees when they tab onto the row. */
+.agent-handoff-row:focus-within {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .agent-handoff-row-checked {
   border-color: var(--brand-500);
-  background: var(--brand-050);
+  background: color-mix(in oklab, var(--brand-500) 8%, var(--bg-primary));
+}
+.agent-handoff-row-checked:hover {
+  background: color-mix(in oklab, var(--brand-500) 12%, var(--bg-primary));
 }
 .agent-handoff-row input {
   margin: 0;
+  accent-color: var(--brand-500);
 }
 .agent-handoff-avatar {
   display: inline-grid; place-items: center;
@@ -7880,6 +7898,41 @@ pre {
   white-space: nowrap;
   color: var(--text-tertiary);
   font-size: 12px;
+}
+.agent-handoff-empty {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 0.5px dashed var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+.agent-handoff-empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--fill-tertiary);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.agent-handoff-empty-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.agent-handoff-empty-text strong {
+  font-size: 13px;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+.agent-handoff-empty-text span {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
 }
 
 /* Round 14: Skills field preview chips. The OverviewTab Skills text

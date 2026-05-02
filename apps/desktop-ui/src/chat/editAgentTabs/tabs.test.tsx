@@ -294,4 +294,63 @@ describe("CoreTab", () => {
     const seeded = onChangeFileContent.mock.calls[0]![0] as string;
     expect(seeded.length).toBeGreaterThan(0);
   });
+
+  test("Esc closes the 风格 popover and returns focus to the trigger", () => {
+    render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /风格/ });
+    fireEvent.click(trigger);
+    // Menu open + first item auto-focused.
+    const menu = screen.getByRole("menu");
+    expect(menu).toBeDefined();
+    expect(document.activeElement?.getAttribute("role")).toBe("menuitem");
+
+    // Esc dismisses + focus returns to trigger.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  test("ArrowDown / ArrowUp cycle through 风格 menuitems", () => {
+    render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /风格/ }));
+    const items = screen.getAllByRole("menuitem");
+    expect(items.length).toBeGreaterThan(1);
+    // First item is auto-focused.
+    expect(document.activeElement).toBe(items[0]);
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+
+    // ArrowUp from the second wraps back to the first.
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[0]);
+
+    // ArrowUp from the first wraps to the last.
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[items.length - 1]);
+  });
 });

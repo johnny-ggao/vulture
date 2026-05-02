@@ -18,6 +18,26 @@ export interface HandoffTabProps {
  * name + description — but it now lives on its own tab and gets a hero
  * description that explains the model's role in suggesting handoffs.
  */
+function HandoffEmptyIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="7" cy="7" r="2.4" />
+      <circle cx="17" cy="17" r="2.4" />
+      <path d="M9 8.5h6a3.5 3.5 0 0 1 0 7H9" />
+    </svg>
+  );
+}
+
 export function HandoffTab({ draft, agentId, agents, onChange }: HandoffTabProps) {
   const handoffCandidates = agents.filter((agent) => agent.id !== agentId);
 
@@ -32,7 +52,17 @@ export function HandoffTab({ draft, agentId, agents, onChange }: HandoffTabProps
           </p>
         </div>
         {handoffCandidates.length === 0 ? (
-          <div className="tool-group-empty">没有其他智能体可选</div>
+          <div className="agent-handoff-empty" role="note">
+            <span className="agent-handoff-empty-icon" aria-hidden="true">
+              <HandoffEmptyIcon />
+            </span>
+            <div className="agent-handoff-empty-text">
+              <strong>暂无其他智能体可作为协作目标</strong>
+              <span>
+                先在「智能体」页创建另一个智能体，再回到这里勾选它。
+              </span>
+            </div>
+          </div>
         ) : (
           <div className="agent-handoff-list">
             {handoffCandidates.map((agent) => {
