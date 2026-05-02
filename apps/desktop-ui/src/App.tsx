@@ -700,6 +700,7 @@ export function App() {
         label: "取消当前运行",
         group: "操作",
         keywords: ["cancel", "stop", "abort", "取消"],
+        shortcut: ["⌘", "."],
         execute: () => runController.cancel(),
       });
     }
