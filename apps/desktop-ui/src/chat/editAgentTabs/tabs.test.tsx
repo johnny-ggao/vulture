@@ -219,7 +219,7 @@ describe("CoreTab", () => {
         onSave={() => {}}
       />,
     );
-    const noSel = screen.getByRole("button", { name: "保存文件" }) as HTMLButtonElement;
+    const noSel = screen.getByRole("button", { name: "保存" }) as HTMLButtonElement;
     expect(noSel.disabled).toBe(true);
 
     rerender(
@@ -235,7 +235,7 @@ describe("CoreTab", () => {
         onSave={() => {}}
       />,
     );
-    const busy = screen.getByRole("button", { name: "处理中..." }) as HTMLButtonElement;
+    const busy = screen.getByRole("button", { name: "保存中…" }) as HTMLButtonElement;
     expect(busy.disabled).toBe(true);
   });
 

@@ -326,7 +326,7 @@ export function McpSection(props: SettingsPageProps) {
                     disabled={busy !== null}
                     onClick={() => reconnect(server)}
                   >
-                    {isLocallyBusy && !expanded ? "处理中…" : "重连"}
+                    {isLocallyBusy && !expanded ? "重连中…" : "重连"}
                   </button>
                   <button
                     type="button"

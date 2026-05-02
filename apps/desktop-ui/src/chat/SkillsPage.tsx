@@ -516,7 +516,17 @@ function SkillCatalogCard({
         aria-label={actionLabel}
         onClick={onInstall}
       >
-        {busy ? "处理中…" : skill.lifecycleStatus === "outdated" ? "更新" : skill.installed ? "重装" : "安装"}
+        {busy
+          ? skill.lifecycleStatus === "outdated"
+            ? "更新中…"
+            : skill.installed
+              ? "重装中…"
+              : "安装中…"
+          : skill.lifecycleStatus === "outdated"
+            ? "更新"
+            : skill.installed
+              ? "重装"
+              : "安装"}
       </button>
     </article>
   );

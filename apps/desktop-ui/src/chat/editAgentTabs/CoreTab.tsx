@@ -42,7 +42,7 @@ export function CoreTab(props: CoreTabProps) {
             disabled={!props.selectedFile || props.fileBusy}
             onClick={props.onSave}
           >
-            {props.fileBusy ? "处理中..." : "保存文件"}
+            {props.fileBusy ? "保存中…" : "保存"}
           </button>
         </div>
 
