@@ -1,3 +1,5 @@
+import { BrandMark } from "./components";
+
 export interface OnboardingCardProps {
   onSignInWithChatGPT: () => Promise<void>;
   onFocusApiKey: () => void;
@@ -6,7 +8,9 @@ export interface OnboardingCardProps {
 export function OnboardingCard(props: OnboardingCardProps) {
   return (
     <div className="onboarding-card">
-      <div className="hero-mark">V</div>
+      <div className="hero-mark">
+        <BrandMark size={64} />
+      </div>
       <h2>Vulture</h2>
       <p>选择登录方式开始使用</p>
       <div className="onboarding-actions">

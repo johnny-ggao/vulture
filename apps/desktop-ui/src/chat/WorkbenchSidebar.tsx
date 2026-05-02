@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { BrandMark } from "./components";
 
 export type ViewKey =
   | "chat"
@@ -35,7 +36,9 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
         onClick={() => props.onSelectView("chat")}
         aria-label="Vulture Work 首页"
       >
-        <span className="sidebar-brand-mark">V</span>
+        <span className="sidebar-brand-mark">
+          <BrandMark size={30} />
+        </span>
         <span className="sidebar-brand-text">Vulture</span>
       </button>
 

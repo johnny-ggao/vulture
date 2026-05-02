@@ -10,6 +10,7 @@ import { MessageBubble } from "./MessageBubble";
 import { RunEventStream } from "./RunEventStream";
 import { SubagentSessionPanel } from "./SubagentSessionPanel";
 import { useStickyBottomScroll } from "./useStickyBottomScroll";
+import { BrandMark } from "./components";
 
 export interface ChatViewProps {
   agents: ReadonlyArray<{ id: string; name: string }>;
@@ -156,11 +157,11 @@ export function ChatView(props: ChatViewProps) {
         ) : (
           <div className="empty-state">
             <div className="hero-mark" aria-hidden="true">
-              {/* When an agent is active, drop the "V" in favour of the
-               * agent's first character — feels personal, mirrors the
-               * kit's "你好，<agent name>" empty hero. Falls back to
-               * the brand "V" when no agent is selected yet. */}
-              {activeAgent ? firstGlyph(activeAgent.name) : "V"}
+              {/* When an agent is active, drop the brand mark in favour
+               * of the agent's first glyph — feels personal, mirrors
+               * the kit's "你好，<agent name>" empty hero. Falls back
+               * to the vulture brand icon when no agent is selected. */}
+              {activeAgent ? firstGlyph(activeAgent.name) : <BrandMark size={64} />}
             </div>
             <h2>
               {activeAgent ? `你好，${activeAgent.name}` : "Vulture"}

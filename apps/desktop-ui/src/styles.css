@@ -407,6 +407,43 @@ pre {
 .tb-zoom     { background: #28c840; }
 
 /* ============================================================
+ * Brand mark image — wraps the app icon raster.
+ *
+ * Used inside any "this is Vulture" badge (sidebar, onboarding,
+ * empty-state, etc.). The image fills its wrapping span exactly
+ * and is clipped to a rounded square with a hairline ring so the
+ * icon visually reads as an "app icon" (Apple HIG icon contour
+ * pattern). Image-rendering is left to the browser — at @2x the
+ * 512 srcSet gets picked, so the 30/64px footprints stay crisp.
+ * ============================================================ */
+.brand-mark-img {
+  display: inline-grid;
+  place-items: center;
+  position: relative;
+  border-radius: 22%;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow:
+    inset 0 0 0 0.5px rgba(15, 15, 15, 0.10),
+    0 1px 2px rgba(15, 15, 15, 0.08);
+}
+.brand-mark-img > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+@media (prefers-color-scheme: dark) {
+  .brand-mark-img {
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.12),
+      0 1px 2px rgba(0, 0, 0, 0.30);
+  }
+}
+
+/* ============================================================
  * Sidebar (workbench-faithful, with primary nav)
  * ============================================================ */
 
@@ -455,6 +492,9 @@ pre {
   flex-shrink: 0;
   width: 30px; height: 30px;
   border-radius: 8px;
+  /* When the mark holds an image (the new vulture icon), drop the
+   * gradient backplate so the icon's own palette can show through.
+   * The brand-mark-img inside renders rounded with a hairline ring. */
   /* Subtle brand gradient + warm inner highlight so the mark reads
    * as "branded" rather than a flat coloured square. The lift
    * comes from a 1px inset white highlight (top edge) + a 4px
@@ -8829,75 +8869,42 @@ pre {
   height: 48px;
   position: relative;
   margin: -1px -17px 28px; /* extend to card edge + room for avatar */
-  /* Per-card identity painted entirely by CSS:
-   *   - base: diagonal hue gradient (primary tint)
-   *   - layer 2: complementary hue radial blob in upper-right (depth)
-   *   - layer 3: fine dot grid (texture, like Linear's app-card watermarks)
-   *   - layer 4: soft-light gloss in upper-left (subtle highlight)
-   * Driven by a single inline `--banner-hue` so each agent gets its own
-   * deterministic palette without inline SVG / gradient ids. */
+  /* Restrained per-card identity — desaturated 2-stop diagonal driven
+   * by `--banner-hue` plus a soft top-edge highlight. The earlier
+   * "marketing-card" recipe (dot grid + complementary blob + saturated
+   * pastels) read as web banner; macOS-native cards prefer a quiet
+   * tint that supports the avatar/typography without competing with
+   * them. Identity still shows because hue + saturation differ
+   * between agents — just at half the previous loudness. */
   background:
-    /* gloss highlight */
-    radial-gradient(
-      120% 80% at 0% -20%,
-      rgba(255, 255, 255, 0.55) 0%,
-      rgba(255, 255, 255, 0)    55%
+    /* gloss highlight — sits over the gradient at low alpha so the
+     * top edge of the card visibly catches light, NSWindow style. */
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.32) 0%,
+      rgba(255, 255, 255, 0)    52%
     ),
-    /* dot grid texture */
-    radial-gradient(
-      circle at 1.5px 1.5px,
-      hsla(calc(var(--banner-hue, 0) * 1deg) 50% 38% / 0.18) 1px,
-      transparent 1.5px
-    ),
-    /* complementary radial blob (analogous +60deg) */
-    radial-gradient(
-      80% 100% at 100% 0%,
-      hsl(calc((var(--banner-hue, 0) + 60) * 1deg) 70% 84%) 0%,
-      transparent 70%
-    ),
-    /* base diagonal */
+    /* base diagonal at reduced saturation */
     linear-gradient(
       135deg,
-      hsl(calc(var(--banner-hue, 0) * 1deg) 70% 88%) 0%,
-      hsl(calc((var(--banner-hue, 0) + 28) * 1deg) 60% 78%) 100%
+      hsl(calc(var(--banner-hue, 0) * 1deg) 38% 92%) 0%,
+      hsl(calc((var(--banner-hue, 0) + 24) * 1deg) 32% 84%) 100%
     );
-  background-size:
-    100% 100%,
-    14px 14px,
-    100% 100%,
-    100% 100%;
-  background-blend-mode: normal, normal, screen, normal;
   overflow: hidden;
 }
 @media (prefers-color-scheme: dark) {
   .agent-card-banner {
     background:
-      radial-gradient(
-        120% 80% at 0% -20%,
-        rgba(255, 255, 255, 0.10) 0%,
-        rgba(255, 255, 255, 0)    55%
-      ),
-      radial-gradient(
-        circle at 1.5px 1.5px,
-        hsla(calc(var(--banner-hue, 0) * 1deg) 60% 70% / 0.22) 1px,
-        transparent 1.5px
-      ),
-      radial-gradient(
-        80% 100% at 100% 0%,
-        hsl(calc((var(--banner-hue, 0) + 60) * 1deg) 50% 32%) 0%,
-        transparent 70%
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.06) 0%,
+        rgba(255, 255, 255, 0)    52%
       ),
       linear-gradient(
         135deg,
-        hsl(calc(var(--banner-hue, 0) * 1deg) 45% 26%) 0%,
-        hsl(calc((var(--banner-hue, 0) + 28) * 1deg) 40% 18%) 100%
+        hsl(calc(var(--banner-hue, 0) * 1deg) 28% 28%) 0%,
+        hsl(calc((var(--banner-hue, 0) + 24) * 1deg) 24% 20%) 100%
       );
-    background-size:
-      100% 100%,
-      14px 14px,
-      100% 100%,
-      100% 100%;
-    background-blend-mode: normal, normal, screen, normal;
   }
 }
 /* Round 13 — avatar floats centred below the banner edge. The white
