@@ -126,11 +126,11 @@ describe("agent runtime harness", () => {
     }
   });
 
-  test("runs the subagent suggestion confirmation scenario", async () => {
+  test("runs the subagent result recovery scenario", async () => {
     const artifactDir = mkdtempSync(join(tmpdir(), "vulture-runtime-harness-"));
     try {
       const scenarios = filterRuntimeHarnessScenarios(defaultRuntimeHarnessScenarios, {
-        scenarios: ["subagent-suggestion-confirmation"],
+        scenarios: ["subagent-result-recovery"],
       });
 
       const results = await runRuntimeHarness({
@@ -145,6 +145,9 @@ describe("agent runtime harness", () => {
         "tool.planned",
         "tool.started",
         "tool.completed",
+        "tool.planned",
+        "tool.started",
+        "tool.completed",
         "run.completed",
       ]);
       expect(results[0]?.toolCalls).toEqual([
@@ -156,7 +159,18 @@ describe("agent runtime harness", () => {
             title: "Audit prompt and harness readiness",
           }),
         }),
+        expect.objectContaining({
+          tool: "sessions_yield",
+          input: expect.objectContaining({
+            parentRunId: "runtime-subagent-result-recovery",
+          }),
+        }),
       ]);
+      expect(results[0]?.events.at(-1)).toMatchObject({
+        type: "run.completed",
+        finalText:
+          "Subagent result integrated: Audit prompt and harness readiness - Inspect prompt injection order and harness coverage, then return concise findings. -> Runtime, tool contract, and product acceptance lanes are covered.",
+      });
     } finally {
       rmSync(artifactDir, { recursive: true, force: true });
     }
@@ -174,7 +188,7 @@ describe("agent runtime harness", () => {
         tags: ["subagents"],
         scenarios: [],
       }).map((scenario) => scenario.id),
-    ).toContain("subagent-suggestion-confirmation");
+    ).toContain("subagent-result-recovery");
 
     expect(
       filterRuntimeHarnessScenarios(defaultRuntimeHarnessScenarios, {

@@ -145,13 +145,15 @@ export const defaultRuntimeHarnessScenarios: RuntimeHarnessScenario[] = [
     },
   },
   {
-    id: "subagent-suggestion-confirmation",
-    name: "Subagent suggestion confirmation",
-    description: "Models the parent agent autonomously suggesting a subagent and proceeding after sessions_spawn approval.",
+    id: "subagent-result-recovery",
+    name: "Subagent result recovery",
+    description:
+      "Models the parent agent spawning a child, recovering the completed child result through sessions_yield, and integrating it into the final answer.",
     tags: ["runtime", "subagents", "approval", "product"],
     expectedStatus: "succeeded",
-    expectedFinalText: "subagent summary integrated",
-    llm: () => async function* () {
+    expectedFinalText:
+      "Subagent result integrated: Audit prompt and harness readiness - Inspect prompt injection order and harness coverage, then return concise findings. -> Runtime, tool contract, and product acceptance lanes are covered.",
+    llm: () => async function* (input) {
       const toolInput = {
         agentId: "researcher",
         label: "Researcher",
@@ -159,15 +161,74 @@ export const defaultRuntimeHarnessScenarios: RuntimeHarnessScenario[] = [
         message: "Inspect prompt injection order and harness coverage, then return concise findings.",
       };
       yield { kind: "tool.plan", callId: "c-subagent-spawn", tool: "sessions_spawn", input: toolInput };
-      const result = yield { kind: "await.tool", callId: "c-subagent-spawn" };
-      if ((result as { sessionId?: string }).sessionId !== "subagent-1") {
-        throw new Error("subagent-suggestion-confirmation expected spawned session");
+      const spawn = yield { kind: "await.tool", callId: "c-subagent-spawn" };
+      if ((spawn as { sessionId?: string }).sessionId !== "subagent-1") {
+        throw new Error("subagent-result-recovery expected spawned session");
       }
-      yield { kind: "final", text: "subagent summary integrated" };
+
+      yield {
+        kind: "tool.plan",
+        callId: "c-subagent-yield",
+        tool: "sessions_yield",
+        input: { parentRunId: input.runId },
+      };
+      const yielded = yield { kind: "await.tool", callId: "c-subagent-yield" };
+      const completed = (yielded as {
+        completed?: Array<{
+          sessionId?: string;
+          title?: string | null;
+          task?: string | null;
+          resultSummary?: string | null;
+        }>;
+      }).completed;
+      const recovered = completed?.[0];
+      if (
+        recovered?.sessionId !== "subagent-1" ||
+        recovered.title !== toolInput.title ||
+        recovered.task !== toolInput.message ||
+        recovered.resultSummary !== "Runtime, tool contract, and product acceptance lanes are covered."
+      ) {
+        throw new Error("subagent-result-recovery expected completed child result metadata");
+      }
+
+      yield {
+        kind: "final",
+        text:
+          `Subagent result integrated: ${recovered.title} - ${recovered.task} -> ${recovered.resultSummary}`,
+      };
     },
     tool: async (call) => {
-      if (call.tool !== "sessions_spawn") throw new Error(`unexpected tool ${call.tool}`);
-      return { sessionId: "subagent-1", conversationId: "c-subagent", runId: "r-subagent" };
+      if (call.tool === "sessions_spawn") {
+        return { sessionId: "subagent-1", conversationId: "c-subagent", runId: "r-subagent" };
+      }
+      if (call.tool === "sessions_yield") {
+        return {
+          active: [],
+          completed: [
+            {
+              sessionId: "subagent-1",
+              agentId: "researcher",
+              title: "Audit prompt and harness readiness",
+              task: "Inspect prompt injection order and harness coverage, then return concise findings.",
+              resultSummary: "Runtime, tool contract, and product acceptance lanes are covered.",
+            },
+          ],
+          failed: [],
+          items: [
+            {
+              id: "subagent-1",
+              agentId: "researcher",
+              title: "Audit prompt and harness readiness",
+              task: "Inspect prompt injection order and harness coverage, then return concise findings.",
+              status: "completed",
+              resultSummary: "Runtime, tool contract, and product acceptance lanes are covered.",
+              lastError: null,
+            },
+          ],
+          activeRuns: [],
+        };
+      }
+      throw new Error(`unexpected tool ${call.tool}`);
     },
   },
 ];
