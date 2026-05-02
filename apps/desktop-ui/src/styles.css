@@ -1691,6 +1691,13 @@ pre {
   background: var(--fill-tertiary);
   color: var(--text-primary);
 }
+.composer-attachment-remove:active { background: var(--fill-secondary); }
+.composer-attachment-remove:focus-visible {
+  outline: 0;
+  background: var(--fill-tertiary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 
 .composer-dropzone {
   position: absolute;
@@ -5131,19 +5138,25 @@ pre {
   gap: 8px;
   align-items: start;
   padding: 12px 14px;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-primary);
   cursor: pointer;
   min-height: 0;
+  box-shadow: var(--shadow-card-rest);
   transition:
-    border-color var(--duration-medium) var(--ease-standard),
-    background-color var(--duration-medium) var(--ease-standard);
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
-.tool-capability:hover { border-color: var(--fill-secondary); }
+.tool-capability:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
+  box-shadow: var(--shadow-card-hover);
+}
 .tool-capability:focus-visible {
   outline: 0;
+  border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .tool-capability[data-tinted="true"] {
@@ -5181,7 +5194,7 @@ pre {
   display: grid;
   gap: 8px;
   align-content: start;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   background: var(--bg-primary);
