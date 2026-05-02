@@ -8202,6 +8202,11 @@ pre {
   transition: background-color var(--duration-fast) var(--ease-out);
 }
 .agent-core-style-item:hover { background: var(--fill-quaternary); }
+.agent-core-style-item:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 .agent-core-style-item-name { font-size: 13px; font-weight: 600; }
 .agent-core-style-item-snippet {
   font-size: 11.5px;
@@ -9562,7 +9567,23 @@ pre {
   border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
-.agent-avatar-regenerate > svg { display: block; }
+.agent-avatar-regenerate-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.agent-avatar-regenerate-icon > svg { display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  /* Replays per click because OverviewTab bumps a key prop, forcing
+   * a remount of this span — keyframes only run once per mount. */
+  .agent-avatar-regenerate-icon {
+    animation: avatar-regenerate-spin 420ms var(--ease-spring) both;
+  }
+}
+@keyframes avatar-regenerate-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 .agent-avatar-picker-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

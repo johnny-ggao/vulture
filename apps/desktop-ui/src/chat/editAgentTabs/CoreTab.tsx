@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentCoreFile } from "../../api/agents";
 import { PERSONA_STARTERS } from "./personaStarters";
 
@@ -173,6 +173,48 @@ function StyleApplyMenu({ onApply, disabled, hasContent }: StyleApplyMenuProps) 
     () => `agent-core-style-${Math.random().toString(36).slice(2, 8)}`,
     [],
   );
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Esc closes the menu and returns focus to the trigger so keyboard
+  // users don't get stranded at document.body. Arrow keys cycle
+  // through the menuitems while the menu is open.
+  useEffect(() => {
+    if (!open) return;
+    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>(
+      "[role='menuitem']",
+    );
+    firstItem?.focus({ preventScroll: true });
+
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const items = Array.from(
+          menuRef.current?.querySelectorAll<HTMLButtonElement>(
+            "[role='menuitem']",
+          ) ?? [],
+        );
+        if (items.length === 0) return;
+        const currentIdx = items.findIndex(
+          (el) => el === document.activeElement,
+        );
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        const nextIdx =
+          currentIdx === -1
+            ? 0
+            : (currentIdx + delta + items.length) % items.length;
+        event.preventDefault();
+        items[nextIdx]?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   function pick(starter: { label: string; body: string }) {
     if (hasContent) {
@@ -181,17 +223,20 @@ function StyleApplyMenu({ onApply, disabled, hasContent }: StyleApplyMenuProps) 
       );
       if (!ok) {
         setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
         return;
       }
     }
     onApply(starter.body);
     setOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
   }
 
   return (
     <div className="agent-core-style">
       <button
         type="button"
+        ref={triggerRef}
         id={buttonId}
         className="btn-secondary btn-sm agent-core-style-btn"
         aria-haspopup="menu"
@@ -211,6 +256,7 @@ function StyleApplyMenu({ onApply, disabled, hasContent }: StyleApplyMenuProps) 
             onClick={() => setOpen(false)}
           />
           <div
+            ref={menuRef}
             className="agent-core-style-menu"
             role="menu"
             aria-labelledby={buttonId}

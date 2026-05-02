@@ -254,9 +254,15 @@ function AvatarPicker({
     setCategory(initialCategory);
   }, [selected, initialCategory]);
 
+  // Re-roll bookkeeping — bumping `spinKey` re-mounts the regenerate
+  // glyph so its CSS rotation animation replays on each click. Without
+  // this the keyframes only run once per component instance.
+  const [spinKey, setSpinKey] = useState(0);
+
   /** "重新生成" — picks the next preset within the active category
    *  so the user always sees the change without leaving the tab. */
   function regenerate() {
+    setSpinKey((n) => n + 1);
     if (category === "icon") {
       const idx = AVATAR_PRESETS.findIndex((p) => p.key === selected);
       const next =
@@ -285,7 +291,13 @@ function AvatarPicker({
           aria-label="重新生成头像"
           title="重新生成"
         >
-          <RegenerateIcon />
+          <span
+            key={spinKey}
+            className="agent-avatar-regenerate-icon"
+            aria-hidden="true"
+          >
+            <RegenerateIcon />
+          </span>
           <span>重新生成</span>
         </button>
       </div>
