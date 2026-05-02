@@ -5839,9 +5839,10 @@ pre {
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-card-rest);
   transition:
     border-color var(--duration-medium) var(--ease-standard),
     box-shadow   var(--duration-medium) var(--ease-standard),
@@ -8731,10 +8732,12 @@ pre {
    * identity treatment, but compacts the rhythm to match the kit's
    * dense workbench feel: shorter banner (48px), 2-line desc clamp,
    * 184px floor (was 248). Bigger libraries now fit more cards on
-   * screen without sacrificing the per-agent banner colour story. */
+   * screen without sacrificing the per-agent banner colour story.
+   * Edge sits on the unified `--glass-border` family so the card
+   * boundary rhymes with the rest of the chrome. */
   position: relative;
   background: var(--bg-primary);
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: 16px;
   overflow: hidden;
   min-height: 184px;
