@@ -6433,6 +6433,242 @@ pre {
   color: var(--text-secondary);
   font-size: 13px;
 }
+/* ============================================================
+ * MCP server cards (Round 7) — replace the single-column server
+ * list with a tile grid. Each card shows name + status, command,
+ * and a foot row of controls. Clicking 工具 expands an inline
+ * panel under the foot listing the server's exposed tools with
+ * checkbox toggles and 全部/只读/全部关闭 presets. The grid
+ * auto-rows around the expanded card so other cards keep their
+ * resting height. The legacy .mcp-server-list / .mcp-server
+ * classnames are kept as no-ops in case any preview HTML still
+ * renders the older shape.
+ * ============================================================ */
+.mcp-card-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.mcp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-card-rest);
+  transition: border-color var(--duration-medium) var(--ease-standard),
+              box-shadow var(--duration-medium) var(--ease-standard);
+}
+.mcp-card:hover {
+  border-color: var(--text-quaternary);
+  box-shadow: var(--shadow-card-hover);
+}
+.mcp-card-off { opacity: 0.78; }
+.mcp-card-off:hover { opacity: 1; }
+.mcp-card-expanded {
+  /* Expanded card spans the full row so its tool list can
+   * breathe without crushing siblings. CSS Grid: setting
+   * grid-column on a child overrides auto-flow placement. */
+  grid-column: 1 / -1;
+}
+
+.mcp-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+.mcp-card-titles { display: grid; gap: 2px; min-width: 0; }
+.mcp-card-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-card-id {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.mcp-card-id code {
+  font-family: var(--font-mono);
+  background: transparent;
+  padding: 0;
+}
+
+.mcp-card-cmd {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--fill-quaternary);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-card-cmd code {
+  font-family: var(--font-mono);
+  background: transparent;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+.mcp-card-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--fill-quaternary);
+}
+.mcp-card-foot-spacer { flex: 1; min-width: 8px; }
+.mcp-trust-select {
+  height: 28px;
+  padding: 0 24px 0 10px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.mcp-trust-select:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.mcp-tools-btn-active {
+  border-color: var(--brand-500);
+  background: var(--brand-050);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.mcp-card-tools {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 2px;
+  border-top: 1px solid var(--fill-quaternary);
+  animation: mcp-tools-in 200ms var(--ease-out);
+}
+@keyframes mcp-tools-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcp-card-tools { animation: none; }
+}
+
+.mcp-tool-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.mcp-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  /* mask the scroll edges so a long tool list doesn't look chopped */
+  mask-image: linear-gradient(180deg, transparent 0, black 8px, black calc(100% - 8px), transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, black 8px, black calc(100% - 8px), transparent 100%);
+}
+.mcp-tool-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.mcp-tool-row:hover { background: var(--fill-quaternary); }
+.mcp-tool-text { display: grid; gap: 2px; min-width: 0; }
+.mcp-tool-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: transparent;
+  padding: 0;
+}
+.mcp-tool-desc {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+.mcp-tool-empty {
+  margin: 0;
+  padding: 12px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* MCP first-load skeleton */
+.mcp-card-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+}
+.mcp-card-skeleton-line {
+  height: 12px;
+  border-radius: var(--radius-xs);
+  background: linear-gradient(90deg,
+    var(--fill-quaternary) 0%,
+    var(--fill-tertiary) 50%,
+    var(--fill-quaternary) 100%);
+  background-size: 200% 100%;
+  animation: skills-shimmer 1.4s linear infinite;
+}
+.mcp-card-skeleton-line-wide { width: 70%; }
+.mcp-card-skeleton-line-mid  { width: 90%; height: 18px; }
+.mcp-card-skeleton-foot {
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--fill-quaternary);
+  margin-top: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcp-card-skeleton-line { animation: none; background: var(--fill-quaternary); }
+}
+
+/* Stagger entrance for MCP cards */
+@media (prefers-reduced-motion: no-preference) {
+  .mcp-card-grid > .mcp-card {
+    animation: stagger-fade-up var(--duration-medium) var(--ease-out) backwards;
+  }
+  .mcp-card-grid > .mcp-card:nth-child(1) { animation-delay: 0ms; }
+  .mcp-card-grid > .mcp-card:nth-child(2) { animation-delay: 30ms; }
+  .mcp-card-grid > .mcp-card:nth-child(3) { animation-delay: 60ms; }
+  .mcp-card-grid > .mcp-card:nth-child(4) { animation-delay: 90ms; }
+  .mcp-card-grid > .mcp-card:nth-child(n+5) { animation-delay: 120ms; }
+}
+
+/* Legacy mcp-server-list classes — kept as defensive fallbacks if
+ * any preview HTML or older render path still ships them. The new
+ * card grid is the canonical path. */
 .mcp-server-list { display: grid; gap: 10px; }
 .mcp-server {
   border: 1px solid var(--fill-tertiary);
@@ -6441,47 +6677,6 @@ pre {
   display: grid;
   gap: 10px;
   background: var(--bg-primary);
-}
-.mcp-server-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-.mcp-server-meta { min-width: 0; }
-.mcp-server-name { font-weight: 650; color: var(--text-primary); }
-.mcp-server-cmd {
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-family: var(--font-mono);
-  word-break: break-all;
-}
-.mcp-server-error {
-  color: var(--danger);
-  font-size: 12px;
-  word-break: break-word;
-}
-.mcp-server-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.mcp-tool-list { display: grid; gap: 6px; }
-.mcp-tool-presets { display: flex; flex-wrap: wrap; gap: 8px; }
-.mcp-tool-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.mcp-tool-name {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  background: transparent;
-  padding: 0;
 }
 
 .profile-create { display: flex; align-items: end; gap: 8px; }
