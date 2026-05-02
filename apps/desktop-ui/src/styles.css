@@ -7158,7 +7158,7 @@ pre {
   text-align: left;
   padding: 14px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   background: var(--bg-primary);
   color: var(--text-primary);
   cursor: pointer;
@@ -7167,15 +7167,27 @@ pre {
   gap: 12px;
   align-items: center;
   min-height: 0;
-  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+  box-shadow: var(--shadow-card-rest);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
-.new-agent-template:hover { background: var(--fill-quaternary); }
+.new-agent-template:hover {
+  background: var(--fill-quaternary);
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+.new-agent-template:active { transform: translateY(0); }
 .new-agent-template.selected {
   border-color: var(--brand-500);
   background: var(--brand-050);
 }
 .new-agent-template:focus-visible {
   outline: 0;
+  border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .new-agent-template-icon {
