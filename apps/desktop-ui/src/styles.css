@@ -6916,10 +6916,12 @@ pre {
   background: var(--fill-quaternary);
   overflow: hidden;
   flex-shrink: 0;
+  border-radius: 9999px;
 }
 .new-agent-progress-bar {
   height: 100%;
-  background: var(--brand-500);
+  background: linear-gradient(90deg, var(--brand-500), var(--brand-600));
+  border-radius: 9999px;
   transition: width var(--duration-slow) var(--ease-standard);
 }
 .new-agent-body { padding: 0; }
@@ -6952,6 +6954,12 @@ pre {
   transition: background-color 120ms ease, color 120ms ease;
 }
 .new-agent-rail-item:hover { background: var(--fill-quaternary); color: var(--text-primary); }
+.new-agent-rail-item:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 .new-agent-rail-item.active {
   background: var(--brand-050);
   color: var(--brand-600);
@@ -6994,9 +7002,9 @@ pre {
 .new-agent-step-head { display: grid; gap: 6px; }
 .new-agent-step-title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.022em;
   color: var(--text-primary);
 }
 .new-agent-step-subtitle {
