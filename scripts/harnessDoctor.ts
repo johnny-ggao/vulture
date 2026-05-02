@@ -8,7 +8,7 @@ import {
   writeHarnessCatalog,
   writeHarnessDoctorReport,
   type HarnessDoctorRule,
-} from "../packages/harness-core/src/index";
+} from "@vulture/harness-core";
 import { harnessCatalogLanes } from "./harnessCatalog";
 
 const REQUIRED_RULES: HarnessDoctorRule[] = [

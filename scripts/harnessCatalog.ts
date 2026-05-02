@@ -3,7 +3,7 @@ import {
   findHarnessRepoRoot,
   writeHarnessCatalog,
   type HarnessCatalogLane,
-} from "../packages/harness-core/src/index";
+} from "@vulture/harness-core";
 import { desktopScenarios } from "../apps/desktop-e2e/src/scenarios";
 import { defaultAcceptanceScenarios } from "../apps/gateway/src/harness/acceptanceSuite";
 import { defaultRuntimeHarnessScenarios } from "../apps/gateway/src/harness/runtimeHarness";

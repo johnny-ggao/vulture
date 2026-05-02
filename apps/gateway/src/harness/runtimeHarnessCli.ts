@@ -1,8 +1,7 @@
-import { join, resolve } from "node:path";
 import {
-  findHarnessRepoRoot,
   formatHarnessListLine,
   parseHarnessCliArgs,
+  runHarnessLaneCli,
 } from "@vulture/harness-core";
 import {
   defaultRuntimeHarnessScenarios,
@@ -10,40 +9,6 @@ import {
   runRuntimeHarness,
   summarizeRuntimeHarnessResults,
 } from "./runtimeHarness";
-
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const scenarios = filterRuntimeHarnessScenarios(defaultRuntimeHarnessScenarios, {
-    scenarios: args.ids,
-    tags: args.tags,
-  });
-  if (args.list) {
-    for (const scenario of scenarios) {
-      console.log(formatHarnessListLine(scenario));
-    }
-    return;
-  }
-
-  const repoRoot = findHarnessRepoRoot(process.cwd());
-  const artifactDir = resolve(
-    args.artifactDir ??
-      process.env.VULTURE_RUNTIME_HARNESS_ARTIFACT_DIR ??
-      join(repoRoot, ".artifacts", "runtime-harness"),
-  );
-  const workspacePath = resolve(
-    process.env.VULTURE_RUNTIME_HARNESS_WORKSPACE_DIR ?? repoRoot,
-  );
-  const results = await runRuntimeHarness({ artifactDir, scenarios, workspacePath });
-  const summary = summarizeRuntimeHarnessResults(results);
-
-  for (const result of results) {
-    const marker = result.status === "passed" ? "PASS" : "FAIL";
-    console.log(`${marker} ${result.scenarioId}`);
-    if (result.error) console.log(`  ${result.error}`);
-  }
-  console.log(`Runtime harness: ${summary.passed}/${summary.total} passed`);
-  process.exitCode = summary.status === "passed" ? 0 : 1;
-}
 
 export function parseArgs(args: readonly string[]): {
   list: boolean;
@@ -57,4 +22,35 @@ export function parseArgs(args: readonly string[]): {
   });
 }
 
-await main();
+await runHarnessLaneCli({
+  parseOptions: {
+    idEnv: "VULTURE_RUNTIME_HARNESS_SCENARIOS",
+    tagEnv: "VULTURE_RUNTIME_HARNESS_TAGS",
+  },
+  scenarios: defaultRuntimeHarnessScenarios,
+  filter: (scenarios, { ids, tags }) =>
+    filterRuntimeHarnessScenarios(scenarios, { scenarios: [...ids], tags: [...tags] }),
+  formatListLine: formatHarnessListLine,
+  artifactDirEnv: "VULTURE_RUNTIME_HARNESS_ARTIFACT_DIR",
+  artifactDirSubdir: "runtime-harness",
+  workspaceDirEnv: "VULTURE_RUNTIME_HARNESS_WORKSPACE_DIR",
+  laneTitle: "Runtime harness",
+  run: async ({ scenarios, artifactDir, workspacePath }) => {
+    const results = await runRuntimeHarness({
+      artifactDir,
+      scenarios: [...scenarios],
+      workspacePath,
+    });
+    const summary = summarizeRuntimeHarnessResults(results);
+    return {
+      status: summary.status,
+      total: summary.total,
+      passed: summary.passed,
+      rows: results.map((result) => ({
+        id: result.scenarioId,
+        status: result.status,
+        details: result.error ? [result.error] : [],
+      })),
+    };
+  },
+});

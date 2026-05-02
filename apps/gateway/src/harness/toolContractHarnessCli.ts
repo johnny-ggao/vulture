@@ -1,7 +1,6 @@
-import { join, resolve } from "node:path";
 import {
-  findHarnessRepoRoot,
   parseHarnessCliArgs,
+  runHarnessLaneCli,
 } from "@vulture/harness-core";
 import type { GatewayToolCategory } from "../tools/types";
 import {
@@ -9,43 +8,8 @@ import {
   filterToolContractFixtures,
   runToolContractHarness,
   summarizeToolContractResults,
+  type ToolContractFixture,
 } from "./toolContractHarness";
-
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const fixtures = filterToolContractFixtures(defaultToolContractFixtures, {
-    tools: args.ids,
-    categories: args.tags as GatewayToolCategory[],
-  });
-  if (args.list) {
-    for (const fixture of fixtures) {
-      console.log(`${fixture.toolId}\t${fixture.expectedCategory}\t${fixture.expectedRisk}`);
-    }
-    return;
-  }
-
-  const repoRoot = findHarnessRepoRoot(process.cwd());
-  const artifactDir = resolve(
-    args.artifactDir ??
-      process.env.VULTURE_TOOL_CONTRACT_ARTIFACT_DIR ??
-      join(repoRoot, ".artifacts", "tool-contract-harness"),
-  );
-  const workspacePath = resolve(
-    process.env.VULTURE_TOOL_CONTRACT_WORKSPACE_DIR ?? repoRoot,
-  );
-  const results = await runToolContractHarness({ artifactDir, fixtures, workspacePath });
-  const summary = summarizeToolContractResults(results);
-
-  for (const result of results) {
-    const marker = result.status === "passed" ? "PASS" : "FAIL";
-    console.log(`${marker} ${result.toolId}`);
-    for (const check of result.checks.filter((item) => item.status === "failed")) {
-      console.log(`  ${check.name}: ${check.error}`);
-    }
-  }
-  console.log(`Tool contract harness: ${summary.passed}/${summary.total} passed`);
-  process.exitCode = summary.status === "passed" ? 0 : 1;
-}
 
 export function parseArgs(args: readonly string[]): {
   list: boolean;
@@ -61,4 +25,43 @@ export function parseArgs(args: readonly string[]): {
   });
 }
 
-await main();
+await runHarnessLaneCli<ToolContractFixture>({
+  parseOptions: {
+    idFlag: "tool",
+    tagFlag: "category",
+    idEnv: "VULTURE_TOOL_CONTRACT_TOOLS",
+    tagEnv: "VULTURE_TOOL_CONTRACT_CATEGORIES",
+  },
+  scenarios: defaultToolContractFixtures,
+  filter: (fixtures, { ids, tags }) =>
+    filterToolContractFixtures(fixtures, {
+      tools: [...ids],
+      categories: tags as GatewayToolCategory[],
+    }),
+  formatListLine: (fixture) =>
+    `${fixture.toolId}\t${fixture.expectedCategory}\t${fixture.expectedRisk}`,
+  artifactDirEnv: "VULTURE_TOOL_CONTRACT_ARTIFACT_DIR",
+  artifactDirSubdir: "tool-contract-harness",
+  workspaceDirEnv: "VULTURE_TOOL_CONTRACT_WORKSPACE_DIR",
+  laneTitle: "Tool contract harness",
+  run: async ({ scenarios, artifactDir, workspacePath }) => {
+    const results = await runToolContractHarness({
+      artifactDir,
+      fixtures: [...scenarios],
+      workspacePath,
+    });
+    const summary = summarizeToolContractResults(results);
+    return {
+      status: summary.status,
+      total: summary.total,
+      passed: summary.passed,
+      rows: results.map((result) => ({
+        id: result.toolId,
+        status: result.status,
+        details: result.checks
+          .filter((check) => check.status === "failed")
+          .map((check) => `${check.name}: ${check.error}`),
+      })),
+    };
+  },
+});

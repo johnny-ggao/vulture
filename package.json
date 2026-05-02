@@ -29,6 +29,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^15.0.0",
     "@testing-library/react": "^16.0.0",
+    "@vulture/harness-core": "workspace:*",
     "typescript": "^5.8.0"
   }
 }

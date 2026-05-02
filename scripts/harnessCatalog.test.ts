@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHarnessCatalog } from "../packages/harness-core/src/index";
+import { buildHarnessCatalog } from "@vulture/harness-core";
 import { harnessCatalogLanes } from "./harnessCatalog";
 
 describe("harness catalog script", () => {

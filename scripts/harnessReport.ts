@@ -6,7 +6,7 @@ import {
   type HarnessArtifactManifest,
   type HarnessDoctorReport,
   type HarnessLane,
-} from "../packages/harness-core/src/index";
+} from "@vulture/harness-core";
 
 const REPORT_LANES: Array<{
   lane: HarnessLane;

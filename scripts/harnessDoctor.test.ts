@@ -4,7 +4,7 @@ import {
   buildHarnessDoctorReport,
   inspectHarnessCatalog,
   inspectHarnessCatalogLanes,
-} from "../packages/harness-core/src/index";
+} from "@vulture/harness-core";
 import { harnessCatalogLanes } from "./harnessCatalog";
 import { harnessDoctorRules } from "./harnessDoctor";
 

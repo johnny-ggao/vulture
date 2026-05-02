@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { collectHarnessReportInput } from "./harnessReport";
-import type { HarnessArtifactManifest, HarnessDoctorReport } from "../packages/harness-core/src/index";
+import type { HarnessArtifactManifest, HarnessDoctorReport } from "@vulture/harness-core";
 
 describe("harness report script", () => {
   test("collects required manifests, optional manifests, and doctor output", () => {
