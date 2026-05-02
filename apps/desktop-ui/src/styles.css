@@ -6457,7 +6457,9 @@ pre {
   min-height: 184px;
   padding: 18px;
   border: 1.5px dashed var(--fill-secondary);
-  border-radius: 16px;
+  /* Match AgentCard's 18px object radius so create + populated
+   * tiles read as one row in the grid. */
+  border-radius: 18px;
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
