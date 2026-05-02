@@ -372,6 +372,15 @@ Both GitHub Actions jobs have explicit timeouts so a stuck harness process does
 not consume a runner indefinitely: 30 minutes for the default harness job and 60
 minutes for the desktop E2E lane.
 
+When the nightly schedule fails (either `harness:ci` or
+`harness:desktop-e2e`), the workflow opens or comments on a tracking issue
+labeled `nightly-failure` with the run URL, commit SHA, and a pointer to the
+relevant artifact bundle. The issue title is stable per job
+(`Nightly harness:ci failing` / `Nightly desktop-e2e failing`) so repeated
+failures coalesce into one rolling thread instead of spamming new issues.
+This is the only path that turns nightly red into action — without it,
+failures sit silent on the workflow runs page.
+
 ### Live LLM lane
 
 The `harness:live` lane covers the real OpenAI path that stub-only harnesses
