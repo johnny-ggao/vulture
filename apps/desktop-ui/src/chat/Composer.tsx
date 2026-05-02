@@ -55,6 +55,23 @@ export function Composer(props: ComposerProps) {
     ta.style.height = `${next}px`;
   }, [value]);
 
+  // Auto-focus the composer once on mount — every desktop chat client
+  // (Claude, ChatGPT, Linear) lands the cursor here so the user can
+  // start typing immediately. Skip if focus already lives in another
+  // input (rare but possible if the parent renders a header field).
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const active = document.activeElement;
+    const isInputFocused =
+      active instanceof HTMLElement &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.isContentEditable);
+    if (isInputFocused) return;
+    ta.focus({ preventScroll: true });
+  }, []);
+
   async function send() {
     const trimmed = value.trim();
     if (!trimmed || props.running || !props.selectedAgentId) return;
