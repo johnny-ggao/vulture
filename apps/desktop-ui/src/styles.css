@@ -6974,8 +6974,10 @@ pre {
   gap: 18px;
   margin-bottom: 0;
   position: relative;
-  /* Soft brand-tinted radial halo so the empty surface doesn't feel flat,
-   * using the same dot-grid texture as agent banners for visual rhyme. */
+  /* Empty-state ambient texture — fine dot grid + soft brand-tinted
+   * radial halo. Used only on the full-page empty surface where the
+   * extra texture fills negative space; tighter cards (banners, etc.)
+   * stay flat per macOS HIG restraint. */
   background:
     radial-gradient(
       circle at 1.5px 1.5px,
