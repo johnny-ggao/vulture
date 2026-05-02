@@ -3,63 +3,19 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  buildHarnessCiSummary,
   cleanHarnessCiArtifacts,
   harnessRetentionKeepLast,
   renderHarnessGithubStepSummary,
   runHarnessCiStep,
   runHarnessCiSteps,
-  writeHarnessCiSummary,
   writeHarnessGithubStepSummaryIfConfigured,
   type HarnessCiStep,
   type HarnessCiStepResult,
+  type HarnessGithubStepSummaryInput,
 } from "./harnessCi";
+import type { HarnessReport } from "@vulture/harness-core";
 
 describe("harness CI orchestrator", () => {
-  test("builds and writes a CI step summary", () => {
-    const dir = mkdtempSync(join(tmpdir(), "vulture-harness-ci-"));
-    try {
-      const summary = buildHarnessCiSummary(
-        [
-          step("unit-tests", "Unit tests", "passed", 0),
-          step("runtime-harness", "Runtime harness", "failed", 1),
-        ],
-        "2026-05-02T00:00:00.000Z",
-      );
-      expect(summary.status).toBe("failed");
-      expect(summary.passed).toBe(1);
-      expect(summary.failed).toBe(1);
-
-      const paths = writeHarnessCiSummary(dir, summary);
-      expect(paths.jsonPath).toBe(join(dir, "ci-summary.json"));
-      expect(paths.markdownPath).toBe(join(dir, "ci-summary.md"));
-      expect(JSON.parse(readFileSync(paths.jsonPath, "utf8")).status).toBe("failed");
-      const markdown = readFileSync(paths.markdownPath, "utf8");
-      expect(markdown).toContain("FAILED runtime-harness");
-      expect(markdown).toContain("## Failed Steps");
-      expect(markdown).toContain("```bash\nbun test\n```");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("includes step errors in CI summary markdown", () => {
-    const dir = mkdtempSync(join(tmpdir(), "vulture-harness-ci-error-"));
-    try {
-      const summary = buildHarnessCiSummary([
-        {
-          ...step("spawn-error", "Spawn error", "failed", 1),
-          error: "command not found",
-        },
-      ]);
-
-      writeHarnessCiSummary(dir, summary);
-      expect(readFileSync(join(dir, "ci-summary.md"), "utf8")).toContain("command not found");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   test("continues running later steps after an earlier step fails", () => {
     const steps: HarnessCiStep[] = [
       { id: "first", name: "First", command: ["first"] },
@@ -79,7 +35,8 @@ describe("harness CI orchestrator", () => {
     });
 
     expect(invoked).toEqual(["first", "second", "report"]);
-    expect(buildHarnessCiSummary(results).status).toBe("failed");
+    expect(results.filter((r) => r.status === "passed")).toHaveLength(2);
+    expect(results.filter((r) => r.status === "failed")).toHaveLength(1);
   });
 
   test("reports empty CI step commands as failed without spawning", () => {
@@ -136,23 +93,7 @@ describe("harness CI orchestrator", () => {
   test("renders a GitHub step summary with failures and key artifacts", () => {
     const markdown = renderHarnessGithubStepSummary({
       artifactRoot: "/tmp/vulture/.artifacts",
-      ciSummary: buildHarnessCiSummary([
-        step("runtime-harness", "Runtime harness", "failed", 1),
-        step("harness-report", "Harness report", "passed", 0),
-      ], "2026-05-02T00:00:00.000Z"),
-      triage: {
-        schemaVersion: 1,
-        generatedAt: "2026-05-02T00:00:00.000Z",
-        status: "failed",
-        summary: { total: 1, ciSteps: 1, lanes: 0, artifactValidation: 0 },
-        items: [{
-          category: "ci-step",
-          id: "runtime-harness",
-          title: "Runtime harness",
-          detail: "runtime failed",
-          command: "bun run harness:runtime",
-        }],
-      },
+      report: failingReport(),
       bundleManifest: {
         schemaVersion: 1,
         generatedAt: "2026-05-02T00:00:00.000Z",
@@ -177,12 +118,6 @@ describe("harness CI orchestrator", () => {
           retentionReasons: ["recent"],
         }],
       },
-      artifactValidation: {
-        schemaVersion: 1,
-        generatedAt: "2026-05-02T00:00:00.000Z",
-        status: "failed",
-        checks: [],
-      },
     });
 
     expect(markdown).toContain("# Vulture Harness CI");
@@ -190,25 +125,18 @@ describe("harness CI orchestrator", () => {
     expect(markdown).toContain("Missing required files: 1");
     expect(markdown).toContain("Latest snapshot: run-1 (failed)");
     expect(markdown).toContain("```bash\nbun run harness:runtime\n```");
-    expect(markdown).toContain("Failure triage: /tmp/vulture/.artifacts/harness-report/triage.md");
+    expect(markdown).toContain("Report: /tmp/vulture/.artifacts/harness-report/report.md");
   });
 
   test("writes GitHub step summary only when configured", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-github-summary-"));
     try {
       const path = join(root, "summary.md");
-      const input = {
+      const input: HarnessGithubStepSummaryInput = {
         artifactRoot: "/tmp/vulture/.artifacts",
-        ciSummary: buildHarnessCiSummary([step("harness-report", "Harness report", "passed", 0)]),
-        triage: {
-          schemaVersion: 1 as const,
-          generatedAt: "2026-05-02T00:00:00.000Z",
-          status: "passed" as const,
-          summary: { total: 0, ciSteps: 0, lanes: 0, artifactValidation: 0 },
-          items: [],
-        },
+        report: passingReport(),
         bundleManifest: {
-          schemaVersion: 1 as const,
+          schemaVersion: 1,
           generatedAt: "2026-05-02T00:00:00.000Z",
           artifactRoot: "/tmp/vulture/.artifacts",
           fileCount: 1,
@@ -217,18 +145,12 @@ describe("harness CI orchestrator", () => {
           files: [],
         },
         history: {
-          schemaVersion: 1 as const,
+          schemaVersion: 1,
           generatedAt: "2026-05-02T00:00:00.000Z",
           archiveRoot: "/tmp/vulture/.artifacts/harness-runs",
-          latestStatus: "none" as const,
+          latestStatus: "none",
           total: 0,
           entries: [],
-        },
-        artifactValidation: {
-          schemaVersion: 1 as const,
-          generatedAt: "2026-05-02T00:00:00.000Z",
-          status: "passed" as const,
-          checks: [],
         },
       };
 
@@ -241,6 +163,102 @@ describe("harness CI orchestrator", () => {
     }
   });
 });
+
+function failingReport(): HarnessReport {
+  return {
+    schemaVersion: 2,
+    generatedAt: "2026-05-02T00:00:00.000Z",
+    status: "failed",
+    lanes: [],
+    missingRequiredLanes: [],
+    missingOptionalLanes: [],
+    doctor: null,
+    ci: {
+      status: "failed",
+      total: 2,
+      passed: 1,
+      failed: 1,
+      steps: [
+        {
+          id: "runtime-harness",
+          name: "Runtime harness",
+          command: ["bun", "run", "harness:runtime"],
+          status: "failed",
+          exitCode: 1,
+          signal: null,
+          durationMs: 42,
+          error: "runtime failed",
+        },
+        {
+          id: "harness-report",
+          name: "Harness report",
+          command: ["bun", "run", "harness:report"],
+          status: "passed",
+          exitCode: 0,
+          signal: null,
+          durationMs: 42,
+        },
+      ],
+    },
+    artifactValidation: {
+      status: "failed",
+      total: 1,
+      passed: 0,
+      failed: 1,
+      checks: [
+        {
+          id: "junit-runtime",
+          status: "failed",
+          detail: "junit drift",
+          path: "/tmp/junit.xml",
+          command: "bun run harness:runtime",
+        },
+      ],
+    },
+    failures: {
+      summary: { total: 1, ciSteps: 1, lanes: 0, artifactValidation: 0 },
+      items: [{
+        category: "ci-step",
+        id: "runtime-harness",
+        title: "Runtime harness",
+        detail: "runtime failed",
+        command: "bun run harness:runtime",
+      }],
+    },
+  };
+}
+
+function passingReport(): HarnessReport {
+  return {
+    schemaVersion: 2,
+    generatedAt: "2026-05-02T00:00:00.000Z",
+    status: "passed",
+    lanes: [],
+    missingRequiredLanes: [],
+    missingOptionalLanes: [],
+    doctor: null,
+    ci: {
+      status: "passed",
+      total: 1,
+      passed: 1,
+      failed: 0,
+      steps: [{
+        id: "harness-report",
+        name: "Harness report",
+        command: ["bun", "run", "harness:report"],
+        status: "passed",
+        exitCode: 0,
+        signal: null,
+        durationMs: 42,
+      }],
+    },
+    artifactValidation: null,
+    failures: {
+      summary: { total: 0, ciSteps: 0, lanes: 0, artifactValidation: 0 },
+      items: [],
+    },
+  };
+}
 
 function step(
   id: string,

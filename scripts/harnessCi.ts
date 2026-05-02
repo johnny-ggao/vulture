@@ -1,25 +1,22 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   DEFAULT_HARNESS_ARTIFACT_DIRS,
   buildHarnessArtifactHistory,
   buildHarnessBundleManifest,
-  buildHarnessTriageReport,
   findHarnessRepoRoot,
   retainHarnessArtifacts,
   validateHarnessArtifactBundle,
   writeHarnessArtifactHistoryReport,
   writeHarnessBundleManifestReport,
   writeHarnessArtifactRetentionReport,
-  writeHarnessArtifactValidationReport,
-  writeHarnessTriageReport,
+  writeHarnessReport,
   type HarnessArtifactHistory,
-  type HarnessArtifactValidationReport,
   type HarnessBundleManifest,
   type HarnessReport,
-  type HarnessTriageReport,
-} from "../packages/harness-core/src/index";
+} from "@vulture/harness-core";
+import { collectHarnessReportInput } from "./harnessReport";
 
 export interface HarnessCiStep {
   id: string;
@@ -38,23 +35,11 @@ export interface HarnessCiStepResult {
   error?: string;
 }
 
-export interface HarnessCiSummary {
-  schemaVersion: 1;
-  generatedAt: string;
-  status: "passed" | "failed";
-  total: number;
-  passed: number;
-  failed: number;
-  steps: HarnessCiStepResult[];
-}
-
 export interface HarnessGithubStepSummaryInput {
   artifactRoot: string;
-  ciSummary: HarnessCiSummary;
-  triage: HarnessTriageReport;
+  report: HarnessReport;
   bundleManifest: HarnessBundleManifest;
   history: HarnessArtifactHistory;
-  artifactValidation: HarnessArtifactValidationReport;
 }
 
 export type HarnessCiStepRunner = (step: HarnessCiStep, cwd: string) => HarnessCiStepResult;
@@ -75,7 +60,6 @@ export const HARNESS_CI_STEPS: HarnessCiStep[] = [
       "scripts/harnessDoctor.test.ts",
       "scripts/harnessReport.test.ts",
       "scripts/harnessCi.test.ts",
-      "scripts/harnessArtifacts.test.ts",
       "apps/gateway/src/harness",
     ],
   },
@@ -124,16 +108,6 @@ export const HARNESS_CI_STEPS: HarnessCiStep[] = [
     name: "Desktop UI smoke harness",
     command: ["bun", "run", "harness:ui-smoke"],
   },
-  {
-    id: "harness-report",
-    name: "Harness report",
-    command: ["bun", "run", "harness:report"],
-  },
-  {
-    id: "harness-artifacts",
-    name: "Harness artifact validation",
-    command: ["bun", "run", "harness:artifacts"],
-  },
 ];
 
 async function main(): Promise<void> {
@@ -144,107 +118,77 @@ async function main(): Promise<void> {
   );
   cleanHarnessCiArtifacts(artifactRoot);
 
-  const results = runHarnessCiSteps(HARNESS_CI_STEPS, repoRoot);
-  const summary = buildHarnessCiSummary(results);
-  const paths = writeHarnessCiSummary(join(artifactRoot, "harness-report"), summary);
-  console.log(`Harness CI: ${summary.status}`);
-  console.log(`Steps: ${summary.passed}/${summary.total} passed`);
-  console.log(`CI summary JSON: ${paths.jsonPath}`);
-  console.log(`CI summary Markdown: ${paths.markdownPath}`);
-
-  const artifactReport = validateHarnessArtifactBundle(artifactRoot);
-  const artifactPaths = writeHarnessArtifactValidationReport(
-    join(artifactRoot, "harness-report"),
-    artifactReport,
-  );
-  console.log(`Artifact validation: ${artifactReport.status}`);
-  console.log(`Artifact validation JSON: ${artifactPaths.jsonPath}`);
-  console.log(`Artifact validation Markdown: ${artifactPaths.markdownPath}`);
-
-  const runStatus = summary.status === "failed" || artifactReport.status === "failed"
-    ? "failed"
-    : "passed";
-  const triage = buildHarnessTriageReport({
-    ciSteps: summary.steps,
-    harnessReport: readHarnessReport(join(artifactRoot, "harness-report", "report.json")),
-    artifactValidationReport: artifactReport,
-    generatedAt: summary.generatedAt,
+  const stepResults = runHarnessCiSteps(HARNESS_CI_STEPS, repoRoot);
+  const generatedAt = new Date().toISOString();
+  const reportInput = collectHarnessReportInput(artifactRoot);
+  const artifactValidation = validateHarnessArtifactBundle(artifactRoot, generatedAt, {
+    requireReport: false,
   });
-  const triagePaths = writeHarnessTriageReport(join(artifactRoot, "harness-report"), triage);
-  console.log(`Failure triage: ${triage.status}`);
-  console.log(`Failure triage items: ${triage.summary.total}`);
-  console.log(`Failure triage JSON: ${triagePaths.jsonPath}`);
-  console.log(`Failure triage Markdown: ${triagePaths.markdownPath}`);
+
+  const reportDir = join(artifactRoot, "harness-report");
+  const { jsonPath, markdownPath, report } = writeHarnessReport(reportDir, {
+    generatedAt,
+    manifests: reportInput.manifests,
+    requiredLanes: reportInput.requiredLanes,
+    optionalLanes: reportInput.optionalLanes,
+    doctor: reportInput.doctor,
+    ci: stepResults.map((step) => ({
+      id: step.id,
+      name: step.name,
+      command: step.command,
+      status: step.status,
+      exitCode: step.exitCode,
+      signal: step.signal,
+      durationMs: step.durationMs,
+      ...(step.error ? { error: step.error } : {}),
+    })),
+    artifactValidation,
+  });
+  console.log(`Harness report: ${report.status}`);
+  console.log(`Steps: ${report.ci?.passed ?? 0}/${report.ci?.total ?? 0} passed`);
+  console.log(`Failures: ${report.failures.summary.total}`);
+  console.log(`Report JSON: ${jsonPath}`);
+  console.log(`Report Markdown: ${markdownPath}`);
+
+  const bundleManifest = buildHarnessBundleManifest({
+    artifactRoot,
+    generatedAt,
+    artifactDirNames: CI_ARTIFACT_DIRS,
+  });
+  const bundlePaths = writeHarnessBundleManifestReport(reportDir, bundleManifest);
+  console.log(`Bundle files: ${bundleManifest.fileCount}`);
+  console.log(`Bundle JSON: ${bundlePaths.jsonPath}`);
 
   const retentionReport = retainHarnessArtifacts({
     artifactRoot,
-    status: runStatus,
-    generatedAt: summary.generatedAt,
+    status: report.status === "failed" ? "failed" : "passed",
+    generatedAt,
     policy: {
       keepLast: harnessRetentionKeepLast(process.env),
       artifactDirNames: CI_ARTIFACT_DIRS,
     },
   });
-  const retentionPaths = writeHarnessArtifactRetentionReport(
-    join(artifactRoot, "harness-report"),
-    retentionReport,
-  );
+  const retentionPaths = writeHarnessArtifactRetentionReport(reportDir, retentionReport);
   console.log(`Artifact retention: ${retentionReport.status}`);
-  console.log(`Artifact snapshots kept/deleted: ${retentionReport.kept.length}/${retentionReport.deleted.length}`);
-  console.log(`Artifact retention JSON: ${retentionPaths.jsonPath}`);
-  console.log(`Artifact retention Markdown: ${retentionPaths.markdownPath}`);
+  console.log(`Snapshots kept/deleted: ${retentionReport.kept.length}/${retentionReport.deleted.length}`);
+  console.log(`Retention JSON: ${retentionPaths.jsonPath}`);
 
-  const history = buildHarnessArtifactHistory(retentionReport, summary.generatedAt);
-  const historyPaths = writeHarnessArtifactHistoryReport(
-    join(artifactRoot, "harness-report"),
-    history,
-  );
-  console.log(`Artifact history snapshots: ${history.total}`);
-  console.log(`Artifact history JSON: ${historyPaths.jsonPath}`);
-  console.log(`Artifact history Markdown: ${historyPaths.markdownPath}`);
+  const history = buildHarnessArtifactHistory(retentionReport, generatedAt);
+  const historyPaths = writeHarnessArtifactHistoryReport(reportDir, history);
+  console.log(`History snapshots: ${history.total}`);
+  console.log(`History JSON: ${historyPaths.jsonPath}`);
 
-  let bundleManifest = buildHarnessBundleManifest({
-    artifactRoot,
-    generatedAt: summary.generatedAt,
-    artifactDirNames: CI_ARTIFACT_DIRS,
-  });
-  let bundlePaths = writeHarnessBundleManifestReport(
-    join(artifactRoot, "harness-report"),
-    bundleManifest,
-  );
-  const finalArtifactReport = validateHarnessArtifactBundle(artifactRoot, summary.generatedAt, {
-    requireBundleManifest: true,
-    requireArtifactContracts: true,
-  });
-  const finalArtifactPaths = writeHarnessArtifactValidationReport(
-    join(artifactRoot, "harness-report"),
-    finalArtifactReport,
-  );
-  bundleManifest = buildHarnessBundleManifest({
-    artifactRoot,
-    generatedAt: summary.generatedAt,
-    artifactDirNames: CI_ARTIFACT_DIRS,
-  });
-  bundlePaths = writeHarnessBundleManifestReport(
-    join(artifactRoot, "harness-report"),
-    bundleManifest,
-  );
-  console.log(`Final artifact validation: ${finalArtifactReport.status}`);
-  console.log(`Final artifact validation JSON: ${finalArtifactPaths.jsonPath}`);
-  console.log(`Final artifact validation Markdown: ${finalArtifactPaths.markdownPath}`);
-  console.log(`Bundle manifest files: ${bundleManifest.fileCount}`);
-  console.log(`Bundle manifest JSON: ${bundlePaths.jsonPath}`);
-  console.log(`Bundle manifest Markdown: ${bundlePaths.markdownPath}`);
   const githubSummaryPath = writeHarnessGithubStepSummaryIfConfigured(process.env, {
     artifactRoot,
-    ciSummary: summary,
-    triage,
+    report,
     bundleManifest,
     history,
-    artifactValidation: finalArtifactReport,
   });
   if (githubSummaryPath) console.log(`GitHub step summary: ${githubSummaryPath}`);
-  if (runStatus === "failed" || retentionReport.status === "failed" || finalArtifactReport.status === "failed") process.exitCode = 1;
+
+  if (report.status === "failed" || retentionReport.status === "failed") {
+    process.exitCode = 1;
+  }
 }
 
 export function cleanHarnessCiArtifacts(artifactRoot: string): void {
@@ -261,11 +205,6 @@ export function harnessRetentionKeepLast(env: Record<string, string | undefined>
   return Math.floor(parsed);
 }
 
-function readHarnessReport(path: string): HarnessReport | null {
-  if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, "utf8")) as HarnessReport;
-}
-
 export function writeHarnessGithubStepSummaryIfConfigured(
   env: Record<string, string | undefined>,
   input: HarnessGithubStepSummaryInput,
@@ -280,19 +219,23 @@ export function writeHarnessGithubStepSummary(
   path: string,
   input: HarnessGithubStepSummaryInput,
 ): void {
+  mkdirSync(join(path, ".."), { recursive: true });
   appendFileSync(path, renderHarnessGithubStepSummary(input));
 }
 
 export function renderHarnessGithubStepSummary(input: HarnessGithubStepSummaryInput): string {
+  const { report } = input;
+  const ci = report.ci ?? { status: "passed" as const, total: 0, passed: 0, failed: 0, steps: [] };
+  const validation = report.artifactValidation ?? { status: "passed" as const, total: 0, passed: 0, failed: 0, checks: [] };
   const missingRequired = input.bundleManifest.requiredFiles.filter((file) => file.status === "missing");
   const latestSnapshot = input.history.entries[0];
   const lines = [
     "# Vulture Harness CI",
     "",
-    `Status: ${input.ciSummary.status}`,
-    `Steps: ${input.ciSummary.passed}/${input.ciSummary.total} passed`,
-    `Triage failures: ${input.triage.summary.total}`,
-    `Artifact validation: ${input.artifactValidation.status}`,
+    `Status: ${report.status}`,
+    `Steps: ${ci.passed}/${ci.total} passed`,
+    `Failures: ${report.failures.summary.total}`,
+    `Artifact validation: ${validation.status}`,
     `Bundle files: ${input.bundleManifest.fileCount}`,
     `Missing required files: ${missingRequired.length}`,
     latestSnapshot ? `Latest snapshot: ${latestSnapshot.id} (${latestSnapshot.status})` : "Latest snapshot: none",
@@ -302,15 +245,15 @@ export function renderHarnessGithubStepSummary(input: HarnessGithubStepSummaryIn
     "| Step | Status | Command |",
     "| --- | --- | --- |",
   ];
-  for (const step of input.ciSummary.steps) {
+  for (const step of ci.steps) {
     lines.push(`| ${step.id} | ${step.status} | \`${markdownTableCell(step.command.join(" "))}\` |`);
   }
 
-  lines.push("", "## Failure Triage", "");
-  if (input.triage.items.length === 0) {
+  lines.push("", "## Failures", "");
+  if (report.failures.items.length === 0) {
     lines.push("No failures.");
   } else {
-    for (const item of input.triage.items) {
+    for (const item of report.failures.items) {
       lines.push(`### ${item.category}: ${item.id}`, "", item.detail);
       if (item.path) lines.push("", `Path: ${item.path}`);
       if (item.artifactPath) lines.push("", `Artifacts: ${item.artifactPath}`);
@@ -323,9 +266,7 @@ export function renderHarnessGithubStepSummary(input: HarnessGithubStepSummaryIn
     "",
     "## Key Artifacts",
     "",
-    `- CI summary: ${join(input.artifactRoot, "harness-report", "ci-summary.md")}`,
-    `- Failure triage: ${join(input.artifactRoot, "harness-report", "triage.md")}`,
-    `- Artifact validation: ${join(input.artifactRoot, "harness-report", "artifact-validation.md")}`,
+    `- Report: ${join(input.artifactRoot, "harness-report", "report.md")}`,
     `- Bundle manifest: ${join(input.artifactRoot, "harness-report", "bundle-manifest.md")}`,
     `- History: ${join(input.artifactRoot, "harness-report", "history.md")}`,
     "",
@@ -389,64 +330,6 @@ export function runHarnessCiStep(step: HarnessCiStep, cwd: string): HarnessCiSte
     durationMs: Date.now() - startedAt,
     ...(error ? { error } : {}),
   };
-}
-
-export function buildHarnessCiSummary(
-  steps: readonly HarnessCiStepResult[],
-  generatedAt = new Date().toISOString(),
-): HarnessCiSummary {
-  const passed = steps.filter((step) => step.status === "passed").length;
-  const failed = steps.length - passed;
-  return {
-    schemaVersion: 1,
-    generatedAt,
-    status: failed === 0 ? "passed" : "failed",
-    total: steps.length,
-    passed,
-    failed,
-    steps: [...steps],
-  };
-}
-
-export function writeHarnessCiSummary(
-  artifactDir: string,
-  summary: HarnessCiSummary,
-): { jsonPath: string; markdownPath: string } {
-  mkdirSync(artifactDir, { recursive: true });
-  const jsonPath = join(artifactDir, "ci-summary.json");
-  const markdownPath = join(artifactDir, "ci-summary.md");
-  writeFileSync(jsonPath, `${JSON.stringify(summary, null, 2)}\n`);
-  writeFileSync(markdownPath, renderHarnessCiSummaryMarkdown(summary));
-  return { jsonPath, markdownPath };
-}
-
-function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): string {
-  const lines = [
-    "# Harness CI Summary",
-    "",
-    `Generated: ${summary.generatedAt}`,
-    `Status: ${summary.status}`,
-    `Steps: ${summary.passed}/${summary.total} passed`,
-    "",
-    "## Steps",
-    "",
-  ];
-  for (const step of summary.steps) {
-    const suffix = step.error ? ` - ${step.error}` : "";
-    lines.push(
-      `- ${step.status.toUpperCase()} ${step.id}: ${step.command.join(" ")} (${step.durationMs}ms)${suffix}`,
-    );
-  }
-  const failedSteps = summary.steps.filter((step) => step.status === "failed");
-  if (failedSteps.length > 0) {
-    lines.push("", "## Failed Steps", "");
-    for (const step of failedSteps) {
-      lines.push(`### ${step.id}`, "", "```bash", step.command.join(" "), "```");
-      if (step.error) lines.push("", `Error: ${step.error}`);
-      lines.push("");
-    }
-  }
-  return `${lines.join("\n")}\n`;
 }
 
 if (import.meta.main) {
