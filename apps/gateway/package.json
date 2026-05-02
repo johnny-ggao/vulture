@@ -16,6 +16,7 @@
     "@vulture/protocol": "workspace:*",
     "@vulture/common": "workspace:*",
     "@vulture/agent-runtime": "workspace:*",
+    "@vulture/harness-core": "workspace:*",
     "@vulture/llm": "workspace:*",
     "@openai/agents": "^0.8.5",
     "openai": "^6.26.0",

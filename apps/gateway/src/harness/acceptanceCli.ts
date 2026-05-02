@@ -1,5 +1,11 @@
-import { existsSync, mkdirSync, rmSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import {
+  findHarnessRepoRoot,
+  formatHarnessListLine,
+  parseHarnessCliArgs,
+  splitList,
+} from "@vulture/harness-core";
 import { buildServer } from "../server";
 import {
   defaultAcceptanceScenarios,
@@ -17,15 +23,15 @@ const TOKEN = "x".repeat(43);
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const repoRoot = findRepoRoot(process.cwd());
+  const repoRoot = findHarnessRepoRoot(process.cwd());
   const scenarios = filterScenarios(args.tags, availableScenarios(args.scenarioFiles, repoRoot));
   if (args.list) {
     for (const scenario of scenarios) {
-      console.log(`${scenario.id}\t${scenario.name}\t${(scenario.tags ?? []).join(",")}`);
+      console.log(formatHarnessListLine(scenario));
     }
     return;
   }
-  const artifactDir = resolve(process.env.VULTURE_ACCEPTANCE_ARTIFACT_DIR ?? join(repoRoot, ".artifacts", "acceptance"));
+  const artifactDir = resolve(args.artifactDir ?? process.env.VULTURE_ACCEPTANCE_ARTIFACT_DIR ?? join(repoRoot, ".artifacts", "acceptance"));
   const profileDir = resolve(process.env.VULTURE_ACCEPTANCE_PROFILE_DIR ?? join(artifactDir, `.profile-${process.pid}`));
   const workspaceDir = resolve(process.env.VULTURE_ACCEPTANCE_WORKSPACE_DIR ?? join(artifactDir, `.workspace-${process.pid}`));
   mkdirSync(artifactDir, { recursive: true });
@@ -76,60 +82,38 @@ async function main(): Promise<void> {
   }
 }
 
-function parseArgs(args: string[]): { list: boolean; scenarios: string[]; scenarioFiles: string[]; tags: string[] } {
-  const scenarios = parseScenarioList(process.env.VULTURE_ACCEPTANCE_SCENARIOS ?? "");
-  const scenarioFiles = parseScenarioList(process.env.VULTURE_ACCEPTANCE_SCENARIO_FILES ?? "");
-  const tags = parseScenarioList(process.env.VULTURE_ACCEPTANCE_TAGS ?? "");
-  let list = false;
+function parseArgs(args: string[]): { list: boolean; scenarios: string[]; scenarioFiles: string[]; tags: string[]; artifactDir?: string } {
+  const scenarioFiles = splitList(process.env.VULTURE_ACCEPTANCE_SCENARIO_FILES ?? "");
+  const passthrough: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === "--list") {
-      list = true;
-      continue;
-    }
-    if (arg === "--scenario") {
-      const value = args[index + 1];
-      if (!value) throw new Error("--scenario requires an id");
-      scenarios.push(value);
-      index += 1;
-      continue;
-    }
     if (arg === "--scenario-file") {
       const value = args[index + 1];
-      if (!value) throw new Error("--scenario-file requires a path");
+      if (!value || value.startsWith("--")) throw new Error("--scenario-file requires a path");
       scenarioFiles.push(value);
       index += 1;
       continue;
     }
-    if (arg === "--tag") {
-      const value = args[index + 1];
-      if (!value) throw new Error("--tag requires a value");
-      tags.push(...parseScenarioList(value));
-      index += 1;
-      continue;
-    }
-    if (arg.startsWith("--scenario=")) {
-      scenarios.push(arg.slice("--scenario=".length));
-      continue;
-    }
     if (arg.startsWith("--scenario-file=")) {
-      scenarioFiles.push(arg.slice("--scenario-file=".length));
+      const value = arg.slice("--scenario-file=".length).trim();
+      if (!value) throw new Error("--scenario-file requires a path");
+      scenarioFiles.push(value);
       continue;
     }
-    if (arg.startsWith("--tag=")) {
-      tags.push(...parseScenarioList(arg.slice("--tag=".length)));
-      continue;
-    }
-    throw new Error(`Unknown argument ${arg}`);
+    passthrough.push(arg);
   }
-  return { list, scenarios, scenarioFiles, tags };
-}
-
-function parseScenarioList(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const parsed = parseHarnessCliArgs(passthrough, process.env, {
+    idEnv: "VULTURE_ACCEPTANCE_SCENARIOS",
+    tagEnv: "VULTURE_ACCEPTANCE_TAGS",
+    artifactDirEnv: "VULTURE_ACCEPTANCE_ARTIFACT_DIR",
+  });
+  return {
+    list: parsed.list,
+    scenarios: parsed.ids,
+    scenarioFiles,
+    tags: parsed.tags,
+    artifactDir: parsed.artifactDir,
+  };
 }
 
 function availableScenarios(scenarioFiles: readonly string[], repoRoot: string) {
@@ -165,24 +149,6 @@ function disableRealLlmUnlessOptedIn(): () => void {
       process.env.OPENAI_API_KEY = previous;
     }
   };
-}
-
-function findRepoRoot(start: string): string {
-  let current = resolve(start);
-  while (true) {
-    const packagePath = join(current, "package.json");
-    if (existsSync(packagePath)) {
-      try {
-        const parsed = JSON.parse(readFileSync(packagePath, "utf8")) as { name?: string };
-        if (parsed.name === "vulture") return current;
-      } catch {
-        // Keep walking; malformed package files should not hide a parent root.
-      }
-    }
-    const parent = dirname(current);
-    if (parent === current) return resolve(start);
-    current = parent;
-  }
 }
 
 await main();

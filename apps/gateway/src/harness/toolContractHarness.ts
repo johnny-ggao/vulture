@@ -1,13 +1,23 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { RunContext } from "@openai/agents";
 import type { ToolCallable } from "@vulture/agent-runtime";
+import {
+  selectHarnessScenarios,
+  writeHarnessFailureReport,
+  writeHarnessJUnitReport,
+  writeHarnessManifest,
+  type HarnessResultReport,
+} from "@vulture/harness-core";
 import { createCoreToolRegistry } from "../tools/coreTools";
 import { toSdkTool, type GatewayToolRunContext } from "../tools/sdkAdapter";
 import type { GatewayToolCategory, GatewayToolRisk, GatewayToolSpec } from "../tools/types";
 
 export interface ToolContractFixture {
   toolId: string;
+  id: string;
+  name: string;
+  tags: string[];
   expectedCategory: GatewayToolCategory;
   expectedRisk: GatewayToolRisk;
   expectedIdempotent: boolean;
@@ -199,17 +209,13 @@ export function filterToolContractFixtures(
   fixtures: readonly ToolContractFixture[],
   filters: { tools?: readonly string[]; categories?: readonly GatewayToolCategory[] },
 ): ToolContractFixture[] {
-  const tools = filters.tools ?? [];
-  if (tools.length > 0) {
-    return tools.map((toolId) => {
-      const found = fixtures.find((fixture) => fixture.toolId === toolId);
-      if (!found) throw new Error(`Unknown tool contract fixture: ${toolId}`);
-      return found;
-    });
-  }
-  const categories = filters.categories ?? [];
-  if (categories.length === 0) return [...fixtures];
-  return fixtures.filter((fixture) => categories.includes(fixture.expectedCategory));
+  return selectHarnessScenarios(fixtures, {
+    ids: filters.tools,
+    tags: filters.categories,
+  }, {
+    label: "tool contract fixture",
+    unknownMessage: (id) => `Unknown tool contract fixture: ${id}`,
+  });
 }
 
 export function summarizeToolContractResults(
@@ -351,28 +357,32 @@ function writeToolContractArtifacts(
   artifactDir: string,
   results: readonly ToolContractResult[],
 ): void {
+  const reportResults = results.map(toolContractReportResult);
   writeFileSync(
     join(artifactDir, "summary.json"),
     `${JSON.stringify(summarizeToolContractResults(results), null, 2)}\n`,
   );
+  writeHarnessManifest(artifactDir, "tool-contract", reportResults);
+  writeHarnessJUnitReport(artifactDir, "tool-contract", reportResults);
   writeFileSync(join(artifactDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`);
 
-  const failed = results.filter((result) => result.status === "failed");
-  const failurePath = join(artifactDir, "failure-report.md");
-  if (failed.length === 0) {
-    rmSync(failurePath, { force: true });
-    return;
-  }
+  writeHarnessFailureReport(artifactDir, {
+    title: "Tool Contract Harness Failures",
+    results: reportResults,
+  });
+}
 
-  const lines = ["# Tool Contract Harness Failures", ""];
-  for (const result of failed) {
-    lines.push(`## ${result.toolId}`, "");
-    for (const checkResult of result.checks.filter((item) => item.status === "failed")) {
-      lines.push(`- ${checkResult.name}: ${checkResult.error ?? "Unknown failure"}`);
-    }
-    lines.push("");
-  }
-  writeFileSync(failurePath, `${lines.join("\n")}\n`);
+function toolContractReportResult(result: ToolContractResult): HarnessResultReport {
+  return {
+    id: result.toolId,
+    name: result.toolId,
+    status: result.status,
+    steps: result.checks.map((checkResult) => ({
+      name: checkResult.name,
+      status: checkResult.status,
+      error: checkResult.error,
+    })),
+  };
 }
 
 function fixture(
@@ -386,6 +396,9 @@ function fixture(
 ): ToolContractFixture {
   return {
     toolId,
+    id: toolId,
+    name: toolId,
+    tags: [expectedCategory],
     expectedCategory,
     expectedRisk,
     expectedIdempotent,

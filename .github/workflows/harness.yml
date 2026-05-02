@@ -31,13 +31,19 @@ jobs:
       - name: Run harness checks
         run: bun run harness:ci
 
-      - name: Upload acceptance artifacts
+      - name: Upload harness artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: acceptance-artifacts
-          path: .artifacts/acceptance
+          name: harness-artifacts
+          path: |
+            .artifacts/acceptance
+            .artifacts/runtime-harness
+            .artifacts/tool-contract-harness
+            .artifacts/harness-catalog
+            .artifacts/harness-report
           if-no-files-found: ignore
+          retention-days: 14
 
   desktop-e2e:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.runDesktopE2E == 'true'
@@ -87,3 +93,4 @@ jobs:
           name: desktop-e2e-artifacts
           path: .artifacts/desktop-e2e
           if-no-files-found: ignore
+          retention-days: 14

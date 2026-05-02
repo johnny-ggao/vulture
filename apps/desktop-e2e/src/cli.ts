@@ -1,5 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import {
+  findHarnessRepoRoot,
+  formatHarnessListLine,
+  parseHarnessCliArgs,
+  selectHarnessScenarios,
+} from "@vulture/harness-core";
 
 import {
   writeDesktopFailureReport,
@@ -15,6 +20,7 @@ export interface DesktopE2EArgs {
   list: boolean;
   scenarios: string[];
   tags: string[];
+  artifactDir?: string;
 }
 
 export interface DesktopE2EIO {
@@ -36,92 +42,31 @@ export function parseDesktopE2EArgs(
   argv: readonly string[],
   env: Record<string, string | undefined> = process.env,
 ): DesktopE2EArgs {
-  const parsed: DesktopE2EArgs = {
-    list: false,
-    scenarios: splitList(env.VULTURE_DESKTOP_E2E_SCENARIOS ?? ""),
-    tags: splitList(env.VULTURE_DESKTOP_E2E_TAGS ?? ""),
+  const parsed = parseHarnessCliArgs(argv, env, {
+    idEnv: "VULTURE_DESKTOP_E2E_SCENARIOS",
+    tagEnv: "VULTURE_DESKTOP_E2E_TAGS",
+    artifactDirEnv: "VULTURE_DESKTOP_E2E_ARTIFACT_DIR",
+  });
+  return {
+    list: parsed.list,
+    scenarios: parsed.ids,
+    tags: parsed.tags,
+    ...(parsed.artifactDir ? { artifactDir: parsed.artifactDir } : {}),
   };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-
-    if (arg === "--list") {
-      parsed.list = true;
-      continue;
-    }
-
-    if (arg === "--scenario") {
-      const value = argv[index + 1];
-      if (!isSeparatedValue(value)) {
-        throw new Error("--scenario requires an id");
-      }
-      parsed.scenarios.push(value.trim());
-      index += 1;
-      continue;
-    }
-
-    if (arg === "--tag") {
-      const value = argv[index + 1];
-      if (!isSeparatedValue(value)) {
-        throw new Error("--tag requires a value");
-      }
-      parsed.tags.push(...parseTagValue(value));
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--scenario=")) {
-      const value = arg.slice("--scenario=".length).trim();
-      if (!value) {
-        throw new Error("--scenario requires an id");
-      }
-      parsed.scenarios.push(value);
-      continue;
-    }
-
-    if (arg.startsWith("--tag=")) {
-      parsed.tags.push(...parseTagValue(arg.slice("--tag=".length)));
-      continue;
-    }
-
-    throw new Error(`Unknown argument ${arg}`);
-  }
-
-  return parsed;
 }
 
 export function selectDesktopScenarios(
   input: Pick<DesktopE2EArgs, "scenarios" | "tags">,
   scenarios: readonly DesktopScenario[] = desktopScenarios,
 ): DesktopScenario[] {
-  if (input.scenarios.length > 0) {
-    const seen = new Set<string>();
-    const selected: DesktopScenario[] = [];
-
-    for (const id of input.scenarios) {
-      const scenario = scenarios.find((candidate) => candidate.id === id);
-      if (!scenario) {
-        throw new Error(`Unknown desktop E2E scenario ${id}`);
-      }
-      if (!seen.has(id)) {
-        seen.add(id);
-        selected.push(scenario);
-      }
-    }
-
-    return selected;
-  }
-
-  if (input.tags.length === 0) {
-    return [...scenarios];
-  }
-
-  const tags = new Set(input.tags);
-  const selected = scenarios.filter((scenario) => scenario.tags.some((tag) => tags.has(tag)));
-  if (selected.length === 0) {
-    throw new Error(`No desktop E2E scenarios match tags: ${input.tags.join(", ")}`);
-  }
-  return selected;
+  return selectHarnessScenarios(scenarios, {
+    ids: input.scenarios,
+    tags: input.tags,
+  }, {
+    label: "desktop E2E scenarios",
+    unknownMessage: (id) => `Unknown desktop E2E scenario ${id}`,
+    noTagMatchMessage: (tags) => `No desktop E2E scenarios match tags: ${tags.join(", ")}`,
+  });
 }
 
 export async function main(
@@ -138,13 +83,13 @@ export async function main(
 
     if (args.list) {
       for (const scenario of selected) {
-        write(`${scenario.id}\t${scenario.name}\t${scenario.tags.join(",")}`);
+        write(formatHarnessListLine(scenario));
       }
       return 0;
     }
 
-    const repoRoot = resolveRepoRoot(io.cwd ?? process.cwd());
-    const artifactRoot = resolveArtifactRoot(repoRoot, io.env?.VULTURE_DESKTOP_E2E_ARTIFACT_DIR);
+    const repoRoot = findHarnessRepoRoot(io.cwd ?? process.cwd());
+    const artifactRoot = resolveArtifactRoot(repoRoot, args.artifactDir ?? io.env?.VULTURE_DESKTOP_E2E_ARTIFACT_DIR);
     const webdriverUrl = io.env?.VULTURE_DESKTOP_E2E_WEBDRIVER_URL ?? "http://127.0.0.1:4444";
     const createDriver = dependencies.createDriver ?? ((options) => new RealDesktopDriver(options));
     const runScenario = dependencies.runScenario ?? runDesktopScenario;
@@ -180,59 +125,10 @@ export async function main(
   }
 }
 
-function splitList(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function parseTagValue(value: string): string[] {
-  const tags = splitList(value);
-  if (tags.length === 0) {
-    throw new Error("--tag requires a value");
-  }
-  return tags;
-}
-
-function isSeparatedValue(value: string | undefined): value is string {
-  if (!value) {
-    return false;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 && !trimmed.startsWith("--");
-}
-
 if (import.meta.main) {
   process.exitCode = await main();
 }
 
 function resolveArtifactRoot(repoRoot: string, configuredRoot: string | undefined): string {
   return resolve(repoRoot, configuredRoot ?? join(".artifacts", "desktop-e2e"));
-}
-
-function resolveRepoRoot(startDir: string): string {
-  const initial = resolve(startDir);
-  let current = initial;
-
-  while (true) {
-    const packageJsonPath = join(current, "package.json");
-    if (existsSync(packageJsonPath)) {
-      try {
-        const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { workspaces?: unknown };
-        if (Array.isArray(parsed.workspaces) || parsed.workspaces && typeof parsed.workspaces === "object") {
-          return current;
-        }
-      } catch {
-        // Ignore invalid package.json files while walking upward.
-      }
-    }
-
-    const parent = resolve(current, "..");
-    if (parent === current) {
-      return initial;
-    }
-    current = parent;
-  }
 }

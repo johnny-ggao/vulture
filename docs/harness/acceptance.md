@@ -68,11 +68,41 @@ bun run harness:desktop-e2e -- --scenario navigation-smoke
 bun run harness:desktop-e2e -- --scenario chat-send-smoke
 ```
 
+Generate the harness catalog without executing scenarios:
+
+```bash
+bun run harness:catalog
+```
+
+Run metadata and coverage health checks without executing scenarios:
+
+```bash
+bun run harness:doctor
+```
+
+Aggregate the latest harness artifacts into one CI triage report:
+
+```bash
+bun run harness:report
+```
+
 Run the CI harness bundle:
 
 ```bash
 bun run harness:ci
 ```
+
+`harness:ci` includes the shared `@vulture/harness-core` tests, harness catalog,
+doctor, and report tests, and typecheck before running the gateway and UI lanes.
+This keeps CLI parsing, scenario selection, JUnit output, failure reports,
+artifact manifests, catalog generation, coverage health checks, and aggregate
+reporting under the same contract as the product harnesses.
+
+`harness:ci` is driven by `scripts/harnessCi.ts` instead of a shell `&&` chain.
+It removes stale CI harness artifact directories at the start of the run,
+executes each harness step, keeps going after a failed step when later steps can
+still produce diagnostic artifacts, and exits non-zero only after writing a
+fresh `.artifacts/harness-report/ci-summary.json` and `ci-summary.md`.
 
 By default the harness uses the gateway's stub LLM path so it stays
 deterministic and does not spend API tokens. Set `VULTURE_ACCEPTANCE_REAL_LLM=1`
@@ -92,6 +122,9 @@ Runtime harness artifacts default to `.artifacts/runtime-harness/` and can be
 moved with `VULTURE_RUNTIME_HARNESS_ARTIFACT_DIR`. The lane writes:
 
 - `summary.json` - aggregate scenario status.
+- `manifest.json` - shared harness-core manifest with lane, generated time,
+  normalized result records, and artifact paths when available.
+- `junit.xml` - machine-readable test results for CI surfaces.
 - `events.jsonl` - ordered runtime events by scenario.
 - `failure-report.md` - present only when a scenario expectation fails.
 
@@ -122,6 +155,9 @@ Tool contract artifacts default to `.artifacts/tool-contract-harness/` and can
 be moved with `VULTURE_TOOL_CONTRACT_ARTIFACT_DIR`. The lane writes:
 
 - `summary.json` - aggregate tool status.
+- `manifest.json` - shared harness-core manifest with lane, generated time,
+  normalized result records, and artifact paths when available.
+- `junit.xml` - machine-readable test results for CI surfaces.
 - `results.json` - per-tool check results.
 - `failure-report.md` - present only when one or more contracts fail.
 
@@ -134,6 +170,54 @@ Useful environment variables:
 
 ## Artifacts
 
+### Harness Catalog
+
+`bun run harness:catalog` scans all shipped runtime, tool contract, acceptance,
+and desktop E2E scenarios and writes a lightweight coverage catalog under
+`.artifacts/harness-catalog/`:
+
+- `catalog.json` - machine-readable lane, scenario, and tag index.
+- `catalog.md` - human-readable overview for planning coverage work.
+
+The catalog does not execute scenarios. It is a fast inventory step for
+answering what the harness currently covers and which tags span which lanes.
+
+`bun run harness:doctor` builds the same catalog and checks harness metadata
+plus the minimum harness health policy. Metadata checks fail on invalid lane
+ids, duplicate scenario ids within a lane, empty scenario names, malformed
+tags, or duplicate tags. Required coverage checks fail the command when core
+lanes or key coverage tags disappear. Recommended checks report warning status
+in `doctor.json` and `doctor.md` without failing CI.
+
+Doctor artifacts:
+
+- `doctor.json` - machine-readable check results.
+- `doctor.md` - human-readable health report.
+
+### Harness Report
+
+`bun run harness:report` reads the latest lane manifests plus doctor output and
+writes `.artifacts/harness-report/`:
+
+- `report.json` - machine-readable aggregate status for runtime, tool contract,
+  acceptance, optional desktop E2E, and doctor checks.
+- `report.md` - human-readable CI triage entry point.
+
+The report fails when a required lane manifest is missing, a required lane
+failed, or doctor reports a failed check. Missing desktop E2E is treated as
+optional because that lane only runs from manual GitHub Actions dispatch.
+
+`harness:ci` also writes these files into the same directory after the aggregate
+report step:
+
+- `ci-summary.json` - machine-readable status for every `harness:ci` step.
+- `ci-summary.md` - human-readable status for every `harness:ci` step.
+
+The CI summary is the source of truth for typecheck, unit test, and UI smoke
+failures that do not map to a lane manifest.
+
+### Acceptance Artifacts
+
 Each scenario writes a folder under `.artifacts/acceptance/`:
 
 - `summary.json` - scenario status, step results, and resource ids.
@@ -142,6 +226,10 @@ Each scenario writes a folder under `.artifacts/acceptance/`:
 
 The suite also writes `.artifacts/acceptance/summary.json` with all scenario
 results and artifact paths.
+
+The suite also writes `.artifacts/acceptance/manifest.json` using the shared
+harness-core manifest schema, so all harness lanes expose lane, result, and
+artifact metadata in a consistent machine-readable shape.
 
 The CLI also writes `.artifacts/acceptance/junit.xml` on every run so CI can
 surface acceptance results as machine-readable test cases.
@@ -153,7 +241,17 @@ artifact path.
 
 GitHub Actions runs the same bundle through
 [.github/workflows/harness.yml](/Users/johnny/Work/vulture/.github/workflows/harness.yml)
-and uploads `.artifacts/acceptance` on every run.
+and uploads a `harness-artifacts` bundle on every run. The bundle contains:
+
+- `.artifacts/runtime-harness`
+- `.artifacts/tool-contract-harness`
+- `.artifacts/acceptance`
+- `.artifacts/harness-catalog`
+- `.artifacts/harness-report`
+
+The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
+reports, and aggregate `harness-report/report.md` together for CI triage.
+GitHub retains the bundle for 14 days.
 
 Manual GitHub Actions runs can also execute the desktop E2E smoke lane without
 changing the default PR/push CI path:
@@ -182,7 +280,8 @@ The lane also forces the gateway onto the stub LLM path by removing inherited
 The GitHub Actions desktop E2E lane targets Linux because current Tauri desktop
 WebDriver support is limited to Windows and Linux. Local macOS runs still
 require Tauri CLI plus locally installed driver tooling to be available on
-`PATH`.
+`PATH`. When enabled, CI uploads `.artifacts/desktop-e2e` as
+`desktop-e2e-artifacts` and retains it for 14 days.
 
 Prerequisites:
 
@@ -207,6 +306,8 @@ contains:
 The suite root also writes:
 
 - `summary.json` - aggregate desktop E2E results.
+- `manifest.json` - shared harness-core manifest with lane, generated time,
+  normalized result records, and artifact paths.
 - `junit.xml` - machine-readable test results for CI surfaces.
 - `failure-report.md` - present only when one or more scenarios fail; removed
   on a later all-green run.

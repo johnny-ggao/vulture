@@ -13,6 +13,9 @@
     "apps/desktop-e2e": {
       "name": "@vulture/desktop-e2e",
       "version": "0.1.0",
+      "dependencies": {
+        "@vulture/harness-core": "workspace:*",
+      },
       "devDependencies": {
         "@types/bun": "^1.3.13",
         "typescript": "^5.8.0",
@@ -45,6 +48,7 @@
         "@openai/agents": "^0.8.5",
         "@vulture/agent-runtime": "workspace:*",
         "@vulture/common": "workspace:*",
+        "@vulture/harness-core": "workspace:*",
         "@vulture/llm": "workspace:*",
         "@vulture/protocol": "workspace:*",
         "hono": "^4.6.0",
@@ -72,6 +76,14 @@
     },
     "packages/common": {
       "name": "@vulture/common",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/bun": "^1.3.13",
+        "typescript": "^5.8.0",
+      },
+    },
+    "packages/harness-core": {
+      "name": "@vulture/harness-core",
       "version": "0.1.0",
       "devDependencies": {
         "@types/bun": "^1.3.13",
@@ -308,6 +320,8 @@
     "@vulture/desktop-ui": ["@vulture/desktop-ui@workspace:apps/desktop-ui"],
 
     "@vulture/gateway": ["@vulture/gateway@workspace:apps/gateway"],
+
+    "@vulture/harness-core": ["@vulture/harness-core@workspace:packages/harness-core"],
 
     "@vulture/llm": ["@vulture/llm@workspace:packages/llm"],
 

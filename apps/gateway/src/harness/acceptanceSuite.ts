@@ -2,6 +2,12 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import {
+  writeHarnessFailureReport,
+  writeHarnessJUnitReport,
+  writeHarnessManifest,
+  type HarnessResultReport,
+} from "@vulture/harness-core";
+import {
   runAcceptanceScenario,
   type AcceptanceRunResult,
   type AcceptanceScenario,
@@ -445,6 +451,7 @@ export function writeAcceptanceSuiteArtifacts(
     })),
   };
   writeFileSync(join(artifactDir, "summary.json"), `${JSON.stringify(artifact, null, 2)}\n`);
+  writeHarnessManifest(artifactDir, "acceptance", results.map(acceptanceReportResult));
   return artifact;
 }
 
@@ -452,61 +459,29 @@ export function writeAcceptanceFailureReport(
   artifactDir: string,
   results: readonly AcceptanceRunResult[],
 ): string | null {
-  const failed = results.filter((result) => result.status === "failed");
-  if (failed.length === 0) return null;
-  const path = join(artifactDir, "failure-report.md");
-  const lines = [
-    "# Acceptance Failure Report",
-    "",
-    `Failed: ${failed.length}/${results.length}`,
-    "",
-  ];
-  for (const result of failed) {
-    const failedStep = result.steps.find((step) => step.status === "failed");
-    lines.push(`## ${result.scenarioId}`);
-    lines.push("");
-    lines.push(`Name: ${result.scenarioName}`);
-    lines.push(`Artifacts: ${result.artifactPath}`);
-    if (failedStep) {
-      lines.push(`Failed step: ${failedStep.index + 1}. ${failedStep.action}`);
-      lines.push(`Error: ${failedStep.error ?? "unknown"}`);
-    }
-    lines.push("");
-  }
-  writeFileSync(path, `${lines.join("\n")}\n`);
-  return path;
+  return writeHarnessFailureReport(artifactDir, {
+    title: "Acceptance Failure Report",
+    results: results.map(acceptanceReportResult),
+  });
 }
 
 export function writeAcceptanceJUnitReport(
   artifactDir: string,
   results: readonly AcceptanceRunResult[],
 ): string {
-  const path = join(artifactDir, "junit.xml");
-  const failures = results.filter((result) => result.status === "failed").length;
-  const lines = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuite name="vulture.acceptance" tests="${results.length}" failures="${failures}">`,
-  ];
-  for (const result of results) {
-    lines.push(`  <testcase classname="vulture.acceptance" name="${escapeXml(result.scenarioName)}">`);
-    const failedStep = result.steps.find((step) => step.status === "failed");
-    if (failedStep) {
-      const message = `${failedStep.action}: ${failedStep.error ?? "unknown"}`;
-      lines.push(`    <failure message="${escapeXml(message)}">${escapeXml(message)}</failure>`);
-    }
-    lines.push(`    <system-out>${escapeXml(result.artifactPath)}</system-out>`);
-    lines.push("  </testcase>");
-  }
-  lines.push("</testsuite>");
-  writeFileSync(path, `${lines.join("\n")}\n`);
-  return path;
+  return writeHarnessJUnitReport(artifactDir, "acceptance", results.map(acceptanceReportResult));
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+function acceptanceReportResult(result: AcceptanceRunResult): HarnessResultReport {
+  return {
+    id: result.scenarioId,
+    name: result.scenarioName,
+    status: result.status,
+    artifactPath: result.artifactPath,
+    steps: result.steps.map((step) => ({
+      name: `${step.index + 1}. ${step.action}`,
+      status: step.status,
+      error: step.error,
+    })),
+  };
 }

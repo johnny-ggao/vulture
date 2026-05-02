@@ -1,5 +1,10 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  writeHarnessFailureReport,
+  writeHarnessManifest,
+  type HarnessResultReport,
+} from "@vulture/harness-core";
 
 export interface DesktopStepResult {
   name: string;
@@ -44,6 +49,7 @@ export function writeDesktopSuiteSummary(root: string, results: readonly Desktop
   const failed = results.length - passed;
   const path = join(root, "summary.json");
   writeFileSync(path, `${JSON.stringify({ total: results.length, passed, failed, results }, null, 2)}\n`);
+  writeHarnessManifest(root, "desktop-e2e", results.map(desktopReportResult));
 
   return path;
 }
@@ -96,49 +102,14 @@ export function writeDesktopFailureReport(
   root: string,
   results: readonly DesktopScenarioResult[],
 ): string | null {
-  const path = join(root, "failure-report.md");
-  const failed = results.filter((result) => result.status === "failed");
-  if (failed.length === 0) {
-    rmSync(path, { force: true });
-    return null;
-  }
-
-  mkdirSync(root, { recursive: true });
-
-  const lines = ["# Desktop E2E Failure Report", "", `Failed: ${failed.length}/${results.length}`, ""];
-  for (const result of failed) {
-    const failedSteps = result.steps.filter((step) => step.status === "failed");
-    const primaryFailure = failedSteps[0];
-    const additionalFailures = failedSteps.slice(1);
-    lines.push(`## ${result.id}`, "", `Name: ${result.name}`, `Artifacts: ${result.artifactPath}`);
-
-    if (primaryFailure) {
-      lines.push(`Failed step: ${primaryFailure.name}`, "Error:", fencedMarkdown(primaryFailure.error ?? "unknown failure"));
-    }
-
-    if (additionalFailures.length > 0) {
-      lines.push("", "Additional failures:");
-      for (const step of additionalFailures) {
-        lines.push(step.name, "Error:", fencedMarkdown(step.error ?? "unknown failure"));
-      }
-    }
-
-    lines.push("");
-  }
-
-  writeFileSync(path, `${lines.join("\n")}\n`);
-
-  return path;
+  return writeHarnessFailureReport(root, {
+    title: "Desktop E2E Failure Report",
+    results: results.map(desktopReportResult),
+  });
 }
 
 function safePathPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "run";
-}
-
-function fencedMarkdown(value: string): string {
-  const longestFence = Math.max(3, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length));
-  const fence = "`".repeat(longestFence + 1);
-  return `${fence}\n${value}\n${fence}`;
 }
 
 function formatFailureBody(failedSteps: readonly DesktopStepResult[]): string {
@@ -156,6 +127,21 @@ function formatFailureBody(failedSteps: readonly DesktopStepResult[]): string {
   }
 
   return lines.join("\n");
+}
+
+function desktopReportResult(result: DesktopScenarioResult): HarnessResultReport {
+  return {
+    id: result.id,
+    name: result.name,
+    status: result.status,
+    durationMs: result.durationMs,
+    artifactPath: result.artifactPath,
+    steps: result.steps.map((step) => ({
+      name: step.name,
+      status: step.status,
+      error: step.error,
+    })),
+  };
 }
 
 function xml(value: string): string {

@@ -1,5 +1,12 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import {
+  selectHarnessScenarios,
+  writeHarnessFailureReport,
+  writeHarnessJUnitReport,
+  writeHarnessManifest,
+  type HarnessResultReport,
+} from "@vulture/harness-core";
 import {
   runConversation,
   type LlmCallable,
@@ -185,18 +192,13 @@ export function filterRuntimeHarnessScenarios(
   scenarios: readonly RuntimeHarnessScenario[],
   filters: { scenarios?: readonly string[]; tags?: readonly string[] },
 ): RuntimeHarnessScenario[] {
-  const ids = filters.scenarios ?? [];
-  if (ids.length > 0) {
-    return ids.map((id) => {
-      const found = scenarios.find((scenario) => scenario.id === id);
-      if (!found) throw new Error(`Unknown runtime harness scenario: ${id}`);
-      return found;
-    });
-  }
-
-  const tags = filters.tags ?? [];
-  if (tags.length === 0) return [...scenarios];
-  return scenarios.filter((scenario) => tags.some((tag) => scenario.tags?.includes(tag)));
+  return selectHarnessScenarios(scenarios, {
+    ids: filters.scenarios,
+    tags: filters.tags,
+  }, {
+    label: "runtime harness scenario",
+    unknownMessage: (id) => `Unknown runtime harness scenario: ${id}`,
+  });
 }
 
 export function summarizeRuntimeHarnessResults(
@@ -284,10 +286,13 @@ function writeRuntimeHarnessArtifacts(
   artifactDir: string,
   results: readonly RuntimeHarnessResult[],
 ): void {
+  const reportResults = results.map(runtimeReportResult);
   writeFileSync(
     join(artifactDir, "summary.json"),
     `${JSON.stringify(summarizeRuntimeHarnessResults(results), null, 2)}\n`,
   );
+  writeHarnessManifest(artifactDir, "runtime", reportResults);
+  writeHarnessJUnitReport(artifactDir, "runtime", reportResults);
   writeFileSync(
     join(artifactDir, "events.jsonl"),
     results
@@ -300,20 +305,19 @@ function writeRuntimeHarnessArtifacts(
       .concat(results.some((result) => result.events.length > 0) ? "\n" : ""),
   );
 
-  const failed = results.filter((result) => result.status === "failed");
-  const failurePath = join(artifactDir, "failure-report.md");
-  if (failed.length === 0) {
-    rmSync(failurePath, { force: true });
-    return;
-  }
-  const lines = ["# Agent Runtime Harness Failures", ""];
-  for (const result of failed) {
-    lines.push(`## ${result.scenarioId}`, "");
-    lines.push("```text");
-    lines.push(result.error ?? "Unknown runtime harness failure");
-    lines.push("```", "");
-  }
-  writeFileSync(failurePath, `${lines.join("\n")}\n`);
+  writeHarnessFailureReport(artifactDir, {
+    title: "Agent Runtime Harness Failures",
+    results: reportResults,
+  });
+}
+
+function runtimeReportResult(result: RuntimeHarnessResult): HarnessResultReport {
+  return {
+    id: result.scenarioId,
+    name: result.scenarioName,
+    status: result.status,
+    error: result.error,
+  };
 }
 
 function omitUndefined<T extends Record<string, unknown>>(value: T): T {
