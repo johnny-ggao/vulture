@@ -78,6 +78,11 @@ describe("promptAssembler", () => {
     expect(text).toContain("Decide autonomously whether a subagent is useful");
     expect(text).toContain("The user does not need to manually request or name a subagent");
     expect(text).toContain("the approval card is the user confirmation");
+    expect(text).toContain("Treat subagents as specialist tools");
+    expect(text).toContain("sessions_spawn.title must be a short user-readable task name");
+    expect(text).toContain("sessions_spawn.message must be a complete task brief");
+    expect(text).toContain("call sessions_yield to recover completed or failed child results");
+    expect(text).toContain("do not expose raw internal metadata");
     rmSync(dir, { recursive: true });
   });
 

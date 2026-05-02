@@ -126,10 +126,11 @@ export function createGatewayServerLocalTools(
             ? value.agentId
             : "local-work-agent";
         if (!agentStore.get(agentId)) throw new Error(`agent not found: ${agentId}`);
-        const title = typeof value.title === "string" ? value.title : "";
+        const title = typeof value.title === "string" ? value.title.trim() : "";
+        const task = typeof value.message === "string" ? value.message.trim() : "";
         const conversation = conversationStore.create({
           agentId,
-          title,
+          title: title || task.slice(0, 40) || agentId,
         });
         const label = subagentLabel(value, title, agentId);
         const session = subagentSessionStore.create({
@@ -138,6 +139,8 @@ export function createGatewayServerLocalTools(
           agentId,
           conversationId: conversation.id,
           label,
+          title,
+          task,
         });
         await tryEmitRuntimeHook(
           opts.runtimeHooks(),
@@ -147,7 +150,7 @@ export function createGatewayServerLocalTools(
             parentConversationId: parentRun.conversationId,
             agentId,
             label,
-            message: typeof value.message === "string" ? value.message : undefined,
+            message: task || undefined,
           },
           {
             runId: parentRun.id,
@@ -155,8 +158,8 @@ export function createGatewayServerLocalTools(
             agentId,
           },
         );
-        if (typeof value.message === "string" && value.message.length > 0) {
-          const run = await opts.startConversationRun(conversation.id, value.message);
+        if (task.length > 0) {
+          const run = await opts.startConversationRun(conversation.id, task);
           return {
             ...run,
             conversation,
@@ -182,9 +185,21 @@ export function createGatewayServerLocalTools(
           ...session,
           activeRuns: runStore.listForConversation(session.conversationId, { status: "active" }),
         }));
+        const active = items
+          .filter((session) => session.status === "active")
+          .map((session) => compactSubagentSession(session));
+        const completed = items
+          .filter((session) => session.status === "completed")
+          .map((session) => compactSubagentSession(session));
+        const failed = items
+          .filter((session) => session.status === "failed" || session.status === "cancelled")
+          .map((session) => compactSubagentSession(session));
         return {
           items,
           activeRuns: items.flatMap((session) => session.activeRuns),
+          active,
+          completed,
+          failed,
         };
       },
     },
@@ -266,4 +281,26 @@ function subagentLabel(
     return input.message.trim().replace(/\s+/g, " ").slice(0, 80);
   }
   return agentId;
+}
+
+function compactSubagentSession(session: {
+  id: string;
+  agentId: string;
+  title: string | null;
+  task: string | null;
+  status: string;
+  resultSummary: string | null;
+  lastError: string | null;
+  activeRuns?: unknown[];
+}) {
+  return {
+    sessionId: session.id,
+    agentId: session.agentId,
+    title: session.title,
+    task: session.task,
+    status: session.status,
+    resultSummary: session.resultSummary,
+    lastError: session.lastError,
+    ...(session.status === "active" ? { activeRuns: session.activeRuns ?? [] } : {}),
+  };
 }
