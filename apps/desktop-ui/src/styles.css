@@ -8958,17 +8958,21 @@ pre {
  * than "container", which is the visual cue that this is a tappable
  * product surface. */
 .agent-card {
-  /* E3 — compressed Accio-card. Keeps the floating avatar + banner
-   * identity treatment, but compacts the rhythm to match the kit's
-   * dense workbench feel: shorter banner (48px), 2-line desc clamp,
-   * 184px floor (was 248). Bigger libraries now fit more cards on
-   * screen without sacrificing the per-agent banner colour story.
-   * Edge sits on the unified `--glass-border` family so the card
-   * boundary rhymes with the rest of the chrome. */
+  /* Round 19 — Accio product-tile, polished. Floating avatar + banner
+   * identity treatment, with refined rhythm:
+   *   - 18px object radius (between container 12 and full-pill, reads
+   *     as "tappable object" without the heavy 24px Tailwind look)
+   *   - 184px min-height keeps a long roster scannable
+   *   - 0.5px glass-border edge so the chrome rhymes with the rest of
+   *     the app
+   *   - rest shadow lifts the card off the gradient shell; hover
+   *     promotes to the layered hover-shadow
+   *
+   * Per-agent banner hue still drives the visual identity. */
   position: relative;
   background: var(--bg-primary);
   border: 0.5px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: 18px;
   overflow: hidden;
   min-height: 184px;
   display: flex;
@@ -8980,7 +8984,7 @@ pre {
     transform    var(--duration-slow)   var(--ease-spring);
 }
 .agent-card:hover {
-  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--fill-tertiary));
+  border-color: color-mix(in oklab, var(--brand-500) 28%, var(--glass-border));
   box-shadow: var(--shadow-card-hover);
   transform: translateY(-2px);
 }
@@ -9056,29 +9060,32 @@ pre {
   box-shadow: 0 0 0 3px var(--brand-ring) inset;
 }
 .agent-card-banner {
-  height: 48px;
+  height: 56px;
   position: relative;
-  margin: -1px -17px 28px; /* extend to card edge + room for avatar */
-  /* Restrained per-card identity — desaturated 2-stop diagonal driven
-   * by `--banner-hue` plus a soft top-edge highlight. The earlier
-   * "marketing-card" recipe (dot grid + complementary blob + saturated
-   * pastels) read as web banner; macOS-native cards prefer a quiet
-   * tint that supports the avatar/typography without competing with
-   * them. Identity still shows because hue + saturation differ
-   * between agents — just at half the previous loudness. */
+  margin: -1px -17px 32px; /* extend to card edge + room for avatar */
+  /* Round 19 — Accio per-card identity. Three-layer painted background
+   * driven by `--banner-hue`:
+   *   1. soft top-edge gloss highlight — catches "light" macOS-style
+   *   2. subtle bottom shadow vignette — bleeds the banner into the
+   *      card body so the edge feels integrated, not stuck-on
+   *   3. base diagonal hue gradient with mid-saturation
+   * Identity reads at a glance; cards in a row still scan as tidy
+   * thumbnails rather than marketing tiles. */
   background:
-    /* gloss highlight — sits over the gradient at low alpha so the
-     * top edge of the card visibly catches light, NSWindow style. */
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.32) 0%,
-      rgba(255, 255, 255, 0)    52%
+      rgba(255, 255, 255, 0.45) 0%,
+      rgba(255, 255, 255, 0)    48%
     ),
-    /* base diagonal at reduced saturation */
+    linear-gradient(
+      0deg,
+      rgba(15, 15, 15, 0.06) 0%,
+      rgba(15, 15, 15, 0)    32%
+    ),
     linear-gradient(
       135deg,
-      hsl(calc(var(--banner-hue, 0) * 1deg) 38% 92%) 0%,
-      hsl(calc((var(--banner-hue, 0) + 24) * 1deg) 32% 84%) 100%
+      hsl(calc(var(--banner-hue, 0) * 1deg) 56% 88%) 0%,
+      hsl(calc((var(--banner-hue, 0) + 32) * 1deg) 48% 80%) 100%
     );
   overflow: hidden;
 }
@@ -9087,29 +9094,45 @@ pre {
     background:
       linear-gradient(
         180deg,
-        rgba(255, 255, 255, 0.06) 0%,
-        rgba(255, 255, 255, 0)    52%
+        rgba(255, 255, 255, 0.10) 0%,
+        rgba(255, 255, 255, 0)    48%
+      ),
+      linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.18) 0%,
+        rgba(0, 0, 0, 0)    32%
       ),
       linear-gradient(
         135deg,
-        hsl(calc(var(--banner-hue, 0) * 1deg) 28% 28%) 0%,
-        hsl(calc((var(--banner-hue, 0) + 24) * 1deg) 24% 20%) 100%
+        hsl(calc(var(--banner-hue, 0) * 1deg) 38% 32%) 0%,
+        hsl(calc((var(--banner-hue, 0) + 32) * 1deg) 32% 22%) 100%
       );
   }
 }
-/* Round 13 — avatar floats centred below the banner edge. The white
- * frame around it (padding: 4px + bg) reads as the avatar "punching
- * through" the banner, matching Accio's product-tile language. */
+/* Round 19 — floating avatar punches through the banner edge. The
+ * outer ring is a 4px white frame; a 0.5px hairline border on the
+ * frame itself makes the cutout precise even on the lightest banner
+ * hues. Layered shadow gives depth without heavy elevation. */
 .agent-card-avatar {
   position: absolute;
   left: 50%;
-  top: 48px;
+  top: 56px; /* sits at the banner-body seam */
   transform: translate(-50%, -50%);
-  padding: 3px;
+  padding: 4px;
   border-radius: 14px;
   background: var(--bg-primary);
-  box-shadow: 0 2px 6px rgba(15, 15, 15, 0.08);
+  border: 0.5px solid var(--glass-border);
+  box-shadow:
+    0 1px 1px rgba(15, 15, 15, 0.04),
+    0 4px 10px rgba(15, 15, 15, 0.10);
   z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .agent-card-avatar {
+    box-shadow:
+      0 1px 1px rgba(0, 0, 0, 0.30),
+      0 4px 12px rgba(0, 0, 0, 0.45);
+  }
 }
 .agent-card-body {
   display: flex;
