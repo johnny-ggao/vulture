@@ -6780,10 +6780,13 @@ pre {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.18);
+  /* currentColor-tinted so the chip rides whichever button bg
+   * the save action lands on (brand-filled today, but composes
+   * cleanly if the design ever swaps in a neutral save). */
+  background: color-mix(in oklab, currentColor 22%, transparent);
   color: inherit;
   line-height: 1.2;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in oklab, currentColor 14%, transparent);
 }
 .agent-edit-save:disabled .agent-edit-save-kbd { display: none; }
 .agent-edit-save-spinner {
