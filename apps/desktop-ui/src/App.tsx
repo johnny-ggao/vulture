@@ -25,7 +25,6 @@ import {
   type UpdateMcpServer,
 } from "./api/mcpServers";
 import {
-  authLabel,
   DEFAULT_CHAT_SUGGESTIONS,
   insertAgentByCreatedAt,
   isMissingMcpRoute,
@@ -792,14 +791,6 @@ export function App() {
             "主内容"
           }
         >
-          {runtime.data && (
-            <div className="runtime-debug" aria-label="运行时状态">
-              <span>gateway:{runtime.data.gateway.port}</span>
-              <span>shell:{runtime.data.shell.port}</span>
-              <span>auth:{authLabel(authStatus)}</span>
-              <span>profile:{profile?.name ?? "Default"}</span>
-            </div>
-          )}
           {view === "chat" ? (
             <ChatView
               agents={agents.map((a) => ({ id: a.id, name: a.name }))}

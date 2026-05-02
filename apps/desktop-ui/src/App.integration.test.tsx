@@ -509,9 +509,27 @@ describe("App integration", () => {
     fireEvent.change(input, { target: { value: "Work" } });
     fireEvent.click(screen.getByRole("button", { name: "新建" }));
 
+    // handleSwitchProfile flips the view back to "chat" once the new
+    // profile becomes active, so re-open settings to verify the list.
     await waitFor(
       () => {
-        expect(document.body.textContent ?? "").toContain("profile:Work");
+        // Wait for the profile switch to settle — chat is the default
+        // post-switch view, so the agent picker should be re-rendered.
+        expect(screen.getByText("Local Work Agent")).toBeDefined();
+      },
+      { timeout: 5000 },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "设置" }));
+
+    await waitFor(
+      () => {
+        // The newly created "Work" profile is now the active one — the
+        // matching row in the Settings profile list carries the "当前"
+        // marker. (Was previously asserted via the runtime debug strip
+        // in the page header, which got removed.)
+        const workRow = screen.getByText("Work").closest(".profile-row");
+        expect(workRow).not.toBeNull();
+        expect(workRow!.textContent ?? "").toContain("当前");
       },
       { timeout: 5000 },
     );
@@ -690,11 +708,13 @@ describe("App integration", () => {
     fireEvent.change(input, { target: { value: "Work" } });
     fireEvent.click(screen.getByRole("button", { name: "新建" }));
 
+    // handleSwitchProfile flips back to chat once the new profile is
+    // active. We rely on the chat composer's agent picker re-rendering
+    // with "Local Work Agent" to know the switch landed before sending
+    // a message. (Was previously asserted via the runtime debug strip
+    // in the page header, which got removed.)
     await waitFor(
       () => {
-        expect(document.body.textContent ?? "").toContain("profile:Work");
-        // Composer's agent picker renders the active agent name; this used
-        // to be a native <select> readable via getByDisplayValue.
         expect(screen.getByText("Local Work Agent")).toBeDefined();
       },
       { timeout: 5000 },
