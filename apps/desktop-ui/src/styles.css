@@ -6449,19 +6449,20 @@ pre {
  * border + tinted background reads as "create" without competing with
  * the populated cards visually. */
 .agent-create-tile {
-  display: flex;
-  flex-direction: column;
+  /* Horizontal layout to match the new list-card AgentCard — glyph
+   * on the left, "新建智能体" + hint stacked on the right. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: 184px;
-  padding: 18px;
+  gap: 14px;
+  min-height: 96px;
+  padding: 14px 16px;
   border: 1.5px dashed var(--fill-secondary);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  text-align: center;
+  text-align: left;
   font: inherit;
   transition:
     border-color var(--duration-medium) var(--ease-standard),
@@ -6487,20 +6488,28 @@ pre {
 .agent-create-tile-glyph {
   display: inline-grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  /* Match the 40px AgentAvatar so create + populated cards rhyme. */
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-md);
   background: var(--fill-quaternary);
   color: inherit;
+  flex-shrink: 0;
   transition: background-color var(--duration-medium) var(--ease-standard);
 }
 .agent-create-tile:hover .agent-create-tile-glyph {
   background: color-mix(in oklab, var(--brand-500) 16%, transparent);
 }
+.agent-create-tile-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
 .agent-create-tile-label {
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--text-base);
+  font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 .agent-create-tile:hover .agent-create-tile-label { color: var(--brand-600); }
 .agent-create-tile-hint {
@@ -6511,8 +6520,11 @@ pre {
 /* AgentsPage layout — browse-first grid; edit happens in <AgentEditModal>. */
 .agents-grid {
   display: grid;
+  /* Horizontal list-cards fit comfortably from 320px; on a typical
+   * desktop viewport we get 2-3 columns, fewer ragged edges than a
+   * 280px floor would produce. */
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  gap: 10px;
   margin-bottom: 24px;
 }
 /* First-paint cascade — cards stair-step in over ~280ms total, capped at
@@ -8958,34 +8970,38 @@ pre {
  * than "container", which is the visual cue that this is a tappable
  * product surface. */
 .agent-card {
-  /* E3 — compressed Accio-card. Keeps the floating avatar + banner
-   * identity treatment, but compacts the rhythm to match the kit's
-   * dense workbench feel: shorter banner (48px), 2-line desc clamp,
-   * 184px floor (was 248). Bigger libraries now fit more cards on
-   * screen without sacrificing the per-agent banner colour story.
-   * Edge sits on the unified `--glass-border` family so the card
-   * boundary rhymes with the rest of the chrome. */
+  /* Round 19 — macOS list-card layout.
+   *
+   * Horizontal: avatar on the left (40px), content stacked on the
+   * right, action chips top-right (revealed on hover). Drops the
+   * decorative banner so the card reads as a row in a list, not a
+   * marketing tile. Min-height ~96px keeps a roster scannable.
+   *
+   * Edge sits on the unified `--glass-border` family. Per-agent
+   * identity is still expressed via the avatar's deterministic
+   * colour (driven by `--banner-hue`) — no need for a banner
+   * backplate to carry hue. */
   position: relative;
   background: var(--bg-primary);
   border: 0.5px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  min-height: 184px;
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-card-rest);
   transition:
-    border-color var(--duration-medium) var(--ease-standard),
-    box-shadow   var(--duration-medium) var(--ease-standard),
-    transform    var(--duration-slow)   var(--ease-spring);
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow   var(--duration-fast) var(--ease-out),
+    transform    var(--duration-medium) var(--ease-spring);
 }
 .agent-card:hover {
-  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--fill-tertiary));
+  border-color: color-mix(in oklab, var(--brand-500) 28%, var(--glass-border));
   box-shadow: var(--shadow-card-hover);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 .agent-card:active {
-  transform: translateY(-1px) scale(0.995);
+  transform: translateY(0);
   transition-duration: var(--duration-fast);
 }
 .agent-card .agent-card-name {
@@ -8994,134 +9010,63 @@ pre {
 .agent-card:hover .agent-card-name {
   color: var(--brand-600);
 }
-/* Banner gets a subtle tint amplification on hover — the gradient shows a
- * touch more saturation, like a card "waking up". */
-.agent-card .agent-card-banner {
-  position: relative;
-  transition: filter var(--duration-medium) var(--ease-standard);
+/* Subtle brand-tinted accent strip on the left edge — picks up the
+ * agent's deterministic hue so the row preserves identity colour
+ * without the heavy banner. Hidden until hover so the resting card
+ * stays calm. */
+.agent-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: hsl(calc(var(--banner-hue, 0) * 1deg) 55% 58%);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
-.agent-card:hover .agent-card-banner {
-  filter: saturate(1.15) brightness(1.02);
-}
-/* Cursor-tracking gloss spotlight. The card root writes --mouse-x / -y
- * (0-1 normalised) on mousemove; the spotlight follows. Hidden by default
- * so cards don't flash unprompted, faded in only on hover. Skipped under
- * reduced-motion since it's purely decorative. */
-@media (prefers-reduced-motion: no-preference) {
-  .agent-card .agent-card-banner::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      circle at
-        calc(var(--mouse-x, 0.5) * 100%)
-        calc(var(--mouse-y, 0.5) * 100%),
-      rgba(255, 255, 255, 0.32) 0%,
-      rgba(255, 255, 255, 0)    32%
-    );
-    opacity: 0;
-    transition: opacity var(--duration-medium) var(--ease-standard);
-    pointer-events: none;
-  }
-  .agent-card:hover .agent-card-banner::after {
-    opacity: 1;
-  }
-  @media (prefers-color-scheme: dark) {
-    .agent-card .agent-card-banner::after {
-      background: radial-gradient(
-        circle at
-          calc(var(--mouse-x, 0.5) * 100%)
-          calc(var(--mouse-y, 0.5) * 100%),
-        rgba(255, 255, 255, 0.16) 0%,
-        rgba(255, 255, 255, 0)    32%
-      );
-    }
-  }
-}
+.agent-card:hover::before { opacity: 0.85; }
+
 .agent-card-surface {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
   width: 100%;
-  flex: 1;
-  text-align: center; /* round 13: centre stack */
+  text-align: left;
   border: 0;
   background: transparent;
-  padding: 0 16px 14px;
+  padding: 14px 16px;
   cursor: pointer;
   color: inherit;
   min-height: 0;
+  /* Reserve right padding for the action chips so a long agent name
+   * doesn't run under the hover-revealed buttons. */
+  padding-right: 84px;
 }
 .agent-card-surface:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--brand-ring) inset;
+  box-shadow: 0 0 0 2px var(--brand-ring) inset;
 }
-.agent-card-banner {
-  height: 48px;
-  position: relative;
-  margin: -1px -17px 28px; /* extend to card edge + room for avatar */
-  /* Restrained per-card identity — desaturated 2-stop diagonal driven
-   * by `--banner-hue` plus a soft top-edge highlight. The earlier
-   * "marketing-card" recipe (dot grid + complementary blob + saturated
-   * pastels) read as web banner; macOS-native cards prefer a quiet
-   * tint that supports the avatar/typography without competing with
-   * them. Identity still shows because hue + saturation differ
-   * between agents — just at half the previous loudness. */
-  background:
-    /* gloss highlight — sits over the gradient at low alpha so the
-     * top edge of the card visibly catches light, NSWindow style. */
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.32) 0%,
-      rgba(255, 255, 255, 0)    52%
-    ),
-    /* base diagonal at reduced saturation */
-    linear-gradient(
-      135deg,
-      hsl(calc(var(--banner-hue, 0) * 1deg) 38% 92%) 0%,
-      hsl(calc((var(--banner-hue, 0) + 24) * 1deg) 32% 84%) 100%
-    );
-  overflow: hidden;
-}
-@media (prefers-color-scheme: dark) {
-  .agent-card-banner {
-    background:
-      linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.06) 0%,
-        rgba(255, 255, 255, 0)    52%
-      ),
-      linear-gradient(
-        135deg,
-        hsl(calc(var(--banner-hue, 0) * 1deg) 28% 28%) 0%,
-        hsl(calc((var(--banner-hue, 0) + 24) * 1deg) 24% 20%) 100%
-      );
-  }
-}
-/* Round 13 — avatar floats centred below the banner edge. The white
- * frame around it (padding: 4px + bg) reads as the avatar "punching
- * through" the banner, matching Accio's product-tile language. */
+
+/* Avatar — 40px square that takes its hue from the agent ID via
+ * AgentAvatar's deterministic palette. No frame / shadow now that
+ * it's not floating over a banner. */
 .agent-card-avatar {
-  position: absolute;
-  left: 50%;
-  top: 48px;
-  transform: translate(-50%, -50%);
-  padding: 3px;
-  border-radius: 14px;
-  background: var(--bg-primary);
-  box-shadow: 0 2px 6px rgba(15, 15, 15, 0.08);
-  z-index: 1;
+  display: inline-flex;
+  flex-shrink: 0;
 }
+
 .agent-card-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 .agent-card-name {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--text-base);
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-primary);
   overflow: hidden;
@@ -9132,49 +9077,37 @@ pre {
 .agent-card-desc {
   margin: 0;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.45;
   color: var(--text-tertiary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  /* Reserve space so cards with shorter descriptions don't ripple the
-   * grid — two-line min keeps row heights uniform without wasting
-   * vertical real estate (E3: was 3-line, compressed to 2-line). */
-  min-height: calc(2 * 1.5em);
-  max-width: 100%;
-}
-.agent-card-desc-empty { font-style: italic; }
-.agent-card-meta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-  font-feature-settings: "tnum";
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-top: 2px;
-  max-width: 100%;
-}
-.agent-card-model {
-  font-family: var(--font-mono);
+  /* One-line clamp — list cards prefer compact rhythm; if the user
+   * wants the full description they hover the title or open the
+   * editor. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
 }
-.agent-card-meta-sep { color: var(--fill-secondary); }
-.agent-card-chips {
-  display: flex;
-  flex-wrap: wrap;
+.agent-card-desc-empty { font-style: italic; opacity: 0.85; }
+.agent-card-meta {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: auto; /* push chips to the bottom of the centred stack */
-  padding-top: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-feature-settings: "tnum";
+  margin-top: 3px;
+  max-width: 100%;
+}
+.agent-card-model {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12rem;
+  letter-spacing: 0.01em;
 }
 
 .agent-card-actions {

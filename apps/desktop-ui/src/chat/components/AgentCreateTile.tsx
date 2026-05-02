@@ -30,8 +30,10 @@ export function AgentCreateTile({
       <span className="agent-create-tile-glyph" aria-hidden="true">
         <PlusIcon />
       </span>
-      <span className="agent-create-tile-label">{label}</span>
-      <span className="agent-create-tile-hint">从模板或空白起步</span>
+      <span className="agent-create-tile-body">
+        <span className="agent-create-tile-label">{label}</span>
+        <span className="agent-create-tile-hint">从模板或空白起步</span>
+      </span>
     </button>
   );
 }

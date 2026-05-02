@@ -15,47 +15,44 @@ export interface AgentCardProps {
 }
 
 /**
- * Browse-mode card for an agent. Round 13 redesign — closer to Accio's
- * product tile language:
+ * Browse-mode card for an agent — macOS list-card layout (round 19):
  *
- *   - center-aligned content (avatar floats below the banner edge,
- *     name + description + meta stack centred underneath)
- *   - uniform min-height so a roster of varied descriptions still
- *     reads as a tidy grid (no ragged bottom edge)
- *   - softer, more elevated shadow that lifts on hover
- *   - top-right actions HIDDEN by default — revealed on hover or
- *     keyboard focus so the card looks calm at rest but the chat /
- *     delete affordances stay one keystroke away
+ *   - horizontal: avatar on the left, name + description + meta
+ *     stacked on the right, action chips top-right (revealed on hover).
+ *   - quiet at rest (hairline border + subtle shadow), brand-tinted
+ *     border + lift on hover, full primary tint when focused.
+ *   - left-aligned content so the card reads as a row in a list, not
+ *     a marketing tile. No decorative banner — macOS desktop apps
+ *     prefer dense, content-first list cards (Finder / Music / Notes).
  *
  * The card is a `<button>` so keyboard users can reach it; nested
  * action buttons stop event propagation so they trigger their own
- * handlers. Cursor-tracked gloss on the banner uses the shared hook —
- * cached bounding rect, leave-state coords preserved so the fade-out
- * doesn't snap.
+ * handlers. Cursor-tracked gloss preserved on the row so it still
+ * feels alive on hover without the banner backplate.
  */
 export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCardProps) {
   const { ref, ...gloss } = useCursorGloss<HTMLDivElement>();
   const skillsValue = skillsCount(agent.skills);
 
   return (
-    <div className="agent-card" ref={ref} {...gloss}>
+    <div
+      className="agent-card"
+      ref={ref}
+      {...gloss}
+      style={
+        {
+          "--banner-hue": hashHue(agent.id).toString(),
+        } as React.CSSProperties
+      }
+    >
       <button
         type="button"
         className="agent-card-surface"
         aria-label={agent.name || "未命名智能体"}
         onClick={() => onOpenEdit(agent.id)}
       >
-        <div
-          className="agent-card-banner"
-          aria-hidden="true"
-          style={
-            {
-              "--banner-hue": hashHue(agent.id).toString(),
-            } as React.CSSProperties
-          }
-        />
         <div className="agent-card-avatar">
-          <AgentAvatar agent={agent} size={44} shape="square" />
+          <AgentAvatar agent={agent} size={40} shape="square" />
         </div>
         <div className="agent-card-body">
           <h3 className="agent-card-name">{agent.name || "未命名智能体"}</h3>
@@ -68,8 +65,6 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
           </p>
           <div className="agent-card-meta">
             <span className="agent-card-model" title={agent.model}>{agent.model}</span>
-          </div>
-          <div className="agent-card-chips" aria-label="智能体配置">
             <CardMetaChip
               count={agent.tools.length}
               label="工具"
