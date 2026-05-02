@@ -2078,6 +2078,37 @@ pre {
   cursor: default;
   opacity: 0.65;
 }
+/* Submit-state: keep button width frozen by stacking the spinner
+ * over the label rather than swapping content. The label fades out,
+ * the spinner fades in over the same footprint, so neither button
+ * resizes nor the row reflows. */
+.approval-card-actions button {
+  position: relative;
+}
+.approval-card-action-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.approval-card-actions.is-submitting .approval-card-action-content {
+  opacity: 0;
+}
+.approval-card-action-spinner {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  animation: approval-spin 800ms linear infinite;
+}
+@keyframes approval-spin {
+  from { transform: rotate(0); }
+  to   { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .approval-card-action-spinner { animation: none; }
+}
 .approval-card-deny {
   background: var(--bg-primary);
   border-color: var(--fill-secondary);

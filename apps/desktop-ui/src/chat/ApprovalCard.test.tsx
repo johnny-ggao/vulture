@@ -47,7 +47,7 @@ describe("ApprovalCard", () => {
     expect(onDecide).toHaveBeenCalledWith("c1", "deny");
   });
 
-  test("disabled while submitting; both buttons show 处理中…", () => {
+  test("disabled while submitting; both buttons surface a busy state", () => {
     render(
       <ApprovalCard
         callId="c1"
@@ -57,11 +57,21 @@ describe("ApprovalCard", () => {
         onDecide={() => {}}
       />,
     );
-    const buttons = screen.getAllByText("处理中…") as HTMLButtonElement[];
-    expect(buttons.length).toBe(2);
-    for (const b of buttons) {
-      expect(b.tagName).toBe("BUTTON");
+    // Submit-state keeps the button width frozen (label fades to opacity 0
+    // and a spinner fades in over the same footprint), so the kept-mounted
+    // labels are still findable. Verify both 允许 / 拒绝 buttons are
+    // disabled and announce aria-busy="true" for SR users.
+    const allow = screen
+      .getAllByRole("button", { name: /允许/ })
+      .find((b) => b.classList.contains("approval-card-allow")) as HTMLButtonElement | undefined;
+    const deny = screen
+      .getAllByRole("button", { name: /拒绝/ })
+      .find((b) => b.classList.contains("approval-card-deny")) as HTMLButtonElement | undefined;
+    expect(allow).toBeDefined();
+    expect(deny).toBeDefined();
+    for (const b of [allow!, deny!]) {
       expect(b.disabled).toBe(true);
+      expect(b.getAttribute("aria-busy")).toBe("true");
     }
   });
 

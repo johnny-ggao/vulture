@@ -155,9 +155,21 @@ export function ChatView(props: ChatViewProps) {
           props.onboardingCard
         ) : (
           <div className="empty-state">
-            <div className="hero-mark">V</div>
-            <h2>Vulture</h2>
-            <p>选择智能体，然后直接输入任务。</p>
+            <div className="hero-mark" aria-hidden="true">
+              {/* When an agent is active, drop the "V" in favour of the
+               * agent's first character — feels personal, mirrors the
+               * kit's "你好，<agent name>" empty hero. Falls back to
+               * the brand "V" when no agent is selected yet. */}
+              {activeAgent ? firstGlyph(activeAgent.name) : "V"}
+            </div>
+            <h2>
+              {activeAgent ? `你好，${activeAgent.name}` : "Vulture"}
+            </h2>
+            <p>
+              {activeAgent
+                ? "直接输入任务，或从下面的建议挑一条开始。"
+                : "选择智能体，然后直接输入任务。"}
+            </p>
             {props.suggestions && props.suggestions.length > 0 ? (
               <ul className="suggestion-chips" aria-label="建议提问">
                 {props.suggestions.map((text) => (
@@ -205,6 +217,20 @@ export function ChatView(props: ChatViewProps) {
       </section>
     </main>
   );
+}
+
+/**
+ * Pull the first visible character from an agent's display name to
+ * use as the hero glyph. Handles surrogate pairs (emoji), CJK
+ * characters, and ASCII uniformly. Returns "·" if the name is empty
+ * or whitespace-only, so the hero never collapses to an empty box.
+ */
+function firstGlyph(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "·";
+  // Iterating with for…of yields full code points (surrogate-safe).
+  for (const ch of trimmed) return ch;
+  return "·";
 }
 
 function ReconnectIcon() {

@@ -95,38 +95,56 @@ export function ApprovalCard(props: ApprovalCardProps) {
 
       {hasPreview ? <ToolInputPreview text={previewText} /> : null}
 
-      <div className="approval-card-actions">
+      <div
+        className={
+          "approval-card-actions" +
+          (props.submitting ? " is-submitting" : "")
+        }
+      >
         <button
           ref={denyRef}
           type="button"
           className="approval-card-deny"
+          aria-label="拒绝"
           onClick={() => props.onDecide(props.callId, "deny")}
           disabled={props.submitting}
+          aria-busy={props.submitting}
         >
+          {/* Keep the label + kbd hint mounted while submitting so the
+           * button width doesn't jump; instead show a small spinner
+           * over the content. The kbd stays under the spinner — the
+           * label/spinner cross-fade via opacity, not display, so the
+           * whole row stays at its resting size. The button's
+           * aria-label keeps the accessible name stable regardless of
+           * the inner cross-fade. */}
+          <span className="approval-card-action-content">
+            <span className="approval-card-action-label">拒绝</span>
+            <kbd className="approval-card-kbd" aria-hidden="true">Esc</kbd>
+          </span>
           {props.submitting ? (
-            "处理中…"
-          ) : (
-            <>
-              <span className="approval-card-action-label">拒绝</span>
-              <kbd className="approval-card-kbd" aria-hidden="true">Esc</kbd>
-            </>
-          )}
+            <span className="approval-card-action-spinner" aria-hidden="true">
+              <ActionSpinner />
+            </span>
+          ) : null}
         </button>
         <button
           ref={allowRef}
           type="button"
           className="approval-card-allow"
+          aria-label="允许"
           onClick={() => props.onDecide(props.callId, "allow")}
           disabled={props.submitting}
+          aria-busy={props.submitting}
         >
+          <span className="approval-card-action-content">
+            <span className="approval-card-action-label">允许</span>
+            <kbd className="approval-card-kbd" aria-hidden="true">⏎</kbd>
+          </span>
           {props.submitting ? (
-            "处理中…"
-          ) : (
-            <>
-              <span className="approval-card-action-label">允许</span>
-              <kbd className="approval-card-kbd" aria-hidden="true">⏎</kbd>
-            </>
-          )}
+            <span className="approval-card-action-spinner" aria-hidden="true">
+              <ActionSpinner />
+            </span>
+          ) : null}
         </button>
       </div>
     </aside>
@@ -183,6 +201,27 @@ function ToolInputPreview({ text }: { text: string }) {
         </button>
       ) : null}
     </div>
+  );
+}
+
+function ActionSpinner() {
+  // 14px ring spinner that matches the kbd glyph height so it slots
+  // visually where the kbd hint sits when idle. Pure CSS animation;
+  // honours prefers-reduced-motion via the .approval-card-action-spinner rule.
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" opacity="0.25" />
+      <path d="M14 8a6 6 0 0 1-6 6" />
+    </svg>
   );
 }
 

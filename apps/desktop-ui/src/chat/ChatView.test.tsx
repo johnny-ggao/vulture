@@ -224,7 +224,10 @@ describe("ChatView", () => {
         onDecide={() => {}}
       />,
     );
-    expect(screen.getByText(/选择智能体/)).toBeDefined();
+    // Empty state now greets the active agent by name (你好，A) and
+    // points to the next action ("直接输入任务，或从下面的建议挑一条开始。").
+    expect(screen.getByRole("heading", { level: 2, name: "你好，A" })).toBeDefined();
+    expect(screen.getByText(/直接输入任务/)).toBeDefined();
   });
 
   test("renders suggestion chips when provided", () => {
