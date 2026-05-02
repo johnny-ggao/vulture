@@ -12,8 +12,14 @@ export interface SubagentSession {
   agentId: string;
   conversationId: string;
   label: string;
+  title: string | null;
+  task: string | null;
   status: SubagentSessionStatus;
   messageCount: number;
+  resultSummary: string | null;
+  resultMessageId: string | null;
+  completedAt: Iso8601 | null;
+  lastError: string | null;
   createdAt: Iso8601;
   updatedAt: Iso8601;
 }
@@ -24,6 +30,8 @@ export interface CreateSubagentSessionInput {
   agentId: string;
   conversationId: string;
   label: string;
+  title?: string | null;
+  task?: string | null;
   status?: SubagentSessionStatus;
 }
 
@@ -41,8 +49,14 @@ interface SubagentSessionRow {
   agent_id: string;
   conversation_id: string;
   label: string;
+  title: string | null;
+  task: string | null;
   status: string;
   message_count: number;
+  result_summary: string | null;
+  result_message_id: string | null;
+  completed_at: string | null;
+  last_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -55,8 +69,14 @@ function rowToSession(row: SubagentSessionRow): SubagentSession {
     agentId: row.agent_id,
     conversationId: row.conversation_id,
     label: row.label,
+    title: row.title,
+    task: row.task,
     status: normalizeStatus(row.status),
     messageCount: row.message_count,
+    resultSummary: row.result_summary,
+    resultMessageId: row.result_message_id,
+    completedAt: row.completed_at as Iso8601 | null,
+    lastError: row.last_error,
     createdAt: row.created_at as Iso8601,
     updatedAt: row.updated_at as Iso8601,
   };
@@ -69,6 +89,24 @@ function normalizeStatus(value: string): SubagentSessionStatus {
 
 function genId(): string {
   return `sub-${crypto.randomUUID()}`;
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text.length > 0 ? text : null;
+}
+
+export function summarizeSubagentResult(content: string, maxLength = 360): string {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+interface TerminalMetadata {
+  resultSummary: string | null;
+  resultMessageId: string | null;
+  completedAt: Iso8601 | null;
+  lastError: string | null;
 }
 
 export interface SubagentSessionStatusChange {
@@ -91,7 +129,9 @@ export class SubagentSessionStore {
   constructor(
     private readonly db: DB,
     private readonly deps: SubagentSessionStoreDeps,
-  ) {}
+  ) {
+    this.ensureProductizationColumns();
+  }
 
   create(input: CreateSubagentSessionInput): SubagentSession {
     const id = genId();
@@ -101,8 +141,9 @@ export class SubagentSessionStore {
       .query(
         `INSERT INTO subagent_sessions(
            id, parent_conversation_id, parent_run_id, agent_id, conversation_id,
-           label, status, message_count, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           label, title, task, status, message_count, result_summary,
+           result_message_id, completed_at, last_error, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -111,8 +152,14 @@ export class SubagentSessionStore {
         input.agentId,
         input.conversationId,
         input.label,
+        normalizeOptionalText(input.title),
+        normalizeOptionalText(input.task),
         input.status ?? "active",
         messageCount,
+        null,
+        null,
+        null,
+        null,
         now,
         now,
       );
@@ -186,11 +233,24 @@ export class SubagentSessionStore {
     const status = this.deriveStatus(session.conversationId);
     const messageCount = this.countMessages(session.conversationId);
     const now = nowIso8601();
+    const terminal = this.terminalMetadata(session, status, now);
     this.db
       .query(
-        "UPDATE subagent_sessions SET status = ?, message_count = ?, updated_at = ? WHERE id = ?",
+        `UPDATE subagent_sessions
+         SET status = ?, message_count = ?, result_summary = ?, result_message_id = ?,
+             completed_at = ?, last_error = ?, updated_at = ?
+         WHERE id = ?`,
       )
-      .run(status, messageCount, now, id);
+      .run(
+        status,
+        messageCount,
+        terminal.resultSummary,
+        terminal.resultMessageId,
+        terminal.completedAt,
+        terminal.lastError,
+        now,
+        id,
+      );
     const next = this.get(id);
     if (
       next &&
@@ -207,6 +267,47 @@ export class SubagentSessionStore {
     return next;
   }
 
+  private terminalMetadata(
+    session: SubagentSession,
+    status: SubagentSessionStatus,
+    now: Iso8601,
+  ): TerminalMetadata {
+    if (status === "active") {
+      return {
+        resultSummary: session.resultSummary,
+        resultMessageId: session.resultMessageId,
+        completedAt: session.completedAt,
+        lastError: null,
+      };
+    }
+    if (status === "completed") {
+      const result = this.latestAssistantMessage(session.conversationId);
+      return {
+        resultSummary: result ? summarizeSubagentResult(result.content) : session.resultSummary,
+        resultMessageId: result?.id ?? session.resultMessageId,
+        completedAt: session.completedAt ?? now,
+        lastError: null,
+      };
+    }
+    return {
+      resultSummary: session.resultSummary,
+      resultMessageId: session.resultMessageId,
+      completedAt: session.completedAt ?? now,
+      lastError: this.latestRunError(session.conversationId) ?? status,
+    };
+  }
+
+  private latestAssistantMessage(conversationId: string) {
+    return [...this.deps.messages.listSince({ conversationId })]
+      .reverse()
+      .find((message) => message.role === "assistant") ?? null;
+  }
+
+  private latestRunError(conversationId: string): string | null {
+    const latest = this.deps.runs.listForConversation(conversationId)[0];
+    return latest?.error?.message ?? null;
+  }
+
   private deriveStatus(conversationId: string): SubagentSessionStatus {
     const activeRuns = this.deps.runs.listForConversation(conversationId, { status: "active" });
     if (activeRuns.length > 0) return "active";
@@ -221,5 +322,23 @@ export class SubagentSessionStore {
 
   private countMessages(conversationId: string): number {
     return this.deps.messages.listSince({ conversationId }).length;
+  }
+
+  private ensureProductizationColumns(): void {
+    const rows = this.db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as Array<{ name: string }>;
+    const existing = new Set(rows.map((row) => row.name));
+    const columns: Array<[string, string]> = [
+      ["title", "ALTER TABLE subagent_sessions ADD COLUMN title TEXT"],
+      ["task", "ALTER TABLE subagent_sessions ADD COLUMN task TEXT"],
+      ["result_summary", "ALTER TABLE subagent_sessions ADD COLUMN result_summary TEXT"],
+      ["result_message_id", "ALTER TABLE subagent_sessions ADD COLUMN result_message_id TEXT"],
+      ["completed_at", "ALTER TABLE subagent_sessions ADD COLUMN completed_at TEXT"],
+      ["last_error", "ALTER TABLE subagent_sessions ADD COLUMN last_error TEXT"],
+    ];
+    for (const [name, sql] of columns) {
+      if (!existing.has(name)) this.db.exec(sql);
+    }
   }
 }

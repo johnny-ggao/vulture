@@ -101,6 +101,34 @@ describe("SubagentSessionStore", () => {
     stores.cleanup();
   });
 
+  test("create stores product-facing title and task metadata", () => {
+    const stores = fresh();
+    const session = stores.sessions.create({
+      parentConversationId: stores.parent.id,
+      parentRunId: stores.parentRun.id,
+      agentId: stores.child.agentId,
+      conversationId: stores.child.id,
+      label: "Research docs",
+      title: "Research SDK docs",
+      task: "Read the Agents SDK orchestration docs and summarize the useful bits.",
+    });
+
+    expect(session).toMatchObject({
+      label: "Research docs",
+      title: "Research SDK docs",
+      task: "Read the Agents SDK orchestration docs and summarize the useful bits.",
+      resultSummary: null,
+      resultMessageId: null,
+      completedAt: null,
+      lastError: null,
+    });
+    expect(stores.sessions.get(session.id)).toMatchObject({
+      title: "Research SDK docs",
+      task: "Read the Agents SDK orchestration docs and summarize the useful bits.",
+    });
+    stores.cleanup();
+  });
+
   test("list filters by parent conversation, parent run, agent, and limit", () => {
     const stores = fresh();
     const first = stores.sessions.create({
@@ -189,6 +217,78 @@ describe("SubagentSessionStore", () => {
 
     createChildRun(stores, "cancelled");
     expect(stores.sessions.refreshStatus(session.id)?.status).toBe("cancelled");
+    stores.cleanup();
+  });
+
+  test("refreshStatus captures completed result summary and keeps completedAt stable", () => {
+    const stores = fresh();
+    const session = stores.sessions.create({
+      parentConversationId: stores.parent.id,
+      parentRunId: stores.parentRun.id,
+      agentId: stores.child.agentId,
+      conversationId: stores.child.id,
+      label: "Worker",
+      title: "Inspect docs",
+      task: "Find the relevant details.",
+    });
+    const childMessage = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "user",
+      content: "go",
+      runId: null,
+    });
+    const childRun = stores.runs.create({
+      conversationId: stores.child.id,
+      agentId: stores.child.agentId,
+      triggeredByMessageId: childMessage.id,
+    });
+    const result = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "assistant",
+      content: "The child result contains the important detail.",
+      runId: childRun.id,
+    });
+    stores.runs.markSucceeded(childRun.id, result.id);
+
+    const completed = stores.sessions.refreshStatus(session.id);
+    expect(completed).toMatchObject({
+      status: "completed",
+      resultSummary: "The child result contains the important detail.",
+      resultMessageId: result.id,
+    });
+    expect(completed?.completedAt).toBeTruthy();
+
+    const completedAt = completed?.completedAt;
+    expect(stores.sessions.refreshStatus(session.id)?.completedAt).toBe(completedAt);
+    stores.cleanup();
+  });
+
+  test("refreshStatus captures failure errors", () => {
+    const stores = fresh();
+    const session = stores.sessions.create({
+      parentConversationId: stores.parent.id,
+      parentRunId: stores.parentRun.id,
+      agentId: stores.child.agentId,
+      conversationId: stores.child.id,
+      label: "Worker",
+    });
+    const childMessage = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "user",
+      content: "go",
+      runId: null,
+    });
+    const childRun = stores.runs.create({
+      conversationId: stores.child.id,
+      agentId: stores.child.agentId,
+      triggeredByMessageId: childMessage.id,
+    });
+    stores.runs.markFailed(childRun.id, { code: "internal", message: "child exploded" });
+
+    expect(stores.sessions.refreshStatus(session.id)).toMatchObject({
+      status: "failed",
+      lastError: "child exploded",
+    });
     stores.cleanup();
   });
 
