@@ -115,6 +115,12 @@ end of the run it snapshots the current CI artifact bundle into
 passed and failed snapshots, and writes retention and history reports. Set
 `VULTURE_HARNESS_RETENTION_KEEP_LAST=<n>` to change the recent snapshot count.
 
+When GitHub Actions provides `GITHUB_STEP_SUMMARY`, `harness:ci` appends a compact
+Markdown summary to the job page. The summary includes step status, triage
+failures, missing required artifact count, latest retained snapshot, key artifact
+paths, and copy-paste rerun commands for failed items. Local runs without
+`GITHUB_STEP_SUMMARY` do not write this extra file.
+
 By default the harness uses the gateway's stub LLM path so it stays
 deterministic and does not spend API tokens. Set `VULTURE_ACCEPTANCE_REAL_LLM=1`
 only when intentionally running a live model smoke.

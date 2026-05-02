@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   DEFAULT_HARNESS_ARTIFACT_DIRS,
@@ -14,7 +14,11 @@ import {
   writeHarnessArtifactRetentionReport,
   writeHarnessArtifactValidationReport,
   writeHarnessTriageReport,
+  type HarnessArtifactHistory,
+  type HarnessArtifactValidationReport,
+  type HarnessBundleManifest,
   type HarnessReport,
+  type HarnessTriageReport,
 } from "../packages/harness-core/src/index";
 
 export interface HarnessCiStep {
@@ -42,6 +46,15 @@ export interface HarnessCiSummary {
   passed: number;
   failed: number;
   steps: HarnessCiStepResult[];
+}
+
+export interface HarnessGithubStepSummaryInput {
+  artifactRoot: string;
+  ciSummary: HarnessCiSummary;
+  triage: HarnessTriageReport;
+  bundleManifest: HarnessBundleManifest;
+  history: HarnessArtifactHistory;
+  artifactValidation: HarnessArtifactValidationReport;
 }
 
 export type HarnessCiStepRunner = (step: HarnessCiStep, cwd: string) => HarnessCiStepResult;
@@ -222,6 +235,15 @@ async function main(): Promise<void> {
   console.log(`Bundle manifest files: ${bundleManifest.fileCount}`);
   console.log(`Bundle manifest JSON: ${bundlePaths.jsonPath}`);
   console.log(`Bundle manifest Markdown: ${bundlePaths.markdownPath}`);
+  const githubSummaryPath = writeHarnessGithubStepSummaryIfConfigured(process.env, {
+    artifactRoot,
+    ciSummary: summary,
+    triage,
+    bundleManifest,
+    history,
+    artifactValidation: finalArtifactReport,
+  });
+  if (githubSummaryPath) console.log(`GitHub step summary: ${githubSummaryPath}`);
   if (runStatus === "failed" || retentionReport.status === "failed" || finalArtifactReport.status === "failed") process.exitCode = 1;
 }
 
@@ -242,6 +264,77 @@ export function harnessRetentionKeepLast(env: Record<string, string | undefined>
 function readHarnessReport(path: string): HarnessReport | null {
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, "utf8")) as HarnessReport;
+}
+
+export function writeHarnessGithubStepSummaryIfConfigured(
+  env: Record<string, string | undefined>,
+  input: HarnessGithubStepSummaryInput,
+): string | null {
+  const path = env.GITHUB_STEP_SUMMARY?.trim();
+  if (!path) return null;
+  writeHarnessGithubStepSummary(path, input);
+  return path;
+}
+
+export function writeHarnessGithubStepSummary(
+  path: string,
+  input: HarnessGithubStepSummaryInput,
+): void {
+  appendFileSync(path, renderHarnessGithubStepSummary(input));
+}
+
+export function renderHarnessGithubStepSummary(input: HarnessGithubStepSummaryInput): string {
+  const missingRequired = input.bundleManifest.requiredFiles.filter((file) => file.status === "missing");
+  const latestSnapshot = input.history.entries[0];
+  const lines = [
+    "# Vulture Harness CI",
+    "",
+    `Status: ${input.ciSummary.status}`,
+    `Steps: ${input.ciSummary.passed}/${input.ciSummary.total} passed`,
+    `Triage failures: ${input.triage.summary.total}`,
+    `Artifact validation: ${input.artifactValidation.status}`,
+    `Bundle files: ${input.bundleManifest.fileCount}`,
+    `Missing required files: ${missingRequired.length}`,
+    latestSnapshot ? `Latest snapshot: ${latestSnapshot.id} (${latestSnapshot.status})` : "Latest snapshot: none",
+    "",
+    "## Steps",
+    "",
+    "| Step | Status | Command |",
+    "| --- | --- | --- |",
+  ];
+  for (const step of input.ciSummary.steps) {
+    lines.push(`| ${step.id} | ${step.status} | \`${markdownTableCell(step.command.join(" "))}\` |`);
+  }
+
+  lines.push("", "## Failure Triage", "");
+  if (input.triage.items.length === 0) {
+    lines.push("No failures.");
+  } else {
+    for (const item of input.triage.items) {
+      lines.push(`### ${item.category}: ${item.id}`, "", item.detail);
+      if (item.path) lines.push("", `Path: ${item.path}`);
+      if (item.artifactPath) lines.push("", `Artifacts: ${item.artifactPath}`);
+      if (item.command) lines.push("", "```bash", item.command, "```");
+      lines.push("");
+    }
+  }
+
+  lines.push(
+    "",
+    "## Key Artifacts",
+    "",
+    `- CI summary: ${join(input.artifactRoot, "harness-report", "ci-summary.md")}`,
+    `- Failure triage: ${join(input.artifactRoot, "harness-report", "triage.md")}`,
+    `- Artifact validation: ${join(input.artifactRoot, "harness-report", "artifact-validation.md")}`,
+    `- Bundle manifest: ${join(input.artifactRoot, "harness-report", "bundle-manifest.md")}`,
+    `- History: ${join(input.artifactRoot, "harness-report", "history.md")}`,
+    "",
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+function markdownTableCell(value: string): string {
+  return value.replaceAll("|", "\\|");
 }
 
 export function runHarnessCiSteps(

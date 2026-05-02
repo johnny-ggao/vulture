@@ -6,9 +6,11 @@ import {
   buildHarnessCiSummary,
   cleanHarnessCiArtifacts,
   harnessRetentionKeepLast,
+  renderHarnessGithubStepSummary,
   runHarnessCiStep,
   runHarnessCiSteps,
   writeHarnessCiSummary,
+  writeHarnessGithubStepSummaryIfConfigured,
   type HarnessCiStep,
   type HarnessCiStepResult,
 } from "./harnessCi";
@@ -129,6 +131,114 @@ describe("harness CI orchestrator", () => {
     expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "2.9" })).toBe(2);
     expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "-1" })).toBe(5);
     expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "bad" })).toBe(5);
+  });
+
+  test("renders a GitHub step summary with failures and key artifacts", () => {
+    const markdown = renderHarnessGithubStepSummary({
+      artifactRoot: "/tmp/vulture/.artifacts",
+      ciSummary: buildHarnessCiSummary([
+        step("runtime-harness", "Runtime harness", "failed", 1),
+        step("harness-report", "Harness report", "passed", 0),
+      ], "2026-05-02T00:00:00.000Z"),
+      triage: {
+        schemaVersion: 1,
+        generatedAt: "2026-05-02T00:00:00.000Z",
+        status: "failed",
+        summary: { total: 1, ciSteps: 1, lanes: 0, artifactValidation: 0 },
+        items: [{
+          category: "ci-step",
+          id: "runtime-harness",
+          title: "Runtime harness",
+          detail: "runtime failed",
+          command: "bun run harness:runtime",
+        }],
+      },
+      bundleManifest: {
+        schemaVersion: 1,
+        generatedAt: "2026-05-02T00:00:00.000Z",
+        artifactRoot: "/tmp/vulture/.artifacts",
+        fileCount: 42,
+        totalBytes: 100,
+        requiredFiles: [{ path: "harness-report/report.json", status: "missing" }],
+        files: [],
+      },
+      history: {
+        schemaVersion: 1,
+        generatedAt: "2026-05-02T00:00:00.000Z",
+        archiveRoot: "/tmp/vulture/.artifacts/harness-runs",
+        latestStatus: "failed",
+        total: 1,
+        entries: [{
+          id: "run-1",
+          path: "/tmp/vulture/.artifacts/harness-runs/run-1",
+          generatedAt: "2026-05-02T00:00:00.000Z",
+          status: "failed",
+          artifactDirs: ["harness-report"],
+          retentionReasons: ["recent"],
+        }],
+      },
+      artifactValidation: {
+        schemaVersion: 1,
+        generatedAt: "2026-05-02T00:00:00.000Z",
+        status: "failed",
+        checks: [],
+      },
+    });
+
+    expect(markdown).toContain("# Vulture Harness CI");
+    expect(markdown).toContain("Steps: 1/2 passed");
+    expect(markdown).toContain("Missing required files: 1");
+    expect(markdown).toContain("Latest snapshot: run-1 (failed)");
+    expect(markdown).toContain("```bash\nbun run harness:runtime\n```");
+    expect(markdown).toContain("Failure triage: /tmp/vulture/.artifacts/harness-report/triage.md");
+  });
+
+  test("writes GitHub step summary only when configured", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-github-summary-"));
+    try {
+      const path = join(root, "summary.md");
+      const input = {
+        artifactRoot: "/tmp/vulture/.artifacts",
+        ciSummary: buildHarnessCiSummary([step("harness-report", "Harness report", "passed", 0)]),
+        triage: {
+          schemaVersion: 1 as const,
+          generatedAt: "2026-05-02T00:00:00.000Z",
+          status: "passed" as const,
+          summary: { total: 0, ciSteps: 0, lanes: 0, artifactValidation: 0 },
+          items: [],
+        },
+        bundleManifest: {
+          schemaVersion: 1 as const,
+          generatedAt: "2026-05-02T00:00:00.000Z",
+          artifactRoot: "/tmp/vulture/.artifacts",
+          fileCount: 1,
+          totalBytes: 1,
+          requiredFiles: [],
+          files: [],
+        },
+        history: {
+          schemaVersion: 1 as const,
+          generatedAt: "2026-05-02T00:00:00.000Z",
+          archiveRoot: "/tmp/vulture/.artifacts/harness-runs",
+          latestStatus: "none" as const,
+          total: 0,
+          entries: [],
+        },
+        artifactValidation: {
+          schemaVersion: 1 as const,
+          generatedAt: "2026-05-02T00:00:00.000Z",
+          status: "passed" as const,
+          checks: [],
+        },
+      };
+
+      expect(writeHarnessGithubStepSummaryIfConfigured({}, input)).toBeNull();
+      expect(existsSync(path)).toBe(false);
+      expect(writeHarnessGithubStepSummaryIfConfigured({ GITHUB_STEP_SUMMARY: path }, input)).toBe(path);
+      expect(readFileSync(path, "utf8")).toContain("No failures.");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
