@@ -117,7 +117,14 @@ const browserExtractParameters = z.object({
   maxLinks: z.number().int().min(0).nullable(),
 });
 const browserNavigateParameters = z.object({
-  url: z.string(),
+  url: z.string().refine((value) => {
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "invalid url"),
 });
 const browserWaitParameters = z.object({
   selector: z.string().nullable(),
