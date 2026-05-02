@@ -356,18 +356,23 @@ artifact path.
 
 GitHub Actions runs the same bundle through
 [.github/workflows/harness.yml](/Users/johnny/Work/vulture/.github/workflows/harness.yml)
-and uploads a `harness-artifacts` bundle on every run. The bundle contains:
+and uploads a `harness-artifacts` bundle on every run. The workflow uses
+`bun install --frozen-lockfile`, opts JavaScript actions into the Node 24 runtime
+transition, and warns when the upload step cannot find the expected artifact
+directories. The bundle contains:
 
 - `.artifacts/runtime-harness`
 - `.artifacts/tool-contract-harness`
 - `.artifacts/acceptance`
 - `.artifacts/harness-catalog`
 - `.artifacts/harness-report`
+- `.artifacts/harness-runs`
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
 reports, aggregate `harness-report/report.md`, CI summary, failure triage,
-artifact validation, retention, history, and bundle manifest reports together for CI triage. GitHub retains the
-uploaded bundle for 14 days. Local historical snapshots live under
+artifact validation, retention, history, bundle manifest reports, and retained
+historical snapshots together for CI triage. GitHub retains the uploaded bundle
+for 14 days. Local and uploaded historical snapshots live under
 `.artifacts/harness-runs/` and are governed by the retention policy above.
 
 Manual GitHub Actions runs can also execute the desktop E2E smoke lane without
@@ -384,6 +389,10 @@ changing the default PR/push CI path:
 
 When `runDesktopE2E` stays `false`, the manual run behaves like the default CI
 path and only runs the `harness` job.
+
+Both GitHub Actions jobs have explicit timeouts so a stuck harness process does
+not consume a runner indefinitely: 30 minutes for the default harness job and 60
+minutes for the optional desktop E2E lane.
 
 ## Desktop E2E
 
