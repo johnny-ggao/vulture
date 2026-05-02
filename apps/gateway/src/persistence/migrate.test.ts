@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 16;
+const LATEST_SCHEMA_VERSION = 17;
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -251,7 +251,7 @@ describe("migrate", () => {
     const columns = db
       .query("PRAGMA table_info(subagent_sessions)")
       .all() as { name: string; notnull: number }[];
-    expect(columns.map((c) => c.name)).toEqual([
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining([
       "id",
       "parent_conversation_id",
       "parent_run_id",
@@ -262,7 +262,7 @@ describe("migrate", () => {
       "message_count",
       "created_at",
       "updated_at",
-    ]);
+    ]));
     expect(columns.find((c) => c.name === "parent_conversation_id")?.notnull).toBe(1);
     expect(columns.find((c) => c.name === "parent_run_id")?.notnull).toBe(1);
     expect(columns.find((c) => c.name === "conversation_id")?.notnull).toBe(1);
@@ -296,6 +296,42 @@ describe("migrate", () => {
     const permissionMode = columns.find((c) => c.name === "permission_mode");
     expect(permissionMode?.notnull).toBe(1);
     expect(permissionMode?.dflt_value).toBe("'default'");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("017 adds subagent productization metadata columns", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v17-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(17);
+    const columns = db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toEqual([
+      "id",
+      "parent_conversation_id",
+      "parent_run_id",
+      "agent_id",
+      "conversation_id",
+      "label",
+      "status",
+      "message_count",
+      "created_at",
+      "updated_at",
+      "title",
+      "task",
+      "result_summary",
+      "result_message_id",
+      "completed_at",
+      "last_error",
+    ]);
+    expect(columns.find((c) => c.name === "title")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "task")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "result_summary")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "result_message_id")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "completed_at")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "last_error")?.notnull).toBe(0);
     db.close();
     rmSync(dir, { recursive: true });
   });

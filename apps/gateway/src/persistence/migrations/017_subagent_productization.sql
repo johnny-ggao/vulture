@@ -5,4 +5,4 @@ ALTER TABLE subagent_sessions ADD COLUMN result_message_id TEXT;
 ALTER TABLE subagent_sessions ADD COLUMN completed_at TEXT;
 ALTER TABLE subagent_sessions ADD COLUMN last_error TEXT;
 
-INSERT OR IGNORE INTO schema_version(version) VALUES (15);
+INSERT OR IGNORE INTO schema_version(version) VALUES (17);

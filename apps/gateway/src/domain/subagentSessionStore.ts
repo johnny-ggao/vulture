@@ -129,9 +129,7 @@ export class SubagentSessionStore {
   constructor(
     private readonly db: DB,
     private readonly deps: SubagentSessionStoreDeps,
-  ) {
-    this.ensureProductizationColumns();
-  }
+  ) {}
 
   create(input: CreateSubagentSessionInput): SubagentSession {
     const id = genId();
@@ -274,14 +272,14 @@ export class SubagentSessionStore {
   ): TerminalMetadata {
     if (status === "active") {
       return {
-        resultSummary: session.resultSummary,
-        resultMessageId: session.resultMessageId,
-        completedAt: session.completedAt,
+        resultSummary: null,
+        resultMessageId: null,
+        completedAt: null,
         lastError: null,
       };
     }
     if (status === "completed") {
-      const result = this.latestAssistantMessage(session.conversationId);
+      const result = this.latestSucceededResultMessage(session.conversationId);
       return {
         resultSummary: result ? summarizeSubagentResult(result.content) : session.resultSummary,
         resultMessageId: result?.id ?? session.resultMessageId,
@@ -297,10 +295,12 @@ export class SubagentSessionStore {
     };
   }
 
-  private latestAssistantMessage(conversationId: string) {
-    return [...this.deps.messages.listSince({ conversationId })]
-      .reverse()
-      .find((message) => message.role === "assistant") ?? null;
+  private latestSucceededResultMessage(conversationId: string) {
+    const latestSucceededRun = this.deps.runs
+      .listForConversation(conversationId)
+      .find((run) => run.status === "succeeded" && run.resultMessageId);
+    if (!latestSucceededRun?.resultMessageId) return null;
+    return this.deps.messages.get(latestSucceededRun.resultMessageId);
   }
 
   private latestRunError(conversationId: string): string | null {
@@ -322,23 +322,5 @@ export class SubagentSessionStore {
 
   private countMessages(conversationId: string): number {
     return this.deps.messages.listSince({ conversationId }).length;
-  }
-
-  private ensureProductizationColumns(): void {
-    const rows = this.db
-      .query("PRAGMA table_info(subagent_sessions)")
-      .all() as Array<{ name: string }>;
-    const existing = new Set(rows.map((row) => row.name));
-    const columns: Array<[string, string]> = [
-      ["title", "ALTER TABLE subagent_sessions ADD COLUMN title TEXT"],
-      ["task", "ALTER TABLE subagent_sessions ADD COLUMN task TEXT"],
-      ["result_summary", "ALTER TABLE subagent_sessions ADD COLUMN result_summary TEXT"],
-      ["result_message_id", "ALTER TABLE subagent_sessions ADD COLUMN result_message_id TEXT"],
-      ["completed_at", "ALTER TABLE subagent_sessions ADD COLUMN completed_at TEXT"],
-      ["last_error", "ALTER TABLE subagent_sessions ADD COLUMN last_error TEXT"],
-    ];
-    for (const [name, sql] of columns) {
-      if (!existing.has(name)) this.db.exec(sql);
-    }
   }
 }
