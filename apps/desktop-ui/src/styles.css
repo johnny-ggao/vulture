@@ -7944,16 +7944,20 @@ pre {
   z-index: var(--z-modal);
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px 10px 16px;
+  gap: 10px;
+  padding: 10px 8px 10px 14px;
   border-radius: var(--radius-pill);
-  background: #1c1d1f;
+  /* Neutral toast: warm-charcoal so it sits over the off-white shell
+   * without feeling foreign. The dark fill is consistent across light
+   * + dark mode (dark mode override is via the tone classes below). */
+  background: #1f1d1a;
   color: rgba(255, 255, 255, 0.95);
   font-size: 13px;
   line-height: 1.4;
   box-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.28),
-    0 4px 8px rgba(0, 0, 0, 0.12);
+    0 14px 36px rgba(15, 15, 15, 0.28),
+    0 4px 10px rgba(15, 15, 15, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   max-width: min(560px, calc(100vw - 48px));
   animation: toast-slide-in var(--duration-slow) var(--ease-spring);
 }
@@ -7961,9 +7965,21 @@ pre {
   from { opacity: 0; transform: translate(-50%, 12px); }
   to   { opacity: 1; transform: translate(-50%, 0);    }
 }
-.toast-danger  { background: #b91c1c; }
-.toast-success { background: #166534; }
-.toast-warning { background: #92400e; }
+/* Tone variants — pick semantic surface tones so danger/success/warning
+ * read as the same product family rather than three different brands.
+ * Foreground stays #fff via the base rule; tone-icon inherits via
+ * currentColor so the leading glyph is always legible. */
+.toast-danger  { background: #b3261e; }
+.toast-success { background: #1f7a4d; }
+.toast-warning { background: #9a5a16; }
+.toast-tone-icon {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: #fff;
+}
 .toast-message {
   flex: 1;
   min-width: 0;
@@ -7973,11 +7989,13 @@ pre {
 }
 .toast-action {
   flex-shrink: 0;
-  height: 24px;
-  padding: 0 10px;
+  height: 26px;
+  padding: 0 12px;
   border: 0;
-  background: rgba(255, 255, 255, 0.16);
-  color: inherit;
+  /* Higher-contrast action chip — was 16% opacity which read as a
+   * suggestion. Bump to 22% rest / 32% hover for AA-clearing pop. */
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
   font-size: 12px;
   font-weight: 600;
   border-radius: var(--radius-pill);
@@ -7985,10 +8003,10 @@ pre {
   min-height: 0;
   transition: background-color 120ms ease;
 }
-.toast-action:hover { background: rgba(255, 255, 255, 0.24); }
+.toast-action:hover { background: rgba(255, 255, 255, 0.32); }
 .toast-action:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
 }
 .toast-dismiss {
   flex-shrink: 0;
@@ -8007,7 +8025,14 @@ pre {
 }
 .toast-dismiss:hover {
   color: #fff;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
+}
+.toast-dismiss:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
 }
 
 /* AgentAvatar — deterministic hashed colour, used in agent list / chat header. */
