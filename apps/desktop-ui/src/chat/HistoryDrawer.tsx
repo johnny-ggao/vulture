@@ -191,6 +191,20 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
     if (!props.open) setAgentFilterId(null);
   }, [props.open]);
 
+  // Esc closes the drawer when it's open. Listens at the window level
+  // so the shortcut works whether focus is in the search field, on a
+  // row, or anywhere else inside the drawer. No-op when closed.
+  useEffect(() => {
+    if (!props.open) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      props.onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props.open, props.onClose]);
+
   // O(1) agent lookup for row rendering. Memoised so the map identity is
   // stable across re-renders when the agents array hasn't changed.
   const agentById = useMemo(() => {
