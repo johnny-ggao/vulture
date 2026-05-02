@@ -22,6 +22,10 @@ export interface SkillCatalogEntry {
   homepage?: string;
   installed: boolean;
   installedVersion: string | null;
+  installedAt: Iso8601 | null;
+  needsUpdate: boolean;
+  lifecycleStatus: "not_installed" | "installed" | "outdated" | "failed";
+  lastError: string | null;
   createdAt: Iso8601;
   updatedAt: Iso8601;
 }
@@ -48,6 +52,8 @@ interface StoredSkillCatalogEntry {
   source: SkillCatalogSource;
   packagePath?: string;
   homepage?: string;
+  installedAt?: Iso8601;
+  lastError?: string;
   createdAt: Iso8601;
   updatedAt: Iso8601;
 }
@@ -83,6 +89,10 @@ export class SkillCatalogStore {
         ...entry,
         installed: installed.has(entry.name),
         installedVersion: installed.get(entry.name) ?? null,
+        installedAt: entry.installedAt ?? null,
+        needsUpdate: installed.has(entry.name) && installed.get(entry.name) !== entry.version,
+        lifecycleStatus: lifecycleStatus(entry, installed.get(entry.name) ?? null),
+        lastError: entry.lastError ?? null,
       }));
   }
 
@@ -122,36 +132,47 @@ export class SkillCatalogStore {
   install(name: string): SkillCatalogEntry {
     const entry = this.readCatalog().items.find((candidate) => candidate.name === name);
     if (!entry) throw new Error(`skill catalog entry not found: ${name}`);
-    const dest = join(this.profileSkillsDir, entry.name);
-    mkdirSync(dirname(dest), { recursive: true });
-    rmSync(dest, { recursive: true, force: true });
+    try {
+      const dest = join(this.profileSkillsDir, entry.name);
+      mkdirSync(dirname(dest), { recursive: true });
+      rmSync(dest, { recursive: true, force: true });
 
-    if (entry.packagePath) {
-      const packageDir = normalizeAbsoluteDirectory(entry.packagePath, "packagePath");
-      cpSync(packageDir, dest, { recursive: true });
-    } else {
-      mkdirSync(dest, { recursive: true });
-      writeFileSync(
-        join(dest, "SKILL.md"),
-        [
-          "---",
-          `name: ${entry.name}`,
-          `description: ${entry.description}`,
-          `version: ${entry.version}`,
-          "---",
-          "",
-          entry.description,
-          "",
-        ].join("\n"),
-      );
+      if (entry.packagePath) {
+        const packageDir = normalizeAbsoluteDirectory(entry.packagePath, "packagePath");
+        cpSync(packageDir, dest, { recursive: true });
+      } else {
+        mkdirSync(dest, { recursive: true });
+        writeFileSync(
+          join(dest, "SKILL.md"),
+          [
+            "---",
+            `name: ${entry.name}`,
+            `description: ${entry.description}`,
+            `version: ${entry.version}`,
+            "---",
+            "",
+            entry.description,
+            "",
+          ].join("\n"),
+        );
+      }
+      this.patchEntry(entry.name, { installedAt: nowIso8601(), lastError: undefined });
+      return this.get(entry.name)!;
+    } catch (cause) {
+      this.patchEntry(entry.name, { lastError: errorMessage(cause) });
+      throw cause;
     }
-
-    return this.get(entry.name)!;
   }
 
   updateAll(): SkillCatalogEntry[] {
     for (const entry of this.readCatalog().items) {
-      if (entry.packagePath) this.install(entry.name);
+      if (!entry.packagePath) continue;
+      try {
+        this.install(entry.name);
+      } catch {
+        // Individual failures are persisted on the catalog entry so the UI
+        // can show retry state without aborting the whole batch.
+      }
     }
     return this.list();
   }
@@ -170,6 +191,24 @@ export class SkillCatalogStore {
       schemaVersion: 1,
       items: value.items.slice().sort((left, right) => left.name.localeCompare(right.name, "en")),
     });
+  }
+
+  private patchEntry(name: string, patch: { installedAt?: Iso8601; lastError?: string }): void {
+    const catalog = this.readCatalog();
+    const index = catalog.items.findIndex((entry) => entry.name === name);
+    if (index < 0) return;
+    const existing = catalog.items[index]!;
+    const next: StoredSkillCatalogEntry = {
+      ...existing,
+      updatedAt: nowIso8601(),
+    };
+    if ("installedAt" in patch) next.installedAt = patch.installedAt;
+    if ("lastError" in patch) {
+      if (patch.lastError === undefined) delete next.lastError;
+      else next.lastError = patch.lastError;
+    }
+    catalog.items[index] = next;
+    this.writeCatalog(catalog);
   }
 
   private installedVersions(): Map<string, string> {
@@ -274,9 +313,25 @@ function isStoredEntry(value: unknown): value is StoredSkillCatalogEntry {
     isSource(entry.source) &&
     typeof entry.createdAt === "string" &&
     typeof entry.updatedAt === "string" &&
+    (entry.installedAt === undefined || typeof entry.installedAt === "string") &&
+    (entry.lastError === undefined || typeof entry.lastError === "string") &&
     (entry.packagePath === undefined || typeof entry.packagePath === "string") &&
     (entry.homepage === undefined || typeof entry.homepage === "string")
   );
+}
+
+function lifecycleStatus(
+  entry: StoredSkillCatalogEntry,
+  installedVersion: string | null,
+): SkillCatalogEntry["lifecycleStatus"] {
+  if (entry.lastError) return "failed";
+  if (!installedVersion) return "not_installed";
+  if (installedVersion !== entry.version) return "outdated";
+  return "installed";
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function isSource(value: unknown): value is SkillCatalogSource {

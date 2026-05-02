@@ -4,6 +4,7 @@ export type ViewKey =
   | "chat"
   | "agents"
   | "skills"
+  | "artifacts"
   | "plugins"
   | "tasks"
   | "settings";
@@ -20,6 +21,7 @@ const PRIMARY: Array<{ key: ViewKey; label: string; icon: ReactNode }> = [
   { key: "chat",    label: "对话",     icon: <IconChat /> },
   { key: "agents",  label: "智能体",   icon: <IconAgents /> },
   { key: "skills",  label: "技能",     icon: <IconSkills /> },
+  { key: "artifacts", label: "产物",   icon: <IconArtifacts /> },
   { key: "plugins", label: "插件",     icon: <IconPlugins /> },
   { key: "tasks",   label: "定时任务", icon: <IconTasks /> },
 ];
@@ -88,6 +90,9 @@ function IconAgents() {
 }
 function IconSkills() {
   return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2.5l1.6 3.4 3.7.5-2.7 2.6.7 3.7L8 11l-3.3 1.7.7-3.7L2.7 6.4l3.7-.5L8 2.5Z" /></svg>;
+}
+function IconArtifacts() {
+  return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2.75h6.25L13 6.5v6.75H3V2.75Z" /><path d="M9 3v4h4M5.5 9.5h5M5.5 12h3" /></svg>;
 }
 function IconPlugins() {
   return <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 4.5l5.5-2 5.5 2v6.5l-5.5 3-5.5-3V4.5Z" /><path d="M8 2.5v11M2.5 4.5L8 7l5.5-2.5" /></svg>;

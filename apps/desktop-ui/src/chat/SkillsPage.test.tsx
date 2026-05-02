@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SkillsPage, type SkillsPageProps } from "./SkillsPage";
-import type { SkillListItem, SkillListResponse } from "../api/skills";
+import type { SkillCatalogEntry, SkillListItem, SkillListResponse } from "../api/skills";
 import type { Agent } from "../api/agents";
 
 const baseAgent: Agent = {
@@ -56,6 +56,38 @@ const skills: SkillListItem[] = [
   },
 ];
 
+const catalog: SkillCatalogEntry[] = [
+  {
+    name: "csv-insights",
+    description: "Analyze CSV files.",
+    version: "1.2.0",
+    source: "local",
+    packagePath: "/packages/csv-insights",
+    installed: true,
+    installedVersion: "1.0.0",
+    installedAt: "2026-05-01T00:00:00.000Z",
+    needsUpdate: true,
+    lifecycleStatus: "outdated",
+    lastError: null,
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  },
+  {
+    name: "broken-skill",
+    description: "A package that failed to install.",
+    version: "0.1.0",
+    source: "manual",
+    installed: false,
+    installedVersion: null,
+    installedAt: null,
+    needsUpdate: false,
+    lifecycleStatus: "failed",
+    lastError: "SKILL.md not found",
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  },
+];
+
 function renderPage(overrides: Partial<SkillsPageProps> = {}) {
   const data: SkillListResponse = {
     agentId: "agent-1",
@@ -68,6 +100,10 @@ function renderPage(overrides: Partial<SkillsPageProps> = {}) {
     selectedAgentId: "agent-1",
     onSelectAgent: mock(() => undefined),
     onLoadSkills: mock(async () => data),
+    onLoadSkillCatalog: mock(async () => ({ items: catalog })),
+    onImportSkillPackage: mock(async (_packagePath: string) => catalog[0]!),
+    onInstallSkill: mock(async (_name: string) => catalog[0]!),
+    onUpdateSkillCatalog: mock(async () => ({ items: catalog })),
     onSaveAgentSkills: mock(async () => undefined),
     ...overrides,
   };
@@ -143,5 +179,40 @@ describe("SkillsPage", () => {
     await screen.findAllByText("code-review");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzzz" } });
     expect(screen.getByText(/没有找到/)).toBeDefined();
+  });
+
+  test("shows catalog lifecycle status and can install outdated skills", async () => {
+    const onInstallSkill = mock(async (_name: string) => ({
+      ...catalog[0]!,
+      installedVersion: "1.2.0",
+      needsUpdate: false,
+      lifecycleStatus: "installed" as const,
+    }));
+    renderPage({ onInstallSkill });
+
+    await screen.findByText("Skill Catalog");
+    expect(screen.getByText("csv-insights")).toBeDefined();
+    expect(screen.getByText("1.0.0 → 1.2.0")).toBeDefined();
+    expect(screen.getByText("SKILL.md not found")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "更新 csv-insights" }));
+    await waitFor(() => {
+      expect(onInstallSkill).toHaveBeenCalledWith("csv-insights");
+    });
+  });
+
+  test("imports a local skill package into the catalog", async () => {
+    const onImportSkillPackage = mock(async (_packagePath: string) => catalog[0]!);
+    renderPage({ onImportSkillPackage });
+
+    await screen.findByText("Skill Catalog");
+    fireEvent.change(screen.getByLabelText("Skill package path"), {
+      target: { value: "/packages/csv-insights" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "导入 skill package" }));
+
+    await waitFor(() => {
+      expect(onImportSkillPackage).toHaveBeenCalledWith("/packages/csv-insights");
+    });
   });
 });

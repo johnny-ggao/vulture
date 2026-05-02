@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Agent } from "../api/agents";
-import type { SkillListItem, SkillListResponse } from "../api/skills";
+import type { SkillCatalogEntry, SkillCatalogResponse, SkillListItem, SkillListResponse } from "../api/skills";
 import { Badge, ErrorAlert, Field, SearchInput, Toggle, useCursorGloss } from "./components";
 import { SkillDetailModal } from "./SkillDetailModal";
 
@@ -9,6 +9,10 @@ export interface SkillsPageProps {
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
   onLoadSkills: (agentId: string) => Promise<SkillListResponse>;
+  onLoadSkillCatalog: () => Promise<SkillCatalogResponse>;
+  onImportSkillPackage: (packagePath: string) => Promise<SkillCatalogEntry>;
+  onInstallSkill: (name: string) => Promise<SkillCatalogEntry>;
+  onUpdateSkillCatalog: () => Promise<SkillCatalogResponse>;
   onSaveAgentSkills: (id: string, skills: string[] | null) => Promise<void>;
 }
 
@@ -24,7 +28,14 @@ const SOURCE_LABEL: Record<SkillListItem["source"], string> = {
 
 export function SkillsPage(props: SkillsPageProps) {
   const [state, setState] = useState<LoadState>({ status: "idle", data: null, error: null });
+  const [catalog, setCatalog] = useState<{
+    loading: boolean;
+    items: SkillCatalogEntry[];
+    error: string | null;
+  }>({ loading: false, items: [], error: null });
   const [saving, setSaving] = useState(false);
+  const [catalogBusy, setCatalogBusy] = useState<string | null>(null);
+  const [importPath, setImportPath] = useState("");
   const [query, setQuery] = useState("");
   const [detailSkillName, setDetailSkillName] = useState<string | null>(null);
 
@@ -49,6 +60,22 @@ export function SkillsPage(props: SkillsPageProps) {
     }
   }
 
+  async function loadCatalog(cancelled: () => boolean = () => false) {
+    setCatalog((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const data = await props.onLoadSkillCatalog();
+      if (!cancelled()) setCatalog({ loading: false, items: data.items, error: null });
+    } catch (cause) {
+      if (!cancelled()) {
+        setCatalog((prev) => ({
+          ...prev,
+          loading: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        }));
+      }
+    }
+  }
+
   useEffect(() => {
     if (!activeAgent) return;
     let cancelled = false;
@@ -57,6 +84,14 @@ export function SkillsPage(props: SkillsPageProps) {
       cancelled = true;
     };
   }, [activeAgent?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCatalog(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function savePolicy(skills: string[] | null) {
     if (!activeAgent || saving) return;
@@ -80,6 +115,70 @@ export function SkillsPage(props: SkillsPageProps) {
     if (current.has(skill.name)) current.delete(skill.name);
     else current.add(skill.name);
     await savePolicy([...current].sort((left, right) => left.localeCompare(right, "en")));
+  }
+
+  async function installCatalogSkill(skill: SkillCatalogEntry) {
+    if (catalogBusy) return;
+    setCatalogBusy(skill.name);
+    setCatalog((prev) => ({ ...prev, error: null }));
+    try {
+      const updated = await props.onInstallSkill(skill.name);
+      setCatalog((prev) => ({
+        loading: false,
+        error: null,
+        items: replaceCatalogEntry(prev.items, updated),
+      }));
+      if (activeAgent) await load(activeAgent.id);
+    } catch (cause) {
+      await loadCatalog();
+      setCatalog((prev) => ({
+        ...prev,
+        error: cause instanceof Error ? cause.message : String(cause),
+      }));
+    } finally {
+      setCatalogBusy(null);
+    }
+  }
+
+  async function importCatalogSkill() {
+    const packagePath = importPath.trim();
+    if (catalogBusy || !packagePath) return;
+    setCatalogBusy("__import__");
+    setCatalog((prev) => ({ ...prev, error: null }));
+    try {
+      const imported = await props.onImportSkillPackage(packagePath);
+      setCatalog((prev) => ({
+        loading: false,
+        error: null,
+        items: replaceCatalogEntry(prev.items, imported),
+      }));
+      setImportPath("");
+    } catch (cause) {
+      setCatalog((prev) => ({
+        ...prev,
+        error: cause instanceof Error ? cause.message : String(cause),
+      }));
+    } finally {
+      setCatalogBusy(null);
+    }
+  }
+
+  async function updateCatalog() {
+    if (catalogBusy) return;
+    setCatalogBusy("__update_all__");
+    setCatalog((prev) => ({ ...prev, error: null }));
+    try {
+      const data = await props.onUpdateSkillCatalog();
+      setCatalog({ loading: false, items: data.items, error: null });
+      if (activeAgent) await load(activeAgent.id);
+    } catch (cause) {
+      setCatalog((prev) => ({
+        ...prev,
+        error: cause instanceof Error ? cause.message : String(cause),
+      }));
+    } finally {
+      setCatalogBusy(null);
+    }
   }
 
   const data = state.data;
@@ -183,6 +282,68 @@ export function SkillsPage(props: SkillsPageProps) {
       </div>
 
       <ErrorAlert message={state.error} />
+      <ErrorAlert message={catalog.error} />
+
+      <section className="skill-catalog-panel" aria-label="Skill Catalog">
+        <div className="skills-section-h">
+          <span>Skill Catalog</span>
+          <span className="skills-section-h-sub">
+            {catalog.loading ? "刷新中…" : `${catalog.items.length} 个安装包`}
+          </span>
+        </div>
+        <div className="skill-catalog-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={catalogBusy !== null}
+            onClick={() => void loadCatalog()}
+          >
+            刷新
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={catalogBusy !== null || catalog.items.length === 0}
+            onClick={() => void updateCatalog()}
+          >
+            {catalogBusy === "__update_all__" ? "更新中…" : "更新全部"}
+          </button>
+        </div>
+        <div className="skill-catalog-import">
+          <label className="skill-catalog-import-field">
+            <span>Skill package path</span>
+            <input
+              value={importPath}
+              onChange={(event) => setImportPath(event.currentTarget.value)}
+              placeholder="/absolute/path/to/skill"
+              disabled={catalogBusy !== null}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={catalogBusy !== null || !importPath.trim()}
+            onClick={() => void importCatalogSkill()}
+          >
+            {catalogBusy === "__import__" ? "导入中…" : "导入 skill package"}
+          </button>
+        </div>
+        {catalog.items.length === 0 && !catalog.loading ? (
+          <div className="skill-catalog-empty">还没有导入 catalog 包。</div>
+        ) : (
+          <div className="skill-catalog-grid">
+            {catalog.items.map((skill) => (
+              <SkillCatalogCard
+                key={skill.name}
+                skill={skill}
+                busy={catalogBusy === skill.name}
+                disabled={catalogBusy !== null}
+                onInstall={() => void installCatalogSkill(skill)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="skills-market-body">
         <aside className="skills-cats" aria-label="技能来源">
@@ -301,6 +462,52 @@ export function SkillsPage(props: SkillsPageProps) {
   );
 }
 
+function SkillCatalogCard({
+  skill,
+  busy,
+  disabled,
+  onInstall,
+}: {
+  skill: SkillCatalogEntry;
+  busy: boolean;
+  disabled: boolean;
+  onInstall: () => void;
+}) {
+  const actionLabel = skill.lifecycleStatus === "outdated"
+    ? `更新 ${skill.name}`
+    : skill.installed
+      ? `重新安装 ${skill.name}`
+      : `安装 ${skill.name}`;
+  return (
+    <article className="skill-catalog-card" data-status={skill.lifecycleStatus}>
+      <div className="skill-catalog-card-head">
+        <strong>{skill.name}</strong>
+        <Badge tone={catalogTone(skill.lifecycleStatus)}>
+          {catalogStatusLabel(skill.lifecycleStatus)}
+        </Badge>
+      </div>
+      <p>{skill.description}</p>
+      <div className="skill-catalog-version">
+        {skill.installedVersion && skill.installedVersion !== skill.version
+          ? `${skill.installedVersion} → ${skill.version}`
+          : `v${skill.version}`}
+      </div>
+      {skill.lastError ? (
+        <div className="skill-catalog-error" role="alert">{skill.lastError}</div>
+      ) : null}
+      <button
+        type="button"
+        className={skill.needsUpdate || !skill.installed ? "btn-primary" : "btn-secondary"}
+        disabled={disabled}
+        aria-label={actionLabel}
+        onClick={onInstall}
+      >
+        {busy ? "处理中…" : skill.lifecycleStatus === "outdated" ? "更新" : skill.installed ? "重装" : "安装"}
+      </button>
+    </article>
+  );
+}
+
 interface SkillCardProps {
   skill: SkillListItem;
   saving: boolean;
@@ -379,4 +586,31 @@ function policyLabel(policy: SkillListResponse["policy"] | undefined): string {
   if (policy === "none") return "全部禁用";
   if (policy === "allowlist") return "仅启用所选";
   return "加载中";
+}
+
+function catalogStatusLabel(status: SkillCatalogEntry["lifecycleStatus"]): string {
+  switch (status) {
+    case "installed": return "已安装";
+    case "outdated": return "可更新";
+    case "failed": return "失败";
+    case "not_installed": return "未安装";
+  }
+}
+
+function catalogTone(status: SkillCatalogEntry["lifecycleStatus"]): "success" | "info" | "warning" | "danger" | "neutral" {
+  switch (status) {
+    case "installed": return "success";
+    case "outdated": return "warning";
+    case "failed": return "danger";
+    case "not_installed": return "neutral";
+  }
+}
+
+function replaceCatalogEntry(
+  items: SkillCatalogEntry[],
+  next: SkillCatalogEntry,
+): SkillCatalogEntry[] {
+  const index = items.findIndex((item) => item.name === next.name);
+  if (index < 0) return [...items, next].sort((left, right) => left.name.localeCompare(right.name, "en"));
+  return items.map((item) => (item.name === next.name ? next : item));
 }

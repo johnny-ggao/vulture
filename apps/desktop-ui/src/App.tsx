@@ -9,6 +9,7 @@ import type {
 import { useRuntimeDescriptor } from "./runtime/useRuntimeDescriptor";
 import { createApiClient } from "./api/client";
 import { agentsApi, type Agent, type AgentCoreFilesResponse, type AgentToolName, type AgentToolPreset, type ReasoningLevel } from "./api/agents";
+import { artifactsApi, type ListArtifactsQuery } from "./api/artifacts";
 import { type ConversationDto } from "./api/conversations";
 import { runLogsApi, type ListRunLogsQuery } from "./api/runLogs";
 import {
@@ -38,10 +39,12 @@ import {
   loadSkillsWithGatewayRestartFallback as loadSkillsRetry,
   withGatewayRestartForMissingRoute,
 } from "./app/gatewayRestartFallback";
+import { skillsApi } from "./api/skills";
 import { useGatewayBootstrap } from "./app/useGatewayBootstrap";
 import { useRunController } from "./app/useRunController";
 import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
+import { ArtifactsPage } from "./chat/ArtifactsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
 import { CommandPalette, useCommandPalette, type Command } from "./chat/CommandPalette";
@@ -318,6 +321,11 @@ export function App() {
     );
   }
 
+  async function listArtifacts(query: ListArtifactsQuery) {
+    if (!apiClient) return { items: [] };
+    return artifactsApi.list(apiClient, query);
+  }
+
   async function loadRunTrace(runId: string) {
     if (!apiClient) throw new Error("Gateway is not ready");
     return runLogsApi.trace(apiClient, runId);
@@ -541,11 +549,12 @@ export function App() {
         "chat",
         "agents",
         "skills",
+        "artifacts",
         "plugins",
         "tasks",
         "settings",
       ];
-      if (event.key >= "1" && event.key <= "6") {
+      if (event.key >= "1" && event.key <= "7") {
         if (isTyping) return;
         const idx = Number.parseInt(event.key, 10) - 1;
         const target = VIEW_KEYS[idx];
@@ -600,15 +609,16 @@ export function App() {
     const cmds: Command[] = [];
 
     // Navigate group — primary view switcher. Shortcut digits mirror
-    // the ⌘1-6 listener so the palette is a discoverability surface
+    // the ⌘1-7 listener so the palette is a discoverability surface
     // for the same keystrokes (no duplicate handler).
     const VIEW_LABELS: Array<{ key: ViewKey; label: string; digit: string }> = [
       { key: "chat", label: "对话", digit: "1" },
       { key: "agents", label: "智能体", digit: "2" },
       { key: "skills", label: "技能", digit: "3" },
-      { key: "plugins", label: "插件", digit: "4" },
-      { key: "tasks", label: "定时任务", digit: "5" },
-      { key: "settings", label: "设置", digit: "6" },
+      { key: "artifacts", label: "产物", digit: "4" },
+      { key: "plugins", label: "插件", digit: "5" },
+      { key: "tasks", label: "定时任务", digit: "6" },
+      { key: "settings", label: "设置", digit: "7" },
     ];
     for (const { key, label, digit } of VIEW_LABELS) {
       cmds.push({
@@ -758,6 +768,7 @@ export function App() {
             view === "chat" ? "对话" :
             view === "agents" ? "智能体" :
             view === "skills" ? "技能" :
+            view === "artifacts" ? "产物" :
             view === "plugins" ? "插件" :
             view === "tasks" ? "定时任务" :
             view === "settings" ? "设置" :
@@ -822,7 +833,30 @@ export function App() {
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
               onLoadSkills={(agentId) => loadSkillsRetry(apiClient, agentId)}
+              onLoadSkillCatalog={() => {
+                if (!apiClient) throw new Error("Gateway is not ready");
+                return skillsApi.listCatalog(apiClient);
+              }}
+              onImportSkillPackage={(packagePath) => {
+                if (!apiClient) throw new Error("Gateway is not ready");
+                return skillsApi.importCatalogPackage(apiClient, { packagePath, source: "local" });
+              }}
+              onInstallSkill={(name) => {
+                if (!apiClient) throw new Error("Gateway is not ready");
+                return skillsApi.installCatalogEntry(apiClient, name);
+              }}
+              onUpdateSkillCatalog={() => {
+                if (!apiClient) throw new Error("Gateway is not ready");
+                return skillsApi.updateCatalog(apiClient);
+              }}
               onSaveAgentSkills={handleSaveAgentSkills}
+            />
+          ) : null}
+          {view === "artifacts" ? (
+            <ArtifactsPage
+              agents={agents}
+              selectedAgentId={selectedAgentId}
+              onListArtifacts={listArtifacts}
             />
           ) : null}
           {view === "plugins" ? (
