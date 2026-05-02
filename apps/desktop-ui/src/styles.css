@@ -6441,6 +6441,10 @@ pre {
   color: var(--brand-600);
   transform: translateY(-2px);
 }
+.agent-create-tile:active {
+  transform: translateY(0);
+  background: color-mix(in oklab, var(--brand-500) 14%, transparent);
+}
 .agent-create-tile:focus-visible {
   outline: 0;
   border-color: var(--brand-500);
@@ -8586,17 +8590,28 @@ pre {
   gap: 8px 12px;
   align-items: center;
   text-align: left;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-primary);
   padding: 12px;
   margin-bottom: 8px;
+  box-shadow: var(--shadow-card-rest);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 .artifact-row:hover,
 .artifact-row-active {
-  border-color: var(--brand-400);
+  border-color: color-mix(in oklab, var(--brand-500) 24%, var(--glass-border));
   background: var(--bg-secondary);
+  box-shadow: var(--shadow-card-hover);
+}
+.artifact-row:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .artifact-kind {
   display: inline-flex;
