@@ -599,8 +599,13 @@ describe("App integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Local Work Agent" }));
 
     await waitFor(() => {
-      // Editor header now uses the agent name, with tabs underneath.
-      expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
+      // Editor header surfaces the agent name as the modal hero title
+      // (level=2). The agent-card on the page also has the name as a
+      // level-3 heading (for screen-reader landmarking), so we pin the
+      // query to level 2 to avoid the multi-match.
+      expect(
+        screen.getByRole("heading", { name: /Local Work Agent/, level: 2 }),
+      ).toBeDefined();
       expect(screen.getByText("Workspace")).toBeDefined();
       expect(screen.getByLabelText("Skills")).toBeDefined();
     });

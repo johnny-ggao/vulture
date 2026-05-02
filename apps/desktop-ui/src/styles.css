@@ -6525,31 +6525,121 @@ pre {
   display: flex;
   flex-direction: column;
 }
-/* macOS-restraint header — drops the cursor-tracked brand spotlight
- * (decorative-only, against HIG). Padding bumps for a more spacious
- * editor feel; the title itself sits at Title 2 weight. */
-.agent-edit-modal .modal-header {
-  padding: 16px 22px;
+/* Round 21 — Accio "product hero" header for AgentEditModal.
+ * Replaces the previous horizontal title-row with two stacked layers:
+ *   1. agent-edit-topbar: 44px chrome row holding save status + the
+ *      action rail (revert / chat / save / close). Quiet bg so it
+ *      doesn't compete with the hero below.
+ *   2. agent-edit-hero: full-width banner with per-agent hue + a
+ *      floating avatar punching through the banner edge + centred
+ *      name + id chip below. Mirrors the AgentCard tile pattern so
+ *      identity flows from card → editor without a visual seam.
+ */
+.agent-edit-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px 8px 18px;
+  border-bottom: 0.5px solid var(--glass-border);
+  min-height: 44px;
 }
-.agent-edit-modal .agent-config-title-block {
-  flex: 1;
-  min-width: 0;
-}
-.agent-edit-modal .modal-title {
-  display: block;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.agent-edit-modal-actions {
+.agent-edit-topbar-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+.agent-edit-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 24px 16px;
+  border-bottom: 0.5px solid var(--glass-border);
+}
+.agent-edit-hero-banner {
+  position: relative;
+  align-self: stretch;
+  height: 64px;
+  margin: 0 -24px 32px;
+  /* Same 3-layer paint as AgentCard.banner — gloss highlight, soft
+   * shadow vignette, base diagonal hue gradient. */
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.45) 0%,
+      rgba(255, 255, 255, 0)    48%
+    ),
+    linear-gradient(
+      0deg,
+      rgba(15, 15, 15, 0.06) 0%,
+      rgba(15, 15, 15, 0)    32%
+    ),
+    linear-gradient(
+      135deg,
+      hsl(calc(var(--banner-hue, 0) * 1deg) 56% 88%) 0%,
+      hsl(calc((var(--banner-hue, 0) + 32) * 1deg) 48% 80%) 100%
+    );
+  overflow: hidden;
+}
+@media (prefers-color-scheme: dark) {
+  .agent-edit-hero-banner {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.10) 0%,
+        rgba(255, 255, 255, 0)    48%
+      ),
+      linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.20) 0%,
+        rgba(0, 0, 0, 0)    32%
+      ),
+      linear-gradient(
+        135deg,
+        hsl(calc(var(--banner-hue, 0) * 1deg) 38% 32%) 0%,
+        hsl(calc((var(--banner-hue, 0) + 32) * 1deg) 32% 22%) 100%
+      );
+  }
+}
+.agent-edit-hero-avatar {
+  position: absolute;
+  left: 50%;
+  top: 64px; /* sits at the banner-body seam */
+  transform: translate(-50%, -50%);
+  padding: 4px;
+  border-radius: 18px;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--glass-border);
+  box-shadow:
+    0 1px 1px rgba(15, 15, 15, 0.05),
+    0 6px 14px rgba(15, 15, 15, 0.12);
+  z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .agent-edit-hero-avatar {
+    box-shadow:
+      0 1px 1px rgba(0, 0, 0, 0.35),
+      0 6px 16px rgba(0, 0, 0, 0.50);
+  }
+}
+.agent-edit-hero-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: var(--text-primary);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-edit-hero-id {
+  margin-top: 6px;
+  display: flex;
+  justify-content: center;
 }
 /* Round 17: revert-changes affordance. Lives in the action rail,
  * styled as a quiet ghost so it doesn't compete with 保存. Mounts
@@ -7036,21 +7126,26 @@ pre {
   display: flex;
   flex-direction: column;
 }
-.new-agent-modal .modal-header {
-  /* Match AgentEditModal's slightly taller header (avatar + meta column). */
-  padding: 16px 20px;
-  border-bottom: 0.5px solid var(--glass-border);
+/* Step pill in the NewAgentModal top action bar — small left-aligned
+ * "步骤 N / N" indicator, sits opposite the close button. */
+.new-agent-step-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 0.5px solid var(--glass-border);
+  background: var(--fill-quaternary);
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-feature-settings: "tnum";
 }
-.new-agent-modal .modal-title {
-  font-size: var(--text-md);
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  color: var(--text-primary);
-  display: block;
-}
-.new-agent-header-meta { min-width: 0; }
-.new-agent-step-meta {
-  margin-top: 4px;
+
+/* Step meta line beneath the hero name — current step label + 1-line
+ * description, centred under the title. */
+.new-agent-modal .new-agent-step-meta {
+  margin-top: 6px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -7058,8 +7153,9 @@ pre {
   font-size: 12px;
   font-feature-settings: "tnum";
 }
-.new-agent-step-meta > :nth-child(3) {
-  /* The label ("身份与模型" etc.) gets a brand tint to anchor the eye. */
+.new-agent-modal .new-agent-step-meta > :first-child {
+  /* The step label ("身份与模型" etc.) anchors the meta — give it the
+   * secondary text colour so it pops slightly above the description. */
   color: var(--text-secondary);
   font-weight: 600;
 }

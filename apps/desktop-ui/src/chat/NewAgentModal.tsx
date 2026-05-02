@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type * as React from "react";
 import type {
   AgentToolName,
   AgentToolPreset,
@@ -6,6 +7,7 @@ import type {
 } from "../api/agents";
 import type { ToolCatalogGroup, ToolPolicyDraft } from "../api/tools";
 import { toolPolicyFromPreset } from "../api/tools";
+import { AgentAvatar, hashHue } from "./components";
 import { parseSkills } from "./editAgentTabs";
 import {
   IdentityStep,
@@ -236,16 +238,13 @@ export function NewAgentModal(props: NewAgentModalProps) {
         className="modal-card new-agent-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header">
-          <div className="new-agent-header-meta">
-            <span className="modal-title">新建智能体</span>
-            <div className="new-agent-step-meta">
-              <span>步骤 {stepIndex + 1} / {STEPS.length}</span>
-              <span aria-hidden="true">·</span>
-              <span>{STEPS[stepIndex]?.label}</span>
-              <span className="new-agent-step-desc">{STEPS[stepIndex]?.desc}</span>
-            </div>
-          </div>
+        {/* Top action bar — small chrome row holds only the close
+          * button so the identity hero below can own the user's
+          * attention. */}
+        <div className="agent-edit-topbar">
+          <span className="new-agent-step-pill" aria-hidden="true">
+            步骤 {stepIndex + 1} / {STEPS.length}
+          </span>
           <button
             type="button"
             className="icon-btn"
@@ -266,6 +265,33 @@ export function NewAgentModal(props: NewAgentModalProps) {
               <path d="M4 4l8 8M4 12l8-8" />
             </svg>
           </button>
+        </div>
+
+        {/* Identity hero — banner picks up the previewAgent hue (driven
+          * by the typed name or the chosen template) so the colour
+          * cross-fades as the user types. Floating avatar carries the
+          * preview's first glyph. Title + current step meta sit
+          * centred below. */}
+        <div
+          className="agent-edit-hero"
+          style={
+            {
+              "--banner-hue": hashHue(previewAgent.id).toString(),
+            } as React.CSSProperties
+          }
+        >
+          <div className="agent-edit-hero-banner" aria-hidden="true" />
+          <div className="agent-edit-hero-avatar">
+            <AgentAvatar agent={previewAgent} size={56} shape="square" />
+          </div>
+          <h2 className="agent-edit-hero-name">
+            {name.trim() || "新建智能体"}
+          </h2>
+          <div className="new-agent-step-meta">
+            <span>{STEPS[stepIndex]?.label}</span>
+            <span aria-hidden="true">·</span>
+            <span className="new-agent-step-desc">{STEPS[stepIndex]?.desc}</span>
+          </div>
         </div>
         <div
           className="new-agent-progress"

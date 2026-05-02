@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type * as React from "react";
 import type {
   Agent,
   AgentCoreFile,
   AgentCoreFilesResponse,
 } from "../api/agents";
 import type { ToolCatalogGroup } from "../api/tools";
-import { AgentAvatar } from "./components";
+import { AgentAvatar, hashHue } from "./components";
 import {
   CoreTab,
   HandoffTab,
@@ -384,25 +385,18 @@ export function AgentEditModal(props: AgentEditModalProps) {
         className="modal-card agent-edit-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-header">
-          <div className="agent-config-title-block">
-            <AgentAvatar agent={agent} size={44} shape="square" />
-            <div className="agent-config-title-text">
-              <span className="modal-title">{agent.name || "未命名智能体"}</span>
-              <AgentIdChip id={agent.id} />
-            </div>
-          </div>
-          <div className="agent-edit-modal-actions">
-            <SaveStatusIndicator
-              saving={saving}
-              isDirty={isDirty}
-              savedFlash={savedFlash}
-            />
-            {/* Round 17: revert-changes button. Visible only while
-              * dirty + not saving; clicking restores the draft to the
-              * last saved agent state. Confirms first to match the
-              * close-when-dirty UX so users can't lose work to a
-              * stray click. */}
+        {/* Top action bar — quiet chrome row above the identity hero,
+          * holds the save status indicator on the left and the action
+          * rail (revert / chat / save / close) on the right. Keeps
+          * primary actions accessible without putting button chrome on
+          * top of the colored banner where contrast would suffer. */}
+        <div className="agent-edit-topbar">
+          <SaveStatusIndicator
+            saving={saving}
+            isDirty={isDirty}
+            savedFlash={savedFlash}
+          />
+          <div className="agent-edit-topbar-actions">
             {isDirty && !saving ? (
               <button
                 type="button"
@@ -440,9 +434,6 @@ export function AgentEditModal(props: AgentEditModalProps) {
               ) : (
                 <>
                   保存
-                  {/* Round 15: surface the Cmd+S shortcut next to the
-                    * primary action so it's discoverable. Hidden when
-                    * disabled to avoid implying the shortcut works. */}
                   <kbd
                     className="agent-edit-save-kbd"
                     aria-hidden="true"
@@ -472,6 +463,28 @@ export function AgentEditModal(props: AgentEditModalProps) {
                 <path d="M4 4l8 8M4 12l8-8" />
               </svg>
             </button>
+          </div>
+        </div>
+
+        {/* Identity hero — banner with per-agent hue + floating avatar
+          * punching through the banner edge + centred name and id
+          * chip. Mirrors the AgentCard product-tile pattern so the
+          * editor visually picks up where the card left off. */}
+        <div
+          className="agent-edit-hero"
+          style={
+            {
+              "--banner-hue": hashHue(agent.id).toString(),
+            } as React.CSSProperties
+          }
+        >
+          <div className="agent-edit-hero-banner" aria-hidden="true" />
+          <div className="agent-edit-hero-avatar">
+            <AgentAvatar agent={agent} size={56} shape="square" />
+          </div>
+          <h2 className="agent-edit-hero-name">{agent.name || "未命名智能体"}</h2>
+          <div className="agent-edit-hero-id">
+            <AgentIdChip id={agent.id} />
           </div>
         </div>
 
