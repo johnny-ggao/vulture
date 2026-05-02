@@ -6627,21 +6627,33 @@ pre {
 }
 .agent-edit-header-close { flex-shrink: 0; }
 
-/* ---- Body grid (rail | content | preview) ---------------------- */
+/* ---- Body grid (rail | content [| preview]) ---------------------
+ *
+ * Round 25: the preview only renders on the Identity tab (data-has-
+ * preview="true"); Tools / Skills / 协作 / 核心文件 hide it so the
+ * form fills the freed space instead of leaving a gap. The grid
+ * collapses to 2 columns when the modifier attribute is absent,
+ * regardless of viewport width.
+ *
+ * 3-column layout (Identity tab, ≥960px wide):
+ *   184px rail + 1fr form + 248px preview = ~960px modal.
+ * 2-column layout (other tabs, or ≤960px viewport):
+ *   184px rail + 1fr form. Form gets the freed ~248px so the
+ *   inner grids breathe. */
 .agent-edit-body {
   display: grid;
-  /* 3-column grid at typical desktop widths: 184px rail + 1fr form
-   * + 248px preview. Modal is 960px max so content gets ~528px,
-   * comfortable for forms with 1-2 column inner grids.
-   *
-   * At ≤960px the preview drops out (form gets wider). At ≤720px
-   * the rail flips to a horizontal strip across the top. */
-  grid-template-columns: 184px minmax(0, 1fr) 248px;
+  grid-template-columns: 184px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+  transition: grid-template-columns var(--duration-medium) var(--ease-out);
+}
+.agent-edit-body[data-has-preview="true"] {
+  grid-template-columns: 184px minmax(0, 1fr) 248px;
 }
 @media (max-width: 960px) {
-  .agent-edit-body { grid-template-columns: 184px minmax(0, 1fr); }
+  .agent-edit-body[data-has-preview="true"] {
+    grid-template-columns: 184px minmax(0, 1fr);
+  }
   .agent-edit-preview { display: none; }
 }
 @media (max-width: 720px) {
@@ -6780,7 +6792,7 @@ pre {
   gap: 14px;
 }
 
-/* ---- Preview aside (right column) ------------------------------ */
+/* ---- Preview aside (right column, Identity tab only) ----------- */
 .agent-edit-preview {
   display: flex;
   flex-direction: column;
@@ -6790,6 +6802,18 @@ pre {
   background: var(--bg-secondary);
   overflow-y: auto;
   min-height: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Fades + slides in from the right edge so the column reads as
+   * "appearing alongside the form" rather than popping into place
+   * when the user lands on the Identity tab. */
+  .agent-edit-preview {
+    animation: agent-edit-preview-in var(--duration-medium) var(--ease-out) both;
+  }
+}
+@keyframes agent-edit-preview-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 .agent-edit-preview-head {
   display: inline-flex;

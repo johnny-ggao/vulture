@@ -452,7 +452,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
           </button>
         </div>
 
-        <div className="agent-edit-body">
+        <div
+          className="agent-edit-body"
+          data-has-preview={tab === "overview" ? "true" : undefined}
+        >
           {/* Vertical tab rail — Accio idiom. Up/Down arrow keys
             * navigate, Home/End jump to first/last. Same WAI-ARIA
             * tablist contract as the previous horizontal segmented
@@ -607,11 +610,19 @@ export function AgentEditModal(props: AgentEditModalProps) {
             ) : null}
           </div>
 
-          <AgentPreviewCard
-            agent={agent}
-            draft={draft}
-            isCreate={isCreate}
-          />
+          {/* Round 25 — preview is bound to the Identity tab.
+            * It mirrors fields the user is editing right there
+            * (avatar / name / description / 推理); on Tools / Skills
+            * / Handoff / Core the preview wouldn't reflect what the
+            * user is touching, so we hide it and let the form
+            * breathe instead. Same rule in both create + edit. */}
+          {tab === "overview" ? (
+            <AgentPreviewCard
+              agent={agent}
+              draft={draft}
+              isCreate={isCreate}
+            />
+          ) : null}
         </div>
 
         <div className="agent-edit-footer">
