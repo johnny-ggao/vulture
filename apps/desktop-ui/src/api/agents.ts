@@ -45,6 +45,8 @@ export interface Agent {
   handoffAgentIds: string[];
   workspace: Workspace;
   instructions: string;
+  /** Preset key owned by the client (e.g. "default", "founder"). */
+  avatar?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,6 +65,7 @@ export interface SaveAgentRequest {
   handoffAgentIds?: string[];
   workspace?: Pick<Workspace, "id" | "name" | "path">;
   instructions: string;
+  avatar?: string;
 }
 
 export interface AgentCoreFile {

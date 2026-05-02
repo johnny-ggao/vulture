@@ -9184,6 +9184,76 @@ pre {
 .agent-avatar[data-shape="square"] {
   border-radius: var(--radius-md);
 }
+/* Preset variants render an inline SVG glyph instead of a letter. */
+.agent-avatar-preset {
+  font-weight: 500;
+}
+.agent-avatar-preset > svg { display: block; }
+
+/* ----- Avatar picker (OverviewTab) ------------------------------ */
+.agent-avatar-picker {
+  display: grid;
+  gap: 8px;
+}
+.agent-avatar-picker-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+.agent-avatar-picker-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+.agent-avatar-picker-preview {
+  display: inline-grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--glass-border);
+  box-shadow:
+    0 1px 1px rgba(15, 15, 15, 0.04),
+    0 4px 10px rgba(15, 15, 15, 0.08);
+}
+.agent-avatar-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+.agent-avatar-tile {
+  display: inline-grid;
+  place-items: center;
+  padding: 3px;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  cursor: pointer;
+  min-height: 0;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.agent-avatar-tile:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 28%, var(--glass-border));
+  transform: translateY(-1px);
+}
+.agent-avatar-tile:active { transform: translateY(0); }
+.agent-avatar-tile:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.agent-avatar-tile.active {
+  border-color: var(--brand-500);
+  box-shadow:
+    0 0 0 2px var(--brand-ring),
+    0 1px 2px rgba(196, 78, 84, 0.18);
+}
 
 /* AgentCard — Accio-style product tile (banner + floating avatar + meta).
  * Hover lift uses a spring overshoot so the tile feels tactile, not slidy.

@@ -17,6 +17,8 @@ export interface AgentConfigPatch {
   handoffAgentIds: string[];
   skills?: string[] | null;
   instructions: string;
+  /** Preset key for the agent's avatar; empty/undefined falls back to default. */
+  avatar?: string;
 }
 
 /** Editable draft state shared between the modal shell and each tab. */
@@ -37,6 +39,8 @@ export interface Draft {
    */
   skillsText: string;
   instructions: string;
+  /** Selected avatar preset key, "" for the default deterministic avatar. */
+  avatar: string;
 }
 
 /**
@@ -62,6 +66,7 @@ export function draftFromAgent(agent: Agent | null): Draft {
         ? "none"
         : agent.skills.join(", "),
     instructions: agent?.instructions ?? "",
+    avatar: agent?.avatar ?? "",
   };
 }
 
@@ -106,6 +111,7 @@ export function isDirtyDraft(draft: Draft, agent: Agent | null): boolean {
     draft.toolPreset !== ref.toolPreset ||
     draft.skillsText !== ref.skillsText ||
     draft.instructions !== ref.instructions ||
+    draft.avatar !== ref.avatar ||
     !sameStringSet(draft.tools, ref.tools) ||
     !sameStringSet(draft.toolInclude, ref.toolInclude) ||
     !sameStringSet(draft.toolExclude, ref.toolExclude) ||
@@ -138,7 +144,8 @@ export function dirtyTabs(
     draft.description !== ref.description ||
     draft.model !== ref.model ||
     draft.reasoning !== ref.reasoning ||
-    draft.skillsText !== ref.skillsText
+    draft.skillsText !== ref.skillsText ||
+    draft.avatar !== ref.avatar
   ) {
     dirty.add("overview");
   }

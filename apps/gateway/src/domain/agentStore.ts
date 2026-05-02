@@ -42,6 +42,7 @@ interface AgentRow {
   handoff_agent_ids_json?: string | null;
   workspace_json: string;
   instructions: string;
+  avatar?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +121,7 @@ function rowToAgent(r: AgentRow): Agent {
       updatedAt: workspace_data.updatedAt as Iso8601,
     } as Workspace,
     instructions: r.instructions,
+    avatar: r.avatar ?? undefined,
     createdAt: r.created_at as Iso8601,
     updatedAt: r.updated_at as Iso8601,
   };
@@ -263,10 +265,17 @@ export class AgentStore {
     );
     const toolPolicy = toolPolicyFromSaveRequest(req);
     this.ensureAgentCoreFiles({ ...req, ...toolPolicy }, workspace);
+    // `avatar` is opaque to the gateway — the client owns the
+    // preset registry. Only the empty string is normalised to NULL
+    // so the column never holds a sentinel.
+    const avatarValue =
+      typeof req.avatar === "string" && req.avatar.trim() !== ""
+        ? req.avatar.trim()
+        : existing?.avatar ?? null;
     if (existing) {
       this.db
         .query(
-          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, tool_preset=?, tool_include_json=?, tool_exclude_json=?, skills=?, handoff_agent_ids_json=?, workspace_json=?, instructions=?, updated_at=? WHERE id=?",
+          "UPDATE agents SET name=?, description=?, model=?, reasoning=?, tools=?, tool_preset=?, tool_include_json=?, tool_exclude_json=?, skills=?, handoff_agent_ids_json=?, workspace_json=?, instructions=?, avatar=?, updated_at=? WHERE id=?",
         )
         .run(
           req.name,
@@ -281,14 +290,15 @@ export class AgentStore {
           JSON.stringify(req.handoffAgentIds ?? []),
           JSON.stringify(workspace),
           req.instructions,
+          avatarValue,
           now,
           req.id,
         );
     } else {
       this.db
         .query(
-          `INSERT INTO agents(id, name, description, model, reasoning, tools, tool_preset, tool_include_json, tool_exclude_json, skills, handoff_agent_ids_json, workspace_json, instructions, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO agents(id, name, description, model, reasoning, tools, tool_preset, tool_include_json, tool_exclude_json, skills, handoff_agent_ids_json, workspace_json, instructions, avatar, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           req.id,
@@ -304,6 +314,7 @@ export class AgentStore {
           JSON.stringify(req.handoffAgentIds ?? []),
           JSON.stringify(workspace),
           req.instructions,
+          avatarValue,
           now,
           now,
         );

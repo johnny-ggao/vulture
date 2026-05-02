@@ -1,26 +1,60 @@
 import { hashHue } from "./agentHue";
+import { findAvatarPreset } from "./agentAvatarPresets";
 
 export interface AgentAvatarProps {
-  agent: { id: string; name: string };
+  /**
+   * `avatar` is an optional preset key from {@link AVATAR_PRESETS}.
+   * When set + recognised, the avatar renders the preset's coloured
+   * tile + glyph instead of the deterministic letter.
+   */
+  agent: { id: string; name: string; avatar?: string | null };
   size?: number;
   shape?: "circle" | "square";
 }
 
 /**
- * Compact identity glyph for an agent. The hue is hashed deterministically
- * from `agent.id` so the same agent always renders the same colour across
- * the list, the chat header, and the new-agent preview. The visible glyph
- * is the first character of `agent.name`, capitalised — falling back to
- * `?` if the name is missing so we never render an empty box.
+ * Compact identity glyph for an agent. Two render modes:
  *
- * The element is `aria-hidden` because the agent name is virtually always
- * adjacent and announcing the avatar separately would just add noise.
+ *   1. **Preset**: when `agent.avatar` matches a registered preset
+ *      (see `agentAvatarPresets`), the avatar uses the preset's
+ *      colour pair + inline SVG glyph. The user picks this in
+ *      OverviewTab; the chosen key persists with the agent.
+ *
+ *   2. **Deterministic letter** (default): the hue is hashed from
+ *      `agent.id` so the same agent always renders the same colour
+ *      across the list, the chat header, and the new-agent preview.
+ *      The visible glyph is the first character of `agent.name`,
+ *      capitalised — falling back to `?` if the name is missing.
+ *
+ * The element is `aria-hidden` because the agent name is virtually
+ * always adjacent and announcing the avatar separately would just
+ * add noise.
  */
 export function AgentAvatar({
   agent,
   size = 32,
   shape = "circle",
 }: AgentAvatarProps) {
+  const preset = findAvatarPreset(agent.avatar ?? null);
+  if (preset) {
+    return (
+      <span
+        className="agent-avatar agent-avatar-preset"
+        aria-hidden="true"
+        data-shape={shape}
+        data-preset={preset.key}
+        style={{
+          width: `${size}px`,
+          height: `${size}px`,
+          backgroundColor: preset.background,
+          color: preset.foreground,
+        }}
+      >
+        {preset.glyph}
+      </span>
+    );
+  }
+
   const hue = hashHue(agent.id);
   // Defensive against callers that pass `name: undefined` through type
   // erasure or string coercion: a missing name should render `?`, never
@@ -47,4 +81,3 @@ export function AgentAvatar({
     </span>
   );
 }
-

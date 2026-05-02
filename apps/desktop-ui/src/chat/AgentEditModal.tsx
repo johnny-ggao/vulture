@@ -348,6 +348,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
       handoffAgentIds: draft.handoffAgentIds,
       skills: parseSkills(draft.skillsText),
       instructions: draft.instructions.trim(),
+      avatar: draft.avatar.trim() || undefined,
     };
     try {
       if (isCreate) {

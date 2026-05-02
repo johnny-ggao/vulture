@@ -137,6 +137,12 @@ export const AgentSchema = z.object({
   handoffAgentIds: z.array(SlugSchema),
   workspace: WorkspaceSchema,
   instructions: z.string().min(1),
+  /**
+   * Optional avatar identifier owned by the client (e.g. preset key).
+   * The gateway treats this opaquely; presets and rendering live in
+   * the desktop app.
+   */
+  avatar: z.string().optional(),
   createdAt: Iso8601Schema,
   updatedAt: Iso8601Schema,
 });
@@ -165,6 +171,7 @@ export const SaveAgentRequestSchema = z
     handoffAgentIds: z.array(SlugSchema).optional(),
     workspace: SaveWorkspaceRequestSchema.optional(),
     instructions: z.string().min(1),
+    avatar: z.string().optional(),
   })
   .strict();
 

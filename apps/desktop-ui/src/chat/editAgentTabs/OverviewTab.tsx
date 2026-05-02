@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { Agent, ReasoningLevel } from "../../api/agents";
-import { Field, Segmented, SkillsPreview } from "../components";
+import {
+  AgentAvatar,
+  AVATAR_PRESETS,
+  Field,
+  Segmented,
+  SkillsPreview,
+} from "../components";
 import type { Draft } from "./draft";
 
 export interface OverviewTabProps {
@@ -74,9 +80,89 @@ export function OverviewTab({ agent, draft, onChange }: OverviewTabProps) {
           onChange={(e) => onChange({ ...draft, description: e.target.value })}
         />
       </Field>
+      <AvatarPicker
+        agentId={agent?.id ?? (draft.name.trim() || "new-agent")}
+        agentName={draft.name.trim() || "新建智能体"}
+        selected={draft.avatar}
+        onChange={(avatar) => onChange({ ...draft, avatar })}
+      />
       {agent ? (
         <InfoBlock title="Workspace" value={agent.workspace.path} />
       ) : null}
+    </div>
+  );
+}
+
+interface AvatarPickerProps {
+  agentId: string;
+  agentName: string;
+  selected: string;
+  onChange: (next: string) => void;
+}
+
+/**
+ * Avatar picker — current selection on the left + a grid of preset
+ * tiles on the right. Selecting a preset stores its key on the draft;
+ * selecting "默认" (or clicking the active tile to clear) goes back
+ * to the deterministic letter avatar.
+ *
+ * The preset key persists with the agent so the choice carries to
+ * the AgentsPage cards, the ChatAgentHeader, and any other surface
+ * that renders `<AgentAvatar agent={agent} />`.
+ */
+function AvatarPicker({
+  agentId,
+  agentName,
+  selected,
+  onChange,
+}: AvatarPickerProps) {
+  const previewAgent = { id: agentId, name: agentName, avatar: selected };
+  return (
+    <div className="agent-avatar-picker" role="group" aria-label="头像">
+      <div className="agent-avatar-picker-label">头像</div>
+      <div className="agent-avatar-picker-row">
+        <div className="agent-avatar-picker-preview" aria-hidden="true">
+          <AgentAvatar agent={previewAgent} size={56} shape="square" />
+        </div>
+        <div className="agent-avatar-picker-grid" role="radiogroup" aria-label="选择预设头像">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selected === ""}
+            className={"agent-avatar-tile" + (selected === "" ? " active" : "")}
+            onClick={() => onChange("")}
+            title="默认（按名称首字母）"
+          >
+            <AgentAvatar
+              agent={{ id: agentId, name: agentName }}
+              size={36}
+              shape="square"
+            />
+            <span className="visually-hidden">默认</span>
+          </button>
+          {AVATAR_PRESETS.map((preset) => {
+            const active = selected === preset.key;
+            return (
+              <button
+                key={preset.key}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                aria-label={preset.label}
+                title={preset.label}
+                className={"agent-avatar-tile" + (active ? " active" : "")}
+                onClick={() => onChange(preset.key)}
+              >
+                <AgentAvatar
+                  agent={{ id: agentId, name: agentName, avatar: preset.key }}
+                  size={36}
+                  shape="square"
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

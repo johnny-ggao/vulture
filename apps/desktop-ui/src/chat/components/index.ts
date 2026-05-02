@@ -7,6 +7,11 @@ export { Badge, type BadgeProps, type BadgeTone } from "./Badge";
 export { Toast, type ToastProps } from "./Toast";
 export { BrandMark, type BrandMarkProps } from "./BrandMark";
 export { AgentAvatar, type AgentAvatarProps } from "./AgentAvatar";
+export {
+  AVATAR_PRESETS,
+  findAvatarPreset,
+  type AvatarPreset,
+} from "./agentAvatarPresets";
 export { AgentCard, type AgentCardProps } from "./AgentCard";
 export { AgentCreateTile, type AgentCreateTileProps } from "./AgentCreateTile";
 export {
