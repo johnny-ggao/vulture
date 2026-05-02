@@ -990,11 +990,23 @@ pre {
   cursor: pointer;
   opacity: 0.7;
   transition: opacity var(--duration-fast) var(--ease-out),
-              background-color var(--duration-fast) var(--ease-out);
+              background-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
+/* Hover bg uses currentColor at 12% alpha so the dismiss chip
+ * tints with the banner tone rather than a hardcoded grey that
+ * would also break in dark-mode banners. */
 .status-banner-dismiss:hover {
   opacity: 1;
-  background: rgba(15, 15, 15, 0.08);
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+.status-banner-dismiss:active {
+  background: color-mix(in oklab, currentColor 18%, transparent);
+}
+.status-banner-dismiss:focus-visible {
+  outline: 0;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, currentColor 35%, transparent);
 }
 .status-banner .label { font-weight: 600; }
 .status-banner .detail { color: var(--text-secondary); }
@@ -2544,10 +2556,13 @@ pre {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(15, 15, 15, 0.12);
+  /* Tint with the parent button colour so the shortcut chip rides
+   * a brand-allow / neutral-deny background gracefully. Was a
+   * hardcoded grey RGBA that fought the brand-gradient bg. */
+  background: color-mix(in oklab, currentColor 18%, transparent);
   color: inherit;
   line-height: 1.2;
-  border: 1px solid rgba(15, 15, 15, 0.06);
+  border: 1px solid color-mix(in oklab, currentColor 12%, transparent);
 }
 .approval-card-deny .approval-card-kbd {
   background: var(--fill-quaternary);
