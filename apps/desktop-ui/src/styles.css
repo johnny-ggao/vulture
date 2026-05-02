@@ -2320,10 +2320,18 @@ pre {
 .history-drawer .search-field {
   display: flex; align-items: center; gap: 8px;
   margin: 0 12px 12px;
-  padding: 0 12px;
+  padding: 0 4px 0 12px;
   height: 32px;
   border-radius: var(--radius-sm);
   background: var(--fill-quaternary);
+  border: 1px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+.history-drawer .search-field:focus-within {
+  border-color: var(--brand-500);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .history-drawer .search-field input {
   flex: 1; border: 0; background: transparent; outline: 0;
@@ -2331,6 +2339,30 @@ pre {
   padding: 0;
 }
 .history-drawer .search-field input::placeholder { color: var(--text-tertiary); }
+.history-drawer .search-field-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 0;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.history-drawer .search-field-clear:hover {
+  background: var(--fill-tertiary);
+  color: var(--text-primary);
+}
+.history-drawer .search-field-clear:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 .history-filter-chips {
   display: flex;
   flex-wrap: wrap;
@@ -2415,7 +2447,31 @@ pre {
   transition: background-color 120ms ease;
 }
 .history-row:hover { background: var(--fill-quaternary); }
-.history-row.active { background: var(--brand-050); }
+/* Active state — left-edge brand bar gives a clearer "you are here"
+ * cue than fill alone. The bar scales from 0→full height with a
+ * spring on activation, mirroring the settings-rail indicator. */
+.history-row.active {
+  background: var(--brand-050);
+}
+.history-row.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--brand-500);
+  transform-origin: center;
+  animation: history-row-indicator var(--duration-medium) var(--ease-spring);
+}
+@keyframes history-row-indicator {
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .history-row.active::before { animation: none; }
+}
 .history-row .row-button {
   flex: 1; min-width: 0;
   display: flex; align-items: center; gap: 10px;
@@ -2427,6 +2483,11 @@ pre {
   min-height: 0;
 }
 .history-row.active .row-button { color: var(--brand-600); font-weight: 600; }
+.history-row .row-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring) inset;
+  border-radius: var(--radius-sm);
+}
 .history-row .row-button .agent-avatar { flex-shrink: 0; }
 .history-row .row-text {
   flex: 1;
@@ -2440,9 +2501,85 @@ pre {
   font-size: 14px; font-weight: 500; line-height: 1.35;
 }
 .history-row .row-meta {
-  width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: 12px; color: var(--text-tertiary); line-height: 1.3;
+  width: 100%;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
 }
+.history-row .row-meta-agent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+  color: var(--text-tertiary);
+}
+.history-row .row-meta-sep {
+  color: var(--text-quaternary);
+  flex-shrink: 0;
+}
+.history-row .row-meta-time {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.history-row.active .row-meta-agent,
+.history-row.active .row-meta-time {
+  color: color-mix(in oklab, var(--brand-600) 60%, var(--text-tertiary));
+}
+
+/* History empty-state card — replaces the bare "没有匹配的会话"
+ * group-heading text. Sits centred in the list area with a subtle
+ * icon, a one-line title, helper text, and a contextual recovery
+ * action (新建对话 / 清空搜索 / 清空筛选). */
+.history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 32px 24px;
+  margin: 16px 8px;
+  border: 1px dashed var(--fill-secondary);
+  border-radius: var(--radius-md);
+  background: var(--fill-quaternary);
+}
+.history-empty-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.history-empty-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.history-empty-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.55;
+  max-width: 280px;
+}
+.history-empty-actions {
+  display: inline-flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.history-empty .btn-sm { margin-top: 8px; }
 .history-row .row-delete {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px;

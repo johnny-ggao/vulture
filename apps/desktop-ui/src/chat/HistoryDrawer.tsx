@@ -2,6 +2,146 @@ import { useEffect, useMemo, useState } from "react";
 import type { ConversationDto } from "../api/conversations";
 import { AgentAvatar } from "./components";
 
+/* ============================================================
+ * Empty-state card — three variants depending on what the user is
+ * looking at: brand-new (no conversations yet), search miss, or
+ * agent-filter miss. Each surfaces the most useful next step so
+ * the drawer never strands the user on a dead-end "没有匹配的会话".
+ * ============================================================ */
+interface HistoryEmptyStateProps {
+  hasItems: boolean;
+  hasQuery: boolean;
+  hasAgentFilter: boolean;
+  onNew: () => void;
+  onClearQuery: () => void;
+  onClearAgentFilter: () => void;
+}
+
+function HistoryEmptyState(props: HistoryEmptyStateProps) {
+  // No conversations at all yet — first-run / fresh-profile case.
+  if (!props.hasItems) {
+    return (
+      <div className="history-empty">
+        <div className="history-empty-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6h16M4 12h10M4 18h6" />
+          </svg>
+        </div>
+        <p className="history-empty-title">还没有对话历史</p>
+        <p className="history-empty-sub">
+          开始一次对话后，每次会话都会出现在这里，可按智能体筛选或搜索。
+        </p>
+        <button type="button" className="btn-primary btn-sm" onClick={props.onNew}>
+          + 新建对话
+        </button>
+      </div>
+    );
+  }
+
+  // Conversations exist but the current search/filter excludes them all.
+  return (
+    <div className="history-empty">
+      <div className="history-empty-icon" aria-hidden="true">
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="11" cy="11" r="6" />
+          <path d="M16 16l4 4" />
+        </svg>
+      </div>
+      <p className="history-empty-title">没有匹配的会话</p>
+      <p className="history-empty-sub">
+        {props.hasQuery && props.hasAgentFilter
+          ? "尝试清空搜索词或重置智能体筛选。"
+          : props.hasQuery
+          ? "调整搜索词，或清空后查看全部会话。"
+          : "切换到「全部」可以查看其他智能体的会话。"}
+      </p>
+      <div className="history-empty-actions">
+        {props.hasQuery ? (
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={props.onClearQuery}
+          >
+            清空搜索
+          </button>
+        ) : null}
+        {props.hasAgentFilter ? (
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={props.onClearAgentFilter}
+          >
+            清空筛选
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+ * Relative time formatting — "3 分钟前 / 昨天 14:30 / 5月2日"
+ * Stays terse so the row meta stays single-line on a 380px drawer.
+ * ============================================================ */
+function formatRelativeTime(updatedAt: string): string {
+  const ts = new Date(updatedAt).getTime();
+  if (Number.isNaN(ts)) return "—";
+  const now = Date.now();
+  const diff = now - ts;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (diff < 0) return "刚刚";
+  if (diff < minute) return "刚刚";
+  if (diff < hour) return `${Math.floor(diff / minute)} 分钟前`;
+  if (diff < 12 * hour) return `${Math.floor(diff / hour)} 小时前`;
+
+  const date = new Date(ts);
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+  // Today: "14:30". Yesterday: "昨天 14:30". This week: "周三 14:30".
+  // Older: "5月2日 14:30" or "2026年5月2日" if last year.
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (sameDay(date, today)) return time;
+  if (sameDay(date, yesterday)) return `昨天 ${time}`;
+
+  if (diff < 7 * day) {
+    const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    return `${weekdays[date.getDay()]} ${time}`;
+  }
+
+  if (date.getFullYear() === today.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
 export interface HistoryDrawerProps {
   open: boolean;
   onClose: () => void;
@@ -139,9 +279,32 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="search-field-icon"><circle cx="7" cy="7" r="4.5" /><path d="M14 14l-3.5-3.5" /></svg>
           <input
             placeholder="搜索历史会话…"
+            aria-label="搜索历史会话"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          {query ? (
+            <button
+              type="button"
+              className="search-field-clear"
+              aria-label="清空搜索"
+              onClick={() => setQuery("")}
+            >
+              <svg
+                viewBox="0 0 16 16"
+                width="11"
+                height="11"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 4l8 8M4 12l8-8" />
+              </svg>
+            </button>
+          ) : null}
         </div>
         {agentsWithConversations.length >= 2 ? (
           <div
@@ -183,7 +346,17 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
         ) : null}
         <div className="history-list">
           {grouped.length === 0 ? (
-            <div className="group-heading">没有匹配的会话</div>
+            <HistoryEmptyState
+              hasItems={props.items.length > 0}
+              hasQuery={query.trim().length > 0}
+              hasAgentFilter={agentFilterId !== null}
+              onNew={() => {
+                props.onNew();
+                props.onClose();
+              }}
+              onClearQuery={() => setQuery("")}
+              onClearAgentFilter={() => setAgentFilterId(null)}
+            />
           ) : (
             grouped.map((g) => (
               <div key={g.label}>
@@ -212,7 +385,22 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
                       />
                       <span className="row-text">
                         <span className="row-title">{c.title || "(无标题)"}</span>
-                        <span className="row-meta">{new Date(c.updatedAt).toLocaleString()}</span>
+                        <span
+                          className="row-meta"
+                          title={new Date(c.updatedAt).toLocaleString()}
+                        >
+                          {agent ? (
+                            <>
+                              <span className="row-meta-agent">{agent.name}</span>
+                              <span className="row-meta-sep" aria-hidden="true">
+                                ·
+                              </span>
+                            </>
+                          ) : null}
+                          <span className="row-meta-time">
+                            {formatRelativeTime(c.updatedAt)}
+                          </span>
+                        </span>
                       </span>
                     </button>
                     {props.onDelete ? (
