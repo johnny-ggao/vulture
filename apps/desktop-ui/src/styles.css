@@ -4535,24 +4535,114 @@ pre {
 /* ============================================================
  * SkillsPage layout — Accio-style card grid with detail modal
  * ============================================================ */
-.skills-toolbar-row {
+/* Round 8 / Skills aesthetic refresh — replace the dense
+ * .skills-toolbar-row + skills-meta combo with a single sticky
+ * header that absorbs the agent picker, search, and bulk-policy
+ * buttons. The status meta (策略 / 刷新中…) folds into the header
+ * subtitle, keeping the rest of the page focused on the cards. */
+.skills-header {
   display: grid;
-  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: end;
-  margin-bottom: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin: 0 0 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--fill-quaternary);
 }
-.skills-search { min-width: 0; }
-.skills-policy { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.skills-meta {
+.skills-header-titles { min-width: 0; }
+.skills-header-titles h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.skills-header-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 560px;
+  line-height: 1.5;
+}
+.skills-header-status {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.skills-header-controls {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   flex-wrap: wrap;
-  color: var(--text-secondary);
-  font-size: 13px;
-  margin-bottom: 16px;
+  justify-content: flex-end;
 }
+.skills-agent-select {
+  height: 32px;
+  padding: 0 28px 0 12px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  min-width: 120px;
+  max-width: 180px;
+}
+.skills-agent-select:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.skills-search {
+  min-width: 0;
+  width: clamp(140px, 22vw, 240px);
+}
+/* Ghost-style policy buttons — bulk actions are rare, so don't
+ * compete visually with the agent picker / search. is-active is
+ * a brand-tinted variant signalling the current policy. */
+.skills-policy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--fill-quaternary);
+}
+.skills-policy-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.skills-policy-btn:hover:not(:disabled):not(.is-active) {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.skills-policy-btn.is-active {
+  background: var(--brand-050);
+  color: var(--brand-600);
+  font-weight: 600;
+}
+.skills-policy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.skills-policy-btn:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring) inset;
+}
+
+/* Legacy: preserved for any preview HTML still on the old shape */
+.skills-toolbar-row { display: none; }
+.skills-meta { display: none; }
 
 .skills-groups { display: grid; gap: 22px; }
 .skills-group { display: grid; gap: 10px; }
@@ -4566,37 +4656,68 @@ pre {
 }
 
 /* B2 — Skills marketplace layout: source rail + featured strip + grid */
-.skills-page-marketplace .skills-meta { margin-bottom: 12px; }
 .skill-catalog-panel {
   display: grid;
   gap: 10px;
-  padding: 12px;
+  padding: 14px 16px;
   margin-bottom: 18px;
   border: 1px solid var(--fill-tertiary);
   border-radius: var(--radius-lg);
   background: var(--bg-primary);
 }
+.skill-catalog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.skill-catalog-titles {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.skill-catalog-titles h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.skill-catalog-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
 .skill-catalog-actions {
   display: inline-flex;
-  gap: 8px;
-  justify-self: end;
-  margin-top: -34px;
+  gap: 6px;
 }
 .skill-catalog-import {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: end;
+  gap: 8px;
+  align-items: stretch;
 }
-.skill-catalog-import-field {
-  display: grid;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 650;
-}
-.skill-catalog-import-field input {
+.skill-catalog-import input {
   width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.skill-catalog-import input:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.skill-catalog-import input::placeholder {
+  color: var(--text-quaternary);
+  font-family: var(--font-sans);
 }
 .skill-catalog-grid {
   display: grid;
@@ -4905,26 +5026,39 @@ pre {
 .skill-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 .skill-card-name {
-  font-weight: 650;
+  font-weight: 600;
   font-size: 14px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
   transition: color var(--duration-medium) var(--ease-standard);
 }
 .skill-card:hover .skill-card-name {
   color: var(--brand-600);
 }
-.skill-card-badges {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+/* Tiny dot replacing the verbose 模型可见 / 仅手动 badge. Hollow
+ * (border-only) when the skill is手动-only; filled brand when the
+ * model can invoke it. Title attr keeps the meaning accessible
+ * without spending a row of card real-estate on the badge. */
+.skill-card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex-shrink: 0;
+  border: 1.5px solid var(--text-quaternary);
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+.skill-card-dot.is-model-visible {
+  background: var(--brand-500);
+  border-color: var(--brand-500);
 }
 .skill-card-desc {
   margin: 0;
@@ -4935,16 +5069,13 @@ pre {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* Reserve 2 lines so cards stay aligned regardless of description
+   * length — the grid no longer ripples on row boundaries. */
+  min-height: calc(2 * 1.5em * 12.5 / 16);
 }
-.skill-card-path {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-}
+/* Legacy: file path was visually noisy. Still rendered in the
+ * detail modal — see SkillDetailModal. */
+.skill-card-path { display: none; }
 /* Toggle row sits below the surface, separated by a hairline so the
  * affordance is unambiguously distinct from "open detail". */
 .skill-card-toggle {

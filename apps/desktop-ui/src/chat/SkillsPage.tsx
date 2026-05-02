@@ -222,20 +222,28 @@ export function SkillsPage(props: SkillsPageProps) {
 
   return (
     <div className="page skills-page-marketplace">
-      <header className="page-header">
-        <div>
+      {/* Sticky title row with the agent picker + search inline so the
+          toolbar reads as one focused control bar instead of three
+          competing rows. Policy switches collapse to small ghost
+          buttons on the right — they're rarely-used bulk actions, not
+          primary CTAs. */}
+      <header className="skills-header">
+        <div className="skills-header-titles">
           <h1>技能</h1>
-          <p>
-            浏览可加载的能力包；选择一个智能体后可按需启用。
+          <p className="skills-header-sub">
+            浏览可加载的能力包；选择一个智能体后按需启用。
+            {state.status === "loading" ? (
+              <span className="skills-header-status"> · 刷新中…</span>
+            ) : saving ? (
+              <span className="skills-header-status"> · 保存中…</span>
+            ) : null}
           </p>
         </div>
-      </header>
-
-      <div className="skills-toolbar-row">
-        <Field label="智能体">
+        <div className="skills-header-controls">
           <select
             value={activeAgent?.id ?? ""}
             aria-label="选择智能体"
+            className="skills-agent-select"
             onChange={(event) => props.onSelectAgent(event.target.value)}
           >
             {props.agents.map((agent) => (
@@ -244,84 +252,90 @@ export function SkillsPage(props: SkillsPageProps) {
               </option>
             ))}
           </select>
-        </Field>
-        <div className="skills-search">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="搜索 skill…"
-            ariaLabel="搜索 skill"
-          />
+          <div className="skills-search">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="搜索…"
+              ariaLabel="搜索 skill"
+            />
+          </div>
+          <div className="skills-policy" role="group" aria-label="批量启用策略">
+            <button
+              type="button"
+              className={
+                "skills-policy-btn" + (data?.policy === "all" ? " is-active" : "")
+              }
+              disabled={!activeAgent || saving}
+              onClick={() => savePolicy(null)}
+              title="启用所有 skill"
+            >
+              全启用
+            </button>
+            <button
+              type="button"
+              className={
+                "skills-policy-btn" + (data?.policy === "none" ? " is-active" : "")
+              }
+              disabled={!activeAgent || saving}
+              onClick={() => savePolicy([])}
+              title="禁用所有 skill"
+            >
+              全禁用
+            </button>
+          </div>
         </div>
-        <div className="skills-policy">
-          <button
-            type="button"
-            className={data?.policy === "all" ? "btn-primary" : "btn-secondary"}
-            disabled={!activeAgent || saving}
-            onClick={() => savePolicy(null)}
-          >
-            全部启用
-          </button>
-          <button
-            type="button"
-            className={data?.policy === "none" ? "btn-primary" : "btn-secondary"}
-            disabled={!activeAgent || saving}
-            onClick={() => savePolicy([])}
-          >
-            全部禁用
-          </button>
-        </div>
-      </div>
-
-      <div className="skills-meta">
-        <span>策略：{policyLabel(data?.policy)}</span>
-        <span aria-hidden="true">·</span>
-        <span>{items.length} 个可加载 skill</span>
-        {state.status === "loading" ? <span>· 刷新中…</span> : null}
-        {saving ? <span>· 保存中…</span> : null}
-      </div>
+      </header>
 
       <ErrorAlert message={state.error} />
       <ErrorAlert message={catalog.error} />
 
       <section className="skill-catalog-panel" aria-label="Skill Catalog">
-        <div className="skills-section-h">
-          <span>Skill Catalog</span>
-          <span className="skills-section-h-sub">
-            {catalog.loading ? "刷新中…" : `${catalog.items.length} 个安装包`}
-          </span>
-        </div>
-        <div className="skill-catalog-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={catalogBusy !== null}
-            onClick={() => void loadCatalog()}
-          >
-            刷新
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={catalogBusy !== null || catalog.items.length === 0}
-            onClick={() => void updateCatalog()}
-          >
-            {catalogBusy === "__update_all__" ? "更新中…" : "更新全部"}
-          </button>
+        <div className="skill-catalog-head">
+          <div className="skill-catalog-titles">
+            <h2>Skill Catalog</h2>
+            <span className="skill-catalog-sub">
+              {catalog.loading ? "刷新中…" : `${catalog.items.length} 个安装包`}
+            </span>
+          </div>
+          <div className="skill-catalog-actions">
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              disabled={catalogBusy !== null}
+              onClick={() => void loadCatalog()}
+            >
+              刷新
+            </button>
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              disabled={catalogBusy !== null || catalog.items.length === 0}
+              onClick={() => void updateCatalog()}
+            >
+              {catalogBusy === "__update_all__" ? "更新中…" : "更新全部"}
+            </button>
+          </div>
         </div>
         <div className="skill-catalog-import">
-          <label className="skill-catalog-import-field">
-            <span>Skill package path</span>
-            <input
-              value={importPath}
-              onChange={(event) => setImportPath(event.currentTarget.value)}
-              placeholder="/absolute/path/to/skill"
-              disabled={catalogBusy !== null}
-            />
+          <label
+            htmlFor="skill-catalog-import-input"
+            className="visually-hidden"
+          >
+            Skill package path
           </label>
+          <input
+            id="skill-catalog-import-input"
+            value={importPath}
+            onChange={(event) => setImportPath(event.currentTarget.value)}
+            placeholder="本地 skill package 路径，例如 /skills/csv-insights"
+            disabled={catalogBusy !== null}
+            aria-label="Skill package path"
+            spellCheck="false"
+          />
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary btn-sm"
             disabled={catalogBusy !== null || !importPath.trim()}
             onClick={() => void importCatalogSkill()}
           >
@@ -519,6 +533,11 @@ interface SkillCardProps {
  * Compact card for a single skill. Click anywhere except the inline Toggle
  * to open the detail modal; the Toggle stays interactive in-place so quick
  * enable/disable doesn't require a round-trip through the modal.
+ *
+ * Round 8 visual cleanup: drop the file path (developer-detail; surface in
+ * the detail modal instead) and the verbose 模型可见 / 仅手动 badge in
+ * favour of a single dot indicator next to the name. Cards now read as
+ * one quick-scan unit instead of three competing rows.
  */
 function SkillCard({ skill, saving, onOpenDetail, onToggle }: SkillCardProps) {
   // Shared cursor-gloss handlers; see useCursorGloss for caching details.
@@ -538,17 +557,19 @@ function SkillCard({ skill, saving, onOpenDetail, onToggle }: SkillCardProps) {
         onClick={onOpenDetail}
       >
         <div className="skill-card-header">
+          <span
+            className={
+              "skill-card-dot" +
+              (skill.modelInvocationEnabled ? " is-model-visible" : "")
+            }
+            aria-hidden="true"
+            title={skill.modelInvocationEnabled ? "模型可见" : "仅手动"}
+          />
           <strong className="skill-card-name">{skill.name}</strong>
-          <span className="skill-card-badges">
-            <Badge tone={skill.modelInvocationEnabled ? "info" : "neutral"}>
-              {skill.modelInvocationEnabled ? "模型可见" : "仅手动"}
-            </Badge>
-          </span>
         </div>
         <p className="skill-card-desc">
           {skill.description || "（无描述）"}
         </p>
-        <code className="skill-card-path">{skill.filePath}</code>
       </button>
       <div className="skill-card-toggle">
         <Toggle

@@ -960,14 +960,14 @@ describe("App integration", () => {
       { timeout: 5000 },
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "全部禁用" }));
+    fireEvent.click(screen.getByRole("button", { name: "全禁用" }));
     await waitFor(() => {
       expect(patches).toContainEqual({ skills: [] });
       const toggle = screen.getByRole("switch", { name: /csv-insights/ });
       expect(toggle.getAttribute("aria-checked")).toBe("false");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "全部启用" }));
+    fireEvent.click(screen.getByRole("button", { name: "全启用" }));
     await waitFor(() => {
       expect(patches).toContainEqual({ skills: null });
       const toggle = screen.getByRole("switch", { name: /csv-insights/ });
