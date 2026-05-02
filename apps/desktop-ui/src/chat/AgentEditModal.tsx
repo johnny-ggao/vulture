@@ -796,7 +796,7 @@ function AgentPreviewCard({
 
       <div className="agent-edit-preview-card">
         <div className="agent-edit-preview-avatar">
-          <AgentAvatar agent={previewAgent} size={44} shape="square" />
+          <AgentAvatar agent={previewAgent} size={56} shape="square" />
         </div>
         <h3 className="agent-edit-preview-name" title={displayName}>
           {displayName}
@@ -822,10 +822,24 @@ function AgentPreviewCard({
           </p>
         )}
         <hr className="agent-edit-preview-divider" />
-        <div className="agent-edit-preview-meta">
-          <span className="agent-edit-preview-meta-label">推理</span>
-          <span className="agent-edit-preview-meta-value">{reasoning}</span>
-        </div>
+        <dl className="agent-edit-preview-meta-list">
+          <div className="agent-edit-preview-meta-row">
+            <dt className="agent-edit-preview-meta-label">模型</dt>
+            <dd
+              className={
+                "agent-edit-preview-meta-value" +
+                (draft.model.trim() ? "" : " agent-edit-preview-meta-value-empty")
+              }
+              title={draft.model || "未选择"}
+            >
+              {draft.model.trim() || "未选择"}
+            </dd>
+          </div>
+          <div className="agent-edit-preview-meta-row">
+            <dt className="agent-edit-preview-meta-label">推理</dt>
+            <dd className="agent-edit-preview-meta-value">{reasoning}</dd>
+          </div>
+        </dl>
       </div>
     </aside>
   );
