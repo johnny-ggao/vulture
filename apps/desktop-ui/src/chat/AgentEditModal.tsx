@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type * as React from "react";
 import type {
   Agent,
   AgentCoreFile,
   AgentCoreFilesResponse,
 } from "../api/agents";
 import type { ToolCatalogGroup } from "../api/tools";
-import { AgentAvatar, hashHue } from "./components";
+import { AgentAvatar } from "./components";
 import {
   CoreTab,
   HandoffTab,
@@ -412,158 +411,76 @@ export function AgentEditModal(props: AgentEditModalProps) {
         className="modal-card agent-edit-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top action bar — quiet chrome row above the identity hero.
-          * Edit mode shows save-status + revert/chat/save/close.
-          * Create mode hides revert + chat (no original to revert to,
-          * no agent to chat with) + the save button label flips to
-          * "创建". */}
-        <div className="agent-edit-topbar">
-          {!isCreate ? (
-            <SaveStatusIndicator
-              saving={saving}
-              isDirty={isDirty}
-              savedFlash={savedFlash}
-            />
-          ) : (
-            <span aria-hidden="true" />
-          )}
-          <div className="agent-edit-topbar-actions">
-            {!isCreate && isDirty && !saving ? (
-              <button
-                type="button"
-                className="btn-secondary agent-edit-revert"
-                onClick={() => {
-                  if (!agent) return;
-                  if (window.confirm("放弃当前修改？此操作无法撤销。")) {
-                    setDraft(draftFromAgent(agent));
-                    setSaveError(null);
-                  }
-                }}
-                title="撤销所有未保存的修改"
-              >
-                撤销修改
-              </button>
-            ) : null}
-            {!isCreate ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={requestOpenChat}
-              >
-                打开对话
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn-primary agent-edit-save"
-              disabled={
-                saving ||
-                !draft.name.trim() ||
-                !draft.instructions.trim() ||
-                (!isCreate && !isDirty)
-              }
-              onClick={save}
-            >
-              {saving ? (
-                <>
-                  <span className="agent-edit-save-spinner" aria-hidden="true" />
-                  {isCreate ? "创建中…" : "保存中…"}
-                </>
-              ) : (
-                <>
-                  {isCreate ? "创建" : "保存"}
-                  <kbd
-                    className="agent-edit-save-kbd"
-                    aria-hidden="true"
-                  >
-                    ⌘S
-                  </kbd>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="关闭"
-              disabled={saving}
-              onClick={requestClose}
-            >
-              <svg
-                viewBox="0 0 16 16"
-                width="16"
-                height="16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 4l8 8M4 12l8-8" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Identity hero — banner with per-agent hue + floating avatar
-          * punching through the banner edge + centred name and id
-          * chip. In create mode the banner uses the brand hue and the
-          * id chip is hidden until the agent exists. */}
-        <div
-          className="agent-edit-hero"
-          style={
-            {
-              "--banner-hue": (agent
-                ? hashHue(agent.id)
-                : hashHue(draft.name.trim() || "new-agent")
-              ).toString(),
-            } as React.CSSProperties
-          }
-        >
-          <div className="agent-edit-hero-banner" aria-hidden="true" />
-          <div className="agent-edit-hero-avatar">
+        {/* Round 22 — Accio-style modal layout.
+          * Header: small avatar + agent name + id (left) + close (right).
+          * Body grid: vertical tab rail (left) + form content (right).
+          * Footer: save-status + revert/chat (left) + primary save (right).
+          */}
+        <div className="agent-edit-header">
+          <div className="agent-edit-header-meta">
             <AgentAvatar
-              agent={agent ?? { id: draft.name.trim() || "new-agent", name: draft.name.trim() || "新建智能体" }}
-              size={56}
+              agent={
+                agent ?? {
+                  id: draft.name.trim() || "new-agent",
+                  name: draft.name.trim() || "新建智能体",
+                }
+              }
+              size={36}
               shape="square"
             />
-          </div>
-          <h2 className="agent-edit-hero-name">
-            {isCreate
-              ? draft.name.trim() || "新建智能体"
-              : agent?.name || "未命名智能体"}
-          </h2>
-          {!isCreate && agent ? (
-            <div className="agent-edit-hero-id">
-              <AgentIdChip id={agent.id} />
+            <div className="agent-edit-header-text">
+              <h2 className="agent-edit-header-name">
+                {isCreate
+                  ? draft.name.trim() || "新建智能体"
+                  : agent?.name || "未命名智能体"}
+              </h2>
+              {!isCreate && agent ? (
+                <div className="agent-edit-header-id">
+                  <AgentIdChip id={agent.id} />
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+          <button
+            type="button"
+            className="icon-btn agent-edit-header-close"
+            aria-label="关闭"
+            disabled={saving}
+            onClick={requestClose}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 4l8 8M4 12l8-8" />
+            </svg>
+          </button>
         </div>
 
-        <div className="modal-body agent-edit-modal-body">
-          {/* Tabs visually adopt the Segmented pill look (round 14)
-            * for cross-surface consistency with AgentsPage sort and
-            * the tool preset, but keep role="tab" / aria-selected so
-            * screen readers still announce them as tabs and the
-            * tablist arrow-key navigation pattern stays correct.
-            *
-            * Round 17: full WAI-ARIA tablist keyboard pattern wired
-            * up — Left/Right move between tabs (with wrap), Home/End
-            * jump to the first/last tab. Activates as you arrow,
-            * matching the "automatic activation" pattern most modal
-            * editors use; the tab body re-renders on every change so
-            * there's no surprise lazy-load behind the tab. */}
+        <div className="agent-edit-body">
+          {/* Vertical tab rail — Accio idiom. Up/Down arrow keys
+            * navigate, Home/End jump to first/last. Same WAI-ARIA
+            * tablist contract as the previous horizontal segmented
+            * version, just rotated 90°. */}
           <div
-            className="agent-config-tabs segmented segmented-cozy"
+            className="agent-edit-rail"
             role="tablist"
+            aria-orientation="vertical"
             aria-label="智能体配置"
             onKeyDown={(event) => {
               const tabOrder = isCreate ? CREATE_TAB_ORDER : EDIT_TAB_ORDER;
               const idx = tabOrder.indexOf(tab);
               if (idx < 0) return;
               let next: AgentsTab | null = null;
-              if (event.key === "ArrowRight") {
+              if (event.key === "ArrowDown") {
                 next = tabOrder[(idx + 1) % tabOrder.length];
-              } else if (event.key === "ArrowLeft") {
+              } else if (event.key === "ArrowUp") {
                 next =
                   tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length];
               } else if (event.key === "Home") {
@@ -579,11 +496,11 @@ export function AgentEditModal(props: AgentEditModalProps) {
           >
             {(
               [
-                { key: "overview" as const, label: "基本信息", dirtyKey: "overview" as DraftTabKey },
-                { key: "persona" as const, label: "人格", dirtyKey: "persona" as DraftTabKey },
-                { key: "tools" as const, label: "技能", dirtyKey: "tools" as DraftTabKey },
-                { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey },
-                { key: "core" as const, label: "核心文件", dirtyKey: null },
+                { key: "overview" as const, label: "身份", dirtyKey: "overview" as DraftTabKey, icon: <IdentityIcon /> },
+                { key: "persona" as const, label: "人格", dirtyKey: "persona" as DraftTabKey, icon: <PersonaIcon /> },
+                { key: "tools" as const, label: "工具", dirtyKey: "tools" as DraftTabKey, icon: <ToolsIcon /> },
+                { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey, icon: <HandoffIcon /> },
+                { key: "core" as const, label: "核心文件", dirtyKey: null, icon: <FileIcon /> },
               ].filter((entry) => !isCreate || entry.key !== "core")
             ).map((entry) => {
               const isDirtyTab =
@@ -599,24 +516,21 @@ export function AgentEditModal(props: AgentEditModalProps) {
                   aria-selected={tab === entry.key}
                   tabIndex={tab === entry.key ? 0 : -1}
                   className={
-                    "agent-config-tab segmented-segment" +
-                    (tab === entry.key ? " active" : "") +
-                    (isDirtyTab ? " has-changes" : "")
+                    "agent-edit-rail-item" +
+                    (tab === entry.key ? " active" : "")
                   }
                   onClick={() => {
                     tabSwitchSourceRef.current = "mouse";
                     setTab(entry.key);
                   }}
                 >
-                  {entry.label}
+                  <span className="agent-edit-rail-icon" aria-hidden="true">
+                    {entry.icon}
+                  </span>
+                  <span className="agent-edit-rail-label">{entry.label}</span>
                   {isDirtyTab ? (
-                    // aria-hidden so the dot doesn't pollute the
-                    // tab's accessible name. SR users have the
-                    // SaveStatusIndicator pill in the modal header
-                    // for the form-level dirty signal; this is a
-                    // visual-only "you edited this tab" cue.
                     <span
-                      className="agent-config-tab-dot"
+                      className="agent-edit-rail-dot"
                       aria-hidden="true"
                       title="有未保存的修改"
                     />
@@ -626,72 +540,181 @@ export function AgentEditModal(props: AgentEditModalProps) {
             })}
           </div>
 
-          {saveError ? (
-            <div
-              className="agent-edit-error"
-              role="alert"
-              aria-live="assertive"
-            >
-              <span className="agent-edit-error-icon" aria-hidden="true">
-                <ErrorIcon />
-              </span>
-              <span className="agent-edit-error-message">{saveError}</span>
-              <button
-                type="button"
-                className="agent-edit-error-retry"
-                disabled={saving}
-                onClick={save}
+          <div className="agent-edit-content">
+            {saveError ? (
+              <div
+                className="agent-edit-error"
+                role="alert"
+                aria-live="assertive"
               >
-                重试
-              </button>
-              <button
-                type="button"
-                className="agent-edit-error-dismiss"
-                aria-label="关闭"
-                onClick={() => setSaveError(null)}
-              >
-                <CloseSmallIcon />
-              </button>
-            </div>
-          ) : null}
+                <span className="agent-edit-error-icon" aria-hidden="true">
+                  <ErrorIcon />
+                </span>
+                <span className="agent-edit-error-message">{saveError}</span>
+                <button
+                  type="button"
+                  className="agent-edit-error-retry"
+                  disabled={saving}
+                  onClick={save}
+                >
+                  重试
+                </button>
+                <button
+                  type="button"
+                  className="agent-edit-error-dismiss"
+                  aria-label="关闭"
+                  onClick={() => setSaveError(null)}
+                >
+                  <CloseSmallIcon />
+                </button>
+              </div>
+            ) : null}
 
-          {tab === "overview" ? (
-            <OverviewTab agent={agent} draft={draft} onChange={setDraft} />
-          ) : null}
-          {tab === "persona" ? (
-            <PersonaTab draft={draft} onChange={setDraft} />
-          ) : null}
-          {tab === "tools" ? (
-            <ToolsTab
-              draft={draft}
-              toolGroups={props.toolGroups}
-              onChange={setDraft}
-            />
-          ) : null}
-          {tab === "handoff" ? (
-            <HandoffTab
-              draft={draft}
-              agentId={agent?.id ?? ""}
-              agents={props.agents}
-              onChange={setDraft}
-            />
-          ) : null}
-          {tab === "core" && !isCreate ? (
-            <CoreTab
-              files={coreFiles}
-              selectedFile={selectedFile}
-              onSelectFile={setSelectedFile}
-              fileContent={fileContent}
-              onChangeFileContent={setFileContent}
-              fileBusy={fileBusy}
-              fileStatus={fileStatus}
-              corePath={corePath}
-              onSave={saveCoreFile}
-            />
-          ) : null}
+            {tab === "overview" ? (
+              <OverviewTab agent={agent} draft={draft} onChange={setDraft} />
+            ) : null}
+            {tab === "persona" ? (
+              <PersonaTab draft={draft} onChange={setDraft} />
+            ) : null}
+            {tab === "tools" ? (
+              <ToolsTab
+                draft={draft}
+                toolGroups={props.toolGroups}
+                onChange={setDraft}
+              />
+            ) : null}
+            {tab === "handoff" ? (
+              <HandoffTab
+                draft={draft}
+                agentId={agent?.id ?? ""}
+                agents={props.agents}
+                onChange={setDraft}
+              />
+            ) : null}
+            {tab === "core" && !isCreate ? (
+              <CoreTab
+                files={coreFiles}
+                selectedFile={selectedFile}
+                onSelectFile={setSelectedFile}
+                fileContent={fileContent}
+                onChangeFileContent={setFileContent}
+                fileBusy={fileBusy}
+                fileStatus={fileStatus}
+                corePath={corePath}
+                onSave={saveCoreFile}
+              />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="agent-edit-footer">
+          <div className="agent-edit-footer-left">
+            {!isCreate ? (
+              <SaveStatusIndicator
+                saving={saving}
+                isDirty={isDirty}
+                savedFlash={savedFlash}
+              />
+            ) : null}
+            {!isCreate && isDirty && !saving ? (
+              <button
+                type="button"
+                className="btn-secondary btn-sm agent-edit-revert"
+                onClick={() => {
+                  if (!agent) return;
+                  if (window.confirm("放弃当前修改？此操作无法撤销。")) {
+                    setDraft(draftFromAgent(agent));
+                    setSaveError(null);
+                  }
+                }}
+                title="撤销所有未保存的修改"
+              >
+                撤销修改
+              </button>
+            ) : null}
+            {!isCreate ? (
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={requestOpenChat}
+              >
+                打开对话
+              </button>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="btn-primary agent-edit-save"
+            disabled={
+              saving ||
+              !draft.name.trim() ||
+              !draft.instructions.trim() ||
+              (!isCreate && !isDirty)
+            }
+            onClick={save}
+          >
+            {saving ? (
+              <>
+                <span className="agent-edit-save-spinner" aria-hidden="true" />
+                {isCreate ? "创建中…" : "保存中…"}
+              </>
+            ) : (
+              <>
+                {isCreate ? "创建" : "保存"}
+                <kbd className="agent-edit-save-kbd" aria-hidden="true">
+                  ⌘S
+                </kbd>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+/* Tab rail icons — light outline, 1.6 stroke, 16px viewBox to match
+ * the rest of the modal chrome iconography. */
+function IdentityIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8" cy="6" r="2.5" />
+      <path d="M3 13c.5-2.5 2.7-4 5-4s4.5 1.5 5 4" />
+    </svg>
+  );
+}
+function PersonaIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2.5" y="3.5" width="11" height="9" rx="2" />
+      <path d="M5 7h2.5M5 9.5h6M5 12h4" />
+    </svg>
+  );
+}
+function ToolsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 5.5h11M2.5 10.5h11" />
+      <circle cx="6" cy="5.5" r="1.4" />
+      <circle cx="10" cy="10.5" r="1.4" />
+    </svg>
+  );
+}
+function HandoffIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="4.5" cy="4.5" r="1.6" />
+      <circle cx="11.5" cy="11.5" r="1.6" />
+      <path d="M6 5.5h4a3 3 0 0 1 0 6H6" />
+    </svg>
+  );
+}
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 2.5h5L12.5 6v7a1 1 0 0 1-1 1h-7.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z" />
+      <path d="M9 2.5V6h3.5" />
+    </svg>
   );
 }
 

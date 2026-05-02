@@ -6517,135 +6517,192 @@ pre {
 }
 
 /* AgentEditModal — wide, tall modal anchored under the titlebar.
- * Shares the .modal-overlay / .modal-card chrome with NewAgentModal. */
+ * Shares the .modal-overlay / .modal-card chrome with NewAgentModal.
+ *
+ * Round 22 — Accio-style 3-band layout:
+ *   1. .agent-edit-header: compact title strip (avatar + name + id)
+ *      at the top with the close button on the right.
+ *   2. .agent-edit-body: 2-column grid — vertical tab rail on the
+ *      left, scrollable form content on the right.
+ *   3. .agent-edit-footer: action bar at the bottom — save status +
+ *      revert / chat on the left, primary save pill on the right. */
 .agent-edit-modal {
   max-width: 960px;
   width: min(960px, calc(100vw - 48px));
   max-height: 86vh;
   display: flex;
   flex-direction: column;
+  /* The card itself owns the rounded corners; inner sections meet
+   * its edges directly so dividers run flush. */
+  overflow: hidden;
 }
-/* Round 21 — Accio "product hero" header for AgentEditModal.
- * Replaces the previous horizontal title-row with two stacked layers:
- *   1. agent-edit-topbar: 44px chrome row holding save status + the
- *      action rail (revert / chat / save / close). Quiet bg so it
- *      doesn't compete with the hero below.
- *   2. agent-edit-hero: full-width banner with per-agent hue + a
- *      floating avatar punching through the banner edge + centred
- *      name + id chip below. Mirrors the AgentCard tile pattern so
- *      identity flows from card → editor without a visual seam.
- */
-.agent-edit-topbar {
+
+/* ---- Header ----------------------------------------------------- */
+.agent-edit-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 14px 8px 18px;
+  gap: 16px;
+  padding: 18px 20px;
   border-bottom: 0.5px solid var(--glass-border);
-  min-height: 44px;
-}
-.agent-edit-topbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
   flex-shrink: 0;
 }
-.agent-edit-hero {
-  position: relative;
-  display: flex;
-  flex-direction: column;
+.agent-edit-header-meta {
+  display: inline-flex;
   align-items: center;
-  padding: 0 24px 16px;
-  border-bottom: 0.5px solid var(--glass-border);
+  gap: 12px;
+  min-width: 0;
 }
-.agent-edit-hero-banner {
-  position: relative;
-  align-self: stretch;
-  height: 64px;
-  margin: 0 -24px 32px;
-  /* Same 3-layer paint as AgentCard.banner — gloss highlight, soft
-   * shadow vignette, base diagonal hue gradient. */
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.45) 0%,
-      rgba(255, 255, 255, 0)    48%
-    ),
-    linear-gradient(
-      0deg,
-      rgba(15, 15, 15, 0.06) 0%,
-      rgba(15, 15, 15, 0)    32%
-    ),
-    linear-gradient(
-      135deg,
-      hsl(calc(var(--banner-hue, 0) * 1deg) 56% 88%) 0%,
-      hsl(calc((var(--banner-hue, 0) + 32) * 1deg) 48% 80%) 100%
-    );
-  overflow: hidden;
+.agent-edit-header-text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
-@media (prefers-color-scheme: dark) {
-  .agent-edit-hero-banner {
-    background:
-      linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.10) 0%,
-        rgba(255, 255, 255, 0)    48%
-      ),
-      linear-gradient(
-        0deg,
-        rgba(0, 0, 0, 0.20) 0%,
-        rgba(0, 0, 0, 0)    32%
-      ),
-      linear-gradient(
-        135deg,
-        hsl(calc(var(--banner-hue, 0) * 1deg) 38% 32%) 0%,
-        hsl(calc((var(--banner-hue, 0) + 32) * 1deg) 32% 22%) 100%
-      );
-  }
-}
-.agent-edit-hero-avatar {
-  position: absolute;
-  left: 50%;
-  top: 64px; /* sits at the banner-body seam */
-  transform: translate(-50%, -50%);
-  padding: 4px;
-  border-radius: 18px;
-  background: var(--bg-primary);
-  border: 0.5px solid var(--glass-border);
-  box-shadow:
-    0 1px 1px rgba(15, 15, 15, 0.05),
-    0 6px 14px rgba(15, 15, 15, 0.12);
-  z-index: 1;
-}
-@media (prefers-color-scheme: dark) {
-  .agent-edit-hero-avatar {
-    box-shadow:
-      0 1px 1px rgba(0, 0, 0, 0.35),
-      0 6px 16px rgba(0, 0, 0, 0.50);
-  }
-}
-.agent-edit-hero-name {
+.agent-edit-header-name {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
-  letter-spacing: -0.014em;
+  letter-spacing: -0.018em;
   color: var(--text-primary);
-  text-align: center;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.agent-edit-hero-id {
-  margin-top: 6px;
+.agent-edit-header-id {
   display: flex;
-  justify-content: center;
+  align-items: center;
 }
-/* Round 17: revert-changes affordance. Lives in the action rail,
- * styled as a quiet ghost so it doesn't compete with 保存. Mounts
- * with a fade so it doesn't pop in jarringly each time the user
- * touches a field; respects reduced-motion via the global media
- * rule that drops animation-delay on the global selector. */
+.agent-edit-header-close { flex-shrink: 0; }
+
+/* ---- Body grid (rail | content) -------------------------------- */
+.agent-edit-body {
+  display: grid;
+  grid-template-columns: 192px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+@media (max-width: 720px) {
+  .agent-edit-body { grid-template-columns: 1fr; }
+}
+
+/* ---- Vertical tab rail ----------------------------------------- */
+.agent-edit-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  border-right: 0.5px solid var(--glass-border);
+  background: var(--bg-secondary);
+  align-content: start;
+  overflow-y: auto;
+}
+@media (max-width: 720px) {
+  .agent-edit-rail {
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 0.5px solid var(--glass-border);
+    overflow-x: auto;
+  }
+}
+.agent-edit-rail-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.agent-edit-rail-item:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+.agent-edit-rail-item:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring) inset;
+}
+.agent-edit-rail-item.active {
+  background: var(--brand-050);
+  color: var(--brand-600);
+  font-weight: 600;
+}
+.agent-edit-rail-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  opacity: 0.85;
+}
+.agent-edit-rail-item.active .agent-edit-rail-icon { opacity: 1; }
+.agent-edit-rail-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-edit-rail-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  flex-shrink: 0;
+}
+
+/* ---- Content area ---------------------------------------------- */
+.agent-edit-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 28px 28px;
+  overflow: auto;
+  min-height: 0;
+}
+.agent-edit-content .agent-config-panel {
+  display: grid;
+  gap: 14px;
+}
+
+/* ---- Footer ---------------------------------------------------- */
+.agent-edit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 0.5px solid var(--glass-border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.agent-edit-footer-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.agent-edit-footer .agent-edit-save {
+  /* Pill-shaped primary save action — Accio idiom puts the most
+   * important action in the bottom-right corner. */
+  border-radius: var(--radius-pill);
+  padding: 0 18px;
+  height: 36px;
+}
+
+/* Round 17 keep: revert-changes fade-in animation. */
 .agent-edit-revert {
   animation: agent-edit-revert-enter var(--duration-fast) var(--ease-out) both;
 }
@@ -6655,24 +6712,6 @@ pre {
 }
 @media (prefers-reduced-motion: reduce) {
   .agent-edit-revert { animation: none; }
-}
-.agent-edit-modal-body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  /* Roomier padding for the editor body — 22/24/26 — so long forms
-   * have breathing room and don't feel cramped against the modal
-   * edges. Tabs row sits at the top of this padding. */
-  padding: 22px 24px 26px;
-  overflow: auto;
-  min-height: 0;
-}
-.agent-edit-modal-body .agent-config-tabs {
-  align-self: flex-start;
-}
-.agent-edit-modal-body .agent-config-panel {
-  display: grid;
-  gap: 14px;
 }
 
 .agents-list {
