@@ -3034,7 +3034,7 @@ pre {
   align-items: center;
   gap: 4px;
   padding: 0 12px 10px;
-  border-bottom: 1px solid var(--fill-quaternary);
+  border-bottom: 0.5px solid var(--glass-border);
   margin-bottom: 4px;
 }
 .history-filter-chip {
@@ -3059,10 +3059,22 @@ pre {
   background: var(--fill-quaternary);
   color: var(--text-primary);
 }
+.history-filter-chip:active {
+  background: var(--fill-tertiary);
+}
+.history-filter-chip:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 .history-filter-chip.active {
   background: var(--brand-050);
   color: var(--brand-600);
   font-weight: 600;
+}
+.history-filter-chip.active:focus-visible {
+  box-shadow: 0 0 0 2px var(--brand-ring);
 }
 /* Dark-mode contrast lift: against the drawer's `--bg-secondary` plus
  * the brand-tinted chip background, `--brand-600` (#c44e54) reads at
@@ -4376,7 +4388,7 @@ pre {
   grid-template-rows: auto auto auto auto;
   gap: 8px;
   padding: 14px 16px 12px;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   box-shadow: var(--shadow-card-rest);
@@ -4384,7 +4396,7 @@ pre {
               box-shadow var(--duration-medium) var(--ease-standard);
 }
 .channel-card:hover {
-  border-color: var(--text-quaternary);
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
   box-shadow: var(--shadow-card-hover);
 }
 .channel-card-off {
@@ -7760,7 +7772,7 @@ pre {
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   box-shadow: var(--shadow-card-rest);
@@ -7768,7 +7780,7 @@ pre {
               box-shadow var(--duration-medium) var(--ease-standard);
 }
 .mcp-card:hover {
-  border-color: var(--text-quaternary);
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
   box-shadow: var(--shadow-card-hover);
 }
 .mcp-card-off { opacity: 0.78; }
