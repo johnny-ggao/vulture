@@ -8100,63 +8100,189 @@ pre {
   background: var(--danger-bg);
 }
 
-.agent-core { display: grid; gap: 10px; }
+/* ---- 核心文件 (Round 24, Accio reference) -------------------- */
+.agent-core { display: grid; gap: 14px; }
 .agent-core-head {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
 }
-.agent-core-title { margin: 0; font-size: 16px; font-weight: 600; }
+.agent-core-head-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.agent-core-title { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.agent-core-sub {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 56ch;
+}
 .agent-core-path {
-  margin-top: 4px;
+  display: inline-block;
+  margin-top: 2px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-tertiary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-tertiary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.agent-core-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.agent-core-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 风格 menu (popover anchored to the trigger button) */
+.agent-core-style { position: relative; }
+.agent-core-style-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-core-style-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: transparent;
+}
+.agent-core-style-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 280px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated, var(--bg-primary));
+  box-shadow:
+    0 16px 48px rgba(15, 15, 15, 0.18),
+    0 2px 6px rgba(15, 15, 15, 0.05);
+  animation: agent-core-style-menu-in var(--duration-fast) var(--ease-out) both;
+}
+@keyframes agent-core-style-menu-in {
+  from { transform: translateY(-4px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.agent-core-style-menu-head {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+.agent-core-style-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.agent-core-style-item:hover { background: var(--fill-quaternary); }
+.agent-core-style-item-name { font-size: 13px; font-weight: 600; }
+.agent-core-style-item-snippet {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-core-body {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  gap: 12px;
+  gap: 14px;
+  align-items: stretch;
 }
-.agent-core-files { display: grid; gap: 6px; align-content: start; }
+.agent-core-rail {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 6px;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
 .agent-core-file {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   text-align: left;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--fill-tertiary);
-  background: var(--bg-primary);
+  border: 0;
+  background: transparent;
   color: var(--text-primary);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 12px;
   min-height: 0;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.agent-core-file-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--fill-tertiary);
+  color: var(--text-secondary);
+}
+.agent-core-file-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 .agent-core-file-name {
+  font-size: 13px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
 .agent-core-file-meta {
-  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
-  flex: 0 0 auto;
 }
 .agent-core-file[data-missing="true"] .agent-core-file-meta {
   color: var(--warning);
 }
 .agent-core-file:hover { background: var(--fill-quaternary); }
 .agent-core-file[data-active="true"] {
-  border-color: var(--brand-500);
-  background: var(--brand-050);
+  background: color-mix(in oklab, var(--brand-500) 14%, transparent);
+}
+.agent-core-file[data-active="true"] .agent-core-file-icon {
+  background: color-mix(in oklab, var(--brand-500) 24%, transparent);
+  color: var(--brand-600);
 }
 .agent-core-file[data-active="true"] .agent-core-file-meta {
   color: var(--brand-600);
@@ -8165,18 +8291,44 @@ pre {
   outline: 0;
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
+
+.agent-core-editor-wrap {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
 .agent-core-editor {
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  border: 1px solid var(--fill-tertiary);
-  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.6;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-primary);
-  padding: 8px 10px;
+  padding: 12px 14px;
   resize: vertical;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
-.agent-core-status { font-size: 12px; color: var(--text-tertiary); }
+.agent-core-editor:focus {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.agent-core-editor-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.agent-core-counter {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.agent-core-status { font-size: 11.5px; color: var(--text-tertiary); }
 
 @media (max-width: 720px) {
   .agents-shell { grid-template-columns: 1fr; }
@@ -9366,6 +9518,12 @@ pre {
 /* ----- Avatar picker (OverviewTab) ------------------------------ */
 .agent-avatar-picker {
   display: grid;
+  gap: 10px;
+}
+.agent-avatar-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
 }
 .agent-avatar-picker-label {
@@ -9374,6 +9532,37 @@ pre {
   letter-spacing: -0.005em;
   color: var(--text-primary);
 }
+.agent-avatar-regenerate {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.agent-avatar-regenerate:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
+}
+.agent-avatar-regenerate:active { transform: scale(0.96); }
+.agent-avatar-regenerate:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.agent-avatar-regenerate > svg { display: block; }
 .agent-avatar-picker-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -9426,6 +9615,104 @@ pre {
   box-shadow:
     0 0 0 2px var(--brand-ring),
     0 1px 2px rgba(196, 78, 84, 0.18);
+}
+
+/* ----- Model picker (OverviewTab) ------------------------------- */
+.agent-model-select {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--fill-tertiary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 30px;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.agent-model-select:hover:not(:focus) {
+  border-color: color-mix(in oklab, var(--text-primary) 20%, var(--fill-tertiary));
+}
+.agent-model-select:focus {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+/* ----- 人格风格 seed row (OverviewTab, create mode) ---------- */
+.agent-style-seed {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--brand-500) 6%, transparent),
+    transparent
+  );
+}
+.agent-style-seed-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.agent-style-seed-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+.agent-style-seed-hint {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  letter-spacing: -0.005em;
+}
+.agent-style-seed-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agent-style-seed-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  border: 0.5px solid var(--glass-border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.agent-style-seed-chip:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 28%, var(--glass-border));
+  transform: translateY(-1px);
+}
+.agent-style-seed-chip:active { transform: translateY(0); }
+.agent-style-seed-chip.active {
+  background: color-mix(in oklab, var(--brand-500) 12%, var(--bg-primary));
+  border-color: var(--brand-500);
+  color: var(--brand-600);
+}
+.agent-style-seed-chip:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 /* AgentCard — Accio-style product tile (banner + floating avatar + meta).

@@ -55,7 +55,14 @@ export function AgentAvatar({
     );
   }
 
-  const hue = hashHue(agent.id);
+  // `color:<seed>` avatar values feed the seed into the hash instead of
+  // the agent id, so swapping seeds visibly changes the colour without
+  // changing identity. Anything else falls back to the agent-id hash.
+  const hueSeed =
+    agent.avatar && agent.avatar.startsWith("color:")
+      ? agent.avatar
+      : agent.id;
+  const hue = hashHue(hueSeed);
   // Defensive against callers that pass `name: undefined` through type
   // erasure or string coercion: a missing name should render `?`, never
   // throw inside `.trim()`.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
+import { PROVIDERS, type ProviderId } from "./providerCatalog";
 
 /* ============================================================
  * Multi-provider model directory.
@@ -19,134 +20,10 @@ import type { SettingsPageProps } from "./types";
  * Other providers persist their key locally as a "configured" flag with
  * masked-suffix preview only (no plaintext); a banner notes this is UI-only
  * until backend wiring lands.
+ *
+ * Round 24: PROVIDERS moved into ./providerCatalog.ts so the
+ * AgentEditModal's per-agent model picker can consume the same list.
  * ============================================================ */
-
-interface ProviderSpec {
-  id: ProviderId;
-  name: string;
-  domain: string;
-  glyph: string;
-  tint: string;
-  fg: string;
-  placeholder: string;
-  models: ReadonlyArray<{ id: string; hint: string }>;
-  /** When true the provider has no manual key (e.g. internal gateway). */
-  internal?: boolean;
-}
-
-type ProviderId =
-  | "openai"
-  | "anthropic"
-  | "deepseek"
-  | "qwen"
-  | "zhipu"
-  | "moonshot"
-  | "gateway";
-
-const PROVIDERS: ReadonlyArray<ProviderSpec> = [
-  {
-    id: "openai",
-    name: "OpenAI",
-    domain: "api.openai.com",
-    glyph: "O",
-    tint: "rgba(16, 107, 61, 0.10)",
-    fg: "#0a6b3d",
-    placeholder: "sk-...",
-    models: [
-      { id: "gpt-5.4", hint: "通用旗舰" },
-      { id: "gpt-5.4-mini", hint: "低成本 · 快" },
-      { id: "gpt-4o", hint: "兼容旧 agent" },
-      { id: "gpt-4o-mini", hint: "低成本 · 快" },
-      { id: "o3-mini", hint: "推理" },
-    ],
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    domain: "api.anthropic.com",
-    glyph: "A",
-    tint: "rgba(160, 67, 24, 0.10)",
-    fg: "#a04318",
-    placeholder: "sk-ant-...",
-    models: [
-      { id: "claude-sonnet-4.5", hint: "长上下文" },
-      { id: "claude-haiku-4-5", hint: "极速短任务" },
-      { id: "claude-opus-4", hint: "深度推理" },
-    ],
-  },
-  {
-    id: "deepseek",
-    name: "DeepSeek",
-    domain: "api.deepseek.com",
-    glyph: "D",
-    tint: "rgba(31, 58, 138, 0.10)",
-    fg: "#1f3a8a",
-    placeholder: "sk-...",
-    models: [
-      { id: "deepseek-v3.1", hint: "通用" },
-      { id: "deepseek-r1", hint: "推理" },
-      { id: "deepseek-coder-v2", hint: "代码" },
-    ],
-  },
-  {
-    id: "qwen",
-    name: "通义千问",
-    domain: "dashscope.aliyuncs.com",
-    glyph: "通",
-    tint: "rgba(91, 26, 138, 0.10)",
-    fg: "#5b1a8a",
-    placeholder: "sk-...",
-    models: [
-      { id: "qwen3-max", hint: "长上下文" },
-      { id: "qwen3-plus", hint: "通用" },
-      { id: "qwen3-coder-plus", hint: "代码" },
-      { id: "qwen3-vl-plus", hint: "多模态" },
-    ],
-  },
-  {
-    id: "zhipu",
-    name: "智谱 GLM",
-    domain: "open.bigmodel.cn",
-    glyph: "Z",
-    tint: "rgba(29, 91, 70, 0.10)",
-    fg: "#1d5b46",
-    placeholder: "<id>.<secret>",
-    models: [
-      { id: "glm-4.6", hint: "通用" },
-      { id: "glm-4-plus", hint: "长上下文" },
-      { id: "glm-4-airx", hint: "低成本 · 快" },
-    ],
-  },
-  {
-    id: "moonshot",
-    name: "Moonshot Kimi",
-    domain: "api.moonshot.cn",
-    glyph: "K",
-    tint: "rgba(122, 74, 0, 0.10)",
-    fg: "#7a4a00",
-    placeholder: "sk-...",
-    models: [
-      { id: "kimi-k2-0905", hint: "通用" },
-      { id: "moonshot-v1-128k", hint: "长上下文" },
-      { id: "moonshot-v1-32k", hint: "通用" },
-    ],
-  },
-  {
-    id: "gateway",
-    name: "Codex Gateway",
-    domain: "gateway.local",
-    glyph: "C",
-    tint: "rgba(168, 62, 68, 0.10)",
-    fg: "#a83e44",
-    placeholder: "内置（无需密钥）",
-    models: [
-      { id: "gateway/auto", hint: "智能路由" },
-      { id: "gateway/long-context", hint: "长上下文" },
-      { id: "gateway/cheap", hint: "低成本 · 快" },
-    ],
-    internal: true,
-  },
-];
 
 /* Provider state is stored locally for non-OpenAI providers. We store
  * a redacted key (only the last 4 chars, like Stripe), never the

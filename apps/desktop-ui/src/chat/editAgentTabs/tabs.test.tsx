@@ -2,7 +2,6 @@ import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { CoreTab } from "./CoreTab";
 import { OverviewTab } from "./OverviewTab";
-import { PersonaTab } from "./PersonaTab";
 import { ToolsTab } from "./ToolsTab";
 import { draftFromAgent, type Draft } from "./draft";
 import { localAgentFixture as baseAgent } from "../__fixtures__/agent";
@@ -14,6 +13,7 @@ describe("OverviewTab", () => {
       <OverviewTab
         agent={baseAgent}
         draft={draftFromAgent(baseAgent)}
+        authStatus={null}
         onChange={() => {}}
       />,
     );
@@ -24,6 +24,12 @@ describe("OverviewTab", () => {
     // Round 23: Skills moved to its own SkillsTab (rail item "技能").
     // The avatar picker landed in OverviewTab instead.
     expect(screen.getByRole("group", { name: "头像" })).toBeDefined();
+    // Round 24: avatar picker grew categories (图标 / 字符 / 色块) and a
+    // 重新生成 button so users can roll a fresh take without leaving.
+    expect(screen.getByRole("radiogroup", { name: "头像分类" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "重新生成头像" }),
+    ).toBeDefined();
     expect(screen.getByText("Workspace")).toBeDefined();
     expect(screen.getByText("/tmp/workspace")).toBeDefined();
   });
@@ -34,6 +40,7 @@ describe("OverviewTab", () => {
       <OverviewTab
         agent={baseAgent}
         draft={draftFromAgent(baseAgent)}
+        authStatus={null}
         onChange={onChange}
       />,
     );
@@ -51,6 +58,7 @@ describe("OverviewTab", () => {
       <OverviewTab
         agent={baseAgent}
         draft={draftFromAgent(baseAgent)}
+        authStatus={null}
         onChange={onChange}
       />,
     );
@@ -60,68 +68,38 @@ describe("OverviewTab", () => {
     const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
     expect(next.reasoning).toBe("high");
   });
-});
 
-describe("PersonaTab", () => {
-  test("editing instructions calls onChange with the new text", () => {
-    const onChange = mock((_next: Draft) => {});
+  test("model field renders a <select> when at least one option resolves", () => {
+    // The current draft.model is preserved as a fallback option so an
+    // existing agent's saved model never silently disappears from the
+    // picker, even when no provider is configured (it shows up tagged
+    // 未配置 under the provider that owns the model id).
     render(
-      <PersonaTab
-        draft={draftFromAgent(baseAgent)}
-        onChange={onChange}
-      />,
-    );
-    fireEvent.change(screen.getByLabelText("Instructions"), {
-      target: { value: "be thoughtful" },
-    });
-    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
-    expect(next.instructions).toBe("be thoughtful");
-  });
-
-  // ---- Round 14: counter + threshold tones --------------------
-
-  test("shows a live character counter that reflects draft length", () => {
-    const draft = draftFromAgent(baseAgent);
-    const { rerender, container } = render(
-      <PersonaTab draft={{ ...draft, instructions: "abc" }} onChange={() => {}} />,
-    );
-    expect(container.querySelector(".agent-persona-counter")?.textContent).toBe("3 字符");
-    rerender(
-      <PersonaTab
-        draft={{ ...draft, instructions: "abc"+"def".repeat(10) }}
+      <OverviewTab
+        agent={baseAgent}
+        draft={{ ...draftFromAgent(baseAgent), model: "gpt-5.4" }}
+        authStatus={null}
         onChange={() => {}}
       />,
     );
-    expect(container.querySelector(".agent-persona-counter")?.textContent).toBe("33 字符");
+    const field = screen.getByLabelText("模型") as HTMLSelectElement;
+    expect(field.tagName).toBe("SELECT");
+    expect(field.value).toBe("gpt-5.4");
   });
 
-  test("counter tone is 'soft' between 600 and 1199 chars, 'danger' at 1200+", () => {
-    const draft = draftFromAgent(baseAgent);
-    const { rerender, container } = render(
-      <PersonaTab
-        draft={{ ...draft, instructions: "x".repeat(600) }}
-        onChange={() => {}}
-      />,
-    );
-    expect(
-      container.querySelector(".agent-persona-counter")?.classList.contains("agent-persona-counter-soft"),
-    ).toBe(true);
-    rerender(
-      <PersonaTab
-        draft={{ ...draft, instructions: "x".repeat(1200) }}
-        onChange={() => {}}
-      />,
-    );
-    expect(
-      container.querySelector(".agent-persona-counter")?.classList.contains("agent-persona-counter-danger"),
-    ).toBe(true);
-  });
-
-  test("renders a structural hint above the editor", () => {
+  test("model field falls back to a free-form input when nothing resolves", () => {
+    // No authStatus, no preserved model id → no options at all, so the
+    // picker degrades to an unconstrained text input.
     render(
-      <PersonaTab draft={draftFromAgent(baseAgent)} onChange={() => {}} />,
+      <OverviewTab
+        agent={null}
+        draft={{ ...draftFromAgent(null), model: "" }}
+        authStatus={null}
+        onChange={() => {}}
+      />,
     );
-    expect(screen.getByText(/角色 → 目标 → 行为边界/)).toBeDefined();
+    const field = screen.getByLabelText("模型") as HTMLInputElement;
+    expect(field.tagName).toBe("INPUT");
   });
 });
 
@@ -167,7 +145,10 @@ describe("CoreTab", () => {
     { name: "memories.md", path: "/tmp/agents/agent-1/memories.md", missing: false, size: 50 },
   ];
 
-  test("renders one file button per core file with aria-pressed reflecting selection", () => {
+  test("renders one tab per core file with aria-selected reflecting selection", () => {
+    // Round 24: file rail moved from a flat button group to a
+    // role=tab/tablist so screen readers announce file switching the
+    // same way they announce the modal's outer rail.
     render(
       <CoreTab
         files={files}
@@ -181,8 +162,8 @@ describe("CoreTab", () => {
         onSave={() => {}}
       />,
     );
-    const a = screen.getByRole("button", { name: "AGENTS.md", pressed: true });
-    const b = screen.getByRole("button", { name: "memories.md", pressed: false });
+    const a = screen.getByRole("tab", { name: /AGENTS\.md/, selected: true });
+    const b = screen.getByRole("tab", { name: /memories\.md/, selected: false });
     expect(a).toBeDefined();
     expect(b).toBeDefined();
   });
@@ -202,7 +183,7 @@ describe("CoreTab", () => {
         onSave={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "memories.md" }));
+    fireEvent.click(screen.getByRole("tab", { name: /memories\.md/ }));
     expect(onSelectFile).toHaveBeenCalledWith("memories.md");
   });
 
@@ -236,7 +217,7 @@ describe("CoreTab", () => {
         onSave={() => {}}
       />,
     );
-    const busy = screen.getByRole("button", { name: "保存中…" }) as HTMLButtonElement;
+    const busy = screen.getByRole("button", { name: /保存中/ }) as HTMLButtonElement;
     expect(busy.disabled).toBe(true);
   });
 
@@ -255,5 +236,62 @@ describe("CoreTab", () => {
       />,
     );
     expect(screen.getByText("已保存")).toBeDefined();
+  });
+
+  test("AGENTS.md selection exposes the 风格 menu; memories.md does not", () => {
+    // The persona starter picker is bound to the canonical persona file
+    // so the user can't accidentally overwrite memories.md with a
+    // role-prompt template.
+    const { rerender } = render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /风格/ })).toBeDefined();
+
+    rerender(
+      <CoreTab
+        files={files}
+        selectedFile="memories.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={() => {}}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /风格/ })).toBeNull();
+  });
+
+  test("clicking a 风格 starter overwrites empty AGENTS.md without confirm", () => {
+    const onChangeFileContent = mock((_n: string) => {});
+    render(
+      <CoreTab
+        files={files}
+        selectedFile="AGENTS.md"
+        onSelectFile={() => {}}
+        fileContent=""
+        onChangeFileContent={onChangeFileContent}
+        fileBusy={false}
+        fileStatus=""
+        corePath="/tmp/agents/agent-1"
+        onSave={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /风格/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /通用助手/ }));
+    expect(onChangeFileContent).toHaveBeenCalled();
+    const seeded = onChangeFileContent.mock.calls[0]![0] as string;
+    expect(seeded.length).toBeGreaterThan(0);
   });
 });

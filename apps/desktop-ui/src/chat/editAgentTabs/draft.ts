@@ -124,17 +124,14 @@ export function isDirtyDraft(draft: Draft, agent: Agent | null): boolean {
  * next to the tab whose fields the user has touched, so navigating
  * away mid-edit doesn't lose the cue. CoreTab edits live in their own
  * file-content state outside the Draft, so it's omitted here (the
- * tab's own "保存文件" button is the canonical save path for it).
+ * tab's own "保存" button is the canonical save path for it).
  *
- * Round 18: split "tools" → "tools" (preset + tool list) and "handoff"
- * (sub-agent enable list) since each now has its own tab.
+ * Round 24: persona moved into the core file (AGENTS.md) so the
+ * dedicated persona tab + its dirty bucket are gone — instructions
+ * changes (style picker seed in create mode) bubble into the
+ * "overview" bucket since that's where the seed control lives.
  */
-export type DraftTabKey =
-  | "overview"
-  | "persona"
-  | "tools"
-  | "skills"
-  | "handoff";
+export type DraftTabKey = "overview" | "tools" | "skills" | "handoff";
 
 export function dirtyTabs(
   draft: Draft,
@@ -149,13 +146,10 @@ export function dirtyTabs(
     draft.description !== ref.description ||
     draft.model !== ref.model ||
     draft.reasoning !== ref.reasoning ||
-    draft.avatar !== ref.avatar
+    draft.avatar !== ref.avatar ||
+    draft.instructions !== ref.instructions
   ) {
     dirty.add("overview");
-  }
-
-  if (draft.instructions !== ref.instructions) {
-    dirty.add("persona");
   }
 
   if (

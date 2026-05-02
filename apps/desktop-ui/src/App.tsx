@@ -832,6 +832,7 @@ export function App() {
               agents={agents}
               selectedAgentId={selectedAgentId}
               toolGroups={toolCatalog}
+              authStatus={authStatus}
               onCreate={handleCreateAgent}
               onOpenChat={(id) => {
                 setSelectedAgentId(id);

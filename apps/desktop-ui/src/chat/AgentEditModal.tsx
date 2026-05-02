@@ -5,12 +5,12 @@ import type {
   AgentCoreFilesResponse,
 } from "../api/agents";
 import type { ToolCatalogGroup } from "../api/tools";
+import type { AuthStatusView } from "../commandCenterTypes";
 import { AgentAvatar } from "./components";
 import {
   CoreTab,
   HandoffTab,
   OverviewTab,
-  PersonaTab,
   SaveStatusIndicator,
   SkillsTab,
   ToolsTab,
@@ -25,17 +25,10 @@ import {
 
 export type { AgentConfigPatch };
 
-type AgentsTab =
-  | "overview"
-  | "persona"
-  | "tools"
-  | "skills"
-  | "handoff"
-  | "core";
+type AgentsTab = "overview" | "tools" | "skills" | "handoff" | "core";
 
 const EDIT_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
-  "persona",
   "tools",
   "skills",
   "handoff",
@@ -45,7 +38,6 @@ const EDIT_TAB_ORDER: ReadonlyArray<AgentsTab> = [
 /** Create mode hides the Core tab — files don't exist until the agent is created. */
 const CREATE_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
-  "persona",
   "tools",
   "skills",
   "handoff",
@@ -56,15 +48,19 @@ export interface AgentEditModalProps {
   /**
    * The agent being edited. `null` switches the modal into create mode:
    * the form starts blank, the save button calls `onCreate`, and
-   * surfaces that don't make sense pre-creation (id chip, "打开对话",
-   * 撤销修改, Core files tab) hide themselves.
+   * surfaces that don't make sense pre-creation (id chip, 撤销修改,
+   * Core files tab) hide themselves.
    */
   agent: Agent | null;
   agents: ReadonlyArray<Agent>;
   toolGroups: ReadonlyArray<ToolCatalogGroup>;
+  /**
+   * Auth state for the model picker. When omitted (test fixtures, etc.)
+   * the picker falls back to "no provider configured" and only the
+   * existing agent's saved model is shown so it doesn't disappear.
+   */
+  authStatus?: AuthStatusView | null;
   onClose: () => void;
-  /** Required in edit mode; ignored in create mode. */
-  onOpenChat?: (id: string) => void;
   /** Required in edit mode; ignored in create mode. */
   onSave?: (id: string, patch: AgentConfigPatch) => Promise<void>;
   /** Required in create mode; ignored in edit mode. */
@@ -115,7 +111,6 @@ export function AgentEditModal(props: AgentEditModalProps) {
   // newly-active tab AFTER React commits its tabIndex flip.
   const tabRefs = useRef<Record<AgentsTab, HTMLButtonElement | null>>({
     overview: null,
-    persona: null,
     tools: null,
     skills: null,
     handoff: null,
@@ -325,23 +320,6 @@ export function AgentEditModal(props: AgentEditModalProps) {
     props.onClose();
   }
 
-  /**
-   * Same dirty-guard for the inline "打开对话" handoff. Switching the
-   * surface away from the modal effectively closes it; reusing the
-   * same prompt keeps the UX consistent so users learn one rule.
-   */
-  function requestOpenChat() {
-    if (saving || !agent || !props.onOpenChat) return;
-    if (isDirty) {
-      if (
-        !window.confirm("有未保存的修改，确定要离开并打开对话吗？")
-      ) {
-        return;
-      }
-    }
-    props.onOpenChat(agent.id);
-  }
-
   async function save() {
     if (!draft.name.trim() || !draft.instructions.trim() || saving) return;
     setSaving(true);
@@ -508,7 +486,6 @@ export function AgentEditModal(props: AgentEditModalProps) {
             {(
               [
                 { key: "overview" as const, label: "身份", dirtyKey: "overview" as DraftTabKey, icon: <IdentityIcon />, count: null as number | null },
-                { key: "persona" as const, label: "人格", dirtyKey: "persona" as DraftTabKey, icon: <PersonaIcon />, count: null },
                 { key: "tools" as const, label: "工具", dirtyKey: "tools" as DraftTabKey, icon: <ToolsIcon />, count: null },
                 { key: "skills" as const, label: "技能", dirtyKey: "skills" as DraftTabKey, icon: <SkillsIcon />, count: skillsCount(draft) },
                 { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey, icon: <HandoffIcon />, count: draft.handoffAgentIds.length || null },
@@ -590,10 +567,12 @@ export function AgentEditModal(props: AgentEditModalProps) {
             ) : null}
 
             {tab === "overview" ? (
-              <OverviewTab agent={agent} draft={draft} onChange={setDraft} />
-            ) : null}
-            {tab === "persona" ? (
-              <PersonaTab draft={draft} onChange={setDraft} />
+              <OverviewTab
+                agent={agent}
+                draft={draft}
+                authStatus={props.authStatus ?? null}
+                onChange={setDraft}
+              />
             ) : null}
             {tab === "tools" ? (
               <ToolsTab
@@ -660,15 +639,6 @@ export function AgentEditModal(props: AgentEditModalProps) {
                 撤销修改
               </button>
             ) : null}
-            {!isCreate ? (
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={requestOpenChat}
-              >
-                打开对话
-              </button>
-            ) : null}
           </div>
           <button
             type="button"
@@ -708,14 +678,6 @@ function IdentityIcon() {
     <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <circle cx="8" cy="6" r="2.5" />
       <path d="M3 13c.5-2.5 2.7-4 5-4s4.5 1.5 5 4" />
-    </svg>
-  );
-}
-function PersonaIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2.5" y="3.5" width="11" height="9" rx="2" />
-      <path d="M5 7h2.5M5 9.5h6M5 12h4" />
     </svg>
   );
 }

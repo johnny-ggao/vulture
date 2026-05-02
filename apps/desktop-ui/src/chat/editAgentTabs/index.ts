@@ -1,5 +1,4 @@
 export { OverviewTab, type OverviewTabProps } from "./OverviewTab";
-export { PersonaTab, type PersonaTabProps } from "./PersonaTab";
 export { ToolsTab, type ToolsTabProps } from "./ToolsTab";
 export { SkillsTab, type SkillsTabProps } from "./SkillsTab";
 export { HandoffTab, type HandoffTabProps } from "./HandoffTab";

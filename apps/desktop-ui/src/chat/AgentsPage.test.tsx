@@ -232,7 +232,10 @@ describe("AgentsPage — browse view", () => {
 });
 
 describe("AgentsPage — edit modal", () => {
-  test("modal exposes 基本信息 / 人格 / 技能 / 协作 / 核心文件 tabs", () => {
+  test("modal exposes 身份 / 工具 / 技能 / 协作 / 核心文件 tabs", () => {
+    // Round 24: persona moved into the AGENTS.md core file, so the
+    // dedicated 人格 rail tab is gone — the persona starter picker
+    // now lives inside CoreTab as the 风格 menu.
     render(
       <AgentsPage
         {...stableProps}
@@ -242,10 +245,11 @@ describe("AgentsPage — edit modal", () => {
     );
     openEditModal();
     expect(screen.getByRole("tab", { name: "身份" })).toBeDefined();
-    expect(screen.getByRole("tab", { name: "人格" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "工具" })).toBeDefined();
+    expect(screen.getByRole("tab", { name: "技能" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "协作" })).toBeDefined();
     expect(screen.getByRole("tab", { name: "核心文件" })).toBeDefined();
+    expect(screen.queryByRole("tab", { name: "人格" })).toBeNull();
   });
 
   test("clicking a tab switches the visible section", () => {
@@ -259,8 +263,7 @@ describe("AgentsPage — edit modal", () => {
     openEditModal();
     expect(screen.getByLabelText("名称")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
-    expect(screen.getByLabelText("Instructions")).toBeDefined();
+    fireEvent.click(screen.getByRole("tab", { name: "工具" }));
     expect(screen.queryByLabelText("名称")).toBeNull();
   });
 
@@ -547,8 +550,9 @@ describe("AgentsPage — edit modal", () => {
     // role=tablist + role=tab for screen readers, and each item carries
     // the rail-item class.
     const tabs = screen.getAllByRole("tab");
-    // Round 23: 6 rail tabs in edit mode (身份/人格/工具/技能/协作/核心文件).
-    expect(tabs.length).toBe(6);
+    // Round 24: 5 rail tabs in edit mode (身份/工具/技能/协作/核心文件) —
+    // 人格 collapsed into the AGENTS.md core file.
+    expect(tabs.length).toBe(5);
     for (const tab of tabs) {
       expect(tab.classList.contains("agent-edit-rail-item")).toBe(true);
     }
@@ -559,7 +563,7 @@ describe("AgentsPage — edit modal", () => {
 
   // ---- Round 15: per-tab dirty dot + save error + persona starters
 
-  test("editing a Persona-tab field shows the dirty dot only on the Persona tab", () => {
+  test("editing the description shows the dirty dot only on the Identity tab", () => {
     const { container } = render(
       <AgentsPage
         {...stableProps}
@@ -568,17 +572,14 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    // Switch to Persona tab and edit Instructions.
-    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
-    fireEvent.change(screen.getByLabelText("Instructions"), {
-      target: { value: "be precise" },
+    fireEvent.change(screen.getByLabelText("描述"), {
+      target: { value: "new copy" },
     });
-    // The Persona tab now carries a dot; Overview / 工具 do not.
-    const personaTab = screen.getByRole("tab", { name: "人格" });
-    expect(personaTab.querySelector(".agent-edit-rail-dot")).not.toBeNull();
+    // The Identity tab now carries a dot; the others do not.
     const overviewTab = screen.getByRole("tab", { name: "身份" });
-    expect(overviewTab.querySelector(".agent-edit-rail-dot")).toBeNull();
-    // Confirm there's at least one dot in the rail (sanity).
+    expect(overviewTab.querySelector(".agent-edit-rail-dot")).not.toBeNull();
+    const toolsTab = screen.getByRole("tab", { name: "工具" });
+    expect(toolsTab.querySelector(".agent-edit-rail-dot")).toBeNull();
     expect(container.querySelectorAll(".agent-edit-rail-dot").length).toBe(1);
   });
 
@@ -657,48 +658,24 @@ describe("AgentsPage — edit modal", () => {
     expect(saveBtn.querySelector(".agent-edit-save-kbd")).not.toBeNull();
   });
 
-  test("PersonaTab starters are visible only when Instructions is empty", () => {
-    const { rerender } = render(
-      <AgentsPage
-        {...stableProps}
-        agents={[{ ...baseAgent, instructions: "" }]}
-        selectedAgentId="agent-1"
-      />,
-    );
-    openEditModal({ ...baseAgent, instructions: "" });
-    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
-    expect(screen.getByText("从模板开始：")).toBeDefined();
-    expect(screen.getByRole("button", { name: "通用助手" })).toBeDefined();
-
-    // Once the user types, the starter row hides.
-    fireEvent.change(screen.getByLabelText("Instructions"), {
-      target: { value: "x" },
-    });
-    expect(screen.queryByText("从模板开始：")).toBeNull();
-
-    rerender(
-      <AgentsPage
-        {...stableProps}
-        agents={[{ ...baseAgent, instructions: "" }]}
-        selectedAgentId="agent-1"
-      />,
-    );
-  });
-
-  test("clicking a Persona starter chip seeds the Instructions textarea", () => {
+  test("create mode shows a 人格风格 seed row that disappears once seeded", () => {
+    // Round 24: persona starters moved out of a dedicated tab. In
+    // create mode the Identity tab carries a 人格风格 chip row that
+    // seeds the AGENTS.md body (passed as draft.instructions on save);
+    // once a chip is clicked the row hint flips to "已经选择了风格".
     render(
       <AgentsPage
         {...stableProps}
-        agents={[{ ...baseAgent, instructions: "" }]}
-        selectedAgentId="agent-1"
+        agents={[]}
+        selectedAgentId=""
       />,
     );
-    openEditModal({ ...baseAgent, instructions: "" });
-    fireEvent.click(screen.getByRole("tab", { name: "人格" }));
+    // Empty-state branch uses "创建第一个智能体" as the create CTA.
+    fireEvent.click(screen.getByRole("button", { name: "创建第一个智能体" }));
+    expect(screen.getByText(/选择一个起点/)).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "代码审阅" }));
-    const ta = screen.getByLabelText("Instructions") as HTMLTextAreaElement;
-    expect(ta.value).toContain("代码审阅者");
-    expect(ta.value.length).toBeGreaterThan(50);
+    expect(screen.queryByText(/选择一个起点/)).toBeNull();
+    expect(screen.getByText(/已经选择了风格/)).toBeDefined();
   });
 
   test("workspace block shows a copy button for the path", () => {
@@ -820,12 +797,12 @@ describe("AgentsPage — edit modal", () => {
       ).getAttribute("aria-selected"),
     ).toBe("true");
     // Round 22: tab rail is vertical (Accio idiom) — Down/Up arrows
-    // navigate between tabs; aria-selected should flip to Persona.
+    // navigate between tabs; aria-selected should flip to Tools.
     const tablist = screen.getByRole("tablist", { name: "智能体配置" });
     fireEvent.keyDown(tablist, { key: "ArrowDown" });
     expect(
       screen
-        .getByRole("tab", { name: "人格" })
+        .getByRole("tab", { name: "工具" })
         .getAttribute("aria-selected"),
     ).toBe("true");
     fireEvent.keyDown(tablist, { key: "ArrowUp" });

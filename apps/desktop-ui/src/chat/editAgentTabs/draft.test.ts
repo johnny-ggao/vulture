@@ -124,19 +124,23 @@ describe("dirtyTabs", () => {
     expect(dirtyTabs(draftFromAgent(baseAgent), baseAgent).size).toBe(0);
   });
 
-  test("returns 'overview' when name / model / reasoning / description / avatar changes", () => {
+  test("returns 'overview' when name / model / reasoning / description / avatar / instructions changes", () => {
+    // Round 24: persona moved into the core file (AGENTS.md), so a
+    // change to draft.instructions (the seeded persona body in create
+    // mode) marks the overview tab dirty alongside the rest of the
+    // identity fields.
     const tests: Array<Partial<Draft>> = [
       { name: "Renamed" },
       { model: "gpt-5.5" },
       { reasoning: "high" },
       { description: "new copy" },
       { avatar: "spark" },
+      { instructions: "be concise" },
     ];
     for (const patch of tests) {
       const draft = { ...draftFromAgent(baseAgent), ...patch };
       const tabs = dirtyTabs(draft, baseAgent);
       expect(tabs.has("overview")).toBe(true);
-      expect(tabs.has("persona")).toBe(false);
       expect(tabs.has("tools")).toBe(false);
       expect(tabs.has("skills")).toBe(false);
     }
@@ -150,17 +154,6 @@ describe("dirtyTabs", () => {
     const tabs = dirtyTabs(draft, baseAgent);
     expect(tabs.has("skills")).toBe(true);
     expect(tabs.has("overview")).toBe(false);
-  });
-
-  test("returns 'persona' when instructions change", () => {
-    const draft: Draft = {
-      ...draftFromAgent(baseAgent),
-      instructions: "be concise",
-    };
-    const tabs = dirtyTabs(draft, baseAgent);
-    expect(tabs.has("persona")).toBe(true);
-    expect(tabs.has("overview")).toBe(false);
-    expect(tabs.has("tools")).toBe(false);
   });
 
   test("returns 'tools' when toolPreset or tools change", () => {
@@ -190,12 +183,10 @@ describe("dirtyTabs", () => {
     const draft: Draft = {
       ...draftFromAgent(baseAgent),
       name: "Renamed",
-      instructions: "new",
       toolPreset: "minimal",
     };
     const tabs = dirtyTabs(draft, baseAgent);
     expect(tabs.has("overview")).toBe(true);
-    expect(tabs.has("persona")).toBe(true);
     expect(tabs.has("tools")).toBe(true);
   });
 
