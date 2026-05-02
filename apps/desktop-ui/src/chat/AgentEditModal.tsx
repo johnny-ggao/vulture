@@ -5,10 +5,7 @@ import type {
   AgentCoreFilesResponse,
 } from "../api/agents";
 import type { ToolCatalogGroup } from "../api/tools";
-import {
-  AgentAvatar,
-  useCursorGloss,
-} from "./components";
+import { AgentAvatar } from "./components";
 import {
   CoreTab,
   HandoffTab,
@@ -315,9 +312,6 @@ export function AgentEditModal(props: AgentEditModalProps) {
     props.onOpenChat(agent.id);
   }
 
-  // Cursor-tracked gloss on the modal header — same idiom as AgentCard.
-  const { ref: headerRef, ...headerGloss } = useCursorGloss<HTMLDivElement>();
-
   async function save() {
     if (!agent || !draft.name.trim() || !draft.instructions.trim() || saving) return;
     setSaving(true);
@@ -390,13 +384,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
         className="modal-card agent-edit-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="modal-header"
-          ref={headerRef}
-          {...headerGloss}
-        >
+        <div className="modal-header">
           <div className="agent-config-title-block">
-            <AgentAvatar agent={agent} size={40} shape="square" />
+            <AgentAvatar agent={agent} size={44} shape="square" />
             <div className="agent-config-title-text">
               <span className="modal-title">{agent.name || "未命名智能体"}</span>
               <AgentIdChip id={agent.id} />

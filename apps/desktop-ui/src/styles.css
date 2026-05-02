@@ -6525,41 +6525,11 @@ pre {
   display: flex;
   flex-direction: column;
 }
-/* Position the cursor-tracked spotlight pseudo for the modal header. */
+/* macOS-restraint header — drops the cursor-tracked brand spotlight
+ * (decorative-only, against HIG). Padding bumps for a more spacious
+ * editor feel; the title itself sits at Title 2 weight. */
 .agent-edit-modal .modal-header {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .agent-edit-modal .modal-header::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      circle at
-        calc(var(--mouse-x, 0.5) * 100%)
-        calc(var(--mouse-y, 0.5) * 100%),
-      color-mix(in oklab, var(--brand-500) 12%, transparent) 0%,
-      transparent 42%
-    );
-    opacity: 0;
-    transition: opacity var(--duration-medium) var(--ease-standard);
-    pointer-events: none;
-    z-index: -1;
-  }
-  .agent-edit-modal .modal-header:hover::after { opacity: 1; }
-  @media (prefers-color-scheme: dark) {
-    .agent-edit-modal .modal-header::after {
-      background: radial-gradient(
-        circle at
-          calc(var(--mouse-x, 0.5) * 100%)
-          calc(var(--mouse-y, 0.5) * 100%),
-        color-mix(in oklab, var(--brand-500) 22%, transparent) 0%,
-        transparent 42%
-      );
-    }
-  }
+  padding: 16px 22px;
 }
 .agent-edit-modal .agent-config-title-block {
   flex: 1;
@@ -6567,9 +6537,9 @@ pre {
 }
 .agent-edit-modal .modal-title {
   display: block;
-  font-size: var(--text-md);
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.012em;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6599,8 +6569,11 @@ pre {
 .agent-edit-modal-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px 20px 22px;
+  gap: 18px;
+  /* Roomier padding for the editor body — 22/24/26 — so long forms
+   * have breathing room and don't feel cramped against the modal
+   * edges. Tabs row sits at the top of this padding. */
+  padding: 22px 24px 26px;
   overflow: auto;
   min-height: 0;
 }
@@ -6752,17 +6725,17 @@ pre {
   min-width: 0;
 }
 
-/* Round 14: copy-on-click chip for the agent id in the modal header.
- * Reads as a stable identifier rather than body text; the icon flips
- * to a check + success colour on copy. */
+/* Copy-on-click chip for the agent id in the modal header. Quiet at
+ * rest (hairline glass-border, secondary text) so it doesn't compete
+ * with the agent name above it; the icon flips to a check on copy. */
 .agent-id-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
+  gap: 5px;
+  padding: 1px 7px;
   border-radius: var(--radius-pill);
-  border: 1px solid var(--fill-tertiary);
-  background: var(--bg-secondary);
+  border: 0.5px solid var(--glass-border);
+  background: var(--fill-quaternary);
   color: var(--text-tertiary);
   font: inherit;
   cursor: pointer;
@@ -6774,17 +6747,18 @@ pre {
     color var(--duration-fast) var(--ease-out);
 }
 .agent-id-chip:hover {
-  background: var(--bg-primary);
-  border-color: var(--text-tertiary);
+  background: var(--fill-tertiary);
   color: var(--text-secondary);
 }
+.agent-id-chip:active { background: var(--fill-secondary); }
 .agent-id-chip[data-copied="true"] {
-  border-color: color-mix(in oklab, var(--success) 30%, transparent);
+  border-color: color-mix(in oklab, var(--success) 32%, var(--glass-border));
+  background: var(--success-bg);
   color: var(--success);
 }
 .agent-id-chip code {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 11px;
   background: transparent;
   padding: 0;
   overflow: hidden;
@@ -6798,8 +6772,9 @@ pre {
   flex: 0 0 auto;
 }
 .agent-id-chip:focus-visible {
-  outline: 2px solid var(--brand-500);
-  outline-offset: 2px;
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 2px var(--brand-ring);
 }
 .agent-config-actions {
   display: inline-flex;
