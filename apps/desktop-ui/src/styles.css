@@ -1757,6 +1757,7 @@ pre {
 .chip:hover,
 .composer-chip:hover {
   border-color: var(--text-quaternary);
+  background: var(--fill-quaternary);
   color: var(--text-primary);
 }
 .chip.active,
@@ -6635,9 +6636,14 @@ pre {
   background: var(--danger-bg);
   color: var(--danger);
 }
+.agent-list-delete:active {
+  background: color-mix(in oklab, var(--danger) 22%, transparent);
+}
 .agent-list-delete:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  background: var(--danger-bg);
+  color: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--danger) 35%, transparent);
   opacity: 1;
 }
 .agent-list-item {
@@ -6656,13 +6662,19 @@ pre {
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .agent-list-item:hover { background: var(--fill-quaternary); }
+.agent-list-item:active { background: var(--fill-tertiary); }
 .agent-list-item[data-active="true"] {
   border-color: var(--brand-500);
   background: var(--brand-050);
 }
 .agent-list-item:focus-visible {
   outline: 0;
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  background: var(--fill-quaternary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+.agent-list-item[data-active="true"]:focus-visible {
+  background: var(--brand-050);
+  box-shadow: 0 0 0 2px var(--brand-ring);
 }
 .agent-list-meta { display: grid; gap: 2px; min-width: 0; }
 .agent-list-name {
