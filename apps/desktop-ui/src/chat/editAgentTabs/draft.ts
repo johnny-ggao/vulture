@@ -129,7 +129,12 @@ export function isDirtyDraft(draft: Draft, agent: Agent | null): boolean {
  * Round 18: split "tools" → "tools" (preset + tool list) and "handoff"
  * (sub-agent enable list) since each now has its own tab.
  */
-export type DraftTabKey = "overview" | "persona" | "tools" | "handoff";
+export type DraftTabKey =
+  | "overview"
+  | "persona"
+  | "tools"
+  | "skills"
+  | "handoff";
 
 export function dirtyTabs(
   draft: Draft,
@@ -144,7 +149,6 @@ export function dirtyTabs(
     draft.description !== ref.description ||
     draft.model !== ref.model ||
     draft.reasoning !== ref.reasoning ||
-    draft.skillsText !== ref.skillsText ||
     draft.avatar !== ref.avatar
   ) {
     dirty.add("overview");
@@ -161,6 +165,10 @@ export function dirtyTabs(
     !sameStringSet(draft.toolExclude, ref.toolExclude)
   ) {
     dirty.add("tools");
+  }
+
+  if (draft.skillsText !== ref.skillsText) {
+    dirty.add("skills");
   }
 
   if (!sameStringSet(draft.handoffAgentIds, ref.handoffAgentIds)) {

@@ -9,7 +9,7 @@ import { localAgentFixture as baseAgent } from "../__fixtures__/agent";
 import type { AgentCoreFile } from "../../api/agents";
 
 describe("OverviewTab", () => {
-  test("renders all four primary fields and the workspace info block", () => {
+  test("renders the primary identity fields and the workspace info block", () => {
     render(
       <OverviewTab
         agent={baseAgent}
@@ -19,10 +19,11 @@ describe("OverviewTab", () => {
     );
     expect(screen.getByLabelText("名称")).toBeDefined();
     expect(screen.getByLabelText("模型")).toBeDefined();
-    // Round 14: reasoning is now a Segmented radiogroup, not a form
-    // control — assert by role with the radiogroup's aria-label.
+    // Reasoning is a Segmented radiogroup; assert by role.
     expect(screen.getByRole("radiogroup", { name: "推理强度" })).toBeDefined();
-    expect(screen.getByLabelText("Skills")).toBeDefined();
+    // Round 23: Skills moved to its own SkillsTab (rail item "技能").
+    // The avatar picker landed in OverviewTab instead.
+    expect(screen.getByRole("group", { name: "头像" })).toBeDefined();
     expect(screen.getByText("Workspace")).toBeDefined();
     expect(screen.getByText("/tmp/workspace")).toBeDefined();
   });

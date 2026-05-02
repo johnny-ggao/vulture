@@ -5,7 +5,6 @@ import {
   AVATAR_PRESETS,
   Field,
   Segmented,
-  SkillsPreview,
 } from "../components";
 import type { Draft } from "./draft";
 
@@ -63,14 +62,6 @@ export function OverviewTab({ agent, draft, onChange }: OverviewTabProps) {
             options={REASONING_OPTIONS}
             onChange={(value) => onChange({ ...draft, reasoning: value })}
           />
-        </Field>
-        <Field label="Skills" hint="留空=全部可用，逗号分隔；输入 none 禁用">
-          <input
-            aria-label="Skills"
-            value={draft.skillsText}
-            onChange={(e) => onChange({ ...draft, skillsText: e.target.value })}
-          />
-          <SkillsPreview text={draft.skillsText} />
         </Field>
       </div>
       <Field label="描述">

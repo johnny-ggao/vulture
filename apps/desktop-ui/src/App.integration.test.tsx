@@ -607,11 +607,14 @@ describe("App integration", () => {
         screen.getByRole("heading", { name: /Local Work Agent/, level: 2 }),
       ).toBeDefined();
       expect(screen.getByText("Workspace")).toBeDefined();
-      expect(screen.getByLabelText("Skills")).toBeDefined();
     });
 
-    fireEvent.change(screen.getByLabelText("Skills"), { target: { value: "none" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    // Round 23: Skills landed in its own rail tab. Switch to it and
+    // flip the mode to "已禁用" — the save button then persists
+    // skills=[].
+    fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+    fireEvent.click(screen.getByRole("radio", { name: "已禁用" }));
+    fireEvent.click(screen.getByRole("button", { name: /^保存/ }));
     await waitFor(() => {
       expect(savedPatch).toMatchObject({ skills: [] });
     });

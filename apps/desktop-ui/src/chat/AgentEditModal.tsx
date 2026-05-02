@@ -12,6 +12,7 @@ import {
   OverviewTab,
   PersonaTab,
   SaveStatusIndicator,
+  SkillsTab,
   ToolsTab,
   dirtyTabs,
   draftFromAgent,
@@ -24,12 +25,19 @@ import {
 
 export type { AgentConfigPatch };
 
-type AgentsTab = "overview" | "persona" | "tools" | "handoff" | "core";
+type AgentsTab =
+  | "overview"
+  | "persona"
+  | "tools"
+  | "skills"
+  | "handoff"
+  | "core";
 
 const EDIT_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
   "persona",
   "tools",
+  "skills",
   "handoff",
   "core",
 ];
@@ -39,6 +47,7 @@ const CREATE_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
   "persona",
   "tools",
+  "skills",
   "handoff",
 ];
 
@@ -108,6 +117,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
     overview: null,
     persona: null,
     tools: null,
+    skills: null,
     handoff: null,
     core: null,
   });
@@ -497,11 +507,12 @@ export function AgentEditModal(props: AgentEditModalProps) {
           >
             {(
               [
-                { key: "overview" as const, label: "身份", dirtyKey: "overview" as DraftTabKey, icon: <IdentityIcon /> },
-                { key: "persona" as const, label: "人格", dirtyKey: "persona" as DraftTabKey, icon: <PersonaIcon /> },
-                { key: "tools" as const, label: "工具", dirtyKey: "tools" as DraftTabKey, icon: <ToolsIcon /> },
-                { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey, icon: <HandoffIcon /> },
-                { key: "core" as const, label: "核心文件", dirtyKey: null, icon: <FileIcon /> },
+                { key: "overview" as const, label: "身份", dirtyKey: "overview" as DraftTabKey, icon: <IdentityIcon />, count: null as number | null },
+                { key: "persona" as const, label: "人格", dirtyKey: "persona" as DraftTabKey, icon: <PersonaIcon />, count: null },
+                { key: "tools" as const, label: "工具", dirtyKey: "tools" as DraftTabKey, icon: <ToolsIcon />, count: null },
+                { key: "skills" as const, label: "技能", dirtyKey: "skills" as DraftTabKey, icon: <SkillsIcon />, count: skillsCount(draft) },
+                { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey, icon: <HandoffIcon />, count: draft.handoffAgentIds.length || null },
+                { key: "core" as const, label: "核心文件", dirtyKey: null, icon: <FileIcon />, count: null },
               ].filter((entry) => !isCreate || entry.key !== "core")
             ).map((entry) => {
               const isDirtyTab =
@@ -529,7 +540,14 @@ export function AgentEditModal(props: AgentEditModalProps) {
                     {entry.icon}
                   </span>
                   <span className="agent-edit-rail-label">{entry.label}</span>
-                  {isDirtyTab ? (
+                  {entry.count !== null && entry.count > 0 ? (
+                    <span
+                      className="agent-edit-rail-count"
+                      aria-label={`${entry.count} 项`}
+                    >
+                      {entry.count}
+                    </span>
+                  ) : isDirtyTab ? (
                     <span
                       className="agent-edit-rail-dot"
                       aria-hidden="true"
@@ -583,6 +601,9 @@ export function AgentEditModal(props: AgentEditModalProps) {
                 toolGroups={props.toolGroups}
                 onChange={setDraft}
               />
+            ) : null}
+            {tab === "skills" ? (
+              <SkillsTab draft={draft} onChange={setDraft} />
             ) : null}
             {tab === "handoff" ? (
               <HandoffTab
@@ -707,6 +728,13 @@ function ToolsIcon() {
     </svg>
   );
 }
+function SkillsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 2.5l1.6 3.4 3.7.5-2.7 2.6.7 3.7L8 11l-3.3 1.7.7-3.7L2.7 6.4l3.7-.5L8 2.5Z" />
+    </svg>
+  );
+}
 function HandoffIcon() {
   return (
     <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -715,6 +743,23 @@ function HandoffIcon() {
       <path d="M6 5.5h4a3 3 0 0 1 0 6H6" />
     </svg>
   );
+}
+
+/**
+ * Skill count for the rail's "技能" badge — uses the same parsing
+ * semantics as the SkillsTab itself so the badge always reflects what
+ * a save would persist.
+ *
+ *   "" / null → return null (no badge — full access is the default)
+ *   "none"    → return null (badge hidden; the empty allowlist is
+ *                          shown only inside the tab via "已禁用").
+ *   N items   → return N
+ */
+function skillsCount(draft: Draft): number | null {
+  const parsed = parseSkills(draft.skillsText);
+  if (parsed === null) return null;
+  if (parsed.length === 0) return null;
+  return parsed.length;
 }
 function FileIcon() {
   return (

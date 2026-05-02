@@ -455,7 +455,11 @@ describe("AgentsPage — edit modal", () => {
 
   // ---- Round 14: skills chip preview + ID copy chip + segmented tabs
 
-  test("Skills field shows the default-state pill when the input is empty", () => {
+  // Round 23: Skills moved to a dedicated rail tab. The mode segmented
+  // control flips between 全部可用 / 自定义 / 已禁用; in 自定义 mode
+  // chips render one per allowlist entry.
+
+  test("Skills tab opens in 全部可用 mode by default", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -464,11 +468,15 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    // baseAgent has skills=null → skillsText defaults to "" → preview is "全部 Skills 可用".
-    expect(screen.getByText("全部 Skills 可用")).toBeDefined();
+    fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+    expect(
+      (screen.getByRole("radio", { name: "全部可用" }) as HTMLElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
   });
 
-  test("Skills field shows 已禁用 pill when the input is 'none'", () => {
+  test("Skills tab 已禁用 mode persists 'none' through the segmented control", () => {
     render(
       <AgentsPage
         {...stableProps}
@@ -477,13 +485,16 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    fireEvent.change(screen.getByLabelText("Skills"), {
-      target: { value: "none" },
-    });
-    expect(screen.getByText("已禁用")).toBeDefined();
+    fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+    fireEvent.click(screen.getByRole("radio", { name: "已禁用" }));
+    expect(
+      (screen.getByRole("radio", { name: "已禁用" }) as HTMLElement).getAttribute(
+        "aria-checked",
+      ),
+    ).toBe("true");
   });
 
-  test("Skills field renders one chip per parsed entry", () => {
+  test("Skills tab 自定义 mode adds + removes chip entries", () => {
     const { container } = render(
       <AgentsPage
         {...stableProps}
@@ -492,13 +503,20 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     openEditModal();
-    fireEvent.change(screen.getByLabelText("Skills"), {
-      target: { value: "alpha, beta, gamma" },
-    });
-    const chips = container.querySelectorAll(".agent-skills-chip");
-    expect(chips.length).toBe(3);
-    expect(chips[0].textContent).toBe("alpha");
-    expect(chips[2].textContent).toBe("gamma");
+    fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+    fireEvent.click(screen.getByRole("radio", { name: "自定义" }));
+    const input = screen.getByLabelText("添加 Skill") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "alpha" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    fireEvent.change(input, { target: { value: "beta" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    expect(
+      container.querySelectorAll(".agent-skills-editor-chip").length,
+    ).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "移除 alpha" }));
+    expect(
+      container.querySelectorAll(".agent-skills-editor-chip").length,
+    ).toBe(1);
   });
 
   test("modal header surfaces the agent id as a copy chip", () => {
@@ -529,7 +547,8 @@ describe("AgentsPage — edit modal", () => {
     // role=tablist + role=tab for screen readers, and each item carries
     // the rail-item class.
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.length).toBe(5);
+    // Round 23: 6 rail tabs in edit mode (身份/人格/工具/技能/协作/核心文件).
+    expect(tabs.length).toBe(6);
     for (const tab of tabs) {
       expect(tab.classList.contains("agent-edit-rail-item")).toBe(true);
     }

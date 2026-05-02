@@ -124,13 +124,13 @@ describe("dirtyTabs", () => {
     expect(dirtyTabs(draftFromAgent(baseAgent), baseAgent).size).toBe(0);
   });
 
-  test("returns 'overview' when name / model / reasoning / skills / description changes", () => {
+  test("returns 'overview' when name / model / reasoning / description / avatar changes", () => {
     const tests: Array<Partial<Draft>> = [
       { name: "Renamed" },
       { model: "gpt-5.5" },
       { reasoning: "high" },
-      { skillsText: "alpha, beta" },
       { description: "new copy" },
+      { avatar: "spark" },
     ];
     for (const patch of tests) {
       const draft = { ...draftFromAgent(baseAgent), ...patch };
@@ -138,7 +138,18 @@ describe("dirtyTabs", () => {
       expect(tabs.has("overview")).toBe(true);
       expect(tabs.has("persona")).toBe(false);
       expect(tabs.has("tools")).toBe(false);
+      expect(tabs.has("skills")).toBe(false);
     }
+  });
+
+  test("returns 'skills' when the allowlist text changes", () => {
+    const draft: Draft = {
+      ...draftFromAgent(baseAgent),
+      skillsText: "alpha, beta",
+    };
+    const tabs = dirtyTabs(draft, baseAgent);
+    expect(tabs.has("skills")).toBe(true);
+    expect(tabs.has("overview")).toBe(false);
   });
 
   test("returns 'persona' when instructions change", () => {
