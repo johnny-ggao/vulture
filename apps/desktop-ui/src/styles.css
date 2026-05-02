@@ -2338,14 +2338,40 @@ pre {
   color: var(--text-tertiary);
 }
 .subagent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border-radius: var(--radius-pill);
-  padding: 2px 8px;
+  padding: 2px 8px 2px 6px;
   font-size: 11px;
   white-space: nowrap;
+}
+/* Leading 6px dot — same idiom as the chat-agent-status indicator —
+ * pairs colour with shape so failed/active/completed read in one
+ * glance without relying on hue alone (WCAG color-not-only). */
+.subagent-status::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 .subagent-status.active {
   background: var(--info-bg);
   color: var(--info);
+}
+/* Active dot pulses softly so the running state has motion to back
+ * the colour cue. Reduced-motion strips the pulse. */
+.subagent-status.active::before {
+  animation: subagent-status-pulse 1.4s var(--ease-standard) infinite;
+}
+@keyframes subagent-status-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1);    }
+  50%      { opacity: 1;    transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .subagent-status.active::before { animation: none; opacity: 1; }
 }
 .subagent-status.completed {
   background: var(--success-bg);
@@ -3249,15 +3275,26 @@ pre {
 }
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--fill-quaternary);
+  padding: 14px 20px;
+  /* Edges align with the rest of the chrome family — 0.5px glass-border
+   * everywhere instead of one-off `--fill-quaternary` tinting. */
+  border-bottom: 0.5px solid var(--glass-border);
 }
-.modal-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.modal-title {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
 .modal-body { flex: 1; overflow: auto; padding: 20px; }
 .modal-footer {
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 12px 20px;
-  border-top: 1px solid var(--fill-quaternary);
+  border-top: 0.5px solid var(--glass-border);
+  /* Footer sits one tone lighter than the popover material so the
+   * action band visually separates from the body even on the
+   * translucent backplate. */
+  background: color-mix(in oklab, var(--bg-primary) 50%, transparent);
 }
 
 /* ============================================================
