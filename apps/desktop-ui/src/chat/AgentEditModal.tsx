@@ -27,7 +27,7 @@ export type { AgentConfigPatch };
 
 type AgentsTab = "overview" | "persona" | "tools" | "handoff" | "core";
 
-const TAB_ORDER: ReadonlyArray<AgentsTab> = [
+const EDIT_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
   "persona",
   "tools",
@@ -35,22 +35,36 @@ const TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "core",
 ];
 
+/** Create mode hides the Core tab — files don't exist until the agent is created. */
+const CREATE_TAB_ORDER: ReadonlyArray<AgentsTab> = [
+  "overview",
+  "persona",
+  "tools",
+  "handoff",
+];
+
 export interface AgentEditModalProps {
   open: boolean;
   /**
-   * The agent currently being edited. Only consulted when `open === true`.
-   * Mutating the agent or swapping it (e.g. an undo-toast restore) reloads
-   * the draft; if it disappears the modal closes itself.
+   * The agent being edited. `null` switches the modal into create mode:
+   * the form starts blank, the save button calls `onCreate`, and
+   * surfaces that don't make sense pre-creation (id chip, "打开对话",
+   * 撤销修改, Core files tab) hide themselves.
    */
   agent: Agent | null;
   agents: ReadonlyArray<Agent>;
   toolGroups: ReadonlyArray<ToolCatalogGroup>;
   onClose: () => void;
-  onOpenChat: (id: string) => void;
-  onSave: (id: string, patch: AgentConfigPatch) => Promise<void>;
-  onListFiles: (id: string) => Promise<AgentCoreFilesResponse>;
-  onLoadFile: (id: string, name: string) => Promise<string>;
-  onSaveFile: (id: string, name: string, content: string) => Promise<void>;
+  /** Required in edit mode; ignored in create mode. */
+  onOpenChat?: (id: string) => void;
+  /** Required in edit mode; ignored in create mode. */
+  onSave?: (id: string, patch: AgentConfigPatch) => Promise<void>;
+  /** Required in create mode; ignored in edit mode. */
+  onCreate?: (patch: AgentConfigPatch) => Promise<void>;
+  /** Edit-only: list / load / save AGENTS.md + memories.md files. */
+  onListFiles?: (id: string) => Promise<AgentCoreFilesResponse>;
+  onLoadFile?: (id: string, name: string) => Promise<string>;
+  onSaveFile?: (id: string, name: string, content: string) => Promise<void>;
 }
 
 /**
@@ -61,6 +75,9 @@ export interface AgentEditModalProps {
  */
 export function AgentEditModal(props: AgentEditModalProps) {
   const { open, agent } = props;
+  // create vs edit mode is fully derived from the agent prop. No
+  // separate flag — keeps the source of truth simple.
+  const isCreate = agent === null;
 
   const [draft, setDraft] = useState<Draft>(() => draftFromAgent(agent));
   const [saving, setSaving] = useState(false);
@@ -107,10 +124,11 @@ export function AgentEditModal(props: AgentEditModalProps) {
     };
   }, []);
 
-  // Reset the draft + scratch state every time the modal opens for a new
-  // agent so edits never leak between sessions.
+  // Reset the draft + scratch state every time the modal opens (for a
+  // different agent or for the create flow). Edits never leak between
+  // sessions.
   useEffect(() => {
-    if (!open || !agent) return;
+    if (!open) return;
     setDraft(draftFromAgent(agent));
     setTab("overview");
     setSavedFlash(false);
@@ -173,17 +191,19 @@ export function AgentEditModal(props: AgentEditModalProps) {
     };
   }, []);
 
-  // Load core files for the editing agent.
+  // Load core files for the editing agent. Skipped in create mode
+  // (Core tab isn't rendered) or when the parent didn't wire the
+  // file handlers.
   useEffect(() => {
     let cancelled = false;
     setCoreFiles([]);
     setCorePath("");
     setSelectedFile("");
     setFileContent("");
-    if (!open || !agent) return;
+    if (!open || !agent || !props.onListFiles) return;
     (async () => {
       try {
-        const result = await props.onListFiles(agent.id);
+        const result = await props.onListFiles!(agent.id);
         if (cancelled) return;
         setCoreFiles(result.files);
         setCorePath(result.corePath);
@@ -205,12 +225,12 @@ export function AgentEditModal(props: AgentEditModalProps) {
   useEffect(() => {
     let cancelled = false;
     setFileContent("");
-    if (!open || !agent || !selectedFile) return;
+    if (!open || !agent || !selectedFile || !props.onLoadFile) return;
     setFileBusy(true);
     setFileStatus("");
     (async () => {
       try {
-        const content = await props.onLoadFile(agent.id, selectedFile);
+        const content = await props.onLoadFile!(agent.id, selectedFile);
         if (!cancelled) setFileContent(content);
       } catch (cause) {
         if (!cancelled) setFileStatus(cause instanceof Error ? cause.message : String(cause));
@@ -302,7 +322,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
    * same prompt keeps the UX consistent so users learn one rule.
    */
   function requestOpenChat() {
-    if (saving || !agent) return;
+    if (saving || !agent || !props.onOpenChat) return;
     if (isDirty) {
       if (
         !window.confirm("有未保存的修改，确定要离开并打开对话吗？")
@@ -314,23 +334,32 @@ export function AgentEditModal(props: AgentEditModalProps) {
   }
 
   async function save() {
-    if (!agent || !draft.name.trim() || !draft.instructions.trim() || saving) return;
+    if (!draft.name.trim() || !draft.instructions.trim() || saving) return;
     setSaving(true);
     setSaveError(null);
+    const patch: AgentConfigPatch = {
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      model: draft.model.trim(),
+      reasoning: draft.reasoning,
+      tools: draft.tools,
+      toolPreset: draft.toolPreset,
+      toolInclude: draft.toolInclude,
+      toolExclude: draft.toolExclude,
+      handoffAgentIds: draft.handoffAgentIds,
+      skills: parseSkills(draft.skillsText),
+      instructions: draft.instructions.trim(),
+    };
     try {
-      await props.onSave(agent.id, {
-        name: draft.name.trim(),
-        description: draft.description.trim(),
-        model: draft.model.trim(),
-        reasoning: draft.reasoning,
-        tools: draft.tools,
-        toolPreset: draft.toolPreset,
-        toolInclude: draft.toolInclude,
-        toolExclude: draft.toolExclude,
-        handoffAgentIds: draft.handoffAgentIds,
-        skills: parseSkills(draft.skillsText),
-        instructions: draft.instructions.trim(),
-      });
+      if (isCreate) {
+        if (!props.onCreate) {
+          throw new Error("create mode requires an onCreate handler");
+        }
+        await props.onCreate(patch);
+      } else {
+        if (!agent || !props.onSave) return;
+        await props.onSave(agent.id, patch);
+      }
       if (!aliveRef.current) return;
       if (savedFlashTimer.current !== null) clearTimeout(savedFlashTimer.current);
       setSavedFlash(true);
@@ -338,18 +367,12 @@ export function AgentEditModal(props: AgentEditModalProps) {
         if (aliveRef.current) setSavedFlash(false);
       }, 1800);
     } catch (cause) {
-      // Round 15: surface the error inline next to the save button.
-      // The previous behaviour silently swallowed exceptions which
-      // left the user staring at a still-dirty form with no feedback.
       if (!aliveRef.current) return;
+      const fallback = isCreate ? "创建失败，请重试。" : "保存失败，请重试。";
       const message =
-        cause instanceof Error && cause.message
-          ? cause.message
-          : "保存失败，请重试。";
+        cause instanceof Error && cause.message ? cause.message : fallback;
       setSaveError(message);
-      // Re-throw so callers / the runtime can log; aliveRef-guarded
-      // setState above already moved the visible state.
-      console.error("Agent save failed", cause);
+      console.error(isCreate ? "Agent create failed" : "Agent save failed", cause);
     } finally {
       if (aliveRef.current) setSaving(false);
     }
@@ -357,6 +380,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
 
   async function saveCoreFile() {
     if (!agent || !selectedFile || fileBusy) return;
+    if (!props.onSaveFile || !props.onListFiles) return;
     setFileBusy(true);
     setFileStatus("");
     try {
@@ -374,7 +398,10 @@ export function AgentEditModal(props: AgentEditModalProps) {
     }
   }
 
-  if (!open || !agent) return null;
+  // Open gates: edit mode requires an agent; create mode requires
+  // `onCreate`. Both modes need `open: true`.
+  if (!open) return null;
+  if (!isCreate && !agent) return null;
 
   return (
     <div
@@ -385,19 +412,23 @@ export function AgentEditModal(props: AgentEditModalProps) {
         className="modal-card agent-edit-modal"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top action bar — quiet chrome row above the identity hero,
-          * holds the save status indicator on the left and the action
-          * rail (revert / chat / save / close) on the right. Keeps
-          * primary actions accessible without putting button chrome on
-          * top of the colored banner where contrast would suffer. */}
+        {/* Top action bar — quiet chrome row above the identity hero.
+          * Edit mode shows save-status + revert/chat/save/close.
+          * Create mode hides revert + chat (no original to revert to,
+          * no agent to chat with) + the save button label flips to
+          * "创建". */}
         <div className="agent-edit-topbar">
-          <SaveStatusIndicator
-            saving={saving}
-            isDirty={isDirty}
-            savedFlash={savedFlash}
-          />
+          {!isCreate ? (
+            <SaveStatusIndicator
+              saving={saving}
+              isDirty={isDirty}
+              savedFlash={savedFlash}
+            />
+          ) : (
+            <span aria-hidden="true" />
+          )}
           <div className="agent-edit-topbar-actions">
-            {isDirty && !saving ? (
+            {!isCreate && isDirty && !saving ? (
               <button
                 type="button"
                 className="btn-secondary agent-edit-revert"
@@ -413,27 +444,34 @@ export function AgentEditModal(props: AgentEditModalProps) {
                 撤销修改
               </button>
             ) : null}
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={requestOpenChat}
-            >
-              打开对话
-            </button>
+            {!isCreate ? (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={requestOpenChat}
+              >
+                打开对话
+              </button>
+            ) : null}
             <button
               type="button"
               className="btn-primary agent-edit-save"
-              disabled={saving || !isDirty || !draft.name.trim() || !draft.instructions.trim()}
+              disabled={
+                saving ||
+                !draft.name.trim() ||
+                !draft.instructions.trim() ||
+                (!isCreate && !isDirty)
+              }
               onClick={save}
             >
               {saving ? (
                 <>
                   <span className="agent-edit-save-spinner" aria-hidden="true" />
-                  保存中…
+                  {isCreate ? "创建中…" : "保存中…"}
                 </>
               ) : (
                 <>
-                  保存
+                  {isCreate ? "创建" : "保存"}
                   <kbd
                     className="agent-edit-save-kbd"
                     aria-hidden="true"
@@ -468,24 +506,37 @@ export function AgentEditModal(props: AgentEditModalProps) {
 
         {/* Identity hero — banner with per-agent hue + floating avatar
           * punching through the banner edge + centred name and id
-          * chip. Mirrors the AgentCard product-tile pattern so the
-          * editor visually picks up where the card left off. */}
+          * chip. In create mode the banner uses the brand hue and the
+          * id chip is hidden until the agent exists. */}
         <div
           className="agent-edit-hero"
           style={
             {
-              "--banner-hue": hashHue(agent.id).toString(),
+              "--banner-hue": (agent
+                ? hashHue(agent.id)
+                : hashHue(draft.name.trim() || "new-agent")
+              ).toString(),
             } as React.CSSProperties
           }
         >
           <div className="agent-edit-hero-banner" aria-hidden="true" />
           <div className="agent-edit-hero-avatar">
-            <AgentAvatar agent={agent} size={56} shape="square" />
+            <AgentAvatar
+              agent={agent ?? { id: draft.name.trim() || "new-agent", name: draft.name.trim() || "新建智能体" }}
+              size={56}
+              shape="square"
+            />
           </div>
-          <h2 className="agent-edit-hero-name">{agent.name || "未命名智能体"}</h2>
-          <div className="agent-edit-hero-id">
-            <AgentIdChip id={agent.id} />
-          </div>
+          <h2 className="agent-edit-hero-name">
+            {isCreate
+              ? draft.name.trim() || "新建智能体"
+              : agent?.name || "未命名智能体"}
+          </h2>
+          {!isCreate && agent ? (
+            <div className="agent-edit-hero-id">
+              <AgentIdChip id={agent.id} />
+            </div>
+          ) : null}
         </div>
 
         <div className="modal-body agent-edit-modal-body">
@@ -506,18 +557,19 @@ export function AgentEditModal(props: AgentEditModalProps) {
             role="tablist"
             aria-label="智能体配置"
             onKeyDown={(event) => {
-              const idx = TAB_ORDER.indexOf(tab);
+              const tabOrder = isCreate ? CREATE_TAB_ORDER : EDIT_TAB_ORDER;
+              const idx = tabOrder.indexOf(tab);
               if (idx < 0) return;
               let next: AgentsTab | null = null;
               if (event.key === "ArrowRight") {
-                next = TAB_ORDER[(idx + 1) % TAB_ORDER.length];
+                next = tabOrder[(idx + 1) % tabOrder.length];
               } else if (event.key === "ArrowLeft") {
                 next =
-                  TAB_ORDER[(idx - 1 + TAB_ORDER.length) % TAB_ORDER.length];
+                  tabOrder[(idx - 1 + tabOrder.length) % tabOrder.length];
               } else if (event.key === "Home") {
-                next = TAB_ORDER[0];
+                next = tabOrder[0];
               } else if (event.key === "End") {
-                next = TAB_ORDER[TAB_ORDER.length - 1];
+                next = tabOrder[tabOrder.length - 1];
               }
               if (next === null) return;
               event.preventDefault();
@@ -532,7 +584,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
                 { key: "tools" as const, label: "技能", dirtyKey: "tools" as DraftTabKey },
                 { key: "handoff" as const, label: "协作", dirtyKey: "handoff" as DraftTabKey },
                 { key: "core" as const, label: "核心文件", dirtyKey: null },
-              ]
+              ].filter((entry) => !isCreate || entry.key !== "core")
             ).map((entry) => {
               const isDirtyTab =
                 entry.dirtyKey !== null && dirtyTabSet.has(entry.dirtyKey);
@@ -619,12 +671,12 @@ export function AgentEditModal(props: AgentEditModalProps) {
           {tab === "handoff" ? (
             <HandoffTab
               draft={draft}
-              agentId={agent.id}
+              agentId={agent?.id ?? ""}
               agents={props.agents}
               onChange={setDraft}
             />
           ) : null}
-          {tab === "core" ? (
+          {tab === "core" && !isCreate ? (
             <CoreTab
               files={coreFiles}
               selectedFile={selectedFile}

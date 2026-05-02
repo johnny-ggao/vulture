@@ -644,28 +644,25 @@ describe("App integration", () => {
     fireEvent.click(within(screen.getByLabelText("主导航")).getByRole("button", { name: "智能体" }));
     // Browse view first — wait for the agent's card to appear.
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /Local Work Agent/ })).toBeDefined();
+      expect(screen.getByRole("heading", { name: /Local Work Agent/, level: 3 })).toBeDefined();
     });
-    // Round 13: page-header has a primary-styled "新建智能体" button and
-    // the grid has a dashed create-tile with the same label. Pick the
-    // header button explicitly by its primary-action class so the
-    // wizard opens deterministically.
+    // Click the page-header primary-styled "新建智能体" button to open
+    // the unified editor in create mode (the same modal as edit, just
+    // with a blank draft).
     const newAgentButtons = screen.getAllByRole("button", { name: "新建智能体" });
     const headerButton = newAgentButtons.find((btn) =>
       btn.classList.contains("btn-primary"),
     );
     if (!headerButton) throw new Error("page-header create button missing");
     fireEvent.click(headerButton);
-    // Step order is template → identity → persona → tools → skills (matches Accio).
-    fireEvent.click(screen.getByRole("button", { name: "继续" })); // template → identity
-    fireEvent.change(screen.getByPlaceholderText("例：周报助手"), { target: { value: "Test Agent" } });
-    fireEvent.click(screen.getByRole("button", { name: "继续" })); // identity → persona
-    fireEvent.click(screen.getByRole("button", { name: "继续" })); // persona  → tools
+    // Editor opens with the placeholder hero name + 创建 button. Tools
+    // tab still works without the catalog route — the field renders
+    // even when the upstream tool list is unavailable.
     await waitFor(() => {
-      expect(screen.getAllByText("Files").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Coding").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
-      expect(screen.getAllByText("Shell Exec").length).toBeGreaterThan(0);
+      expect(
+        screen.getByRole("heading", { name: "新建智能体", level: 2 }),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: /^创建/ })).toBeDefined();
     });
 
     cleanup();

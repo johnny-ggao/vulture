@@ -21,7 +21,7 @@ beforeEach(() => {
 
 const stableProps = {
   toolGroups: [],
-  onCreate: () => {},
+  onCreate: async (_patch: AgentConfigPatch) => {},
   onOpenChat: () => {},
   onSave: async (_id: string, _patch: AgentConfigPatch) => {},
   onListFiles: async (_id: string): Promise<AgentCoreFilesResponse> => ({
@@ -213,18 +213,21 @@ describe("AgentsPage — browse view", () => {
     expect(tile?.getAttribute("aria-label")).toBe("新建智能体");
   });
 
-  test("clicking the grid create tile invokes onCreate", () => {
-    const onCreate = mock(() => {});
+  test("clicking the grid create tile opens the editor in create mode", () => {
     render(
       <AgentsPage
         {...stableProps}
-        onCreate={onCreate}
         agents={[baseAgent]}
         selectedAgentId="agent-1"
       />,
     );
     fireEvent.click(screen.getByLabelText("新建智能体"));
-    expect(onCreate).toHaveBeenCalled();
+    // Hero shows the placeholder name and the save button label is
+    // "创建" instead of "保存".
+    expect(
+      screen.getByRole("heading", { name: "新建智能体", level: 2 }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /^创建/ })).toBeDefined();
   });
 });
 

@@ -49,7 +49,6 @@ import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
 import { CommandPalette, useCommandPalette, type Command } from "./chat/CommandPalette";
 import { HistoryDrawer } from "./chat/HistoryDrawer";
-import { NewAgentModal } from "./chat/NewAgentModal";
 import { OnboardingCard } from "./chat/OnboardingCard";
 import { Toast } from "./chat/components";
 import { PlaceholderPage } from "./chat/PlaceholderPage";
@@ -71,7 +70,6 @@ export function App() {
   const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
   const [view, setView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [newAgentOpen, setNewAgentOpen] = useState(false);
   const conversations = useConversations(apiClient);
   const {
     profile,
@@ -439,36 +437,24 @@ export function App() {
     conversationDelete.dismiss();
   }
 
-  async function handleCreateAgent(input: {
-    name: string;
-    description: string;
-    instructions: string;
-    model: string;
-    reasoning: ReasoningLevel;
-    tools: AgentToolName[];
-    toolPreset: AgentToolPreset;
-    toolInclude: AgentToolName[];
-    toolExclude: AgentToolName[];
-    skills?: string[] | null;
-  }) {
+  async function handleCreateAgent(patch: AgentConfigPatch) {
     if (!apiClient) return;
     const id = `agent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const created = await agentsApi.save(apiClient, {
       id,
-      name: input.name,
-      description: input.description,
-      model: input.model,
-      reasoning: input.reasoning,
-      tools: input.tools,
-      toolPreset: input.toolPreset,
-      toolInclude: input.toolInclude,
-      toolExclude: input.toolExclude,
-      skills: input.skills ?? undefined,
-      instructions: input.instructions,
+      name: patch.name,
+      description: patch.description,
+      model: patch.model,
+      reasoning: patch.reasoning,
+      tools: patch.tools,
+      toolPreset: patch.toolPreset,
+      toolInclude: patch.toolInclude,
+      toolExclude: patch.toolExclude,
+      skills: patch.skills ?? undefined,
+      instructions: patch.instructions,
     });
     setAgents((prev) => [...prev, created]);
     setSelectedAgentId(created.id);
-    setView("chat");
   }
 
   async function handleSaveAgent(id: string, patch: AgentConfigPatch) {
@@ -687,7 +673,7 @@ export function App() {
       label: "新建智能体",
       group: "操作",
       keywords: ["agent", "create", "new"],
-      execute: () => setNewAgentOpen(true),
+      execute: () => setView("agents"),
     });
     const runStatus = runController.runStream.status;
     if (
@@ -846,7 +832,7 @@ export function App() {
               agents={agents}
               selectedAgentId={selectedAgentId}
               toolGroups={toolCatalog}
-              onCreate={() => setNewAgentOpen(true)}
+              onCreate={handleCreateAgent}
               onOpenChat={(id) => {
                 setSelectedAgentId(id);
                 setView("chat");
@@ -1016,13 +1002,6 @@ export function App() {
           onDismiss={handleDismissDeleteToast}
         />
       ) : null}
-
-      <NewAgentModal
-        open={newAgentOpen}
-        toolGroups={toolCatalog}
-        onClose={() => setNewAgentOpen(false)}
-        onCreate={handleCreateAgent}
-      />
 
       <CommandPalette
         isOpen={palette.isOpen}

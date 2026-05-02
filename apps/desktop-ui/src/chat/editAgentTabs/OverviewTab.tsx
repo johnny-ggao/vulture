@@ -4,7 +4,8 @@ import { Field, Segmented, SkillsPreview } from "../components";
 import type { Draft } from "./draft";
 
 export interface OverviewTabProps {
-  agent: Agent;
+  /** Null in create mode — Workspace path / id-bound info hide. */
+  agent: Agent | null;
   draft: Draft;
   onChange: (next: Draft) => void;
 }
@@ -73,7 +74,9 @@ export function OverviewTab({ agent, draft, onChange }: OverviewTabProps) {
           onChange={(e) => onChange({ ...draft, description: e.target.value })}
         />
       </Field>
-      <InfoBlock title="Workspace" value={agent.workspace.path} />
+      {agent ? (
+        <InfoBlock title="Workspace" value={agent.workspace.path} />
+      ) : null}
     </div>
   );
 }
