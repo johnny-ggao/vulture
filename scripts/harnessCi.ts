@@ -52,6 +52,7 @@ export const HARNESS_CI_STEPS: HarnessCiStep[] = [
       "scripts/harnessDoctor.test.ts",
       "scripts/harnessReport.test.ts",
       "scripts/harnessCi.test.ts",
+      "scripts/harnessArtifacts.test.ts",
       "apps/gateway/src/harness",
     ],
   },
@@ -104,6 +105,11 @@ export const HARNESS_CI_STEPS: HarnessCiStep[] = [
     id: "harness-report",
     name: "Harness report",
     command: ["bun", "run", "harness:report"],
+  },
+  {
+    id: "harness-artifacts",
+    name: "Harness artifact validation",
+    command: ["bun", "run", "harness:artifacts"],
   },
 ];
 

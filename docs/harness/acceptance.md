@@ -86,6 +86,12 @@ Aggregate the latest harness artifacts into one CI triage report:
 bun run harness:report
 ```
 
+Validate the latest harness artifact schemas:
+
+```bash
+bun run harness:artifacts
+```
+
 Run the CI harness bundle:
 
 ```bash
@@ -93,10 +99,11 @@ bun run harness:ci
 ```
 
 `harness:ci` includes the shared `@vulture/harness-core` tests, harness catalog,
-doctor, and report tests, and typecheck before running the gateway and UI lanes.
-This keeps CLI parsing, scenario selection, JUnit output, failure reports,
-artifact manifests, catalog generation, coverage health checks, and aggregate
-reporting under the same contract as the product harnesses.
+doctor, report, artifact validator, and orchestrator tests, and typecheck before
+running the gateway and UI lanes. This keeps CLI parsing, scenario selection,
+JUnit output, failure reports, artifact manifests, catalog generation, coverage
+health checks, aggregate reporting, and artifact schema validation under the
+same contract as the product harnesses.
 
 `harness:ci` is driven by `scripts/harnessCi.ts` instead of a shell `&&` chain.
 It removes stale CI harness artifact directories at the start of the run,
@@ -216,6 +223,19 @@ report step:
 The CI summary is the source of truth for typecheck, unit test, and UI smoke
 failures that do not map to a lane manifest.
 
+### Artifact Schema Validation
+
+`bun run harness:artifacts` validates the latest harness artifact bundle and
+writes these files into `.artifacts/harness-report/`:
+
+- `artifact-validation.json` - machine-readable artifact validation checks.
+- `artifact-validation.md` - human-readable artifact validation report.
+
+The validator checks required lane manifests, JUnit count consistency, catalog
+shape, doctor status consistency, aggregate report consistency, and
+`ci-summary.json` when it is present. Desktop E2E artifacts are optional because
+that lane is manually dispatched.
+
 ### Acceptance Artifacts
 
 Each scenario writes a folder under `.artifacts/acceptance/`:
@@ -250,8 +270,8 @@ and uploads a `harness-artifacts` bundle on every run. The bundle contains:
 - `.artifacts/harness-report`
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
-reports, and aggregate `harness-report/report.md` together for CI triage.
-GitHub retains the bundle for 14 days.
+reports, aggregate `harness-report/report.md`, CI summary, and artifact
+validation report together for CI triage. GitHub retains the bundle for 14 days.
 
 Manual GitHub Actions runs can also execute the desktop E2E smoke lane without
 changing the default PR/push CI path:

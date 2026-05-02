@@ -1,17 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildHarnessSummary,
   buildHarnessReport,
   buildHarnessCatalog,
+  buildHarnessDoctorReport,
   formatHarnessListLine,
   inspectHarnessCatalog,
   inspectHarnessCatalogLanes,
   parseHarnessCliArgs,
   selectHarnessScenarios,
   writeHarnessCatalog,
+  validateHarnessArtifactBundle,
+  writeHarnessArtifactValidationReport,
   writeHarnessDoctorReport,
   writeHarnessFailureReport,
   writeHarnessJUnitReport,
@@ -311,6 +314,79 @@ describe("harness-core", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("validates a complete harness artifact bundle", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      const manifests = [
+        writeLaneArtifacts(root, "runtime", "runtime-harness"),
+        writeLaneArtifacts(root, "tool-contract", "tool-contract-harness"),
+        writeLaneArtifacts(root, "acceptance", "acceptance"),
+      ];
+      const catalog = buildHarnessCatalog([
+        { lane: "runtime", scenarios: [scenarios[0]!] },
+        { lane: "tool-contract", scenarios: [scenarios[1]!] },
+        { lane: "acceptance", scenarios: [scenarios[2]!] },
+      ]);
+      writeHarnessCatalog(join(root, "harness-catalog"), [
+        { lane: "runtime", scenarios: [scenarios[0]!] },
+        { lane: "tool-contract", scenarios: [scenarios[1]!] },
+        { lane: "acceptance", scenarios: [scenarios[2]!] },
+      ]);
+      const doctor = buildHarnessDoctorReport(catalog, [
+        { id: "metadata", name: "Metadata", status: "passed", detail: "ok" },
+      ]);
+      writeHarnessDoctorReport(join(root, "harness-catalog"), doctor);
+      writeHarnessReport(join(root, "harness-report"), {
+        requiredLanes: ["runtime", "tool-contract", "acceptance"],
+        optionalLanes: ["desktop-e2e"],
+        manifests,
+        doctor,
+      });
+      writeFileSync(
+        join(root, "harness-report", "ci-summary.json"),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          generatedAt: "2026-05-02T00:00:00.000Z",
+          status: "passed",
+          total: 1,
+          passed: 1,
+          failed: 0,
+          steps: [{ id: "harness-report", name: "Harness report", command: ["bun"], status: "passed", exitCode: 0, signal: null, durationMs: 1 }],
+        })}\n`,
+      );
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      expect(report.status).toBe("passed");
+      expect(report.checks.find((check) => check.id === "junit-runtime")?.status).toBe("passed");
+      const paths = writeHarnessArtifactValidationReport(join(root, "harness-report"), report);
+      expect(paths.jsonPath).toBe(join(root, "harness-report", "artifact-validation.json"));
+      expect(readFileSync(paths.markdownPath, "utf8")).toContain("PASSED harness-report");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails artifact validation when junit counts drift from manifest counts", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeLaneArtifacts(root, "runtime", "runtime-harness");
+      writeLaneArtifacts(root, "tool-contract", "tool-contract-harness");
+      writeLaneArtifacts(root, "acceptance", "acceptance");
+      writeFileSync(
+        join(root, "runtime-harness", "junit.xml"),
+        '<?xml version="1.0" encoding="UTF-8"?><testsuite name="bad" tests="2" failures="0"><testcase name="one"/></testsuite>\n',
+      );
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      expect(report.status).toBe("failed");
+      expect(report.checks.find((check) => check.id === "junit-runtime")?.detail).toContain(
+        "tests must equal manifest total 1",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 function reportFixtureManifest(lane: "runtime" | "tool-contract" | "acceptance" | "desktop-e2e") {
@@ -324,4 +400,16 @@ function reportFixtureManifest(lane: "runtime" | "tool-contract" | "acceptance" 
     failed: 0,
     results: [{ id: `${lane}-scenario`, name: lane, status: "passed" as const }],
   };
+}
+
+function writeLaneArtifacts(
+  root: string,
+  lane: "runtime" | "tool-contract" | "acceptance",
+  dirName: string,
+) {
+  const dir = join(root, dirName);
+  const results = [{ id: `${lane}-scenario`, name: lane, status: "passed" as const }];
+  writeHarnessManifest(dir, lane, results);
+  writeHarnessJUnitReport(dir, lane, results);
+  return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
 }

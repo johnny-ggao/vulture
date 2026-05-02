@@ -150,6 +150,20 @@ export interface HarnessReport {
   };
 }
 
+export interface HarnessArtifactValidationCheck {
+  id: string;
+  status: HarnessStatus;
+  detail: string;
+  path?: string;
+}
+
+export interface HarnessArtifactValidationReport {
+  schemaVersion: 1;
+  generatedAt: string;
+  status: HarnessStatus;
+  checks: HarnessArtifactValidationCheck[];
+}
+
 const DEFAULT_PARSE_OPTIONS: Required<Pick<
   HarnessCliParseOptions,
   "idFlag" | "tagFlag" | "artifactDirFlag"
@@ -467,6 +481,71 @@ export function writeHarnessReport(
   return { jsonPath, markdownPath, report };
 }
 
+export function validateHarnessArtifactBundle(
+  artifactRoot: string,
+  generatedAt = new Date().toISOString(),
+): HarnessArtifactValidationReport {
+  const checks: HarnessArtifactValidationCheck[] = [];
+  const manifests = new Map<HarnessLane, HarnessArtifactManifest>();
+  const laneDirs: Array<{ lane: HarnessLane; dir: string; required: boolean }> = [
+    { lane: "runtime", dir: "runtime-harness", required: true },
+    { lane: "tool-contract", dir: "tool-contract-harness", required: true },
+    { lane: "acceptance", dir: "acceptance", required: true },
+    { lane: "desktop-e2e", dir: "desktop-e2e", required: false },
+  ];
+
+  for (const laneDir of laneDirs) {
+    const manifestPath = join(artifactRoot, laneDir.dir, "manifest.json");
+    const manifest = readJsonIfPresent<HarnessArtifactManifest>(manifestPath);
+    if (!manifest) {
+      checks.push(validationCheck(
+        `manifest-${laneDir.lane}`,
+        laneDir.required ? "failed" : "passed",
+        laneDir.required ? "required manifest is missing" : "optional manifest is missing",
+        manifestPath,
+      ));
+      continue;
+    }
+
+    const manifestErrors = validateManifestShape(manifest, laneDir.lane);
+    checks.push(validationCheck(
+      `manifest-${laneDir.lane}`,
+      manifestErrors.length === 0 ? "passed" : "failed",
+      manifestErrors.length === 0 ? "manifest schema ok" : manifestErrors.join("; "),
+      manifestPath,
+    ));
+    if (manifestErrors.length === 0) manifests.set(laneDir.lane, manifest);
+
+    const junitPath = join(artifactRoot, laneDir.dir, "junit.xml");
+    checks.push(validateJUnitFile(junitPath, manifest));
+  }
+
+  checks.push(validateCatalogFile(join(artifactRoot, "harness-catalog", "catalog.json")));
+  const doctor = readJsonIfPresent<HarnessDoctorReport>(join(artifactRoot, "harness-catalog", "doctor.json"));
+  checks.push(validateDoctorFile(join(artifactRoot, "harness-catalog", "doctor.json"), doctor));
+  checks.push(validateReportFile(join(artifactRoot, "harness-report", "report.json"), manifests, doctor));
+  checks.push(validateCiSummaryFile(join(artifactRoot, "harness-report", "ci-summary.json")));
+
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    status: checks.some((check) => check.status === "failed") ? "failed" : "passed",
+    checks,
+  };
+}
+
+export function writeHarnessArtifactValidationReport(
+  artifactDir: string,
+  report: HarnessArtifactValidationReport,
+): { jsonPath: string; markdownPath: string } {
+  mkdirSync(artifactDir, { recursive: true });
+  const jsonPath = join(artifactDir, "artifact-validation.json");
+  const markdownPath = join(artifactDir, "artifact-validation.md");
+  writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(markdownPath, renderHarnessArtifactValidationMarkdown(report));
+  return { jsonPath, markdownPath };
+}
+
 export function findHarnessRepoRoot(start: string): string {
   let current = resolve(start);
   while (true) {
@@ -685,6 +764,22 @@ function renderHarnessReportMarkdown(report: HarnessReport): string {
   return `${lines.join("\n")}\n`;
 }
 
+function renderHarnessArtifactValidationMarkdown(report: HarnessArtifactValidationReport): string {
+  const lines = [
+    "# Harness Artifact Validation",
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Status: ${report.status}`,
+    "",
+    "## Checks",
+    "",
+  ];
+  for (const check of report.checks) {
+    lines.push(`- ${check.status.toUpperCase()} ${check.id}: ${check.detail}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function inspectCatalogRule(
   catalog: HarnessCatalog,
   rule: HarnessDoctorRule,
@@ -812,6 +907,191 @@ function uniquePreserveOrder<T>(values: readonly T[]): T[] {
     result.push(value);
   }
   return result;
+}
+
+function validationCheck(
+  id: string,
+  status: HarnessStatus,
+  detail: string,
+  path?: string,
+): HarnessArtifactValidationCheck {
+  return {
+    id,
+    status,
+    detail,
+    ...(path ? { path } : {}),
+  };
+}
+
+function readJsonIfPresent<T>(path: string): T | null {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function validateManifestShape(manifest: HarnessArtifactManifest, expectedLane: HarnessLane): string[] {
+  const errors: string[] = [];
+  if (!isRecord(manifest)) return ["manifest is not an object"];
+  if (manifest.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (manifest.lane !== expectedLane) errors.push(`lane must be ${expectedLane}`);
+  if (!isHarnessStatus(manifest.status)) errors.push("status must be passed or failed");
+  if (!Number.isInteger(manifest.total) || manifest.total < 0) errors.push("total must be a non-negative integer");
+  if (!Number.isInteger(manifest.passed) || manifest.passed < 0) errors.push("passed must be a non-negative integer");
+  if (!Number.isInteger(manifest.failed) || manifest.failed < 0) errors.push("failed must be a non-negative integer");
+  if (Number.isInteger(manifest.total) && Number.isInteger(manifest.passed) && Number.isInteger(manifest.failed)) {
+    if (manifest.passed + manifest.failed !== manifest.total) errors.push("passed + failed must equal total");
+    const expectedStatus = manifest.failed === 0 ? "passed" : "failed";
+    if (manifest.status !== expectedStatus) errors.push(`status must be ${expectedStatus}`);
+  }
+  if (!Array.isArray(manifest.results)) {
+    errors.push("results must be an array");
+  } else {
+    if (Number.isInteger(manifest.total) && manifest.results.length !== manifest.total) {
+      errors.push("results length must equal total");
+    }
+    for (const [index, result] of manifest.results.entries()) {
+      if (!isRecord(result)) {
+        errors.push(`results[${index}] must be an object`);
+        continue;
+      }
+      if (typeof result.id !== "string" || !result.id) errors.push(`results[${index}].id is required`);
+      if (typeof result.name !== "string" || !result.name) errors.push(`results[${index}].name is required`);
+      if (!isHarnessStatus(result.status)) errors.push(`results[${index}].status is invalid`);
+    }
+  }
+  return errors;
+}
+
+function validateJUnitFile(path: string, manifest: HarnessArtifactManifest): HarnessArtifactValidationCheck {
+  if (!existsSync(path)) return validationCheck(`junit-${manifest.lane}`, "failed", "junit.xml is missing", path);
+  const content = readFileSync(path, "utf8");
+  const testSuite = content.match(/<testsuite\b[^>]*>/)?.[0];
+  if (!testSuite) return validationCheck(`junit-${manifest.lane}`, "failed", "testsuite element is missing", path);
+  const tests = Number(testSuite.match(/\btests="(\d+)"/)?.[1]);
+  const failures = Number(testSuite.match(/\bfailures="(\d+)"/)?.[1]);
+  const errors: string[] = [];
+  if (tests !== manifest.total) errors.push(`tests must equal manifest total ${manifest.total}`);
+  if (failures !== manifest.failed) errors.push(`failures must equal manifest failed ${manifest.failed}`);
+  const testcaseCount = Array.from(content.matchAll(/<testcase\b/g)).length;
+  if (testcaseCount !== manifest.total) errors.push(`testcase count must equal manifest total ${manifest.total}`);
+  return validationCheck(
+    `junit-${manifest.lane}`,
+    errors.length === 0 ? "passed" : "failed",
+    errors.length === 0 ? "junit schema ok" : errors.join("; "),
+    path,
+  );
+}
+
+function validateCatalogFile(path: string): HarnessArtifactValidationCheck {
+  const catalog = readJsonIfPresent<HarnessCatalog>(path);
+  if (!catalog) return validationCheck("catalog", "failed", "catalog.json is missing or invalid JSON", path);
+  const errors: string[] = [];
+  if (catalog.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (!Array.isArray(catalog.lanes)) errors.push("lanes must be an array");
+  if (!Array.isArray(catalog.tags)) errors.push("tags must be an array");
+  if (!Array.isArray(catalog.scenarios)) errors.push("scenarios must be an array");
+  if (Array.isArray(catalog.lanes) && Array.isArray(catalog.scenarios)) {
+    const laneScenarioCount = catalog.lanes.reduce((sum, lane) => sum + lane.scenarioCount, 0);
+    if (laneScenarioCount !== catalog.scenarios.length) errors.push("lane scenario counts must equal scenarios length");
+  }
+  return validationCheck("catalog", errors.length === 0 ? "passed" : "failed", errors.length === 0 ? "catalog schema ok" : errors.join("; "), path);
+}
+
+function validateDoctorFile(path: string, report: HarnessDoctorReport | null): HarnessArtifactValidationCheck {
+  if (!report) return validationCheck("doctor", "failed", "doctor.json is missing or invalid JSON", path);
+  const errors = validateDoctorShape(report);
+  return validationCheck("doctor", errors.length === 0 ? "passed" : "failed", errors.length === 0 ? "doctor schema ok" : errors.join("; "), path);
+}
+
+function validateDoctorShape(report: HarnessDoctorReport): string[] {
+  const errors: string[] = [];
+  if (!isRecord(report)) return ["doctor report is not an object"];
+  if (report.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (!["passed", "warning", "failed"].includes(report.status)) errors.push("status is invalid");
+  if (!Array.isArray(report.checks)) {
+    errors.push("checks must be an array");
+    return errors;
+  }
+  const failed = report.checks.some((check) => check.status === "failed");
+  const warned = report.checks.some((check) => check.status === "warning");
+  const expected = failed ? "failed" : warned ? "warning" : "passed";
+  if (report.status !== expected) errors.push(`status must be ${expected}`);
+  return errors;
+}
+
+function validateReportFile(
+  path: string,
+  manifests: ReadonlyMap<HarnessLane, HarnessArtifactManifest>,
+  doctor: HarnessDoctorReport | null,
+): HarnessArtifactValidationCheck {
+  const report = readJsonIfPresent<HarnessReport>(path);
+  if (!report) return validationCheck("harness-report", "failed", "report.json is missing or invalid JSON", path);
+  const errors: string[] = [];
+  if (report.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (!Array.isArray(report.lanes)) errors.push("lanes must be an array");
+  if (!Array.isArray(report.missingRequiredLanes)) errors.push("missingRequiredLanes must be an array");
+  for (const lane of ["runtime", "tool-contract", "acceptance"] as const) {
+    const manifest = manifests.get(lane);
+    const reportLane = report.lanes.find((item) => item.lane === lane);
+    if (!manifest) {
+      errors.push(`${lane} manifest missing`);
+      continue;
+    }
+    if (!reportLane) {
+      errors.push(`${lane} report lane missing`);
+      continue;
+    }
+    if (reportLane.status !== manifest.status) errors.push(`${lane} status must match manifest`);
+    if (reportLane.total !== manifest.total) errors.push(`${lane} total must match manifest`);
+    if (reportLane.passed !== manifest.passed) errors.push(`${lane} passed must match manifest`);
+    if (reportLane.failed !== manifest.failed) errors.push(`${lane} failed must match manifest`);
+  }
+  if (doctor && report.doctor?.status !== doctor.status) errors.push("doctor status must match doctor.json");
+  const failedLane = report.lanes.some((lane) => lane.status === "failed");
+  const missingRequired = report.missingRequiredLanes.length > 0;
+  const doctorFailed = report.doctor?.status === "failed";
+  const doctorWarning = report.doctor?.status === "warning";
+  const expectedStatus = missingRequired || failedLane || doctorFailed ? "failed" : doctorWarning ? "warning" : "passed";
+  if (report.status !== expectedStatus) errors.push(`status must be ${expectedStatus}`);
+  return validationCheck("harness-report", errors.length === 0 ? "passed" : "failed", errors.length === 0 ? "report schema ok" : errors.join("; "), path);
+}
+
+function validateCiSummaryFile(path: string): HarnessArtifactValidationCheck {
+  if (!existsSync(path)) return validationCheck("ci-summary", "passed", "ci-summary.json is not present");
+  const summary = readJsonIfPresent<{
+    schemaVersion: number;
+    status: HarnessStatus;
+    total: number;
+    passed: number;
+    failed: number;
+    steps: Array<{ status: HarnessStatus }>;
+  }>(path);
+  if (!summary) return validationCheck("ci-summary", "failed", "ci-summary.json is invalid JSON", path);
+  const errors: string[] = [];
+  if (summary.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (!isHarnessStatus(summary.status)) errors.push("status must be passed or failed");
+  if (!Array.isArray(summary.steps)) errors.push("steps must be an array");
+  if (Array.isArray(summary.steps)) {
+    const passed = summary.steps.filter((step) => step.status === "passed").length;
+    const failed = summary.steps.length - passed;
+    if (summary.total !== summary.steps.length) errors.push("total must equal steps length");
+    if (summary.passed !== passed) errors.push("passed must equal passed steps");
+    if (summary.failed !== failed) errors.push("failed must equal failed steps");
+    const expectedStatus = failed === 0 ? "passed" : "failed";
+    if (summary.status !== expectedStatus) errors.push(`status must be ${expectedStatus}`);
+  }
+  return validationCheck("ci-summary", errors.length === 0 ? "passed" : "failed", errors.length === 0 ? "ci summary schema ok" : errors.join("; "), path);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isHarnessStatus(value: unknown): value is HarnessStatus {
+  return value === "passed" || value === "failed";
 }
 
 function nonEmpty(value: string | undefined): string | undefined {
