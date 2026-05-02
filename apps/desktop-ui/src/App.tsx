@@ -862,13 +862,62 @@ export function App() {
           {view === "plugins" ? (
             <PlaceholderPage
               title="插件"
-              description="MCP 服务器与第三方连接器（GitHub / Linear / Slack 等）。"
+              description="把第三方服务接进工作台，扩展智能体的能力边界。"
+              status="即将上线"
+              icon={
+                <svg
+                  viewBox="0 0 24 24"
+                  width="28"
+                  height="28"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M14 4h3a3 3 0 0 1 3 3v3" />
+                  <path d="M20 14v3a3 3 0 0 1-3 3h-3" />
+                  <path d="M10 20H7a3 3 0 0 1-3-3v-3" />
+                  <path d="M4 10V7a3 3 0 0 1 3-3h3" />
+                  <path d="M9 9h6v6H9z" />
+                </svg>
+              }
+              teasers={[
+                "MCP 服务器：将本地 stdio / HTTP 工具广播给所有智能体",
+                "服务连接器：GitHub / Linear / Slack / Notion 一键授权",
+                "插件市场：浏览社区贡献的能力包并按需启用",
+              ]}
             />
           ) : null}
           {view === "tasks" ? (
             <PlaceholderPage
               title="定时任务"
-              description="按 cron 计划自动唤起会话。"
+              description="按 cron 计划自动唤起智能体执行预设任务，结果汇总到收件箱。"
+              status="即将上线"
+              icon={
+                <svg
+                  viewBox="0 0 24 24"
+                  width="28"
+                  height="28"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="13" r="8" />
+                  <path d="M12 9v4l2.5 2" />
+                  <path d="M9 2h6" />
+                  <path d="M12 2v3" />
+                </svg>
+              }
+              teasers={[
+                "Cron 调度：每天 / 每周 / 自定义表达式触发",
+                "结果汇总：自动整理产物到收件箱并按需推送",
+                "失败重试：异常时自动续跑或转人工审批",
+              ]}
             />
           ) : null}
           {view === "settings" ? (
