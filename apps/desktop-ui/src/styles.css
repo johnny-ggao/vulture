@@ -124,12 +124,46 @@
   --scrim-overlay: rgba(15, 15, 15, 0.18);
   --scrim-modal:   rgba(15, 15, 15, 0.28);
   --scrim-blur:    8px;
+
+  /* ---- Liquid Glass (macOS Tahoe 26 functional materials) ----
+   *
+   * Layering rule: glass is reserved for *functional* layers
+   * (titlebar, sidebar, popovers, sheets, menus). Content surfaces
+   * stay opaque so type stays stable and readable.
+   *
+   * Three named recipes: `--glass-titlebar` for thin chrome, `--glass-sidebar`
+   * for persistent rails, `--glass-popover` for floating sheets / menus.
+   * Saturation lift (160-180%) + a hairline inner border + an offset
+   * shadow approximate NSVisualEffectView's behaviour. Always pair the
+   * backdrop-filter rule with a `prefers-reduced-transparency` fallback
+   * lower in the file. */
+  --glass-titlebar-bg:  rgba(245, 241, 234, 0.55);
+  --glass-sidebar-bg:   rgba(250, 249, 246, 0.66);
+  --glass-popover-bg:   rgba(255, 255, 255, 0.74);
+  --glass-border:       rgba(15, 15, 15, 0.10);
+  --glass-border-inner: rgba(255, 255, 255, 0.55);
+  --glass-blur:         28px;
+  --glass-saturate:     180%;
+  --glass-shadow:
+    0 0 0 0.5px var(--glass-border),
+    0 24px 48px -12px rgba(15, 15, 15, 0.18),
+    0 8px 16px -8px rgba(15, 15, 15, 0.10);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --scrim-overlay: rgba(0, 0, 0, 0.44);
     --scrim-modal:   rgba(0, 0, 0, 0.56);
+
+    --glass-titlebar-bg:  rgba(22, 21, 19, 0.52);
+    --glass-sidebar-bg:   rgba(28, 27, 24, 0.62);
+    --glass-popover-bg:   rgba(36, 34, 31, 0.78);
+    --glass-border:       rgba(255, 255, 255, 0.10);
+    --glass-border-inner: rgba(255, 255, 255, 0.06);
+    --glass-shadow:
+      0 0 0 0.5px var(--glass-border),
+      0 24px 48px -12px rgba(0, 0, 0, 0.55),
+      0 8px 16px -8px rgba(0, 0, 0, 0.40);
   }
 }
 
@@ -216,6 +250,37 @@
   }
 }
 
+/* ============================================================
+ * Reduce Transparency — macOS Tahoe accessibility setting.
+ *
+ * When the user has Reduce Transparency enabled, replace every
+ * Liquid Glass material with an opaque equivalent + a hairline
+ * border. The functional layer hierarchy still reads (titlebar
+ * vs sidebar vs popover) but no backdrop-filter expense, no
+ * see-through risk for low-vision users.
+ * ============================================================ */
+@media (prefers-reduced-transparency: reduce) {
+  .titlebar,
+  .sidebar,
+  .history-drawer,
+  .modal-card,
+  .cmdk-sheet,
+  .chip-popover-menu,
+  .agent-picker-menu {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .titlebar       { background: var(--bg-secondary); }
+  .sidebar        { background: var(--bg-secondary); }
+  .history-drawer { background: var(--bg-secondary); }
+  .modal-card,
+  .cmdk-sheet,
+  .chip-popover-menu,
+  .agent-picker-menu {
+    background: var(--bg-primary);
+  }
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root { height: 100%; margin: 0; }
@@ -276,6 +341,13 @@ pre {
   z-index: var(--z-titlebar);
   user-select: none;
   -webkit-user-select: none;
+  /* Thin titlebar material — translucent so the gradient shell shows
+   * through, with a hairline bottom edge so content doesn't bleed
+   * into the chrome when scrolled. */
+  background: var(--glass-titlebar-bg);
+  backdrop-filter: blur(20px) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(20px) saturate(var(--glass-saturate));
+  border-bottom: 0.5px solid var(--glass-border);
 }
 
 .titlebar-sidebar-chrome {
@@ -321,8 +393,14 @@ pre {
   width: 100%;
   height: 100%;
   padding: 16px 10px 12px;
-  border-right: 1px solid var(--fill-quaternary);
-  background: var(--bg-secondary);
+  border-right: 0.5px solid var(--glass-border);
+  /* Sidebar material — Apple's "sidebar" NSVisualEffectView at rest.
+   * Higher alpha than the titlebar so nav rows stay readable, but
+   * still translucent enough to feel like a separate layer over the
+   * shell gradient. */
+  background: var(--glass-sidebar-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   box-sizing: border-box;
 }
 
@@ -1532,10 +1610,14 @@ pre {
   min-width: 200px;
   max-width: 320px;
   padding: 4px;
-  background: var(--bg-primary);
-  border: 1px solid var(--fill-tertiary);
+  /* Floating menu material — same recipe as command palette + modal
+   * card so all popovers read as one family. */
+  background: var(--glass-popover-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--glass-shadow);
   display: grid;
   gap: 1px;
   animation: agent-picker-fade var(--duration-medium) var(--ease-spring);
@@ -1659,10 +1741,12 @@ pre {
   min-width: 240px;
   max-width: 340px;
   padding: 4px;
-  background: var(--bg-primary);
-  border: 1px solid var(--fill-tertiary);
+  background: var(--glass-popover-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--glass-shadow);
   display: grid;
   gap: 1px;
   animation: agent-picker-fade var(--duration-medium) var(--ease-spring);
@@ -2513,9 +2597,14 @@ pre {
   top: 0; left: 0; bottom: 0;
   width: 380px;
   display: flex; flex-direction: column;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--fill-tertiary);
-  box-shadow: 1px 0 24px rgba(15, 15, 15, 0.06);
+  /* Drawer rail uses the sidebar material — slightly more opaque than
+   * a popover so list rows stay readable while still feeling like a
+   * translucent slab over the dimmed page. */
+  background: var(--glass-sidebar-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-right: 0.5px solid var(--glass-border);
+  box-shadow: 1px 0 32px rgba(15, 15, 15, 0.10);
   animation: hd-slide-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .history-drawer-header {
@@ -2837,9 +2926,15 @@ pre {
 .modal-card {
   width: min(640px, 100%);
   max-height: 80vh;
-  background: var(--bg-primary);
+  /* Popover-grade glass — denser blur + higher alpha so body text
+   * inside the modal is not fighting the page beneath. The hairline
+   * inset border + macOS-style layered shadow give a clean lift. */
+  background: var(--glass-popover-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--glass-shadow);
   display: flex; flex-direction: column;
   overflow: hidden;
   /* Modal cards "fly in" from beneath the scrim — pairs with the spring
@@ -4254,10 +4349,16 @@ pre {
   max-height: min(560px, calc(100vh - 22vh - 48px));
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary);
-  border: 1px solid var(--fill-tertiary);
+  /* Spotlight-style glass — Tahoe's command palette sits over content
+   * with a saturated blur so the user reads the floating sheet, not
+   * the dimmed page. Higher alpha on the popover material than the
+   * sidebar keeps row text crisp. */
+  background: var(--glass-popover-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
+  box-shadow: var(--glass-shadow);
   overflow: hidden;
   animation: cmdk-pop var(--duration-slow) var(--ease-spring);
   transform-origin: top center;
