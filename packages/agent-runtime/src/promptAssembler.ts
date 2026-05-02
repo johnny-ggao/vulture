@@ -138,8 +138,8 @@ function formatHandoffs(handoffs: readonly PromptHandoffAgent[]): string {
     "Treat subagents as specialist tools: you remain responsible for the final user-facing answer.",
     "Use `sessions_spawn` with the target `agentId` only when the work is independent, parallelizable, and worth the added coordination.",
     "Before calling `sessions_spawn`, make the title and message explain the proposed delegation; the approval card is the user confirmation.",
-    "sessions_spawn.title must be a short user-readable task name, and sessions_spawn.message must be a complete task brief.",
-    "After a child task can complete, call sessions_yield to recover completed or failed child results before writing the final answer.",
+    "`sessions_spawn.title` must be a short user-readable task name, and `sessions_spawn.message` must be a complete task brief.",
+    "After a child task can complete, call `sessions_yield` to recover completed or failed child results before writing the final answer.",
     "Integrate completed child results into your final answer in your normal assistant voice; do not expose raw internal metadata.",
     "If the user denies the approval, continue with the task yourself or explain the limitation briefly.",
     ...handoffs.map((agent) =>

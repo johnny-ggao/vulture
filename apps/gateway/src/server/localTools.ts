@@ -185,9 +185,7 @@ export function createGatewayServerLocalTools(
           ...session,
           activeRuns: runStore.listForConversation(session.conversationId, { status: "active" }),
         }));
-        const active = items
-          .filter((session) => session.status === "active")
-          .map((session) => compactSubagentSession(session));
+        const active = items.filter((session) => session.status === "active");
         const completed = items
           .filter((session) => session.status === "completed")
           .map((session) => compactSubagentSession(session));

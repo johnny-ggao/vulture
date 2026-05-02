@@ -154,6 +154,30 @@ describe("createGatewayServerLocalTools", () => {
         task: "Read the docs and return the useful part.",
       });
 
+      await expect(
+        tools({
+          callId: "yield-active",
+          runId: parentRun.id,
+          tool: "sessions_yield",
+          input: { parentRunId: parentRun.id },
+          workspacePath: cfg.profileDir,
+        }),
+      ).resolves.toMatchObject({
+        active: [
+          {
+            id: spawned.session.id,
+            parentRunId: parentRun.id,
+            agentId: "local-work-agent",
+            title: "Inspect docs",
+            task: "Read the docs and return the useful part.",
+            status: "active",
+            activeRuns: [{ id: spawned.runId, status: "running" }],
+          },
+        ],
+        completed: [],
+        failed: [],
+      });
+
       const result = stores.messageStore.append({
         conversationId: stores.subagentSessionStore.get(spawned.session.id)!.conversationId,
         role: "assistant",
