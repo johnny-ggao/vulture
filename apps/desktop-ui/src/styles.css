@@ -6596,7 +6596,10 @@ pre {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  /* Matches the modal's left/right rhythm — content uses 24px, footer
+   * uses 24px; header normalised here so all three frame regions
+   * share one horizontal axis. */
+  padding: 18px 24px;
   border-bottom: 0.5px solid var(--glass-border);
   flex-shrink: 0;
 }
@@ -6778,12 +6781,17 @@ pre {
   100% { transform: scale(1);    opacity: 1; }
 }
 
-/* ---- Content area ---------------------------------------------- */
+/* ---- Content area ----------------------------------------------
+ *
+ * Padding 24px on every side keeps the form on the same horizontal
+ * axis as header (24) and footer (24). The previous `22 28 28`
+ * disagreed with both header (20) and footer (20) and stranded the
+ * form ~6px right of the chrome — small but visible at the seam. */
 .agent-edit-content {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 22px 28px 28px;
+  padding: 24px 24px 24px;
   overflow: auto;
   min-height: 0;
 }
@@ -6792,12 +6800,18 @@ pre {
   gap: 14px;
 }
 
-/* ---- Preview aside (right column, Identity tab only) ----------- */
+/* ---- Preview aside (right column, Identity tab only) -----------
+ *
+ * Padding mirrors the content area's 24px so the body row reads as
+ * one horizontal grid: rail | 24-pad-content-24 | divider | 24-pad-
+ * preview-24 | edge. Previously 22/22/28 didn't align with content's
+ * 22/28/28 nor footer's 12/20 — three different horizontal axes in
+ * one body. */
 .agent-edit-preview {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 22px 22px 28px;
+  padding: 24px;
   border-left: 0.5px solid var(--glass-border);
   background: var(--bg-secondary);
   overflow-y: auto;
@@ -6970,7 +6984,11 @@ pre {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 20px;
+  /* Matches header + content horizontal padding (24) so the modal
+   * has a single inner-axis the eye can track. Vertical 12 keeps
+   * footer chrome tighter than the heavier 18 at the top, which is
+   * a deliberate weight asymmetry (toolbar < header). */
+  padding: 12px 24px;
   border-top: 0.5px solid var(--glass-border);
   background: var(--bg-secondary);
   flex-shrink: 0;
@@ -7365,10 +7383,19 @@ pre {
   display: grid;
   gap: 14px;
 }
+/* OverviewTab identity row — 名称 + 模型 + 推理强度. The first two
+ * share row 1 (1fr 1fr). The third spans the full row so the
+ * Segmented control + its hint don't fight a half-row dead zone
+ * (previously the 2-col grid stranded the right-hand column under
+ * row 2). */
 .agent-config-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 12px;
+  align-items: start;
+}
+.agent-config-grid > :nth-child(n + 3) {
+  grid-column: 1 / -1;
 }
 
 .agents-empty-page {
