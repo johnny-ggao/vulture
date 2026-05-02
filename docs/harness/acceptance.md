@@ -112,7 +112,7 @@ still produce diagnostic artifacts, and exits non-zero only after writing a
 fresh `.artifacts/harness-report/ci-summary.json` and `ci-summary.md`. At the
 end of the run it snapshots the current CI artifact bundle into
 `.artifacts/harness-runs/`, keeps the latest five snapshots plus the latest
-passed and failed snapshots, and writes a retention report. Set
+passed and failed snapshots, and writes retention and history reports. Set
 `VULTURE_HARNESS_RETENTION_KEEP_LAST=<n>` to change the recent snapshot count.
 
 By default the harness uses the gateway's stub LLM path so it stays
@@ -265,6 +265,12 @@ also writes `.artifacts/harness-report/retention.json` and `retention.md`, which
 list kept and deleted snapshots plus deletion errors if cleanup could not remove
 an old snapshot.
 
+After retention, `harness:ci` writes `.artifacts/harness-report/history.json` and
+`history.md`. The history index includes only retained snapshots and lists each
+snapshot's timestamp, status, archive path, artifact directories, retention
+reason, and direct paths to `report.md`, `ci-summary.md`, and
+`artifact-validation.md` when the snapshot contains `harness-report`.
+
 Negative artifact fixtures live in the `@vulture/harness-core` tests. They
 intentionally corrupt manifests, JUnit counts, doctor checks, aggregate reports,
 and CI summaries to verify failure diagnostics without shipping a default
@@ -304,8 +310,8 @@ and uploads a `harness-artifacts` bundle on every run. The bundle contains:
 - `.artifacts/harness-report`
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
-reports, aggregate `harness-report/report.md`, CI summary, and artifact
-validation and retention reports together for CI triage. GitHub retains the
+reports, aggregate `harness-report/report.md`, CI summary, artifact validation,
+retention, and history reports together for CI triage. GitHub retains the
 uploaded bundle for 14 days. Local historical snapshots live under
 `.artifacts/harness-runs/` and are governed by the retention policy above.
 

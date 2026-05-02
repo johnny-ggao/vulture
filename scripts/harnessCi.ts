@@ -3,9 +3,11 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   DEFAULT_HARNESS_ARTIFACT_DIRS,
+  buildHarnessArtifactHistory,
   findHarnessRepoRoot,
   retainHarnessArtifacts,
   validateHarnessArtifactBundle,
+  writeHarnessArtifactHistoryReport,
   writeHarnessArtifactRetentionReport,
   writeHarnessArtifactValidationReport,
 } from "../packages/harness-core/src/index";
@@ -161,6 +163,15 @@ async function main(): Promise<void> {
   console.log(`Artifact snapshots kept/deleted: ${retentionReport.kept.length}/${retentionReport.deleted.length}`);
   console.log(`Artifact retention JSON: ${retentionPaths.jsonPath}`);
   console.log(`Artifact retention Markdown: ${retentionPaths.markdownPath}`);
+
+  const history = buildHarnessArtifactHistory(retentionReport, summary.generatedAt);
+  const historyPaths = writeHarnessArtifactHistoryReport(
+    join(artifactRoot, "harness-report"),
+    history,
+  );
+  console.log(`Artifact history snapshots: ${history.total}`);
+  console.log(`Artifact history JSON: ${historyPaths.jsonPath}`);
+  console.log(`Artifact history Markdown: ${historyPaths.markdownPath}`);
   if (finalStatus === "failed" || retentionReport.status === "failed") process.exitCode = 1;
 }
 

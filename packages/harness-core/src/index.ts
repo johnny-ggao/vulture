@@ -230,6 +230,22 @@ export interface HarnessArtifactRetentionReport {
   errors: Array<{ id: string; path: string; error: string }>;
 }
 
+export interface HarnessArtifactHistoryEntry extends HarnessArtifactSnapshot {
+  retentionReasons: string[];
+  reportMarkdownPath?: string;
+  ciSummaryMarkdownPath?: string;
+  artifactValidationMarkdownPath?: string;
+}
+
+export interface HarnessArtifactHistory {
+  schemaVersion: 1;
+  generatedAt: string;
+  archiveRoot: string;
+  latestStatus: HarnessStatus | "none";
+  total: number;
+  entries: HarnessArtifactHistoryEntry[];
+}
+
 const DEFAULT_PARSE_OPTIONS: Required<Pick<
   HarnessCliParseOptions,
   "idFlag" | "tagFlag" | "artifactDirFlag"
@@ -764,6 +780,53 @@ export function writeHarnessArtifactRetentionReport(
   return { jsonPath, markdownPath };
 }
 
+export function buildHarnessArtifactHistory(
+  retentionReport: HarnessArtifactRetentionReport,
+  generatedAt = new Date().toISOString(),
+): HarnessArtifactHistory {
+  const entries = retentionReport.kept
+    .map((entry): HarnessArtifactHistoryEntry => {
+      const harnessReportDir = entry.artifactDirs.includes("harness-report")
+        ? join(entry.path, "harness-report")
+        : null;
+      return {
+        id: entry.id,
+        path: entry.path,
+        generatedAt: entry.generatedAt,
+        status: entry.status,
+        artifactDirs: [...entry.artifactDirs],
+        retentionReasons: [...entry.reasons],
+        ...(harnessReportDir ? {
+          reportMarkdownPath: join(harnessReportDir, "report.md"),
+          ciSummaryMarkdownPath: join(harnessReportDir, "ci-summary.md"),
+          artifactValidationMarkdownPath: join(harnessReportDir, "artifact-validation.md"),
+        } : {}),
+      };
+    })
+    .sort(compareHarnessSnapshotsNewestFirst);
+
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    archiveRoot: retentionReport.archiveRoot,
+    latestStatus: entries[0]?.status ?? "none",
+    total: entries.length,
+    entries,
+  };
+}
+
+export function writeHarnessArtifactHistoryReport(
+  artifactDir: string,
+  history: HarnessArtifactHistory,
+): { jsonPath: string; markdownPath: string } {
+  mkdirSync(artifactDir, { recursive: true });
+  const jsonPath = join(artifactDir, "history.json");
+  const markdownPath = join(artifactDir, "history.md");
+  writeFileSync(jsonPath, `${JSON.stringify(history, null, 2)}\n`);
+  writeFileSync(markdownPath, renderHarnessArtifactHistoryMarkdown(history));
+  return { jsonPath, markdownPath };
+}
+
 export function findHarnessRepoRoot(start: string): string {
   let current = resolve(start);
   while (true) {
@@ -1042,6 +1105,43 @@ function renderHarnessArtifactRetentionMarkdown(report: HarnessArtifactRetention
     for (const error of report.errors) {
       lines.push(`- ${error.id}: ${error.error} (${error.path})`);
     }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function renderHarnessArtifactHistoryMarkdown(history: HarnessArtifactHistory): string {
+  const lines = [
+    "# Harness Artifact History",
+    "",
+    `Generated: ${history.generatedAt}`,
+    `Archive root: ${history.archiveRoot}`,
+    `Latest status: ${history.latestStatus}`,
+    `Snapshots: ${history.total}`,
+    "",
+    "## Snapshots",
+    "",
+  ];
+  if (history.entries.length === 0) {
+    lines.push("- None");
+    return `${lines.join("\n")}\n`;
+  }
+
+  for (const entry of history.entries) {
+    lines.push(
+      `### ${entry.id}`,
+      "",
+      `- Status: ${entry.status}`,
+      `- Generated: ${entry.generatedAt}`,
+      `- Path: ${entry.path}`,
+      `- Retention: ${entry.retentionReasons.join(", ") || "unknown"}`,
+      `- Artifacts: ${entry.artifactDirs.join(", ") || "none"}`,
+    );
+    if (entry.reportMarkdownPath) lines.push(`- Report: ${entry.reportMarkdownPath}`);
+    if (entry.ciSummaryMarkdownPath) lines.push(`- CI summary: ${entry.ciSummaryMarkdownPath}`);
+    if (entry.artifactValidationMarkdownPath) {
+      lines.push(`- Artifact validation: ${entry.artifactValidationMarkdownPath}`);
+    }
+    lines.push("");
   }
   return `${lines.join("\n")}\n`;
 }

@@ -7,6 +7,7 @@ import {
   buildHarnessReport,
   buildHarnessCatalog,
   buildHarnessDoctorReport,
+  buildHarnessArtifactHistory,
   formatHarnessListLine,
   archiveHarnessArtifacts,
   inspectHarnessCatalog,
@@ -14,6 +15,7 @@ import {
   parseHarnessCliArgs,
   pruneHarnessArtifactSnapshots,
   selectHarnessScenarios,
+  writeHarnessArtifactHistoryReport,
   writeHarnessArtifactRetentionReport,
   writeHarnessCatalog,
   validateHarnessArtifactBundle,
@@ -506,6 +508,27 @@ describe("harness-core", () => {
       const markdown = readFileSync(paths.markdownPath, "utf8");
       expect(markdown).toContain("KEPT run-2: latest-failed");
       expect(markdown).toContain("DELETED run-1");
+
+      const history = buildHarnessArtifactHistory(report, "2026-05-02T00:02:00.000Z");
+      expect(history.latestStatus).toBe("passed");
+      expect(history.entries.map((entry) => entry.id)).toEqual(["run-4", "run-3", "run-2"]);
+      expect(history.entries.find((entry) => entry.id === "run-1")).toBeUndefined();
+      expect(history.entries.find((entry) => entry.id === "run-2")?.retentionReasons).toEqual([
+        "latest-failed",
+      ]);
+      expect(history.entries[0]?.reportMarkdownPath).toBe(
+        join(archiveRoot, "run-4", "harness-report", "report.md"),
+      );
+
+      const historyPaths = writeHarnessArtifactHistoryReport(
+        join(artifactRoot, "harness-report"),
+        history,
+      );
+      const historyMarkdown = readFileSync(historyPaths.markdownPath, "utf8");
+      expect(historyMarkdown).toContain("# Harness Artifact History");
+      expect(historyMarkdown).toContain("### run-4");
+      expect(historyMarkdown).toContain(`Report: ${join(archiveRoot, "run-4", "harness-report", "report.md")}`);
+      expect(historyMarkdown).not.toContain("### run-1");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
