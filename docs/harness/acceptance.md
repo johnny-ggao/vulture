@@ -109,7 +109,11 @@ same contract as the product harnesses.
 It removes stale CI harness artifact directories at the start of the run,
 executes each harness step, keeps going after a failed step when later steps can
 still produce diagnostic artifacts, and exits non-zero only after writing a
-fresh `.artifacts/harness-report/ci-summary.json` and `ci-summary.md`.
+fresh `.artifacts/harness-report/ci-summary.json` and `ci-summary.md`. At the
+end of the run it snapshots the current CI artifact bundle into
+`.artifacts/harness-runs/`, keeps the latest five snapshots plus the latest
+passed and failed snapshots, and writes a retention report. Set
+`VULTURE_HARNESS_RETENTION_KEEP_LAST=<n>` to change the recent snapshot count.
 
 By default the harness uses the gateway's stub LLM path so it stays
 deterministic and does not spend API tokens. Set `VULTURE_ACCEPTANCE_REAL_LLM=1`
@@ -242,6 +246,25 @@ that lane is manually dispatched. Failed checks include the artifact path plus
 expected, actual, hint, and a copy-paste command when the validator can identify
 a concrete mismatch.
 
+### Artifact Retention
+
+`harness:ci` archives the latest CI bundle after final artifact validation. The
+snapshot lives under `.artifacts/harness-runs/<run-id>/` and includes the current
+runtime, tool contract, acceptance, catalog, and report directories. Each
+snapshot includes `retention-manifest.json` with the run id, status, timestamp,
+source root, and copied artifact directories.
+
+The retention policy keeps:
+
+- the latest `VULTURE_HARNESS_RETENTION_KEEP_LAST` snapshots, defaulting to `5`;
+- the latest passed snapshot;
+- the latest failed snapshot.
+
+Older snapshots are removed after the new snapshot is written. The current run
+also writes `.artifacts/harness-report/retention.json` and `retention.md`, which
+list kept and deleted snapshots plus deletion errors if cleanup could not remove
+an old snapshot.
+
 Negative artifact fixtures live in the `@vulture/harness-core` tests. They
 intentionally corrupt manifests, JUnit counts, doctor checks, aggregate reports,
 and CI summaries to verify failure diagnostics without shipping a default
@@ -282,7 +305,9 @@ and uploads a `harness-artifacts` bundle on every run. The bundle contains:
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
 reports, aggregate `harness-report/report.md`, CI summary, and artifact
-validation report together for CI triage. GitHub retains the bundle for 14 days.
+validation and retention reports together for CI triage. GitHub retains the
+uploaded bundle for 14 days. Local historical snapshots live under
+`.artifacts/harness-runs/` and are governed by the retention policy above.
 
 Manual GitHub Actions runs can also execute the desktop E2E smoke lane without
 changing the default PR/push CI path:

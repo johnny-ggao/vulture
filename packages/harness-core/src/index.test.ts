@@ -1,17 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   buildHarnessSummary,
   buildHarnessReport,
   buildHarnessCatalog,
   buildHarnessDoctorReport,
   formatHarnessListLine,
+  archiveHarnessArtifacts,
   inspectHarnessCatalog,
   inspectHarnessCatalogLanes,
   parseHarnessCliArgs,
+  pruneHarnessArtifactSnapshots,
   selectHarnessScenarios,
+  writeHarnessArtifactRetentionReport,
   writeHarnessCatalog,
   validateHarnessArtifactBundle,
   writeHarnessArtifactValidationReport,
@@ -448,6 +451,65 @@ describe("harness-core", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("archives harness artifacts and prunes old snapshots by policy", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-retention-"));
+    try {
+      const artifactRoot = join(root, "current");
+      const archiveRoot = join(root, "harness-runs");
+      writeFile(join(artifactRoot, "runtime-harness", "manifest.json"));
+      writeFile(join(artifactRoot, "harness-report", "ci-summary.json"));
+
+      archiveHarnessArtifacts({
+        artifactRoot,
+        archiveRoot,
+        runId: "run-1",
+        status: "passed",
+        generatedAt: "2026-05-02T00:00:01.000Z",
+      });
+      archiveHarnessArtifacts({
+        artifactRoot,
+        archiveRoot,
+        runId: "run-2",
+        status: "failed",
+        generatedAt: "2026-05-02T00:00:02.000Z",
+      });
+      archiveHarnessArtifacts({
+        artifactRoot,
+        archiveRoot,
+        runId: "run-3",
+        status: "passed",
+        generatedAt: "2026-05-02T00:00:03.000Z",
+      });
+      const latest = archiveHarnessArtifacts({
+        artifactRoot,
+        archiveRoot,
+        runId: "run-4",
+        status: "passed",
+        generatedAt: "2026-05-02T00:00:04.000Z",
+      });
+
+      expect(existsSync(join(latest.path, "runtime-harness", "manifest.json"))).toBe(true);
+
+      const report = pruneHarnessArtifactSnapshots({
+        archiveRoot,
+        generatedAt: "2026-05-02T00:01:00.000Z",
+        policy: { keepLast: 2, keepLatestPassed: true, keepLatestFailed: true },
+      });
+      expect(report.status).toBe("passed");
+      expect(report.kept.map((entry) => entry.id).sort()).toEqual(["run-2", "run-3", "run-4"]);
+      expect(report.deleted.map((entry) => entry.id)).toEqual(["run-1"]);
+      expect(existsSync(join(archiveRoot, "run-1"))).toBe(false);
+      expect(existsSync(join(archiveRoot, "run-2"))).toBe(true);
+
+      const paths = writeHarnessArtifactRetentionReport(join(artifactRoot, "harness-report"), report);
+      const markdown = readFileSync(paths.markdownPath, "utf8");
+      expect(markdown).toContain("KEPT run-2: latest-failed");
+      expect(markdown).toContain("DELETED run-1");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 function reportFixtureManifest(lane: "runtime" | "tool-contract" | "acceptance" | "desktop-e2e") {
@@ -514,4 +576,9 @@ function writeValidArtifactBundle(root: string) {
 
 function mutateJson(path: string, mutate: (value: any) => any): void {
   writeFileSync(path, `${JSON.stringify(mutate(JSON.parse(readFileSync(path, "utf8"))), null, 2)}\n`);
+}
+
+function writeFile(path: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, "ok\n");
 }

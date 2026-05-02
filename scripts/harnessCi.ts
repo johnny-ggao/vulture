@@ -2,8 +2,11 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
+  DEFAULT_HARNESS_ARTIFACT_DIRS,
   findHarnessRepoRoot,
+  retainHarnessArtifacts,
   validateHarnessArtifactBundle,
+  writeHarnessArtifactRetentionReport,
   writeHarnessArtifactValidationReport,
 } from "../packages/harness-core/src/index";
 
@@ -37,11 +40,7 @@ export interface HarnessCiSummary {
 export type HarnessCiStepRunner = (step: HarnessCiStep, cwd: string) => HarnessCiStepResult;
 
 const CI_ARTIFACT_DIRS = [
-  "runtime-harness",
-  "tool-contract-harness",
-  "acceptance",
-  "harness-catalog",
-  "harness-report",
+  ...DEFAULT_HARNESS_ARTIFACT_DIRS,
 ];
 
 export const HARNESS_CI_STEPS: HarnessCiStep[] = [
@@ -141,13 +140,42 @@ async function main(): Promise<void> {
   console.log(`Final artifact validation: ${finalArtifactReport.status}`);
   console.log(`Final artifact validation JSON: ${finalArtifactPaths.jsonPath}`);
   console.log(`Final artifact validation Markdown: ${finalArtifactPaths.markdownPath}`);
-  if (summary.status === "failed" || finalArtifactReport.status === "failed") process.exitCode = 1;
+
+  const finalStatus = summary.status === "failed" || finalArtifactReport.status === "failed"
+    ? "failed"
+    : "passed";
+  const retentionReport = retainHarnessArtifacts({
+    artifactRoot,
+    status: finalStatus,
+    generatedAt: summary.generatedAt,
+    policy: {
+      keepLast: harnessRetentionKeepLast(process.env),
+      artifactDirNames: CI_ARTIFACT_DIRS,
+    },
+  });
+  const retentionPaths = writeHarnessArtifactRetentionReport(
+    join(artifactRoot, "harness-report"),
+    retentionReport,
+  );
+  console.log(`Artifact retention: ${retentionReport.status}`);
+  console.log(`Artifact snapshots kept/deleted: ${retentionReport.kept.length}/${retentionReport.deleted.length}`);
+  console.log(`Artifact retention JSON: ${retentionPaths.jsonPath}`);
+  console.log(`Artifact retention Markdown: ${retentionPaths.markdownPath}`);
+  if (finalStatus === "failed" || retentionReport.status === "failed") process.exitCode = 1;
 }
 
 export function cleanHarnessCiArtifacts(artifactRoot: string): void {
   for (const dirName of CI_ARTIFACT_DIRS) {
     rmSync(join(artifactRoot, dirName), { recursive: true, force: true });
   }
+}
+
+export function harnessRetentionKeepLast(env: Record<string, string | undefined>): number {
+  const raw = env.VULTURE_HARNESS_RETENTION_KEEP_LAST?.trim();
+  if (!raw) return 5;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return 5;
+  return Math.floor(parsed);
 }
 
 export function runHarnessCiSteps(

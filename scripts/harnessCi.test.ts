@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import {
   buildHarnessCiSummary,
   cleanHarnessCiArtifacts,
+  harnessRetentionKeepLast,
   runHarnessCiStep,
   runHarnessCiSteps,
   writeHarnessCiSummary,
@@ -105,6 +106,7 @@ describe("harness CI orchestrator", () => {
       writeFile(join(root, "acceptance", "manifest.json"));
       writeFile(join(root, "harness-catalog", "doctor.json"));
       writeFile(join(root, "harness-report", "report.json"));
+      writeFile(join(root, "harness-runs", "run-1", "retention-manifest.json"));
       writeFile(join(root, "desktop-e2e", "summary.json"));
 
       cleanHarnessCiArtifacts(root);
@@ -114,10 +116,19 @@ describe("harness CI orchestrator", () => {
       expect(existsSync(join(root, "acceptance"))).toBe(false);
       expect(existsSync(join(root, "harness-catalog"))).toBe(false);
       expect(existsSync(join(root, "harness-report"))).toBe(false);
+      expect(existsSync(join(root, "harness-runs", "run-1", "retention-manifest.json"))).toBe(true);
       expect(existsSync(join(root, "desktop-e2e", "summary.json"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("parses retention keep-last environment values conservatively", () => {
+    expect(harnessRetentionKeepLast({})).toBe(5);
+    expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "2" })).toBe(2);
+    expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "2.9" })).toBe(2);
+    expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "-1" })).toBe(5);
+    expect(harnessRetentionKeepLast({ VULTURE_HARNESS_RETENTION_KEEP_LAST: "bad" })).toBe(5);
   });
 });
 
