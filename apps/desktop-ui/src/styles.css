@@ -2088,7 +2088,7 @@ pre {
 
 .tool-block {
   position: relative;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   overflow: hidden;
@@ -2489,9 +2489,12 @@ pre {
   display: grid;
   gap: 4px;
   background: var(--bg-primary);
-  border: 1px solid color-mix(in oklab, var(--warning) 18%, transparent);
+  /* Hairline 0.5px edge tinted with the warning tone — keeps the
+   * "this needs your attention" cue without imposing a heavy 1px
+   * frame around the preview. */
+  border: 0.5px solid color-mix(in oklab, var(--warning) 22%, var(--glass-border));
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 .approval-card-preview-label {
   font-size: 11px;
@@ -2522,11 +2525,25 @@ pre {
   color: var(--brand-600);
   font-size: 11.5px;
   font-weight: 500;
-  padding: 2px 0;
+  padding: 2px 6px;
+  margin-left: -6px; /* visually align with the panel's content edge */
+  border-radius: var(--radius-xs);
   cursor: pointer;
   min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
-.approval-card-preview-toggle:hover { text-decoration: underline; }
+.approval-card-preview-toggle:hover {
+  background: var(--brand-050);
+  text-decoration: underline;
+}
+.approval-card-preview-toggle:active { background: color-mix(in oklab, var(--brand-500) 14%, transparent); }
+.approval-card-preview-toggle:focus-visible {
+  outline: 0;
+  background: var(--brand-050);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 
 .approval-card-actions {
   display: flex;
@@ -2648,12 +2665,13 @@ pre {
 /* ----- Recovery card -------------------------------------------- */
 
 .recovery-card {
-  border: 1px solid color-mix(in oklab, var(--info) 32%, transparent);
+  border: 0.5px solid color-mix(in oklab, var(--info) 36%, var(--glass-border));
   background: var(--info-bg);
   border-radius: var(--radius-md);
   padding: 12px 14px;
   display: grid;
   gap: 8px;
+  box-shadow: var(--shadow-card-rest);
 }
 .recovery-card-header {
   display: inline-flex;
@@ -2728,7 +2746,7 @@ pre {
   gap: 10px;
   align-items: start;
   padding: 12px 14px;
-  border: 1px solid color-mix(in oklab, var(--danger) 32%, transparent);
+  border: 0.5px solid color-mix(in oklab, var(--danger) 36%, var(--glass-border));
   background: var(--danger-bg);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card-rest);
