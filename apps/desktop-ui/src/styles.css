@@ -1913,11 +1913,20 @@ pre {
 }
 .agent-picker-trigger:hover {
   border-color: var(--text-quaternary);
+  background: var(--fill-quaternary);
   color: var(--text-primary);
+}
+.agent-picker-trigger:active {
+  background: var(--fill-tertiary);
 }
 .agent-picker-trigger:focus-visible {
   outline: 0;
+  border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.agent-picker-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .agent-picker-trigger[aria-expanded="true"] {
   border-color: var(--brand-500);
@@ -8244,16 +8253,18 @@ pre {
   margin-bottom: 16px;
 }
 .run-logs-header h2 {
-  font-size: 18px;
+  font-size: var(--text-lg);
   font-weight: 600;
+  letter-spacing: -0.012em;
   color: var(--text-primary);
   margin: 0;
 }
 .run-logs-header p {
-  margin: 5px 0 0;
+  margin: 4px 0 0;
   max-width: 560px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-sm);
+  line-height: 1.45;
 }
 .run-logs-toolbar {
   display: flex;
@@ -8292,17 +8303,28 @@ pre {
   gap: 8px 12px;
   align-items: center;
   text-align: left;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   background: var(--bg-primary);
   border-radius: var(--radius-md);
   padding: 12px;
   margin-bottom: 8px;
   color: var(--text-primary);
+  box-shadow: var(--shadow-card-rest);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 .run-log-row:hover,
 .run-log-row-active {
-  border-color: var(--brand-400);
+  border-color: color-mix(in oklab, var(--brand-500) 24%, var(--glass-border));
   background: var(--bg-secondary);
+  box-shadow: var(--shadow-card-hover);
+}
+.run-log-row:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .run-log-status {
   display: inline-flex;
@@ -8312,22 +8334,30 @@ pre {
   height: 24px;
   border-radius: var(--radius-sm);
   font-size: 12px;
+  font-weight: 500;
   color: var(--text-secondary);
   background: var(--fill-quaternary);
+  border: 0.5px solid transparent;
 }
+/* Status palette uses semantic tokens so dark mode picks the
+ * lifted variants automatically. The 0.5px border tints with the
+ * tone so the pill feels carved instead of a flat fill. */
 .run-log-status-succeeded {
-  color: #166534;
-  background: #dcfce7;
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: color-mix(in oklab, var(--success) 22%, transparent);
 }
 .run-log-status-failed {
-  color: #991b1b;
-  background: #fee2e2;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: color-mix(in oklab, var(--danger) 28%, transparent);
 }
 .run-log-status-running,
 .run-log-status-queued,
 .run-log-status-recoverable {
-  color: #854d0e;
-  background: #fef3c7;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: color-mix(in oklab, var(--warning) 24%, transparent);
 }
 .run-log-status-cancelled {
   color: var(--text-tertiary);
