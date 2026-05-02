@@ -11,8 +11,14 @@ const session: SubagentSessionDto = {
   agentId: "researcher",
   conversationId: "c-child",
   label: "Researcher",
+  title: "Inspect dependency options",
+  task: "Compare the supported approaches and call out the best fit.",
   status: "active",
   messageCount: 2,
+  resultSummary: null,
+  resultMessageId: null,
+  completedAt: null,
+  lastError: null,
   createdAt: "2026-04-30T00:00:00.000Z",
   updatedAt: "2026-04-30T00:01:00.000Z",
 };
@@ -37,7 +43,7 @@ const messages: MessageDto[] = [
 ];
 
 describe("SubagentSessionPanel", () => {
-  test("renders session status and message count", () => {
+  test("renders product-facing subtask title and task", () => {
     render(
       <SubagentSessionPanel
         sessions={[session]}
@@ -47,10 +53,52 @@ describe("SubagentSessionPanel", () => {
       />,
     );
 
-    expect(screen.getByText("子智能体")).toBeDefined();
-    expect(screen.getByText("Researcher")).toBeDefined();
+    expect(screen.getByText("子任务")).toBeDefined();
+    expect(screen.getByText("Inspect dependency options")).toBeDefined();
+    expect(screen.getByText("Compare the supported approaches and call out the best fit.")).toBeDefined();
     expect(screen.getByText("运行中")).toBeDefined();
-    expect(screen.getByText(/2 条消息/)).toBeDefined();
+    expect(screen.queryByText(/2 条消息/)).toBeNull();
+  });
+
+  test("renders completed result summary without expansion", () => {
+    render(
+      <SubagentSessionPanel
+        sessions={[
+          {
+            ...session,
+            status: "completed",
+            resultSummary: "The SDK manager pattern is the best fit.",
+            completedAt: "2026-04-30T00:02:00.000Z",
+          },
+        ]}
+        messagesBySessionId={{}}
+        loadingSessionIds={new Set()}
+        onLoadMessages={async () => {}}
+      />,
+    );
+
+    expect(screen.getByText("已完成")).toBeDefined();
+    expect(screen.getByText("The SDK manager pattern is the best fit.")).toBeDefined();
+  });
+
+  test("renders failed error without expansion", () => {
+    render(
+      <SubagentSessionPanel
+        sessions={[
+          {
+            ...session,
+            status: "failed",
+            lastError: "child exploded",
+          },
+        ]}
+        messagesBySessionId={{}}
+        loadingSessionIds={new Set()}
+        onLoadMessages={async () => {}}
+      />,
+    );
+
+    expect(screen.getByText("失败")).toBeDefined();
+    expect(screen.getByText("child exploded")).toBeDefined();
   });
 
   test("loads and renders child messages when expanded", async () => {
@@ -69,7 +117,7 @@ describe("SubagentSessionPanel", () => {
     }
 
     render(<Harness />);
-    fireEvent.click(screen.getByRole("button", { name: /Researcher/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Inspect dependency options/ }));
 
     await waitFor(() => expect(loads).toEqual(["sub-1"]));
     expect(screen.getByText("find context")).toBeDefined();

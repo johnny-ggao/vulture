@@ -24,11 +24,11 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
   if (props.sessions.length === 0) return null;
 
   return (
-    <section className="subagent-panel" aria-label="子智能体会话">
+    <section className="subagent-panel" aria-label="子任务">
       <header className="subagent-panel-head">
         <div>
-          <h3>子智能体</h3>
-          <p>{props.sessions.length} 个会话</p>
+          <h3>子任务</h3>
+          <p>{props.sessions.length} 个任务</p>
         </div>
       </header>
       <div className="subagent-list">
@@ -36,6 +36,9 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
           const open = expanded.has(session.id);
           const messages = props.messagesBySessionId[session.id] ?? [];
           const loading = props.loadingSessionIds.has(session.id);
+          const title = session.title || session.label || session.agentId;
+          const secondary = session.task || `${session.agentId} · ${formatMessageCount(session.messageCount)}`;
+          const detail = statusDetail(session);
           const subagent = {
             id: session.agentId,
             name: session.label || session.agentId,
@@ -64,10 +67,9 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
                   <AgentAvatar agent={subagent} size={22} shape="square" />
                 </span>
                 <span className="subagent-main">
-                  <strong>{subagent.name}</strong>
-                  <span>
-                    {session.agentId} · {formatMessageCount(session.messageCount)}
-                  </span>
+                  <strong>{title}</strong>
+                  <span className="subagent-secondary">{secondary}</span>
+                  {detail ? <span className={`subagent-detail ${session.status}`}>{detail}</span> : null}
                 </span>
                 <span className={`subagent-status ${session.status}`}>
                   {statusLabel(session.status)}
@@ -93,6 +95,16 @@ export function SubagentSessionPanel(props: SubagentSessionPanelProps) {
       </div>
     </section>
   );
+}
+
+function statusDetail(session: SubagentSessionDto): string | null {
+  if (session.status === "completed" && session.resultSummary) {
+    return session.resultSummary;
+  }
+  if ((session.status === "failed" || session.status === "cancelled") && session.lastError) {
+    return session.lastError;
+  }
+  return null;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
