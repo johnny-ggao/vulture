@@ -305,6 +305,36 @@ pre {
 }
 
 /* ============================================================
+ * macOS overlay scrollbars
+ *
+ * Tauri's WebKit defaults to chunky always-visible scrollbars
+ * which clash with the rest of the chrome. These rules emulate
+ * the macOS "Show scroll bars: When scrolling" overlay style:
+ * thin (8px), translucent thumb that picks up the surrounding
+ * fill tones, transparent track. Falls back to Firefox's
+ * `scrollbar-color` for non-WebKit. Long-form content surfaces
+ * (`pre.tool-block-pre`, `.cmdk-list`, message body) inherit
+ * these globally because every overflow container in the app
+ * wants the same look.
+ * ============================================================ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--fill-secondary) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--fill-tertiary);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 24px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--fill-secondary); background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:active { background: var(--fill-primary); background-clip: padding-box; }
+*::-webkit-scrollbar-corner { background: transparent; }
+
+/* ============================================================
  * App shell — rounded window with absolute titlebar overlay
  * ============================================================ */
 
