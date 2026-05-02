@@ -8,6 +8,7 @@ import {
   buildHarnessCatalog,
   buildHarnessDoctorReport,
   buildHarnessArtifactHistory,
+  buildHarnessBundleManifest,
   buildHarnessTriageReport,
   formatHarnessListLine,
   archiveHarnessArtifacts,
@@ -18,6 +19,7 @@ import {
   selectHarnessScenarios,
   writeHarnessArtifactHistoryReport,
   writeHarnessArtifactRetentionReport,
+  writeHarnessBundleManifestReport,
   writeHarnessTriageReport,
   writeHarnessCatalog,
   validateHarnessArtifactBundle,
@@ -333,6 +335,59 @@ describe("harness-core", () => {
       const paths = writeHarnessArtifactValidationReport(join(root, "harness-report"), report);
       expect(paths.jsonPath).toBe(join(root, "harness-report", "artifact-validation.json"));
       expect(readFileSync(paths.markdownPath, "utf8")).toContain("PASSED harness-report");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("builds, writes, and validates a bundle manifest", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-bundle-"));
+    try {
+      writeValidArtifactBundle(root);
+      writeFile(join(root, "harness-report", "artifact-validation.json"));
+      writeFile(join(root, "harness-report", "triage.json"));
+      writeFile(join(root, "harness-report", "retention.json"));
+      writeFile(join(root, "harness-report", "history.json"));
+
+      const manifest = buildHarnessBundleManifest({
+        artifactRoot: root,
+        generatedAt: "2026-05-02T00:05:00.000Z",
+      });
+      expect(manifest.fileCount).toBeGreaterThan(0);
+      expect(manifest.files.some((file) => file.path === "runtime-harness/manifest.json")).toBe(true);
+      expect(manifest.files.every((file) => /^[a-f0-9]{64}$/.test(file.sha256))).toBe(true);
+      expect(
+        manifest.requiredFiles.find((file) => file.path === "harness-report/bundle-manifest.json")?.status,
+      ).toBe("missing");
+
+      const paths = writeHarnessBundleManifestReport(join(root, "harness-report"), manifest);
+      expect(paths.jsonPath).toBe(join(root, "harness-report", "bundle-manifest.json"));
+      expect(readFileSync(paths.markdownPath, "utf8")).toContain("# Harness Bundle Manifest");
+      expect(
+        JSON.parse(readFileSync(paths.jsonPath, "utf8")).requiredFiles.find(
+          (file: { path: string }) => file.path === "harness-report/bundle-manifest.json",
+        ).status,
+      ).toBe("present");
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:06:00.000Z", {
+        requireBundleManifest: true,
+      });
+      expect(report.checks.find((check) => check.id === "bundle-manifest")?.status).toBe("passed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("requires bundle manifest during final artifact validation", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-bundle-"));
+    try {
+      writeValidArtifactBundle(root);
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:06:00.000Z", {
+        requireBundleManifest: true,
+      });
+      const check = report.checks.find((item) => item.id === "bundle-manifest");
+      expect(check?.status).toBe("failed");
+      expect(check?.command).toBe("bun run harness:ci");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

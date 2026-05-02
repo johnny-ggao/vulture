@@ -259,9 +259,26 @@ that lane is manually dispatched. Failed checks include the artifact path plus
 expected, actual, hint, and a copy-paste command when the validator can identify
 a concrete mismatch.
 
+During `harness:ci`, the final artifact validation also requires a bundle
+manifest and checks its schema. The standalone `bun run harness:artifacts`
+command remains usable before the bundle manifest exists.
+
+### Bundle Manifest
+
+At the end of `harness:ci`, the harness writes:
+
+- `bundle-manifest.json` - machine-readable artifact file inventory.
+- `bundle-manifest.md` - human-readable file inventory.
+
+The bundle manifest enumerates the current CI artifact directories, records each
+file path, size, modification time, and SHA-256 hash, and marks required files as
+present or missing. The manifest excludes its own JSON and Markdown files from
+the file hash list to avoid a self-hash loop, but final artifact validation still
+requires `harness-report/bundle-manifest.json` to exist and have a valid schema.
+
 ### Artifact Retention
 
-`harness:ci` archives the latest CI bundle after final artifact validation. The
+`harness:ci` archives the latest CI bundle after failure triage. The
 snapshot lives under `.artifacts/harness-runs/<run-id>/` and includes the current
 runtime, tool contract, acceptance, catalog, and report directories. Each
 snapshot includes `retention-manifest.json` with the run id, status, timestamp,
@@ -324,7 +341,7 @@ and uploads a `harness-artifacts` bundle on every run. The bundle contains:
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
 reports, aggregate `harness-report/report.md`, CI summary, failure triage,
-artifact validation, retention, and history reports together for CI triage. GitHub retains the
+artifact validation, retention, history, and bundle manifest reports together for CI triage. GitHub retains the
 uploaded bundle for 14 days. Local historical snapshots live under
 `.artifacts/harness-runs/` and are governed by the retention policy above.
 

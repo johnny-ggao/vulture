@@ -4,11 +4,13 @@ import { join, resolve } from "node:path";
 import {
   DEFAULT_HARNESS_ARTIFACT_DIRS,
   buildHarnessArtifactHistory,
+  buildHarnessBundleManifest,
   buildHarnessTriageReport,
   findHarnessRepoRoot,
   retainHarnessArtifacts,
   validateHarnessArtifactBundle,
   writeHarnessArtifactHistoryReport,
+  writeHarnessBundleManifestReport,
   writeHarnessArtifactRetentionReport,
   writeHarnessArtifactValidationReport,
   writeHarnessTriageReport,
@@ -137,22 +139,22 @@ async function main(): Promise<void> {
   console.log(`CI summary JSON: ${paths.jsonPath}`);
   console.log(`CI summary Markdown: ${paths.markdownPath}`);
 
-  const finalArtifactReport = validateHarnessArtifactBundle(artifactRoot);
-  const finalArtifactPaths = writeHarnessArtifactValidationReport(
+  const artifactReport = validateHarnessArtifactBundle(artifactRoot);
+  const artifactPaths = writeHarnessArtifactValidationReport(
     join(artifactRoot, "harness-report"),
-    finalArtifactReport,
+    artifactReport,
   );
-  console.log(`Final artifact validation: ${finalArtifactReport.status}`);
-  console.log(`Final artifact validation JSON: ${finalArtifactPaths.jsonPath}`);
-  console.log(`Final artifact validation Markdown: ${finalArtifactPaths.markdownPath}`);
+  console.log(`Artifact validation: ${artifactReport.status}`);
+  console.log(`Artifact validation JSON: ${artifactPaths.jsonPath}`);
+  console.log(`Artifact validation Markdown: ${artifactPaths.markdownPath}`);
 
-  const finalStatus = summary.status === "failed" || finalArtifactReport.status === "failed"
+  const runStatus = summary.status === "failed" || artifactReport.status === "failed"
     ? "failed"
     : "passed";
   const triage = buildHarnessTriageReport({
     ciSteps: summary.steps,
     harnessReport: readHarnessReport(join(artifactRoot, "harness-report", "report.json")),
-    artifactValidationReport: finalArtifactReport,
+    artifactValidationReport: artifactReport,
     generatedAt: summary.generatedAt,
   });
   const triagePaths = writeHarnessTriageReport(join(artifactRoot, "harness-report"), triage);
@@ -163,7 +165,7 @@ async function main(): Promise<void> {
 
   const retentionReport = retainHarnessArtifacts({
     artifactRoot,
-    status: finalStatus,
+    status: runStatus,
     generatedAt: summary.generatedAt,
     policy: {
       keepLast: harnessRetentionKeepLast(process.env),
@@ -187,7 +189,39 @@ async function main(): Promise<void> {
   console.log(`Artifact history snapshots: ${history.total}`);
   console.log(`Artifact history JSON: ${historyPaths.jsonPath}`);
   console.log(`Artifact history Markdown: ${historyPaths.markdownPath}`);
-  if (finalStatus === "failed" || retentionReport.status === "failed") process.exitCode = 1;
+
+  let bundleManifest = buildHarnessBundleManifest({
+    artifactRoot,
+    generatedAt: summary.generatedAt,
+    artifactDirNames: CI_ARTIFACT_DIRS,
+  });
+  let bundlePaths = writeHarnessBundleManifestReport(
+    join(artifactRoot, "harness-report"),
+    bundleManifest,
+  );
+  const finalArtifactReport = validateHarnessArtifactBundle(artifactRoot, summary.generatedAt, {
+    requireBundleManifest: true,
+  });
+  const finalArtifactPaths = writeHarnessArtifactValidationReport(
+    join(artifactRoot, "harness-report"),
+    finalArtifactReport,
+  );
+  bundleManifest = buildHarnessBundleManifest({
+    artifactRoot,
+    generatedAt: summary.generatedAt,
+    artifactDirNames: CI_ARTIFACT_DIRS,
+  });
+  bundlePaths = writeHarnessBundleManifestReport(
+    join(artifactRoot, "harness-report"),
+    bundleManifest,
+  );
+  console.log(`Final artifact validation: ${finalArtifactReport.status}`);
+  console.log(`Final artifact validation JSON: ${finalArtifactPaths.jsonPath}`);
+  console.log(`Final artifact validation Markdown: ${finalArtifactPaths.markdownPath}`);
+  console.log(`Bundle manifest files: ${bundleManifest.fileCount}`);
+  console.log(`Bundle manifest JSON: ${bundlePaths.jsonPath}`);
+  console.log(`Bundle manifest Markdown: ${bundlePaths.markdownPath}`);
+  if (runStatus === "failed" || retentionReport.status === "failed" || finalArtifactReport.status === "failed") process.exitCode = 1;
 }
 
 export function cleanHarnessCiArtifacts(artifactRoot: string): void {

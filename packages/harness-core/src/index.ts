@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 
 export type HarnessLane =
@@ -184,6 +185,50 @@ export const DEFAULT_HARNESS_ARTIFACT_DIRS = [
   "harness-catalog",
   "harness-report",
 ] as const;
+
+export const DEFAULT_HARNESS_BUNDLE_REQUIRED_FILES = [
+  "runtime-harness/manifest.json",
+  "runtime-harness/junit.xml",
+  "tool-contract-harness/manifest.json",
+  "tool-contract-harness/junit.xml",
+  "acceptance/manifest.json",
+  "acceptance/junit.xml",
+  "harness-catalog/catalog.json",
+  "harness-catalog/doctor.json",
+  "harness-report/report.json",
+  "harness-report/ci-summary.json",
+  "harness-report/artifact-validation.json",
+  "harness-report/triage.json",
+  "harness-report/retention.json",
+  "harness-report/history.json",
+  "harness-report/bundle-manifest.json",
+] as const;
+
+export interface HarnessArtifactValidationOptions {
+  requireBundleManifest?: boolean;
+}
+
+export interface HarnessBundleManifestFile {
+  path: string;
+  sizeBytes: number;
+  mtimeMs: number;
+  sha256: string;
+}
+
+export interface HarnessBundleRequiredFile {
+  path: string;
+  status: "present" | "missing";
+}
+
+export interface HarnessBundleManifest {
+  schemaVersion: 1;
+  generatedAt: string;
+  artifactRoot: string;
+  fileCount: number;
+  totalBytes: number;
+  requiredFiles: HarnessBundleRequiredFile[];
+  files: HarnessBundleManifestFile[];
+}
 
 export interface HarnessArtifactRetentionPolicy {
   keepLast: number;
@@ -599,6 +644,7 @@ export function writeHarnessReport(
 export function validateHarnessArtifactBundle(
   artifactRoot: string,
   generatedAt = new Date().toISOString(),
+  options: HarnessArtifactValidationOptions = {},
 ): HarnessArtifactValidationReport {
   const checks: HarnessArtifactValidationCheck[] = [];
   const manifests = new Map<HarnessLane, HarnessArtifactManifest>();
@@ -656,6 +702,10 @@ export function validateHarnessArtifactBundle(
   checks.push(validateDoctorFile(join(artifactRoot, "harness-catalog", "doctor.json"), doctor));
   checks.push(validateReportFile(join(artifactRoot, "harness-report", "report.json"), manifests, doctor));
   checks.push(validateCiSummaryFile(join(artifactRoot, "harness-report", "ci-summary.json")));
+  checks.push(validateBundleManifestFile(
+    join(artifactRoot, "harness-report", "bundle-manifest.json"),
+    options.requireBundleManifest ?? false,
+  ));
 
   return {
     schemaVersion: 1,
@@ -943,6 +993,52 @@ export function writeHarnessTriageReport(
   const markdownPath = join(artifactDir, "triage.md");
   writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
   writeFileSync(markdownPath, renderHarnessTriageMarkdown(report));
+  return { jsonPath, markdownPath };
+}
+
+export function buildHarnessBundleManifest(options: {
+  artifactRoot: string;
+  generatedAt?: string;
+  artifactDirNames?: readonly string[];
+  requiredFiles?: readonly string[];
+}): HarnessBundleManifest {
+  const artifactRoot = resolve(options.artifactRoot);
+  const artifactDirNames = options.artifactDirNames ?? DEFAULT_HARNESS_ARTIFACT_DIRS;
+  const requiredFilePaths = options.requiredFiles ?? DEFAULT_HARNESS_BUNDLE_REQUIRED_FILES;
+  const files = artifactDirNames
+    .flatMap((dirName) => listHarnessBundleFiles(artifactRoot, dirName))
+    .sort((left, right) => left.path.localeCompare(right.path, "en"));
+  return {
+    schemaVersion: 1,
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    artifactRoot,
+    fileCount: files.length,
+    totalBytes: files.reduce((total, file) => total + file.sizeBytes, 0),
+    requiredFiles: requiredFilePaths.map((path) => ({
+      path,
+      status: existsSync(join(artifactRoot, path)) ? "present" : "missing",
+    })),
+    files,
+  };
+}
+
+export function writeHarnessBundleManifestReport(
+  artifactDir: string,
+  manifest: HarnessBundleManifest,
+): { jsonPath: string; markdownPath: string } {
+  mkdirSync(artifactDir, { recursive: true });
+  const jsonPath = join(artifactDir, "bundle-manifest.json");
+  const markdownPath = join(artifactDir, "bundle-manifest.md");
+  const finalManifest: HarnessBundleManifest = {
+    ...manifest,
+    requiredFiles: manifest.requiredFiles.map((file) =>
+      file.path === "harness-report/bundle-manifest.json"
+        ? { ...file, status: "present" }
+        : file,
+    ),
+  };
+  writeFileSync(jsonPath, `${JSON.stringify(finalManifest, null, 2)}\n`);
+  writeFileSync(markdownPath, renderHarnessBundleManifestMarkdown(finalManifest));
   return { jsonPath, markdownPath };
 }
 
@@ -1299,6 +1395,34 @@ function renderHarnessTriageMarkdown(report: HarnessTriageReport): string {
   return `${lines.join("\n")}\n`;
 }
 
+function renderHarnessBundleManifestMarkdown(manifest: HarnessBundleManifest): string {
+  const missing = manifest.requiredFiles.filter((file) => file.status === "missing");
+  const lines = [
+    "# Harness Bundle Manifest",
+    "",
+    `Generated: ${manifest.generatedAt}`,
+    `Artifact root: ${manifest.artifactRoot}`,
+    `Files: ${manifest.fileCount}`,
+    `Bytes: ${manifest.totalBytes}`,
+    `Missing required files: ${missing.length}`,
+    "",
+    "## Required Files",
+    "",
+  ];
+  for (const file of manifest.requiredFiles) {
+    lines.push(`- ${file.status.toUpperCase()} ${file.path}`);
+  }
+  lines.push("", "## Files", "");
+  if (manifest.files.length === 0) {
+    lines.push("- None");
+  } else {
+    for (const file of manifest.files) {
+      lines.push(`- ${file.path} (${file.sizeBytes} bytes, sha256 ${file.sha256})`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function inspectCatalogRule(
   catalog: HarnessCatalog,
   rule: HarnessDoctorRule,
@@ -1503,6 +1627,53 @@ function sanitizeHarnessRunId(value: string): string {
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return sanitized || "harness-run";
+}
+
+function listHarnessBundleFiles(artifactRoot: string, dirName: string): HarnessBundleManifestFile[] {
+  const dir = join(artifactRoot, dirName);
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return [];
+  return listFilesRecursive(dir)
+    .filter((path) => {
+      const relative = relativeArtifactPath(artifactRoot, path);
+      return relative !== "harness-report/bundle-manifest.json" &&
+        relative !== "harness-report/bundle-manifest.md";
+    })
+    .map((path) => {
+      const stat = statSync(path);
+      return {
+        path: relativeArtifactPath(artifactRoot, path),
+        sizeBytes: stat.size,
+        mtimeMs: stat.mtimeMs,
+        sha256: sha256File(path),
+      };
+    });
+}
+
+function listFilesRecursive(dir: string): string[] {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listFilesRecursive(path));
+    } else if (entry.isFile()) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function relativeArtifactPath(root: string, path: string): string {
+  const normalizedRoot = resolve(root);
+  const normalizedPath = resolve(path);
+  const prefix = `${normalizedRoot}/`;
+  return normalizedPath.startsWith(prefix)
+    ? normalizedPath.slice(prefix.length)
+    : normalizedPath;
+}
+
+function sha256File(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
 function validationCheck(
@@ -1758,6 +1929,93 @@ function validateCiSummaryFile(path: string): HarnessArtifactValidationCheck {
     hint: "Open ci-summary.json and inspect the failed step accounting.",
     command: "bun run harness:ci",
   });
+}
+
+function validateBundleManifestFile(
+  path: string,
+  required: boolean,
+): HarnessArtifactValidationCheck {
+  const manifest = readJsonIfPresent<HarnessBundleManifest>(path);
+  if (!manifest) return validationCheck(
+    "bundle-manifest",
+    required ? "failed" : "passed",
+    required ? "bundle-manifest.json is missing or invalid JSON" : "bundle-manifest.json is not present",
+    path,
+    required
+      ? {
+          expected: "valid bundle-manifest.json",
+          actual: "missing or invalid JSON",
+          hint: "Run bun run harness:ci to generate the final bundle manifest.",
+          command: "bun run harness:ci",
+        }
+      : {},
+  );
+
+  const errors = validateBundleManifestShape(manifest);
+  return validationCheck(
+    "bundle-manifest",
+    errors.length === 0 ? "passed" : "failed",
+    errors.length === 0 ? "bundle manifest schema ok" : errors.join("; "),
+    path,
+    errors.length === 0
+      ? {}
+      : {
+          expected: "bundle manifest schema, required files, and file hashes to be internally consistent",
+          actual: errors.join("; "),
+          hint: "Regenerate the bundle manifest with bun run harness:ci.",
+          command: "bun run harness:ci",
+        },
+  );
+}
+
+function validateBundleManifestShape(manifest: HarnessBundleManifest): string[] {
+  const errors: string[] = [];
+  if (!isRecord(manifest)) return ["bundle manifest is not an object"];
+  if (manifest.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (typeof manifest.generatedAt !== "string" || !manifest.generatedAt) errors.push("generatedAt is required");
+  if (typeof manifest.artifactRoot !== "string" || !manifest.artifactRoot) errors.push("artifactRoot is required");
+  if (!Number.isInteger(manifest.fileCount) || manifest.fileCount < 0) errors.push("fileCount must be a non-negative integer");
+  if (!Number.isInteger(manifest.totalBytes) || manifest.totalBytes < 0) errors.push("totalBytes must be a non-negative integer");
+  if (!Array.isArray(manifest.requiredFiles)) {
+    errors.push("requiredFiles must be an array");
+  } else {
+    const requiredPaths = new Set(manifest.requiredFiles.map((file) => file.path));
+    for (const path of DEFAULT_HARNESS_BUNDLE_REQUIRED_FILES) {
+      if (!requiredPaths.has(path)) errors.push(`requiredFiles must include ${path}`);
+    }
+    for (const [index, file] of manifest.requiredFiles.entries()) {
+      if (!isRecord(file)) {
+        errors.push(`requiredFiles[${index}] must be an object`);
+        continue;
+      }
+      if (typeof file.path !== "string" || !file.path) errors.push(`requiredFiles[${index}].path is required`);
+      if (file.status !== "present" && file.status !== "missing") errors.push(`requiredFiles[${index}].status is invalid`);
+      if (file.status === "missing") errors.push(`required file missing: ${file.path}`);
+    }
+  }
+  if (!Array.isArray(manifest.files)) {
+    errors.push("files must be an array");
+  } else {
+    if (Number.isInteger(manifest.fileCount) && manifest.fileCount !== manifest.files.length) {
+      errors.push("fileCount must equal files length");
+    }
+    const totalBytes = manifest.files.reduce((total, file) => total + (Number.isInteger(file.sizeBytes) ? file.sizeBytes : 0), 0);
+    if (Number.isInteger(manifest.totalBytes) && manifest.totalBytes !== totalBytes) {
+      errors.push("totalBytes must equal summed file sizes");
+    }
+    for (const [index, file] of manifest.files.entries()) {
+      if (!isRecord(file)) {
+        errors.push(`files[${index}] must be an object`);
+        continue;
+      }
+      if (typeof file.path !== "string" || !file.path) errors.push(`files[${index}].path is required`);
+      if (!Number.isInteger(file.sizeBytes) || file.sizeBytes < 0) errors.push(`files[${index}].sizeBytes is invalid`);
+      if (typeof file.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(file.sha256)) {
+        errors.push(`files[${index}].sha256 is invalid`);
+      }
+    }
+  }
+  return errors;
 }
 
 function laneHarnessCommand(lane: HarnessLane): string {
