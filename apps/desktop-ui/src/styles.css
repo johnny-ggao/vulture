@@ -1747,6 +1747,7 @@ pre {
 /* ----- Tool block ------------------------------------------------ */
 
 .tool-block {
+  position: relative;
   border: 1px solid var(--fill-tertiary);
   border-radius: var(--radius-md);
   background: var(--bg-primary);
@@ -1756,9 +1757,38 @@ pre {
               box-shadow var(--duration-fast) var(--ease-out);
 }
 .tool-block:hover { border-color: var(--fill-secondary); }
-.tool-block-running { border-color: color-mix(in oklab, var(--info) 35%, var(--fill-tertiary)); }
-.tool-block-failed  { border-color: color-mix(in oklab, var(--danger) 32%, var(--fill-tertiary)); }
-.tool-block-completed { border-color: color-mix(in oklab, var(--success) 22%, var(--fill-tertiary)); }
+.tool-block-running {
+  border-color: color-mix(in oklab, var(--info) 35%, var(--fill-tertiary));
+}
+.tool-block-failed {
+  border-color: color-mix(in oklab, var(--danger) 32%, var(--fill-tertiary));
+}
+.tool-block-completed {
+  border-color: color-mix(in oklab, var(--success) 22%, var(--fill-tertiary));
+}
+/* Status accent stripe — a 2px column on the left edge that picks up
+ * the same colour as the border tint. Makes a stack of tool blocks
+ * scannable at a glance: which is active, which failed, which is done.
+ * Running breathes (1.5s) so the active block draws the eye even
+ * before the user reads the badge. */
+.tool-block::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: transparent;
+  pointer-events: none;
+}
+.tool-block-running::before  { background: var(--info);    animation: tool-block-pulse 1.5s var(--ease-standard) infinite; }
+.tool-block-failed::before   { background: var(--danger);  }
+.tool-block-completed::before { background: color-mix(in oklab, var(--success) 60%, transparent); }
+@keyframes tool-block-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-block-running::before { animation: none; opacity: 1; }
+}
 
 .tool-block-header {
   width: 100%;
@@ -1777,6 +1807,10 @@ pre {
   min-height: 44px; /* touch target floor */
 }
 .tool-block-header:hover { background: var(--fill-quaternary); }
+.tool-block-header:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: -2px;
+}
 .tool-block-chevron {
   display: inline-grid; place-items: center;
   color: var(--text-tertiary);
