@@ -1153,23 +1153,29 @@ pre {
 .md-content .md-h + * { margin-top: 6px; }
 .md-content .md-blockquote {
   margin: 0;
-  padding: 4px 0 4px 12px;
-  border-left: 3px solid var(--fill-secondary);
+  padding: 6px 12px 6px 14px;
+  /* 2px brand-tinted bar matches the run-stream's status accent
+   * stripe — quotes thus feel like a "voice" callout rather than a
+   * heavy 3px gray line. Soft brand-050 backplate adds the second
+   * cue (color-not-only) without colliding with body text. */
+  border-left: 2px solid color-mix(in oklab, var(--brand-500) 55%, transparent);
+  background: var(--brand-050);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--text-secondary);
   font-style: normal;
   white-space: pre-wrap;
 }
 .md-content .md-hr {
   border: 0;
-  border-top: 1px solid var(--fill-tertiary);
-  margin: 6px 0;
+  border-top: 0.5px solid var(--glass-border);
+  margin: 8px 0;
 }
 /* GFM tables — sit inside a scroll wrapper so wide tables don't blow
  * up the bubble width on narrow viewports. */
 .md-content .md-table-wrap {
   overflow-x: auto;
   margin: 0;
-  border: 1px solid var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-sm);
 }
 .md-content .md-table {
@@ -1180,23 +1186,32 @@ pre {
 }
 .md-content .md-table th,
 .md-content .md-table td {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--fill-quaternary);
+  padding: 7px 10px;
+  border-bottom: 0.5px solid var(--glass-border);
   vertical-align: top;
 }
 .md-content .md-table thead th {
-  background: var(--fill-quaternary);
+  /* Head sits one tone lighter than the body so it reads as the
+   * "header bar" — matches the code-block recipe. */
+  background: var(--bg-primary);
   color: var(--text-primary);
   font-weight: 650;
   letter-spacing: -0.005em;
   text-align: left; /* JS will override per-column via inline style */
-  border-bottom: 1px solid var(--fill-tertiary);
+  border-bottom: 0.5px solid var(--glass-border);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.md-content .md-table tbody {
+  background: var(--bg-secondary);
 }
 .md-content .md-table tbody tr:last-child td {
   border-bottom: 0;
 }
 .md-content .md-table tbody tr:hover td {
-  background: color-mix(in oklab, var(--fill-quaternary) 60%, transparent);
+  background: color-mix(in oklab, var(--brand-500) 5%, transparent);
 }
 .md-content a {
   color: var(--brand-600);
@@ -1207,11 +1222,19 @@ pre {
 .md-content a:hover { text-decoration-color: currentColor; }
 .md-content code {
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  padding: 1px 5px;
+  /* Slightly down-weighted vs body to keep paragraph rhythm; tracking
+   * tightens to compensate for the wider monospace glyphs. */
+  font-size: 12px;
+  letter-spacing: -0.005em;
+  padding: 1.5px 5px;
   border-radius: 4px;
-  background: var(--fill-quaternary);
+  /* Inline tag look — needs a darker fill than the page so it reads
+   * as a tag, plus a 0.5px hairline so the boundary is unambiguous
+   * even when the bg is identical to the body's panel. */
+  background: var(--fill-tertiary);
+  border: 0.5px solid var(--glass-border);
   color: var(--text-primary);
+  white-space: nowrap;
 }
 .md-content strong { font-weight: 650; color: var(--text-primary); }
 .md-content em { font-style: italic; }
@@ -7770,17 +7793,27 @@ pre {
 .field {
   display: grid;
   gap: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: 12.5px;
 }
 .field-control {
   display: grid;
   gap: 6px;
 }
-.field-label { display: inline-flex; align-items: center; gap: 4px; }
+/* Field label gets explicit weight + primary text color so it reads
+ * as a *label*, not a hint. macOS Settings labels are typically
+ * weighted 500-600 against full-strength text. */
+.field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
 .field-required { color: var(--danger); }
-.field-hint  { font-size: 11px; color: var(--text-tertiary); }
-.field-error { font-size: 11px; color: var(--danger); }
+.field-hint  { font-size: 11px; color: var(--text-tertiary); font-weight: 400; line-height: 1.45; }
+.field-error { font-size: 11px; color: var(--danger);   font-weight: 500; }
 .field input,
 .field textarea,
 .field select {
