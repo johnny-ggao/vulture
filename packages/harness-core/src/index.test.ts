@@ -625,6 +625,43 @@ describe("harness-core", () => {
     }
   });
 
+  test("rejects an old v1-shaped report.json with a single clear schema mismatch error", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-v1-"));
+    try {
+      writeValidArtifactBundle(root);
+      // Overwrite report.json with a literal v1 shape (no ci/artifactValidation/failures, no schemaVersion 2 fields).
+      const v1Report = {
+        schemaVersion: 1,
+        generatedAt: "2024-01-01T00:00:00.000Z",
+        status: "passed",
+        lanes: [],
+        missingRequiredLanes: [],
+        missingOptionalLanes: [],
+        doctor: null,
+      };
+      writeFileSync(
+        join(root, "harness-report", "report.json"),
+        `${JSON.stringify(v1Report, null, 2)}\n`,
+      );
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-03T00:00:00.000Z");
+      const check = report.checks.find((entry) => entry.id === "harness-report");
+      expect(check?.status).toBe("failed");
+      expect(check?.detail).toContain("schemaVersion 1 is not supported");
+      expect(check?.expected).toBe("schemaVersion=2");
+      expect(check?.actual).toBe("schemaVersion=1");
+      expect(check?.hint).toContain("Old snapshot");
+      expect(check?.command).toBe("bun run harness:ci");
+      // No cascade noise: schemaVersion mismatch short-circuits before lane / ci /
+      // artifactValidation / failures consistency checks fire.
+      expect(check?.detail).not.toContain("ci.");
+      expect(check?.detail).not.toContain("artifactValidation.");
+      expect(check?.detail).not.toContain("failures.");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("fails report validation when embedded ci counts contradict steps", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
     try {

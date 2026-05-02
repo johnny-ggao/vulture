@@ -290,8 +290,21 @@ function validateReportFile(
         : {},
     );
   }
+  if (report.schemaVersion !== 2) {
+    return validationCheck(
+      "harness-report",
+      "failed",
+      `report.json schemaVersion ${String(report.schemaVersion)} is not supported; current contract is schemaVersion 2`,
+      path,
+      {
+        expected: "schemaVersion=2",
+        actual: `schemaVersion=${String(report.schemaVersion)}`,
+        hint: "Old snapshot from a prior harness-core release. Rerun bun run harness:ci to regenerate, or treat the snapshot as historical-only.",
+        command: "bun run harness:ci",
+      },
+    );
+  }
   const errors: string[] = [];
-  if (report.schemaVersion !== 2) errors.push("schemaVersion must be 2");
   if (!Array.isArray(report.lanes)) errors.push("lanes must be an array");
   if (!Array.isArray(report.missingRequiredLanes)) errors.push("missingRequiredLanes must be an array");
   for (const registryEntry of HARNESS_LANE_REGISTRY) {
