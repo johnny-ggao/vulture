@@ -347,11 +347,32 @@ pre {
   flex-shrink: 0;
   width: 30px; height: 30px;
   border-radius: 8px;
-  background: var(--brand-500);
+  /* Subtle brand gradient + warm inner highlight so the mark reads
+   * as "branded" rather than a flat coloured square. The lift
+   * comes from a 1px inset white highlight (top edge) + a 4px
+   * brand-tinted shadow at rest. */
+  background:
+    linear-gradient(
+      155deg,
+      color-mix(in oklab, var(--brand-500) 88%, white) 0%,
+      var(--brand-500) 55%,
+      var(--brand-600) 100%
+    );
   color: #fff;
   font-weight: 800;
   font-size: 16px;
   letter-spacing: -0.02em;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 1px 3px rgba(196, 78, 84, 0.22);
+  transition: transform var(--duration-medium) var(--ease-spring),
+              box-shadow var(--duration-medium) var(--ease-out);
+}
+.sidebar-brand:hover .sidebar-brand-mark {
+  transform: scale(1.04);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    0 4px 10px rgba(196, 78, 84, 0.30);
 }
 .sidebar-brand-text {
   font-size: 17px;
@@ -368,6 +389,7 @@ pre {
 }
 
 .sb-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -383,15 +405,71 @@ pre {
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
-.sb-item > svg { flex-shrink: 0; }
+.sb-item > svg {
+  flex-shrink: 0;
+  transition:
+    color var(--duration-medium) var(--ease-standard),
+    transform var(--duration-medium) var(--ease-spring);
+}
 .sb-item:hover {
   background: var(--fill-quaternary);
   color: var(--text-primary);
 }
+.sb-item:hover > svg {
+  /* Tactile micro-shift on hover, mirroring the settings-rail idiom. */
+  transform: translateX(1px);
+}
+.sb-item:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring) inset;
+}
+.sb-item:active:not(.sb-item-active) {
+  background: var(--fill-tertiary);
+}
+/* Active row picks up the brand-050 / brand-600 treatment used by
+ * settings-rail and the history-drawer rows, plus a 2px brand-500
+ * left-edge indicator that scales in on activation. Gives a clear
+ * "you are here" signal that beats the previous flat fill-tertiary. */
 .sb-item-active,
 .sb-item-active:hover {
-  background: var(--fill-tertiary);
-  color: var(--text-primary);
+  background: var(--brand-050);
+  color: var(--brand-600);
+  font-weight: 600;
+}
+.sb-item-active > svg {
+  color: var(--brand-500);
+  transform: translateX(2px);
+}
+.sb-item-active::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--brand-500);
+  transform-origin: center;
+  animation: sb-item-indicator var(--duration-medium) var(--ease-spring);
+}
+@keyframes sb-item-indicator {
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sb-item-active::before { animation: none; }
+}
+@media (prefers-color-scheme: dark) {
+  /* Brand-600 against brand-050 reads ~4:1 on dark surfaces — lift
+   * to brand-400 to clear AA, mirroring the .history-filter-chip
+   * dark-mode override. */
+  .sb-item-active,
+  .sb-item-active:hover {
+    color: var(--brand-400);
+  }
+  .sb-item-active > svg {
+    color: var(--brand-400);
+  }
 }
 
 /* History toggle / nav rows that show a count badge on the right */
