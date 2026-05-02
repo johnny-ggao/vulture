@@ -9808,7 +9808,13 @@ pre {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 14px;
-  align-items: center;
+  /* Top-anchor the preview to the first row of tiles so the eye
+   * traces preview → first tile directly. Center-aligning made the
+   * preview float at mid-line of the grid, which felt disconnected
+   * once the grid wrapped to multiple rows (3 rows in 图标 mode).
+   * It also broke the other way in 字符 mode where the grid is a
+   * single tile shorter than the preview. */
+  align-items: start;
 }
 .agent-avatar-picker-preview {
   display: inline-grid;
