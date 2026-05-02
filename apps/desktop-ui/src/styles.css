@@ -854,15 +854,40 @@ pre {
 .empty-state { display: grid; place-items: center; text-align: center; padding: 80px 0 40px; }
 .empty-state .hero-mark {
   width: 64px; height: 64px;
-  border-radius: 16px;
-  background: var(--brand-500); color: #fff;
+  border-radius: 18px;
+  /* Match the brand-mark recipe used by sidebar + onboarding so all
+   * brand surfaces look like the same chip — gradient + inset
+   * highlight + warm shadow. */
+  background: linear-gradient(
+    155deg,
+    color-mix(in oklab, var(--brand-500) 88%, white) 0%,
+    var(--brand-500) 55%,
+    var(--brand-600) 100%
+  );
+  color: #fff;
   display: grid; place-items: center;
-  font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
-  box-shadow: 0 8px 20px rgba(15,15,15,0.10);
+  font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px rgba(196, 78, 84, 0.18),
+    0 2px 6px rgba(15, 15, 15, 0.08);
   margin-bottom: 18px;
 }
-.empty-state h2 { font-size: 28px; font-weight: 600; letter-spacing: -0.04em; margin: 0 0 6px; color: var(--text-primary); }
-.empty-state p  { font-size: 14px; color: var(--text-secondary); margin: 0; }
+/* Title matches the page-header window-title size (Title 1) instead
+ * of the 28px web-marketing heading. Tracking tightens. */
+.empty-state h2 {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+.empty-state p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.45;
+}
 
 .suggestion-chips {
   list-style: none;
@@ -8015,6 +8040,13 @@ pre {
   border-radius: var(--radius-md);
   background: var(--bg-primary);
   color: var(--text-tertiary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.search-input:hover:not(:focus-within) {
+  border-color: var(--fill-secondary);
 }
 .search-input:focus-within {
   border-color: var(--brand-500);
@@ -8048,6 +8080,15 @@ pre {
 .search-clear:hover {
   background: var(--fill-quaternary);
   color: var(--text-primary);
+}
+.search-clear:active {
+  background: var(--fill-tertiary);
+}
+.search-clear:focus-visible {
+  outline: 0;
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
 }
 
 /* SectionCard — bordered card used inside Settings / Skills / Agents pages */
