@@ -6580,9 +6580,9 @@ pre {
 }
 .agent-edit-modal .modal-title {
   display: block;
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7077,12 +7077,12 @@ pre {
 .new-agent-modal .modal-header {
   /* Match AgentEditModal's slightly taller header (avatar + meta column). */
   padding: 16px 20px;
-  border-bottom: 1px solid var(--fill-quaternary);
+  border-bottom: 0.5px solid var(--glass-border);
 }
 .new-agent-modal .modal-title {
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--text-primary);
   display: block;
 }
