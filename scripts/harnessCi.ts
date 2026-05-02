@@ -250,6 +250,15 @@ function renderHarnessCiSummaryMarkdown(summary: HarnessCiSummary): string {
       `- ${step.status.toUpperCase()} ${step.id}: ${step.command.join(" ")} (${step.durationMs}ms)${suffix}`,
     );
   }
+  const failedSteps = summary.steps.filter((step) => step.status === "failed");
+  if (failedSteps.length > 0) {
+    lines.push("", "## Failed Steps", "");
+    for (const step of failedSteps) {
+      lines.push(`### ${step.id}`, "", "```bash", step.command.join(" "), "```");
+      if (step.error) lines.push("", `Error: ${step.error}`);
+      lines.push("");
+    }
+  }
   return `${lines.join("\n")}\n`;
 }
 

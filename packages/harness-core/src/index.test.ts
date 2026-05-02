@@ -348,12 +348,14 @@ describe("harness-core", () => {
       );
       expect(check?.expected).toBe("tests=1, failures=0, testcase count=1");
       expect(check?.actual).toBe("tests=2, failures=0, testcase count=1");
+      expect(check?.command).toBe("bun run harness:runtime");
 
       const paths = writeHarnessArtifactValidationReport(join(root, "harness-report"), report);
       const markdown = readFileSync(paths.markdownPath, "utf8");
       expect(markdown).toContain("Expected: tests=1, failures=0, testcase count=1");
       expect(markdown).toContain("Actual: tests=2, failures=0, testcase count=1");
       expect(markdown).toContain("Hint: Compare junit.xml with the lane manifest");
+      expect(markdown).toContain("Command: bun run harness:runtime");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

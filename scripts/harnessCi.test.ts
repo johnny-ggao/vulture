@@ -31,7 +31,10 @@ describe("harness CI orchestrator", () => {
       expect(paths.jsonPath).toBe(join(dir, "ci-summary.json"));
       expect(paths.markdownPath).toBe(join(dir, "ci-summary.md"));
       expect(JSON.parse(readFileSync(paths.jsonPath, "utf8")).status).toBe("failed");
-      expect(readFileSync(paths.markdownPath, "utf8")).toContain("FAILED runtime-harness");
+      const markdown = readFileSync(paths.markdownPath, "utf8");
+      expect(markdown).toContain("FAILED runtime-harness");
+      expect(markdown).toContain("## Failed Steps");
+      expect(markdown).toContain("```bash\nbun test\n```");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
