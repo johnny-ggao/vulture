@@ -1049,7 +1049,20 @@ function validateReportFile(
     if (reportLane.passed !== manifest.passed) errors.push(`${lane} passed must match manifest`);
     if (reportLane.failed !== manifest.failed) errors.push(`${lane} failed must match manifest`);
   }
-  if (doctor && report.doctor?.status !== doctor.status) errors.push("doctor status must match doctor.json");
+  if (doctor) {
+    if (!report.doctor) {
+      errors.push("doctor summary is missing");
+    } else {
+      const doctorPassed = doctor.checks.filter((check) => check.status === "passed").length;
+      const doctorWarnings = doctor.checks.filter((check) => check.status === "warning").length;
+      const doctorFailed = doctor.checks.filter((check) => check.status === "failed").length;
+      if (report.doctor.status !== doctor.status) errors.push("doctor status must match doctor.json");
+      if (report.doctor.checks !== doctor.checks.length) errors.push("doctor checks must match doctor.json");
+      if (report.doctor.passed !== doctorPassed) errors.push("doctor passed count must match doctor.json");
+      if (report.doctor.warnings !== doctorWarnings) errors.push("doctor warning count must match doctor.json");
+      if (report.doctor.failed !== doctorFailed) errors.push("doctor failed count must match doctor.json");
+    }
+  }
   const failedLane = report.lanes.some((lane) => lane.status === "failed");
   const missingRequired = report.missingRequiredLanes.length > 0;
   const doctorFailed = report.doctor?.status === "failed";

@@ -236,6 +236,11 @@ shape, doctor status consistency, aggregate report consistency, and
 `ci-summary.json` when it is present. Desktop E2E artifacts are optional because
 that lane is manually dispatched.
 
+Negative artifact fixtures live in the `@vulture/harness-core` tests. They
+intentionally corrupt manifests, JUnit counts, doctor checks, aggregate reports,
+and CI summaries to verify failure diagnostics without shipping a default
+failing harness command.
+
 ### Acceptance Artifacts
 
 Each scenario writes a folder under `.artifacts/acceptance/`:

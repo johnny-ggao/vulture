@@ -318,43 +318,7 @@ describe("harness-core", () => {
   test("validates a complete harness artifact bundle", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
     try {
-      const manifests = [
-        writeLaneArtifacts(root, "runtime", "runtime-harness"),
-        writeLaneArtifacts(root, "tool-contract", "tool-contract-harness"),
-        writeLaneArtifacts(root, "acceptance", "acceptance"),
-      ];
-      const catalog = buildHarnessCatalog([
-        { lane: "runtime", scenarios: [scenarios[0]!] },
-        { lane: "tool-contract", scenarios: [scenarios[1]!] },
-        { lane: "acceptance", scenarios: [scenarios[2]!] },
-      ]);
-      writeHarnessCatalog(join(root, "harness-catalog"), [
-        { lane: "runtime", scenarios: [scenarios[0]!] },
-        { lane: "tool-contract", scenarios: [scenarios[1]!] },
-        { lane: "acceptance", scenarios: [scenarios[2]!] },
-      ]);
-      const doctor = buildHarnessDoctorReport(catalog, [
-        { id: "metadata", name: "Metadata", status: "passed", detail: "ok" },
-      ]);
-      writeHarnessDoctorReport(join(root, "harness-catalog"), doctor);
-      writeHarnessReport(join(root, "harness-report"), {
-        requiredLanes: ["runtime", "tool-contract", "acceptance"],
-        optionalLanes: ["desktop-e2e"],
-        manifests,
-        doctor,
-      });
-      writeFileSync(
-        join(root, "harness-report", "ci-summary.json"),
-        `${JSON.stringify({
-          schemaVersion: 1,
-          generatedAt: "2026-05-02T00:00:00.000Z",
-          status: "passed",
-          total: 1,
-          passed: 1,
-          failed: 0,
-          steps: [{ id: "harness-report", name: "Harness report", command: ["bun"], status: "passed", exitCode: 0, signal: null, durationMs: 1 }],
-        })}\n`,
-      );
+      writeValidArtifactBundle(root);
 
       const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
       expect(report.status).toBe("passed");
@@ -370,9 +334,7 @@ describe("harness-core", () => {
   test("fails artifact validation when junit counts drift from manifest counts", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
     try {
-      writeLaneArtifacts(root, "runtime", "runtime-harness");
-      writeLaneArtifacts(root, "tool-contract", "tool-contract-harness");
-      writeLaneArtifacts(root, "acceptance", "acceptance");
+      writeValidArtifactBundle(root);
       writeFileSync(
         join(root, "runtime-harness", "junit.xml"),
         '<?xml version="1.0" encoding="UTF-8"?><testsuite name="bad" tests="2" failures="0"><testcase name="one"/></testsuite>\n',
@@ -382,6 +344,94 @@ describe("harness-core", () => {
       expect(report.status).toBe("failed");
       expect(report.checks.find((check) => check.id === "junit-runtime")?.detail).toContain(
         "tests must equal manifest total 1",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails artifact validation when manifest status contradicts failed count", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeValidArtifactBundle(root);
+      mutateJson(join(root, "runtime-harness", "manifest.json"), (manifest) => ({
+        ...manifest,
+        status: "passed",
+        passed: 0,
+        failed: 1,
+        results: [{ id: "runtime-scenario", name: "runtime", status: "failed" }],
+      }));
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      expect(report.status).toBe("failed");
+      expect(report.checks.find((check) => check.id === "manifest-runtime")?.detail).toContain(
+        "status must be failed",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails artifact validation when aggregate report drifts from lane manifest", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeValidArtifactBundle(root);
+      mutateJson(join(root, "harness-report", "report.json"), (report) => ({
+        ...report,
+        lanes: report.lanes.map((lane: { lane: string; total: number }) =>
+          lane.lane === "runtime" ? { ...lane, total: lane.total + 1 } : lane,
+        ),
+      }));
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      expect(report.status).toBe("failed");
+      expect(report.checks.find((check) => check.id === "harness-report")?.detail).toContain(
+        "runtime total must match manifest",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails artifact validation when doctor status contradicts checks", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeValidArtifactBundle(root);
+      mutateJson(join(root, "harness-catalog", "doctor.json"), (doctor) => ({
+        ...doctor,
+        status: "passed",
+        checks: [
+          ...doctor.checks,
+          { id: "broken", name: "Broken", status: "failed", detail: "broken" },
+        ],
+      }));
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      expect(report.status).toBe("failed");
+      expect(report.checks.find((check) => check.id === "doctor")?.detail).toContain(
+        "status must be failed",
+      );
+      expect(report.checks.find((check) => check.id === "harness-report")?.detail).toContain(
+        "doctor checks must match doctor.json",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails artifact validation when ci summary counts contradict steps", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeValidArtifactBundle(root);
+      mutateJson(join(root, "harness-report", "ci-summary.json"), (summary) => ({
+        ...summary,
+        passed: 0,
+      }));
+
+      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      expect(report.status).toBe("failed");
+      expect(report.checks.find((check) => check.id === "ci-summary")?.detail).toContain(
+        "passed must equal passed steps",
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -412,4 +462,45 @@ function writeLaneArtifacts(
   writeHarnessManifest(dir, lane, results);
   writeHarnessJUnitReport(dir, lane, results);
   return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+}
+
+function writeValidArtifactBundle(root: string) {
+  const manifests = [
+    writeLaneArtifacts(root, "runtime", "runtime-harness"),
+    writeLaneArtifacts(root, "tool-contract", "tool-contract-harness"),
+    writeLaneArtifacts(root, "acceptance", "acceptance"),
+  ];
+  const lanes = [
+    { lane: "runtime" as const, scenarios: [scenarios[0]!] },
+    { lane: "tool-contract" as const, scenarios: [scenarios[1]!] },
+    { lane: "acceptance" as const, scenarios: [scenarios[2]!] },
+  ];
+  const catalog = buildHarnessCatalog(lanes);
+  writeHarnessCatalog(join(root, "harness-catalog"), lanes);
+  const doctor = buildHarnessDoctorReport(catalog, [
+    { id: "metadata", name: "Metadata", status: "passed", detail: "ok" },
+  ]);
+  writeHarnessDoctorReport(join(root, "harness-catalog"), doctor);
+  writeHarnessReport(join(root, "harness-report"), {
+    requiredLanes: ["runtime", "tool-contract", "acceptance"],
+    optionalLanes: ["desktop-e2e"],
+    manifests,
+    doctor,
+  });
+  writeFileSync(
+    join(root, "harness-report", "ci-summary.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-05-02T00:00:00.000Z",
+      status: "passed",
+      total: 1,
+      passed: 1,
+      failed: 0,
+      steps: [{ id: "harness-report", name: "Harness report", command: ["bun"], status: "passed", exitCode: 0, signal: null, durationMs: 1 }],
+    })}\n`,
+  );
+}
+
+function mutateJson(path: string, mutate: (value: any) => any): void {
+  writeFileSync(path, `${JSON.stringify(mutate(JSON.parse(readFileSync(path, "utf8"))), null, 2)}\n`);
 }
