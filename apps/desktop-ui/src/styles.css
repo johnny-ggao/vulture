@@ -2674,6 +2674,15 @@ pre {
   transition: background-color 120ms ease, color 120ms ease;
 }
 .icon-btn:hover { background: var(--fill-quaternary); color: var(--text-primary); }
+.icon-btn:active { background: var(--fill-tertiary); }
+.icon-btn:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .history-drawer .search-field {
   display: flex; align-items: center; gap: 8px;
   margin: 0 12px 12px;
@@ -8803,10 +8812,37 @@ pre {
   transform: scale(0.97);
   transition-duration: var(--duration-fast);
 }
-.btn-primary { background: var(--brand-500); color: #fff; }
-.btn-primary:hover { background: var(--brand-600); }
+/* Single primary recipe — matches `.composer-send` and `.onboarding-primary`
+ * so all primary CTAs in the app read as one family: brand gradient,
+ * top inset highlight, warm tinted shadow. */
+.btn-primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--brand-500) 96%, white),
+    var(--brand-500)
+  );
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(196, 78, 84, 0.18);
+}
 .btn-primary:not(:disabled):hover {
-  box-shadow: 0 4px 12px color-mix(in oklab, var(--brand-500) 32%, transparent);
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-600));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 4px 12px color-mix(in oklab, var(--brand-500) 32%, transparent);
+}
+.btn-primary:focus-visible {
+  outline: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 0 0 3px var(--brand-ring);
+}
+.btn-primary:disabled {
+  background: var(--fill-tertiary);
+  color: var(--text-quaternary);
+  box-shadow: none;
+  cursor: not-allowed;
 }
 .btn-secondary {
   background: var(--fill-tertiary);
@@ -8814,6 +8850,14 @@ pre {
   border: 1px solid var(--fill-tertiary);
 }
 .btn-secondary:hover { background: var(--fill-secondary); }
+.btn-secondary:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 @media (max-width: 720px) {
   .composer { width: calc(100% - 28px); }
