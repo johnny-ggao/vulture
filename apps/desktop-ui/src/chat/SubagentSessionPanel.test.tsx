@@ -101,6 +101,46 @@ describe("SubagentSessionPanel", () => {
     expect(screen.getByText("child exploded")).toBeDefined();
   });
 
+  test("does not render fallback failed token as inline detail", () => {
+    render(
+      <SubagentSessionPanel
+        sessions={[
+          {
+            ...session,
+            status: "failed",
+            lastError: " failed ",
+          },
+        ]}
+        messagesBySessionId={{}}
+        loadingSessionIds={new Set()}
+        onLoadMessages={async () => {}}
+      />,
+    );
+
+    expect(screen.getByText("失败")).toBeDefined();
+    expect(screen.queryByText(/^failed$/i)).toBeNull();
+  });
+
+  test("does not render fallback cancelled token as inline detail", () => {
+    render(
+      <SubagentSessionPanel
+        sessions={[
+          {
+            ...session,
+            status: "cancelled",
+            lastError: "CANCELLED",
+          },
+        ]}
+        messagesBySessionId={{}}
+        loadingSessionIds={new Set()}
+        onLoadMessages={async () => {}}
+      />,
+    );
+
+    expect(screen.getByText("已取消")).toBeDefined();
+    expect(screen.queryByText(/^cancelled$/i)).toBeNull();
+  });
+
   test("loads and renders child messages when expanded", async () => {
     const loads: string[] = [];
     function Harness() {

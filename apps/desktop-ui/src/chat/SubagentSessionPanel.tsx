@@ -101,10 +101,19 @@ function statusDetail(session: SubagentSessionDto): string | null {
   if (session.status === "completed" && session.resultSummary) {
     return session.resultSummary;
   }
-  if ((session.status === "failed" || session.status === "cancelled") && session.lastError) {
-    return session.lastError;
+  if (session.status === "failed" || session.status === "cancelled") {
+    const error = normalizeInlineError(session.lastError);
+    if (!error) return null;
+    const fallbackToken = session.status === "failed" ? "failed" : "cancelled";
+    if (error.toLowerCase() === fallbackToken) return null;
+    return error;
   }
   return null;
+}
+
+function normalizeInlineError(value: string | null): string | null {
+  const text = value?.trim();
+  return text ? text : null;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {

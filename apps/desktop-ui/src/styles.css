@@ -2382,8 +2382,11 @@ pre {
 }
 .subagent-main .subagent-secondary,
 .subagent-main .subagent-detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   white-space: normal;
-  overflow: visible;
+  overflow: hidden;
   text-overflow: clip;
   overflow-wrap: anywhere;
 }
