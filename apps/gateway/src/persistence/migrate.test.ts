@@ -10,6 +10,28 @@ const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
 const LATEST_SCHEMA_VERSION = 17;
+const migrationsBefore017 = [
+  "001_init.sql",
+  "002_runs.sql",
+  "003_run_recovery.sql",
+  "004_run_token_usage.sql",
+  "005_message_attachments.sql",
+  "006_agent_skills.sql",
+  "007_memories.sql",
+  "008_memory_files.sql",
+  "009_mcp_servers.sql",
+  "010_mcp_tool_policy.sql",
+  "011_conversation_context.sql",
+  "012_agent_tool_policy.sql",
+  "013_subagent_sessions.sql",
+  "014_agent_handoffs.sql",
+  "015_conversation_permission_mode.sql",
+  "016_codex_permission_modes.sql",
+].map((name) => readFileSync(join(here, "migrations", name), "utf8"));
+
+function applyMigrationsBefore017(db: ReturnType<typeof openDatabase>): void {
+  for (const sql of migrationsBefore017) db.exec(sql);
+}
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -332,6 +354,31 @@ describe("migrate", () => {
     expect(columns.find((c) => c.name === "result_message_id")?.notnull).toBe(0);
     expect(columns.find((c) => c.name === "completed_at")?.notnull).toBe(0);
     expect(columns.find((c) => c.name === "last_error")?.notnull).toBe(0);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("017 resumes after productization columns are partially added", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v17-partial-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrationsBefore017(db);
+    expect(currentSchemaVersion(db)).toBe(16);
+    db.exec("ALTER TABLE subagent_sessions ADD COLUMN title TEXT");
+    db.exec("ALTER TABLE subagent_sessions ADD COLUMN task TEXT");
+
+    expect(() => applyMigrations(db)).not.toThrow();
+    expect(currentSchemaVersion(db)).toBe(17);
+    const columns = db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as { name: string }[];
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining([
+      "title",
+      "task",
+      "result_summary",
+      "result_message_id",
+      "completed_at",
+      "last_error",
+    ]));
     db.close();
     rmSync(dir, { recursive: true });
   });
