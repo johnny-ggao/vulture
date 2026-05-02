@@ -507,7 +507,7 @@ describe("App integration", () => {
 
     const input = screen.getByPlaceholderText("Profile name") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Work" } });
-    fireEvent.click(screen.getByRole("button", { name: "新建并切换" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建" }));
 
     await waitFor(
       () => {
@@ -544,7 +544,7 @@ describe("App integration", () => {
 
     const textarea = screen.getByLabelText("新增记忆") as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: "Project codename is Vulture." } });
-    fireEvent.click(screen.getByRole("button", { name: "添加记忆" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
 
     await waitFor(() => {
       // Per-row delete button now reads just "删除" (the row already
@@ -683,7 +683,7 @@ describe("App integration", () => {
       () => screen.getByPlaceholderText("Profile name"),
     )) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Work" } });
-    fireEvent.click(screen.getByRole("button", { name: "新建并切换" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建" }));
 
     await waitFor(
       () => {

@@ -142,7 +142,7 @@ export function MemorySection(props: SettingsPageProps) {
             disabled={busy || !draft.trim() || !activeAgent}
             onClick={create}
           >
-            {busy ? "处理中..." : "添加记忆"}
+            {busy ? "添加中…" : "添加"}
           </button>
         </div>
       </div>

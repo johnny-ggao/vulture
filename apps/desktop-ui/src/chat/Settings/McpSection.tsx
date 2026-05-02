@@ -587,7 +587,7 @@ function McpAddServerModal({
                   checked={draft.enabled}
                   onChange={(e) => setDraft((v) => ({ ...v, enabled: e.target.checked }))}
                 />
-                创建后立即启用
+                立即启用
               </label>
               <Field label="信任级别">
                 <select
@@ -625,7 +625,7 @@ function McpAddServerModal({
             disabled={busy !== null || !canCreate}
             onClick={onSubmit}
           >
-            {busy === "create" ? "添加中…" : "添加服务器"}
+            {busy === "create" ? "添加中…" : "添加"}
           </button>
         </div>
       </div>

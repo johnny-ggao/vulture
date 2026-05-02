@@ -595,7 +595,7 @@ function CodexBlock({
           disabled={busy !== null}
           onClick={() => void onSignIn()}
         >
-          {busy === "signin" ? "正在打开浏览器…" : "用 ChatGPT 登录"}
+          {busy === "signin" ? "登录中…" : "登录 ChatGPT"}
         </button>
       ) : codex.state === "signed_in" ? (
         <div className="provider-key-display">
@@ -624,7 +624,7 @@ function CodexBlock({
             disabled={busy !== null}
             onClick={() => void onSignIn()}
           >
-            {busy === "signin" ? "正在打开浏览器…" : "重新登录"}
+            {busy === "signin" ? "登录中…" : "重新登录"}
           </button>
         </div>
       ) : (

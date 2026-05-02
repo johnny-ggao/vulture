@@ -209,7 +209,7 @@ describe("SkillsPage", () => {
     fireEvent.change(screen.getByLabelText("Skill package path"), {
       target: { value: "/packages/csv-insights" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "导入 skill package" }));
+    fireEvent.click(screen.getByRole("button", { name: "导入" }));
 
     await waitFor(() => {
       expect(onImportSkillPackage).toHaveBeenCalledWith("/packages/csv-insights");

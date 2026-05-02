@@ -138,10 +138,10 @@ export function WebSearchSection(props: SettingsPageProps) {
       </div>
       <div className="mcp-create-actions">
         <button type="button" className="btn-secondary" disabled={busy !== null} onClick={testSearch}>
-          {busy === "test" ? "测试中..." : "测试搜索"}
+          {busy === "test" ? "测试中…" : "测试"}
         </button>
         <button type="button" className="btn-primary" disabled={busy !== null} onClick={save}>
-          {busy === "save" ? "保存中..." : "保存"}
+          {busy === "save" ? "保存中…" : "保存"}
         </button>
         {saved ? (
           <span className="settings-feedback settings-feedback-success" role="status">

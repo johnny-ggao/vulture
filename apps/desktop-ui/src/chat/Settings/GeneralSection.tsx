@@ -74,7 +74,7 @@ export function GeneralSection(props: SettingsPageProps) {
             disabled={busy || props.switchingProfileId !== null || !profileName.trim()}
             onClick={createProfile}
           >
-            {busy ? "..." : "新建并切换"}
+            {busy ? "新建中…" : "新建"}
           </button>
         </div>
       </SectionCard>

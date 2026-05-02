@@ -235,7 +235,7 @@ describe("SettingsPage Web Search", () => {
       target: { value: "https://search.example.com" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "测试搜索" }));
+    fireEvent.click(screen.getByRole("button", { name: "测试" }));
     await waitFor(() => {
       expect(onTestWebSearchSettings).toHaveBeenCalledWith({
         provider: "searxng",

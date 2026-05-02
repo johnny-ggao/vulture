@@ -325,7 +325,7 @@ export function SkillsPage(props: SkillsPageProps) {
             disabled={catalogBusy !== null || !importPath.trim()}
             onClick={() => void importCatalogSkill()}
           >
-            {catalogBusy === "__import__" ? "导入中…" : "导入 skill package"}
+            {catalogBusy === "__import__" ? "导入中…" : "导入"}
           </button>
         </div>
         {catalog.items.length === 0 && !catalog.loading ? (
