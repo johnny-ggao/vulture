@@ -1,15 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   DEFAULT_HARNESS_ARTIFACT_DIRS,
   buildHarnessArtifactHistory,
+  buildHarnessTriageReport,
   findHarnessRepoRoot,
   retainHarnessArtifacts,
   validateHarnessArtifactBundle,
   writeHarnessArtifactHistoryReport,
   writeHarnessArtifactRetentionReport,
   writeHarnessArtifactValidationReport,
+  writeHarnessTriageReport,
+  type HarnessReport,
 } from "../packages/harness-core/src/index";
 
 export interface HarnessCiStep {
@@ -146,6 +149,18 @@ async function main(): Promise<void> {
   const finalStatus = summary.status === "failed" || finalArtifactReport.status === "failed"
     ? "failed"
     : "passed";
+  const triage = buildHarnessTriageReport({
+    ciSteps: summary.steps,
+    harnessReport: readHarnessReport(join(artifactRoot, "harness-report", "report.json")),
+    artifactValidationReport: finalArtifactReport,
+    generatedAt: summary.generatedAt,
+  });
+  const triagePaths = writeHarnessTriageReport(join(artifactRoot, "harness-report"), triage);
+  console.log(`Failure triage: ${triage.status}`);
+  console.log(`Failure triage items: ${triage.summary.total}`);
+  console.log(`Failure triage JSON: ${triagePaths.jsonPath}`);
+  console.log(`Failure triage Markdown: ${triagePaths.markdownPath}`);
+
   const retentionReport = retainHarnessArtifacts({
     artifactRoot,
     status: finalStatus,
@@ -187,6 +202,11 @@ export function harnessRetentionKeepLast(env: Record<string, string | undefined>
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0) return 5;
   return Math.floor(parsed);
+}
+
+function readHarnessReport(path: string): HarnessReport | null {
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8")) as HarnessReport;
 }
 
 export function runHarnessCiSteps(

@@ -246,6 +246,39 @@ export interface HarnessArtifactHistory {
   entries: HarnessArtifactHistoryEntry[];
 }
 
+export interface HarnessTriageCiStep {
+  id: string;
+  name: string;
+  command: readonly string[];
+  status: HarnessStatus;
+  error?: string;
+}
+
+export type HarnessTriageCategory = "ci-step" | "lane" | "artifact-validation";
+
+export interface HarnessTriageItem {
+  category: HarnessTriageCategory;
+  id: string;
+  title: string;
+  detail: string;
+  command?: string;
+  artifactPath?: string;
+  path?: string;
+}
+
+export interface HarnessTriageReport {
+  schemaVersion: 1;
+  generatedAt: string;
+  status: HarnessStatus;
+  summary: {
+    total: number;
+    ciSteps: number;
+    lanes: number;
+    artifactValidation: number;
+  };
+  items: HarnessTriageItem[];
+}
+
 const DEFAULT_PARSE_OPTIONS: Required<Pick<
   HarnessCliParseOptions,
   "idFlag" | "tagFlag" | "artifactDirFlag"
@@ -827,6 +860,92 @@ export function writeHarnessArtifactHistoryReport(
   return { jsonPath, markdownPath };
 }
 
+export function buildHarnessTriageReport(options: {
+  ciSteps?: readonly HarnessTriageCiStep[];
+  harnessReport?: HarnessReport | null;
+  artifactValidationReport?: HarnessArtifactValidationReport | null;
+  generatedAt?: string;
+}): HarnessTriageReport {
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  const items: HarnessTriageItem[] = [];
+
+  for (const step of options.ciSteps ?? []) {
+    if (step.status !== "failed") continue;
+    items.push({
+      category: "ci-step",
+      id: step.id,
+      title: step.name,
+      detail: step.error ?? "CI step failed",
+      command: step.command.join(" "),
+    });
+  }
+
+  const harnessReport = options.harnessReport;
+  if (harnessReport) {
+    for (const lane of harnessReport.lanes) {
+      if (lane.status === "failed") {
+        items.push({
+          category: "lane",
+          id: lane.lane,
+          title: `${lane.lane} lane failed`,
+          detail: `${lane.failed}/${lane.total} scenarios failed`,
+          command: laneHarnessCommand(lane.lane),
+          ...(lane.artifactPath ? { artifactPath: lane.artifactPath } : {}),
+        });
+      }
+    }
+    for (const lane of harnessReport.missingRequiredLanes) {
+      items.push({
+        category: "lane",
+        id: lane,
+        title: `${lane} lane missing`,
+        detail: "Required lane artifact is missing from the aggregate harness report",
+        command: laneHarnessCommand(lane),
+      });
+    }
+  }
+
+  for (const check of options.artifactValidationReport?.checks ?? []) {
+    if (check.status !== "failed") continue;
+    items.push({
+      category: "artifact-validation",
+      id: check.id,
+      title: `Artifact validation failed: ${check.id}`,
+      detail: check.detail,
+      ...(check.command ? { command: check.command } : {}),
+      ...(check.path ? { path: check.path } : {}),
+    });
+  }
+
+  const ciSteps = items.filter((item) => item.category === "ci-step").length;
+  const lanes = items.filter((item) => item.category === "lane").length;
+  const artifactValidation = items.filter((item) => item.category === "artifact-validation").length;
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    status: items.length === 0 ? "passed" : "failed",
+    summary: {
+      total: items.length,
+      ciSteps,
+      lanes,
+      artifactValidation,
+    },
+    items,
+  };
+}
+
+export function writeHarnessTriageReport(
+  artifactDir: string,
+  report: HarnessTriageReport,
+): { jsonPath: string; markdownPath: string } {
+  mkdirSync(artifactDir, { recursive: true });
+  const jsonPath = join(artifactDir, "triage.json");
+  const markdownPath = join(artifactDir, "triage.md");
+  writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(markdownPath, renderHarnessTriageMarkdown(report));
+  return { jsonPath, markdownPath };
+}
+
 export function findHarnessRepoRoot(start: string): string {
   let current = resolve(start);
   while (true) {
@@ -1141,6 +1260,40 @@ function renderHarnessArtifactHistoryMarkdown(history: HarnessArtifactHistory): 
     if (entry.artifactValidationMarkdownPath) {
       lines.push(`- Artifact validation: ${entry.artifactValidationMarkdownPath}`);
     }
+    lines.push("");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function renderHarnessTriageMarkdown(report: HarnessTriageReport): string {
+  const lines = [
+    "# Harness Failure Triage",
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Status: ${report.status}`,
+    `Failures: ${report.summary.total}`,
+    "",
+  ];
+  if (report.items.length === 0) {
+    lines.push("No failures.", "");
+    return `${lines.join("\n")}\n`;
+  }
+
+  lines.push(
+    "## Summary",
+    "",
+    `- CI steps: ${report.summary.ciSteps}`,
+    `- Lanes: ${report.summary.lanes}`,
+    `- Artifact validation: ${report.summary.artifactValidation}`,
+    "",
+    "## Items",
+    "",
+  );
+  for (const item of report.items) {
+    lines.push(`### ${item.category}: ${item.id}`, "", item.title, "", item.detail);
+    if (item.path) lines.push("", `Path: ${item.path}`);
+    if (item.artifactPath) lines.push("", `Artifacts: ${item.artifactPath}`);
+    if (item.command) lines.push("", "Command:", fencedMarkdown(item.command));
     lines.push("");
   }
   return `${lines.join("\n")}\n`;

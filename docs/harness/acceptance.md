@@ -231,6 +231,19 @@ the final `ci-summary.json`. When one or more CI steps fail, `ci-summary.md`
 also includes a `Failed Steps` section with copy-paste commands for rerunning
 the failed steps locally.
 
+### Failure Triage
+
+After final artifact validation and before retention, `harness:ci` writes a focused triage bundle into
+`.artifacts/harness-report/`:
+
+- `triage.json` - machine-readable failed CI steps, lanes, and artifact checks.
+- `triage.md` - human-readable failure list with commands and artifact paths.
+
+The triage report aggregates failed CI steps, failed or missing required lanes,
+and failed artifact validation checks. Each item includes the most direct
+rerun command when one is known. Successful runs still write an empty triage
+report with `No failures.` so CI uploads always have the same files.
+
 ### Artifact Schema Validation
 
 `bun run harness:artifacts` validates the latest harness artifact bundle and
@@ -310,8 +323,8 @@ and uploads a `harness-artifacts` bundle on every run. The bundle contains:
 - `.artifacts/harness-report`
 
 The upload keeps each lane's `manifest.json`, `junit.xml`, summaries, failure
-reports, aggregate `harness-report/report.md`, CI summary, artifact validation,
-retention, and history reports together for CI triage. GitHub retains the
+reports, aggregate `harness-report/report.md`, CI summary, failure triage,
+artifact validation, retention, and history reports together for CI triage. GitHub retains the
 uploaded bundle for 14 days. Local historical snapshots live under
 `.artifacts/harness-runs/` and are governed by the retention policy above.
 
