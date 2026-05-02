@@ -199,6 +199,7 @@ describe("acceptance suite", () => {
     expect(filterAcceptanceScenariosByTags([], defaultAcceptanceScenarios)).toHaveLength(defaultAcceptanceScenarios.length);
     expect(filterAcceptanceScenariosByTags(["mcp"], defaultAcceptanceScenarios).map((scenario) => scenario.id)).toEqual([
       "mcp-config-management",
+      "mcp-real-handshake",
     ]);
     expect(filterAcceptanceScenariosByTags(["recovery"], defaultAcceptanceScenarios).map((scenario) => scenario.id)).toEqual([
       "recovery-interrupted-tool",

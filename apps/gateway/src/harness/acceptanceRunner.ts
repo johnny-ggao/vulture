@@ -215,6 +215,10 @@ export type AcceptanceStep =
       callId?: string;
     }
   | {
+      action: "deleteMcpServer";
+      server: string;
+    }
+  | {
       action: "parallelRuns";
       runs: Array<{
         conversation: string;
@@ -907,6 +911,14 @@ async function executeStep(
         run: result.run,
         session: result.session,
       });
+      return;
+    }
+    case "deleteMcpServer": {
+      const server = requireAlias(state.resources.mcpServers, step.server, "MCP server");
+      await requestJson(options, state, `/v1/mcp/servers/${encodeURIComponent(server.id)}`, {
+        method: "DELETE",
+      });
+      observe(state, step.action, { alias: step.server, server });
       return;
     }
     case "parallelRuns": {

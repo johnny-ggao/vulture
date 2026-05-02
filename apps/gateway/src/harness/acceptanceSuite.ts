@@ -366,6 +366,44 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
     ],
   },
   {
+    id: "mcp-real-handshake",
+    name: "MCP real stdio handshake",
+    description:
+      "Spawns the bundled echo MCP fixture as a real child process, completes the stdio handshake through the gateway, and verifies the live tool list contains the fixture's 'echo' tool. Catches regressions in MCP framing, capability negotiation, and tool registration that the stub-only mcp-config-management scenario cannot see.",
+    tags: ["mcp", "integration"],
+    steps: [
+      {
+        action: "createMcpServer",
+        as: "echoServer",
+        id: "acceptance-mcp-echo",
+        name: "Acceptance MCP Echo",
+        command: "bun",
+        args: ["src/harness/fixtures/echoMcpServer.ts"],
+        trust: "trusted",
+        enabled: true,
+      },
+      { action: "listMcpTools", server: "echoServer", as: "tools" },
+      // listMcpTools succeeding proves the gateway connected to a real MCP
+      // child and completed initialize/tools-list handshake — a stub or
+      // disconnected server would return an empty list. The names check
+      // locks the fixture's contract.
+      { action: "assertMcpTools", tools: "tools", names: ["echo"] },
+      { action: "listMcpServers", as: "servers" },
+      // Use containsServer rather than runtimeStatuses array-equality:
+      // earlier scenarios in the suite leave their own server entries
+      // behind, so an exact-array assertion is brittle.
+      {
+        action: "assertMcpServers",
+        servers: "servers",
+        containsServer: "echoServer",
+      },
+      // Tear down so the child stdio process disconnects before the harness
+      // process tries to exit. Without this, the orphan MCP child keeps the
+      // parent alive and harness:ci hangs after the suite returns.
+      { action: "deleteMcpServer", server: "echoServer" },
+    ],
+  },
+  {
     id: "parallel-runs-smoke",
     name: "Parallel runs across distinct conversations",
     description:
