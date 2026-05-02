@@ -404,6 +404,43 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
     ],
   },
   {
+    id: "approval-route-boundaries",
+    name: "Approval HTTP route boundary cases",
+    description:
+      "Exercises POST /v1/runs/:rid/approvals at the acceptance layer. Until the harness can script LLM tool calls inside acceptance, full allow→execute / deny→refuse is covered only by runs.test.ts unit tests; this scenario locks the HTTP wiring (404 when no pending callId, 400 on invalid decision) so a routing regression surfaces here without needing real LLM traffic.",
+    tags: ["fast", "approvals", "tools"],
+    steps: [
+      { action: "createConversation", as: "conversation" },
+      {
+        action: "seedRunningRun",
+        conversation: "conversation",
+        asRun: "run",
+        runId: "r-acceptance-approval",
+      },
+      {
+        action: "postApproval",
+        run: "run",
+        callId: "no-such-call",
+        decision: "allow",
+        expectStatus: 404,
+      },
+      {
+        action: "postApproval",
+        run: "run",
+        callId: "no-such-call",
+        decision: "deny",
+        expectStatus: 404,
+      },
+      {
+        action: "postApproval",
+        run: "run",
+        callId: "any",
+        decision: "maybe",
+        expectStatus: 400,
+      },
+    ],
+  },
+  {
     id: "parallel-runs-smoke",
     name: "Parallel runs across distinct conversations",
     description:

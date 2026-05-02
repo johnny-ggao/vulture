@@ -219,6 +219,13 @@ export type AcceptanceStep =
       server: string;
     }
   | {
+      action: "postApproval";
+      run: string;
+      callId: string;
+      decision: "allow" | "deny" | string;
+      expectStatus?: number;
+    }
+  | {
       action: "parallelRuns";
       runs: Array<{
         conversation: string;
@@ -919,6 +926,34 @@ async function executeStep(
         method: "DELETE",
       });
       observe(state, step.action, { alias: step.server, server });
+      return;
+    }
+    case "postApproval": {
+      const run = requireAlias(state.resources.runs, step.run, "run");
+      const expectStatus = step.expectStatus ?? 202;
+      const res = await currentApp(options, state).request(
+        `/v1/runs/${run.id}/approvals`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${options.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ callId: step.callId, decision: step.decision }),
+        },
+      );
+      if (res.status !== expectStatus) {
+        const body = await res.text();
+        throw new Error(
+          `Expected approval POST status ${expectStatus}, got ${res.status}: ${body}`,
+        );
+      }
+      observe(state, step.action, {
+        run: step.run,
+        callId: step.callId,
+        decision: step.decision,
+        status: res.status,
+      });
       return;
     }
     case "parallelRuns": {
