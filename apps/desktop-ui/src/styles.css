@@ -1781,12 +1781,28 @@ pre {
   background: var(--bg-primary);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: border-color var(--duration-medium) var(--ease-standard),
-              color        var(--duration-medium) var(--ease-standard);
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    color        var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out),
+    box-shadow   var(--duration-fast) var(--ease-out);
 }
 .composer-attach:hover {
   border-color: var(--text-quaternary);
   color: var(--text-primary);
+  background: var(--fill-quaternary);
+}
+.composer-attach:active {
+  background: var(--fill-tertiary);
+}
+.composer-attach:focus-visible {
+  outline: 0;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.composer-attach:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .composer-attach input {
   position: absolute;
