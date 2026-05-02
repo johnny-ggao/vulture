@@ -605,6 +605,12 @@ export function AgentEditModal(props: AgentEditModalProps) {
               />
             ) : null}
           </div>
+
+          <AgentPreviewCard
+            agent={agent}
+            draft={draft}
+            isCreate={isCreate}
+          />
         </div>
 
         <div className="agent-edit-footer">
@@ -714,6 +720,112 @@ function FileIcon() {
     <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 2.5h5L12.5 6v7a1 1 0 0 1-1 1h-7.5a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z" />
       <path d="M9 2.5V6h3.5" />
+    </svg>
+  );
+}
+
+/* Map a ReasoningLevel to the friendly Chinese label shown in the
+ * preview card's "风格" row. Mirrors the OverviewTab segmented control
+ * options so the preview echoes whatever the user just clicked. */
+const REASONING_LABELS: Record<string, string> = {
+  low: "快速",
+  medium: "标准",
+  high: "深度",
+};
+
+/**
+ * Live preview card pinned to the right of the form. Mirrors what
+ * the agent will look like in browse / chat surfaces — avatar, name,
+ * description, current reasoning style — so the user sees their
+ * edits taking effect without saving first.
+ *
+ * In create mode the preview cross-fades on the typed name (synth
+ * agent id falls back to "new-agent" while name is empty so the hue
+ * is still deterministic).
+ */
+function AgentPreviewCard({
+  agent,
+  draft,
+  isCreate,
+}: {
+  agent: Agent | null;
+  draft: Draft;
+  isCreate: boolean;
+}) {
+  const previewAgent = agent ?? {
+    id: draft.name.trim() || "new-agent",
+    name: draft.name.trim() || "新建智能体",
+  };
+  const displayName = isCreate
+    ? draft.name.trim() || "新建智能体"
+    : agent?.name || "未命名智能体";
+  const description = draft.description.trim();
+  const reasoning = REASONING_LABELS[draft.reasoning] ?? "标准";
+
+  return (
+    <aside
+      className="agent-edit-preview"
+      aria-label="智能体预览"
+    >
+      <header className="agent-edit-preview-head">
+        <span className="agent-edit-preview-dot" aria-hidden="true" />
+        <span className="agent-edit-preview-eyebrow">智能体预览</span>
+      </header>
+      <p className="agent-edit-preview-sub">
+        {isCreate ? "实时预览创建效果" : "预览智能体效果"}
+      </p>
+
+      <div className="agent-edit-preview-card">
+        <div className="agent-edit-preview-avatar">
+          <AgentAvatar agent={previewAgent} size={44} shape="square" />
+        </div>
+        <h3 className="agent-edit-preview-name" title={displayName}>
+          {displayName}
+        </h3>
+        {!isCreate ? (
+          <span className="agent-edit-preview-badge" aria-label="身份已验证">
+            <CheckBadgeIcon />
+            身份已验证
+          </span>
+        ) : (
+          <span
+            className="agent-edit-preview-badge agent-edit-preview-badge-draft"
+            aria-label="尚未创建"
+          >
+            草稿
+          </span>
+        )}
+        {description ? (
+          <p className="agent-edit-preview-desc">"{description}"</p>
+        ) : (
+          <p className="agent-edit-preview-desc agent-edit-preview-desc-empty">
+            还没有描述。在身份页填写后会显示在这里。
+          </p>
+        )}
+        <hr className="agent-edit-preview-divider" />
+        <div className="agent-edit-preview-meta">
+          <span className="agent-edit-preview-meta-label">推理</span>
+          <span className="agent-edit-preview-meta-value">{reasoning}</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function CheckBadgeIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 8.5l3 3 7-7" />
     </svg>
   );
 }

@@ -6574,12 +6574,22 @@ pre {
 }
 .agent-edit-header-close { flex-shrink: 0; }
 
-/* ---- Body grid (rail | content) -------------------------------- */
+/* ---- Body grid (rail | content | preview) ---------------------- */
 .agent-edit-body {
   display: grid;
-  grid-template-columns: 192px minmax(0, 1fr);
+  /* 3-column grid at typical desktop widths: 184px rail + 1fr form
+   * + 248px preview. Modal is 960px max so content gets ~528px,
+   * comfortable for forms with 1-2 column inner grids.
+   *
+   * At ≤960px the preview drops out (form gets wider). At ≤720px
+   * the rail flips to a horizontal strip across the top. */
+  grid-template-columns: 184px minmax(0, 1fr) 248px;
   flex: 1;
   min-height: 0;
+}
+@media (max-width: 960px) {
+  .agent-edit-body { grid-template-columns: 184px minmax(0, 1fr); }
+  .agent-edit-preview { display: none; }
 }
 @media (max-width: 720px) {
   .agent-edit-body { grid-template-columns: 1fr; }
@@ -6674,6 +6684,142 @@ pre {
 .agent-edit-content .agent-config-panel {
   display: grid;
   gap: 14px;
+}
+
+/* ---- Preview aside (right column) ------------------------------ */
+.agent-edit-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 22px 22px 28px;
+  border-left: 0.5px solid var(--glass-border);
+  background: var(--bg-secondary);
+  overflow-y: auto;
+  min-height: 0;
+}
+.agent-edit-preview-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-edit-preview-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-500);
+  flex-shrink: 0;
+}
+.agent-edit-preview-eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.agent-edit-preview-sub {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+}
+
+/* The card itself sits inside the column — slightly elevated
+ * surface so the preview reads as "this is what'll ship". */
+.agent-edit-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 18px 16px 16px;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card-rest);
+}
+.agent-edit-preview-avatar {
+  display: inline-grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--glass-border);
+  box-shadow:
+    0 1px 1px rgba(15, 15, 15, 0.04),
+    0 4px 10px rgba(15, 15, 15, 0.08);
+  margin-bottom: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  .agent-edit-preview-avatar {
+    box-shadow:
+      0 1px 1px rgba(0, 0, 0, 0.30),
+      0 4px 12px rgba(0, 0, 0, 0.40);
+  }
+}
+.agent-edit-preview-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-edit-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--success-bg);
+  color: var(--success);
+  border: 0.5px solid color-mix(in oklab, var(--success) 32%, var(--glass-border));
+  font-size: 11px;
+  font-weight: 500;
+}
+.agent-edit-preview-badge-draft {
+  background: var(--fill-quaternary);
+  color: var(--text-tertiary);
+  border-color: var(--glass-border);
+}
+.agent-edit-preview-desc {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  /* Clamp to ~5 lines so a long description doesn't push the meta
+   * row off the visible card. */
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.agent-edit-preview-desc-empty {
+  font-style: normal;
+  color: var(--text-quaternary);
+}
+.agent-edit-preview-divider {
+  width: 100%;
+  border: 0;
+  border-top: 0.5px solid var(--glass-border);
+  margin: 10px 0 8px;
+}
+.agent-edit-preview-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11.5px;
+}
+.agent-edit-preview-meta-label {
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+}
+.agent-edit-preview-meta-value {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* ---- Footer ---------------------------------------------------- */
