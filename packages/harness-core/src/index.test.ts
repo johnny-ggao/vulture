@@ -11,6 +11,7 @@ import {
   buildHarnessBundleManifest,
   buildHarnessTriageReport,
   formatHarnessListLine,
+  HARNESS_ARTIFACT_CONTRACTS,
   archiveHarnessArtifacts,
   inspectHarnessCatalog,
   inspectHarnessCatalogLanes,
@@ -29,6 +30,7 @@ import {
   writeHarnessJUnitReport,
   writeHarnessManifest,
   writeHarnessReport,
+  validateHarnessArtifactContracts,
 } from "./index";
 
 const scenarios = [
@@ -388,6 +390,78 @@ describe("harness-core", () => {
       const check = report.checks.find((item) => item.id === "bundle-manifest");
       expect(check?.status).toBe("failed");
       expect(check?.command).toBe("bun run harness:ci");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("pins stable harness artifact schema contracts", () => {
+    expect(HARNESS_ARTIFACT_CONTRACTS.map((contract) => ({
+      id: contract.id,
+      path: contract.path,
+      schemaVersion: contract.schemaVersion,
+      fields: contract.fields,
+    }))).toEqual([
+      {
+        id: "harness-report",
+        path: "harness-report/report.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "status", "lanes", "missingRequiredLanes", "missingOptionalLanes", "doctor"],
+      },
+      {
+        id: "ci-summary",
+        path: "harness-report/ci-summary.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "status", "total", "passed", "failed", "steps"],
+      },
+      {
+        id: "artifact-validation",
+        path: "harness-report/artifact-validation.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "status", "checks"],
+      },
+      {
+        id: "triage",
+        path: "harness-report/triage.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "status", "summary", "items"],
+      },
+      {
+        id: "retention",
+        path: "harness-report/retention.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "status", "archiveRoot", "policy", "snapshots", "kept", "deleted", "errors"],
+      },
+      {
+        id: "history",
+        path: "harness-report/history.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "archiveRoot", "latestStatus", "total", "entries"],
+      },
+      {
+        id: "bundle-manifest",
+        path: "harness-report/bundle-manifest.json",
+        schemaVersion: 1,
+        fields: ["schemaVersion", "generatedAt", "artifactRoot", "fileCount", "totalBytes", "requiredFiles", "files"],
+      },
+    ]);
+  });
+
+  test("validates stable harness artifact contracts", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-contracts-"));
+    try {
+      writeFullReportArtifacts(root);
+      const checks = validateHarnessArtifactContracts(root);
+      expect(checks.every((check) => check.status === "passed")).toBe(true);
+
+      mutateJson(join(root, "harness-report", "triage.json"), (triage) => ({
+        ...triage,
+        surprise: true,
+      }));
+      const failed = validateHarnessArtifactContracts(root).find((check) => check.id === "contract-triage");
+      expect(failed?.status).toBe("failed");
+      expect(failed?.detail).toContain("unexpected fields: surprise");
+      expect(failed?.hint).toContain("stable JSON contract");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -770,6 +844,36 @@ function writeValidArtifactBundle(root: string) {
       steps: [{ id: "harness-report", name: "Harness report", command: ["bun"], status: "passed", exitCode: 0, signal: null, durationMs: 1 }],
     })}\n`,
   );
+}
+
+function writeFullReportArtifacts(root: string) {
+  writeValidArtifactBundle(root);
+  const artifactReport = validateHarnessArtifactBundle(root, "2026-05-02T00:00:01.000Z");
+  writeHarnessArtifactValidationReport(join(root, "harness-report"), artifactReport);
+  const triage = buildHarnessTriageReport({
+    generatedAt: "2026-05-02T00:00:02.000Z",
+    ciSteps: [{
+      id: "harness-report",
+      name: "Harness report",
+      command: ["bun", "run", "harness:report"],
+      status: "passed",
+    }],
+    harnessReport: JSON.parse(readFileSync(join(root, "harness-report", "report.json"), "utf8")),
+    artifactValidationReport: artifactReport,
+  });
+  writeHarnessTriageReport(join(root, "harness-report"), triage);
+  const retention = pruneHarnessArtifactSnapshots({
+    archiveRoot: join(root, "harness-runs"),
+    generatedAt: "2026-05-02T00:00:03.000Z",
+  });
+  writeHarnessArtifactRetentionReport(join(root, "harness-report"), retention);
+  const history = buildHarnessArtifactHistory(retention, "2026-05-02T00:00:04.000Z");
+  writeHarnessArtifactHistoryReport(join(root, "harness-report"), history);
+  const manifest = buildHarnessBundleManifest({
+    artifactRoot: root,
+    generatedAt: "2026-05-02T00:00:05.000Z",
+  });
+  writeHarnessBundleManifestReport(join(root, "harness-report"), manifest);
 }
 
 function mutateJson(path: string, mutate: (value: any) => any): void {

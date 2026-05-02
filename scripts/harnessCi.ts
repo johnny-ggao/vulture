@@ -201,6 +201,7 @@ async function main(): Promise<void> {
   );
   const finalArtifactReport = validateHarnessArtifactBundle(artifactRoot, summary.generatedAt, {
     requireBundleManifest: true,
+    requireArtifactContracts: true,
   });
   const finalArtifactPaths = writeHarnessArtifactValidationReport(
     join(artifactRoot, "harness-report"),

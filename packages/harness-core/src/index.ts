@@ -206,6 +206,7 @@ export const DEFAULT_HARNESS_BUNDLE_REQUIRED_FILES = [
 
 export interface HarnessArtifactValidationOptions {
   requireBundleManifest?: boolean;
+  requireArtifactContracts?: boolean;
 }
 
 export interface HarnessBundleManifestFile {
@@ -229,6 +230,76 @@ export interface HarnessBundleManifest {
   requiredFiles: HarnessBundleRequiredFile[];
   files: HarnessBundleManifestFile[];
 }
+
+export type HarnessArtifactContractStability = "stable" | "diagnostic";
+
+export interface HarnessArtifactContract {
+  id: string;
+  path: string;
+  schemaVersion: 1;
+  stability: HarnessArtifactContractStability;
+  fields: string[];
+  notes: string;
+}
+
+export const HARNESS_ARTIFACT_CONTRACTS: readonly HarnessArtifactContract[] = [
+  {
+    id: "harness-report",
+    path: "harness-report/report.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "status", "lanes", "missingRequiredLanes", "missingOptionalLanes", "doctor"],
+    notes: "Aggregate lane status consumed by CI triage and future report UI.",
+  },
+  {
+    id: "ci-summary",
+    path: "harness-report/ci-summary.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "status", "total", "passed", "failed", "steps"],
+    notes: "CI step summary and command source for failed-step reproduction.",
+  },
+  {
+    id: "artifact-validation",
+    path: "harness-report/artifact-validation.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "status", "checks"],
+    notes: "Artifact schema validation checks and actionable mismatch diagnostics.",
+  },
+  {
+    id: "triage",
+    path: "harness-report/triage.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "status", "summary", "items"],
+    notes: "Focused failure triage entry point for CI and local debugging.",
+  },
+  {
+    id: "retention",
+    path: "harness-report/retention.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "status", "archiveRoot", "policy", "snapshots", "kept", "deleted", "errors"],
+    notes: "Snapshot retention decision record.",
+  },
+  {
+    id: "history",
+    path: "harness-report/history.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "archiveRoot", "latestStatus", "total", "entries"],
+    notes: "Retained snapshot history index.",
+  },
+  {
+    id: "bundle-manifest",
+    path: "harness-report/bundle-manifest.json",
+    schemaVersion: 1,
+    stability: "stable",
+    fields: ["schemaVersion", "generatedAt", "artifactRoot", "fileCount", "totalBytes", "requiredFiles", "files"],
+    notes: "Artifact file inventory with required-file status and file hashes.",
+  },
+] as const;
 
 export interface HarnessArtifactRetentionPolicy {
   keepLast: number;
@@ -706,6 +777,9 @@ export function validateHarnessArtifactBundle(
     join(artifactRoot, "harness-report", "bundle-manifest.json"),
     options.requireBundleManifest ?? false,
   ));
+  if (options.requireArtifactContracts) {
+    checks.push(...validateHarnessArtifactContracts(artifactRoot));
+  }
 
   return {
     schemaVersion: 1,
@@ -1040,6 +1114,40 @@ export function writeHarnessBundleManifestReport(
   writeFileSync(jsonPath, `${JSON.stringify(finalManifest, null, 2)}\n`);
   writeFileSync(markdownPath, renderHarnessBundleManifestMarkdown(finalManifest));
   return { jsonPath, markdownPath };
+}
+
+export function validateHarnessArtifactContracts(
+  artifactRoot: string,
+  contracts: readonly HarnessArtifactContract[] = HARNESS_ARTIFACT_CONTRACTS,
+): HarnessArtifactValidationCheck[] {
+  const root = resolve(artifactRoot);
+  return contracts.map((contract) => {
+    const path = join(root, contract.path);
+    const value = readJsonIfPresent<Record<string, unknown>>(path);
+    if (!value) {
+      return validationCheck(`contract-${contract.id}`, "failed", `${contract.path} is missing or invalid JSON`, path, {
+        expected: `schemaVersion=${contract.schemaVersion}, fields=${contract.fields.join(",")}`,
+        actual: "missing or invalid JSON",
+        hint: "Run bun run harness:ci to regenerate the full artifact bundle.",
+        command: "bun run harness:ci",
+      });
+    }
+    const errors = validateHarnessArtifactContractValue(value, contract);
+    return validationCheck(
+      `contract-${contract.id}`,
+      errors.length === 0 ? "passed" : "failed",
+      errors.length === 0 ? `${contract.path} contract ok` : errors.join("; "),
+      path,
+      errors.length === 0
+        ? {}
+        : {
+            expected: `schemaVersion=${contract.schemaVersion}, top-level fields=${contract.fields.join(",")}`,
+            actual: errors.join("; "),
+            hint: "This artifact is a stable JSON contract. Bump schemaVersion before breaking consumers.",
+            command: "bun run harness:ci",
+          },
+    );
+  });
 }
 
 export function findHarnessRepoRoot(start: string): string {
@@ -2015,6 +2123,23 @@ function validateBundleManifestShape(manifest: HarnessBundleManifest): string[] 
       }
     }
   }
+  return errors;
+}
+
+function validateHarnessArtifactContractValue(
+  value: Record<string, unknown>,
+  contract: HarnessArtifactContract,
+): string[] {
+  const errors: string[] = [];
+  if (value.schemaVersion !== contract.schemaVersion) {
+    errors.push(`schemaVersion must be ${contract.schemaVersion}`);
+  }
+  const expectedFields = [...contract.fields].sort((left, right) => left.localeCompare(right, "en"));
+  const actualFields = Object.keys(value).sort((left, right) => left.localeCompare(right, "en"));
+  const missing = expectedFields.filter((field) => !(field in value));
+  const extra = actualFields.filter((field) => !expectedFields.includes(field));
+  if (missing.length > 0) errors.push(`missing fields: ${missing.join(",")}`);
+  if (extra.length > 0) errors.push(`unexpected fields: ${extra.join(",")}`);
   return errors;
 }
 

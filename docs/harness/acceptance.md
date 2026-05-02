@@ -260,8 +260,27 @@ expected, actual, hint, and a copy-paste command when the validator can identify
 a concrete mismatch.
 
 During `harness:ci`, the final artifact validation also requires a bundle
-manifest and checks its schema. The standalone `bun run harness:artifacts`
-command remains usable before the bundle manifest exists.
+manifest and checks stable artifact contracts. The standalone
+`bun run harness:artifacts` command remains usable before the full CI-only
+artifact set exists.
+
+### Artifact Contracts
+
+The following JSON files are stable harness artifact contracts:
+
+- `harness-report/report.json`
+- `harness-report/ci-summary.json`
+- `harness-report/artifact-validation.json`
+- `harness-report/triage.json`
+- `harness-report/retention.json`
+- `harness-report/history.json`
+- `harness-report/bundle-manifest.json`
+
+For these files, `schemaVersion` and the top-level field set are treated as a
+consumer-facing protocol. Adding, removing, or renaming a top-level field should
+bump `schemaVersion` and update the contract tests in `@vulture/harness-core`.
+Nested fields inside arrays such as `checks`, `items`, `steps`, and `files`
+remain diagnostic payloads unless they are documented by a narrower contract.
 
 ### Bundle Manifest
 
