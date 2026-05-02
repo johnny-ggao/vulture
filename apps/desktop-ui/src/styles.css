@@ -5181,12 +5181,15 @@ pre {
   transition:
     border-color var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out);
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 .tool-capability:hover {
   border-color: color-mix(in oklab, var(--brand-500) 22%, var(--glass-border));
   box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
 }
+.tool-capability:active { transform: translateY(0); }
 .tool-capability:focus-visible {
   outline: 0;
   border-color: var(--brand-500);
@@ -5194,7 +5197,10 @@ pre {
 }
 .tool-capability[data-tinted="true"] {
   border-color: var(--brand-500);
-  background: var(--brand-050);
+  background: color-mix(in oklab, var(--brand-500) 8%, var(--bg-primary));
+}
+.tool-capability[data-tinted="true"]:hover {
+  background: color-mix(in oklab, var(--brand-500) 12%, var(--bg-primary));
 }
 .tool-capability-meta { display: grid; gap: 4px; min-width: 0; }
 .tool-capability-label { font-weight: 650; font-size: 13px; }
@@ -5229,11 +5235,16 @@ pre {
   align-content: start;
   border: 0.5px solid var(--glass-border);
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  padding: 10px 12px;
   background: var(--bg-primary);
-  transition: background-color var(--duration-medium) var(--ease-standard);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
-.tool-group[data-tinted="true"] { background: var(--brand-050); }
+.tool-group[data-tinted="true"] {
+  background: color-mix(in oklab, var(--brand-500) 8%, var(--bg-primary));
+  border-color: color-mix(in oklab, var(--brand-500) 36%, var(--glass-border));
+}
 .tool-group-head {
   display: grid;
   grid-template-columns: 16px 1fr auto;
@@ -5243,18 +5254,43 @@ pre {
   color: var(--text-primary);
   cursor: pointer;
 }
+.tool-group-head input[type="checkbox"] { accent-color: var(--brand-500); }
 .tool-group-label { font-weight: 650; }
-.tool-group-count { color: var(--text-tertiary); }
+.tool-group-count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
 .tool-list { display: grid; gap: 5px; padding-left: 24px; }
 .tool-row {
   display: grid;
   grid-template-columns: 16px 1fr auto;
   gap: 8px;
   align-items: center;
+  padding: 4px 6px 4px 4px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
-.tool-row-meta { color: var(--text-tertiary); }
+.tool-row:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+.tool-row:focus-within {
+  outline: 0;
+  background: var(--fill-quaternary);
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
+.tool-row input[type="checkbox"] { accent-color: var(--brand-500); }
+.tool-row-meta {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
 
 @media (max-width: 720px) {
   .tool-capabilities,
@@ -7800,15 +7836,43 @@ pre {
   outline-offset: 2px;
 }
 
-.agent-tools { display: grid; gap: 10px; }
+.agent-tools { display: grid; gap: 14px; }
 .agent-tools-head {
   display: flex;
   justify-content: space-between;
-  align-items: end;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
 }
-.agent-tools-head .field { min-width: 220px; }
-.agent-tools-presets { display: inline-flex; gap: 8px; }
+.agent-tools-head .field { min-width: 240px; flex: 1 1 240px; }
+.agent-tools-presets {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+.agent-tools-presets > .btn-secondary {
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  font-size: 12.5px;
+  border-radius: var(--radius-sm);
+  min-height: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.agent-tools-presets > .btn-secondary:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+.agent-tools-presets > .btn-secondary:active { background: var(--fill-tertiary); }
+.agent-tools-presets > .btn-secondary:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--brand-ring);
+}
 .agent-handoff-config {
   display: grid;
   gap: 10px;
