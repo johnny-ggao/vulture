@@ -221,6 +221,8 @@ export function Composer(props: ComposerProps) {
             type="button"
             className="composer-cancel"
             aria-label="取消"
+            title="取消运行  ⌘ ."
+            aria-keyshortcuts="Meta+Period Control+Period"
             onClick={props.onCancel}
           >
             <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>
@@ -230,6 +232,8 @@ export function Composer(props: ComposerProps) {
             type="button"
             className="composer-send"
             aria-label="发送"
+            title="发送  Enter"
+            aria-keyshortcuts="Enter"
             onClick={send}
             disabled={!canSend}
           >

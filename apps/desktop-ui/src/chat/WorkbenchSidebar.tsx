@@ -43,26 +43,40 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
       </button>
 
       <nav className="sidebar-nav">
-        {PRIMARY.map(({ key, label, icon }) => (
-          <button
-            key={key}
-            type="button"
-            className={"sb-item" + (props.view === key ? " sb-item-active" : "")}
-            onClick={() => {
-              if (key === "chat") {
-                props.onNewConversation();
-                return;
+        {PRIMARY.map(({ key, label, icon }, idx) => {
+          // ⌘1–6 jump-shortcuts mirror App.tsx's window-level handler;
+          // surfacing the digit on the title attribute makes the
+          // shortcut discoverable without opening ⌘K.
+          const digit = idx + 1;
+          const shortcut = `⌘ ${digit}`;
+          const titleHint = key === "chat" ? `新建对话  ⌘ N` : `${label}  ${shortcut}`;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={"sb-item" + (props.view === key ? " sb-item-active" : "")}
+              title={titleHint}
+              aria-keyshortcuts={
+                key === "chat" ? "Meta+N Control+N" : `Meta+${digit} Control+${digit}`
               }
-              props.onSelectView(key);
-            }}
-          >
-            {icon}
-            <span>{label}</span>
-          </button>
-        ))}
+              onClick={() => {
+                if (key === "chat") {
+                  props.onNewConversation();
+                  return;
+                }
+                props.onSelectView(key);
+              }}
+            >
+              {icon}
+              <span>{label}</span>
+            </button>
+          );
+        })}
         <button
           type="button"
           className={"sb-item" + (props.historyOpen ? " sb-item-active" : "")}
+          title="历史  ⌘ B"
+          aria-keyshortcuts="Meta+B Control+B"
           onClick={props.onToggleHistory}
           aria-expanded={props.historyOpen}
         >
@@ -75,6 +89,8 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
         <button
           type="button"
           className={"sb-item" + (props.view === "settings" ? " sb-item-active" : "")}
+          title="设置  ⌘ ,"
+          aria-keyshortcuts="Meta+Comma Control+Comma"
           onClick={() => props.onSelectView("settings")}
         >
           <IconSettings />
