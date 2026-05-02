@@ -24,7 +24,8 @@ const init017 = readFileSync(join(here, "migrations", "017_agent_avatar.sql"), "
 
 interface Migration {
   version: number;
-  sql: string;
+  sql?: string;
+  apply?: (db: DB) => void;
 }
 
 const MIGRATIONS: Migration[] = [
@@ -45,6 +46,7 @@ const MIGRATIONS: Migration[] = [
   { version: 15, sql: init015 },
   { version: 16, sql: init016 },
   { version: 17, sql: init017 },
+  { version: 18, apply: applySubagentProductizationMigration },
 ];
 
 export function currentSchemaVersion(db: DB): number {
@@ -63,7 +65,38 @@ export function applyMigrations(db: DB): void {
       v = 0;
     }
     if (v < m.version) {
-      db.exec(m.sql);
+      if (m.apply) {
+        m.apply(db);
+      } else if (m.sql) {
+        db.exec(m.sql);
+      }
     }
   }
+}
+
+function applySubagentProductizationMigration(db: DB): void {
+  const agentColumns = new Set(
+    (db.query("PRAGMA table_info(agents)").all() as Array<{ name: string }>)
+      .map((column) => column.name),
+  );
+  if (!agentColumns.has("avatar")) {
+    db.exec("ALTER TABLE agents ADD COLUMN avatar TEXT");
+  }
+
+  const existing = new Set(
+    (db.query("PRAGMA table_info(subagent_sessions)").all() as Array<{ name: string }>)
+      .map((column) => column.name),
+  );
+  const columns: Array<[string, string]> = [
+    ["title", "ALTER TABLE subagent_sessions ADD COLUMN title TEXT"],
+    ["task", "ALTER TABLE subagent_sessions ADD COLUMN task TEXT"],
+    ["result_summary", "ALTER TABLE subagent_sessions ADD COLUMN result_summary TEXT"],
+    ["result_message_id", "ALTER TABLE subagent_sessions ADD COLUMN result_message_id TEXT"],
+    ["completed_at", "ALTER TABLE subagent_sessions ADD COLUMN completed_at TEXT"],
+    ["last_error", "ALTER TABLE subagent_sessions ADD COLUMN last_error TEXT"],
+  ];
+  for (const [name, sql] of columns) {
+    if (!existing.has(name)) db.exec(sql);
+  }
+  db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (18)");
 }

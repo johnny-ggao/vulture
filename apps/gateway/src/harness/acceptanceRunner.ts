@@ -173,6 +173,8 @@ export type AcceptanceStep =
       as: string;
       agentId?: string;
       label: string;
+      title?: string;
+      task?: string;
       messages?: Array<{ role: "user" | "assistant"; content: string }>;
     }
   | {
@@ -189,6 +191,9 @@ export type AcceptanceStep =
       parentConversation?: string;
       parentRun?: string;
       statuses?: Array<SubagentSessionResource["status"]>;
+      titles?: Array<string | null>;
+      tasks?: Array<string | null>;
+      resultSummaries?: Array<string | null>;
     }
   | {
       action: "listSubagentMessages";
@@ -202,6 +207,8 @@ export type AcceptanceStep =
       asSubagent: string;
       childAgentId: string;
       label: string;
+      title?: string;
+      task?: string;
       userInput: string;
       childResult: string;
       finalText: string;
@@ -307,8 +314,14 @@ interface SubagentSessionResource {
   agentId: string;
   conversationId: string;
   label: string;
+  title: string | null;
+  task: string | null;
   status: "active" | "completed" | "failed" | "cancelled";
   messageCount: number;
+  resultSummary: string | null;
+  resultMessageId: string | null;
+  completedAt: string | null;
+  lastError: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -764,6 +777,8 @@ async function executeStep(
         parentRunId: parentRun.id,
         agentId: step.agentId ?? "local-work-agent",
         label: step.label,
+        title: step.title,
+        task: step.task,
         messages: step.messages ?? [],
       });
       state.resources.subagentSessions[step.as] = session;
@@ -798,6 +813,26 @@ async function executeStep(
         const actual = sessions.map((session) => session.status);
         if (!arrayEquals(actual, step.statuses)) {
           throw new Error(`Expected subagent statuses ${JSON.stringify(step.statuses)}, received ${JSON.stringify(actual)}`);
+        }
+      }
+      if (step.titles) {
+        const actual = sessions.map((session) => session.title);
+        if (!arrayEquals(actual, step.titles)) {
+          throw new Error(`Expected subagent titles ${JSON.stringify(step.titles)}, received ${JSON.stringify(actual)}`);
+        }
+      }
+      if (step.tasks) {
+        const actual = sessions.map((session) => session.task);
+        if (!arrayEquals(actual, step.tasks)) {
+          throw new Error(`Expected subagent tasks ${JSON.stringify(step.tasks)}, received ${JSON.stringify(actual)}`);
+        }
+      }
+      if (step.resultSummaries) {
+        const actual = sessions.map((session) => session.resultSummary);
+        if (!arrayEquals(actual, step.resultSummaries)) {
+          throw new Error(
+            `Expected subagent result summaries ${JSON.stringify(step.resultSummaries)}, received ${JSON.stringify(actual)}`,
+          );
         }
       }
       if (step.containsSession) {
@@ -843,6 +878,8 @@ async function executeStep(
         parentAgentId: conversation.agentId ?? "local-work-agent",
         childAgentId: step.childAgentId,
         label: step.label,
+        title: step.title,
+        task: step.task,
         userInput: step.userInput,
         childResult: step.childResult,
         finalText: step.finalText,
@@ -1092,6 +1129,8 @@ function seedSubagentSession(
     parentRunId: string;
     agentId: string;
     label: string;
+    title?: string;
+    task?: string;
     messages: Array<{ role: "user" | "assistant"; content: string }>;
   },
 ): SubagentSessionResource {
@@ -1105,7 +1144,7 @@ function seedSubagentSession(
     const sessions = new SubagentSessionStore(db, { runs, messages });
     const child = conversations.create({
       agentId: input.agentId,
-      title: input.label,
+      title: input.title ?? input.label,
     });
     for (const message of input.messages) {
       messages.append({
@@ -1121,6 +1160,8 @@ function seedSubagentSession(
       agentId: input.agentId,
       conversationId: child.id,
       label: input.label,
+      title: input.title,
+      task: input.task,
     });
     return sessions.refreshStatus(session.id) as SubagentSessionResource;
   } finally {
@@ -1135,6 +1176,8 @@ function seedApprovedSubagentWorkflow(
     parentAgentId: string;
     childAgentId: string;
     label: string;
+    title?: string;
+    task?: string;
     userInput: string;
     childResult: string;
     finalText: string;
@@ -1169,8 +1212,8 @@ function seedApprovedSubagentWorkflow(
     const toolInput = {
       agentId: input.childAgentId,
       label: input.label,
-      title: input.label,
-      message: input.userInput,
+      title: input.title ?? input.label,
+      message: input.task ?? input.userInput,
     };
     runs.appendEvent(run.id, {
       type: "tool.planned",
@@ -1189,26 +1232,34 @@ function seedApprovedSubagentWorkflow(
 
     const child = conversations.create({
       agentId: input.childAgentId,
-      title: input.label,
+      title: input.title ?? input.label,
     });
-    messages.append({
+    const childPrompt = messages.append({
       conversationId: child.id,
       role: "user",
-      content: input.userInput,
+      content: toolInput.message,
       runId: null,
     });
-    messages.append({
+    const childRun = runs.create({
+      conversationId: child.id,
+      agentId: input.childAgentId,
+      triggeredByMessageId: childPrompt.id,
+    });
+    const childAssistant = messages.append({
       conversationId: child.id,
       role: "assistant",
       content: input.childResult,
-      runId: null,
+      runId: childRun.id,
     });
+    runs.markSucceeded(childRun.id, childAssistant.id);
     const session = sessions.create({
       parentConversationId: input.conversationId,
       parentRunId: run.id,
       agentId: input.childAgentId,
       conversationId: child.id,
       label: input.label,
+      title: input.title,
+      task: toolInput.message,
     });
     runs.appendEvent(run.id, {
       type: "tool.completed",
@@ -1216,7 +1267,33 @@ function seedApprovedSubagentWorkflow(
       output: {
         sessionId: session.id,
         conversationId: child.id,
-        runId: null,
+        runId: childRun.id,
+      },
+    });
+    const completedSession = sessions.refreshStatus(session.id) as SubagentSessionResource;
+    const yieldCallId = `${input.callId}-yield`;
+    runs.appendEvent(run.id, {
+      type: "tool.planned",
+      callId: yieldCallId,
+      tool: "sessions_yield",
+      input: { parentRunId: run.id },
+    });
+    runs.appendEvent(run.id, { type: "tool.started", callId: yieldCallId });
+    runs.appendEvent(run.id, {
+      type: "tool.completed",
+      callId: yieldCallId,
+      output: {
+        active: [],
+        completed: [
+          {
+            sessionId: completedSession.id,
+            agentId: completedSession.agentId,
+            title: completedSession.title,
+            task: completedSession.task,
+            resultSummary: completedSession.resultSummary,
+          },
+        ],
+        failed: [],
       },
     });
     runs.appendEvent(run.id, { type: "text.delta", text: input.finalText });
@@ -1234,7 +1311,7 @@ function seedApprovedSubagentWorkflow(
     });
     return {
       run: runs.get(run.id) as RunResource,
-      session: sessions.refreshStatus(session.id) as SubagentSessionResource,
+      session: completedSession,
     };
   } finally {
     db.close();
@@ -1331,7 +1408,13 @@ function renderTranscript(scenario: AcceptanceScenario, result: AcceptanceRunRes
     for (const [alias, sessions] of Object.entries(result.resources.subagentSessionLists)) {
       lines.push(`### ${alias}`, "");
       for (const session of sessions) {
-        lines.push(`- ${session.id}: ${session.status} ${session.label}`);
+        const parts = [
+          `${session.id}: ${session.status} ${session.label}`,
+          session.title ? `title=${session.title}` : null,
+          session.task ? `task=${session.task}` : null,
+          session.resultSummary ? `result=${session.resultSummary}` : null,
+        ].filter(Boolean);
+        lines.push(`- ${parts.join(" | ")}`);
       }
       if (sessions.length === 0) lines.push("- none");
       lines.push("");
@@ -1358,7 +1441,7 @@ function isTerminal(status: AcceptanceRunStatus): boolean {
   return status === "succeeded" || status === "failed" || status === "cancelled";
 }
 
-function arrayEquals(left: readonly string[], right: readonly string[]): boolean {
+function arrayEquals<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 

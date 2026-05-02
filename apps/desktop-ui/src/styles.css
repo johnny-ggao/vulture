@@ -2380,6 +2380,23 @@ pre {
   font-size: 12px;
   color: var(--text-tertiary);
 }
+.subagent-main .subagent-secondary,
+.subagent-main .subagent-detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.subagent-main .subagent-detail.completed {
+  color: var(--text-secondary);
+}
+.subagent-main .subagent-detail.failed,
+.subagent-main .subagent-detail.cancelled {
+  color: var(--danger);
+}
 .subagent-status {
   display: inline-flex;
   align-items: center;

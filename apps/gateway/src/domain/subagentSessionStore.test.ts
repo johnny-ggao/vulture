@@ -263,6 +263,108 @@ describe("SubagentSessionStore", () => {
     stores.cleanup();
   });
 
+  test("refreshStatus keeps completed result tied to succeeded run result message", () => {
+    const stores = fresh();
+    const session = stores.sessions.create({
+      parentConversationId: stores.parent.id,
+      parentRunId: stores.parentRun.id,
+      agentId: stores.child.agentId,
+      conversationId: stores.child.id,
+      label: "Worker",
+    });
+    const childMessage = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "user",
+      content: "go",
+      runId: null,
+    });
+    const childRun = stores.runs.create({
+      conversationId: stores.child.id,
+      agentId: stores.child.agentId,
+      triggeredByMessageId: childMessage.id,
+    });
+    const result = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "assistant",
+      content: "The result linked to the succeeded run.",
+      runId: childRun.id,
+    });
+    stores.runs.markSucceeded(childRun.id, result.id);
+
+    const completed = stores.sessions.refreshStatus(session.id);
+    stores.messages.append({
+      conversationId: stores.child.id,
+      role: "assistant",
+      content: "A later unrelated assistant message.",
+      runId: null,
+    });
+
+    expect(stores.sessions.refreshStatus(session.id)).toMatchObject({
+      status: "completed",
+      resultSummary: "The result linked to the succeeded run.",
+      resultMessageId: result.id,
+      completedAt: completed?.completedAt,
+    });
+    stores.cleanup();
+  });
+
+  test("refreshStatus clears terminal metadata when a later child run becomes active", () => {
+    const stores = fresh();
+    const session = stores.sessions.create({
+      parentConversationId: stores.parent.id,
+      parentRunId: stores.parentRun.id,
+      agentId: stores.child.agentId,
+      conversationId: stores.child.id,
+      label: "Worker",
+    });
+    const firstMessage = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "user",
+      content: "go",
+      runId: null,
+    });
+    const firstRun = stores.runs.create({
+      conversationId: stores.child.id,
+      agentId: stores.child.agentId,
+      triggeredByMessageId: firstMessage.id,
+    });
+    const result = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "assistant",
+      content: "Completed result.",
+      runId: firstRun.id,
+    });
+    stores.runs.markSucceeded(firstRun.id, result.id);
+    expect(stores.sessions.refreshStatus(session.id)).toMatchObject({
+      status: "completed",
+      resultSummary: "Completed result.",
+      resultMessageId: result.id,
+      completedAt: expect.any(String),
+    });
+
+    const secondMessage = stores.messages.append({
+      conversationId: stores.child.id,
+      role: "user",
+      content: "continue",
+      runId: null,
+    });
+    const secondRun = stores.runs.create({
+      conversationId: stores.child.id,
+      agentId: stores.child.agentId,
+      triggeredByMessageId: secondMessage.id,
+    });
+    stores.runs.markRunning(secondRun.id);
+
+    expect(stores.sessions.refreshStatus(session.id)).toMatchObject({
+      status: "active",
+      resultSummary: null,
+      resultMessageId: null,
+      completedAt: null,
+      lastError: null,
+    });
+    stores.cleanup();
+  });
+
   test("refreshStatus captures failure errors", () => {
     const stores = fresh();
     const session = stores.sessions.create({

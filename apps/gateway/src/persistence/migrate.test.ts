@@ -9,7 +9,30 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 17;
+const LATEST_SCHEMA_VERSION = 18;
+const migrationsBefore018 = [
+  "001_init.sql",
+  "002_runs.sql",
+  "003_run_recovery.sql",
+  "004_run_token_usage.sql",
+  "005_message_attachments.sql",
+  "006_agent_skills.sql",
+  "007_memories.sql",
+  "008_memory_files.sql",
+  "009_mcp_servers.sql",
+  "010_mcp_tool_policy.sql",
+  "011_conversation_context.sql",
+  "012_agent_tool_policy.sql",
+  "013_subagent_sessions.sql",
+  "014_agent_handoffs.sql",
+  "015_conversation_permission_mode.sql",
+  "016_codex_permission_modes.sql",
+  "017_agent_avatar.sql",
+].map((name) => readFileSync(join(here, "migrations", name), "utf8"));
+
+function applyMigrationsBefore018(db: ReturnType<typeof openDatabase>): void {
+  for (const sql of migrationsBefore018) db.exec(sql);
+}
 
 describe("migrate", () => {
   test("applies all migrations and reports latest version", () => {
@@ -251,7 +274,7 @@ describe("migrate", () => {
     const columns = db
       .query("PRAGMA table_info(subagent_sessions)")
       .all() as { name: string; notnull: number }[];
-    expect(columns.map((c) => c.name)).toEqual([
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining([
       "id",
       "parent_conversation_id",
       "parent_run_id",
@@ -262,7 +285,7 @@ describe("migrate", () => {
       "message_count",
       "created_at",
       "updated_at",
-    ]);
+    ]));
     expect(columns.find((c) => c.name === "parent_conversation_id")?.notnull).toBe(1);
     expect(columns.find((c) => c.name === "parent_run_id")?.notnull).toBe(1);
     expect(columns.find((c) => c.name === "conversation_id")?.notnull).toBe(1);
@@ -296,6 +319,96 @@ describe("migrate", () => {
     const permissionMode = columns.find((c) => c.name === "permission_mode");
     expect(permissionMode?.notnull).toBe(1);
     expect(permissionMode?.dflt_value).toBe("'default'");
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("018 adds subagent productization metadata columns", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v18-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrations(db);
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as { name: string; notnull: number }[];
+    expect(columns.map((c) => c.name)).toEqual([
+      "id",
+      "parent_conversation_id",
+      "parent_run_id",
+      "agent_id",
+      "conversation_id",
+      "label",
+      "status",
+      "message_count",
+      "created_at",
+      "updated_at",
+      "title",
+      "task",
+      "result_summary",
+      "result_message_id",
+      "completed_at",
+      "last_error",
+    ]);
+    expect(columns.find((c) => c.name === "title")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "task")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "result_summary")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "result_message_id")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "completed_at")?.notnull).toBe(0);
+    expect(columns.find((c) => c.name === "last_error")?.notnull).toBe(0);
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("018 resumes after productization columns are partially added", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v18-partial-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    applyMigrationsBefore018(db);
+    expect(currentSchemaVersion(db)).toBe(17);
+    db.exec("ALTER TABLE subagent_sessions ADD COLUMN title TEXT");
+    db.exec("ALTER TABLE subagent_sessions ADD COLUMN task TEXT");
+
+    expect(() => applyMigrations(db)).not.toThrow();
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const columns = db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as { name: string }[];
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining([
+      "title",
+      "task",
+      "result_summary",
+      "result_message_id",
+      "completed_at",
+      "last_error",
+    ]));
+    db.close();
+    rmSync(dir, { recursive: true });
+  });
+
+  test("018 repairs branch databases that used version 17 for subagent metadata", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-migrate-v18-branch-repair-"));
+    const db = openDatabase(join(dir, "data.sqlite"));
+    for (const sql of migrationsBefore018.slice(0, -1)) db.exec(sql);
+    db.exec("ALTER TABLE subagent_sessions ADD COLUMN title TEXT");
+    db.exec("INSERT OR IGNORE INTO schema_version(version) VALUES (17)");
+    expect(currentSchemaVersion(db)).toBe(17);
+
+    expect(() => applyMigrations(db)).not.toThrow();
+    expect(currentSchemaVersion(db)).toBe(LATEST_SCHEMA_VERSION);
+    const agentColumns = db
+      .query("PRAGMA table_info(agents)")
+      .all() as { name: string }[];
+    const subagentColumns = db
+      .query("PRAGMA table_info(subagent_sessions)")
+      .all() as { name: string }[];
+    expect(agentColumns.map((c) => c.name)).toContain("avatar");
+    expect(subagentColumns.map((c) => c.name)).toEqual(expect.arrayContaining([
+      "title",
+      "task",
+      "result_summary",
+      "result_message_id",
+      "completed_at",
+      "last_error",
+    ]));
     db.close();
     rmSync(dir, { recursive: true });
   });

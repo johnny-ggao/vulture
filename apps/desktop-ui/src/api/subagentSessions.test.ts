@@ -21,8 +21,14 @@ const session: SubagentSessionDto = {
   agentId: "researcher",
   conversationId: "c-child",
   label: "Researcher",
+  title: "Research SDK docs",
+  task: "Read the SDK docs and summarize the useful parts.",
   status: "active",
   messageCount: 2,
+  resultSummary: null,
+  resultMessageId: null,
+  completedAt: null,
+  lastError: null,
   createdAt: "2026-04-30T00:00:00.000Z",
   updatedAt: "2026-04-30T00:01:00.000Z",
 };
@@ -39,6 +45,25 @@ describe("subagentSessionsApi", () => {
     expect(
       await subagentSessionsApi.list(client, {
         parentConversationId: "c-parent",
+        limit: 20,
+      }),
+    ).toEqual([session]);
+  });
+
+  test("lists sessions by parent conversation and run", async () => {
+    const client = fakeClient({
+      get: async <T>(path: string) => {
+        expect(path).toBe(
+          "/v1/subagent-sessions?parentConversationId=c-parent&parentRunId=r-parent&limit=20",
+        );
+        return { items: [session] } as T;
+      },
+    });
+
+    expect(
+      await subagentSessionsApi.list(client, {
+        parentConversationId: "c-parent",
+        parentRunId: "r-parent",
         limit: 20,
       }),
     ).toEqual([session]);

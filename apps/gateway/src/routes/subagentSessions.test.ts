@@ -38,7 +38,28 @@ function fresh() {
     agentId: child.agentId,
     conversationId: child.id,
     label: "Read docs",
+    title: "Review SDK docs",
+    task: "Read the SDK docs and summarize the useful parts.",
   });
+  const childPrompt = messages.append({
+    conversationId: child.id,
+    role: "user",
+    content: "start",
+    runId: null,
+  });
+  const childRun = runs.create({
+    conversationId: child.id,
+    agentId: child.agentId,
+    triggeredByMessageId: childPrompt.id,
+  });
+  const result = messages.append({
+    conversationId: child.id,
+    role: "assistant",
+    content: "The SDK manager pattern fits this feature.",
+    runId: childRun.id,
+  });
+  runs.markSucceeded(childRun.id, result.id);
+  const refreshedSession = sessions.refreshStatus(session.id)!;
   return {
     db,
     app,
@@ -49,7 +70,8 @@ function fresh() {
     parent,
     parentRun,
     child,
-    session,
+    session: refreshedSession,
+    result,
     cleanup: () => {
       db.close();
       rmSync(dir, { recursive: true });
@@ -75,7 +97,13 @@ describe("/v1/subagent-sessions", () => {
           agentId: "child-agent",
           conversationId: stores.child.id,
           label: "Read docs",
-          status: "active",
+          title: "Review SDK docs",
+          task: "Read the SDK docs and summarize the useful parts.",
+          status: "completed",
+          resultSummary: "The SDK manager pattern fits this feature.",
+          resultMessageId: stores.result.id,
+          completedAt: stores.session.completedAt,
+          lastError: null,
         },
       ],
     });
@@ -89,7 +117,15 @@ describe("/v1/subagent-sessions", () => {
     const missing = await stores.app.request("/v1/subagent-sessions/missing");
 
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toMatchObject({ id: stores.session.id });
+    expect(await ok.json()).toMatchObject({
+      id: stores.session.id,
+      title: "Review SDK docs",
+      task: "Read the SDK docs and summarize the useful parts.",
+      resultSummary: "The SDK manager pattern fits this feature.",
+      resultMessageId: stores.result.id,
+      completedAt: stores.session.completedAt,
+      lastError: null,
+    });
     expect(missing.status).toBe(404);
     expect((await missing.json()).code).toBe("subagent_session.not_found");
     stores.cleanup();
@@ -111,15 +147,26 @@ describe("/v1/subagent-sessions", () => {
     });
 
     const res = await stores.app.request(`/v1/subagent-sessions/${stores.session.id}/messages`);
+    const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({
-      session: { id: stores.session.id },
-      items: [
-        { role: "user", content: "child question" },
-        { role: "assistant", content: "child answer" },
-      ],
+    expect(body).toMatchObject({
+      session: {
+        id: stores.session.id,
+        title: "Review SDK docs",
+        task: "Read the SDK docs and summarize the useful parts.",
+        resultSummary: "The SDK manager pattern fits this feature.",
+        resultMessageId: stores.result.id,
+        completedAt: stores.session.completedAt,
+        lastError: null,
+      },
     });
+    expect(body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: "child question" }),
+        expect.objectContaining({ role: "assistant", content: "child answer" }),
+      ]),
+    );
     stores.cleanup();
   });
 });

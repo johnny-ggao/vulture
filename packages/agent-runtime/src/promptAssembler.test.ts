@@ -78,6 +78,18 @@ describe("promptAssembler", () => {
     expect(text).toContain("Decide autonomously whether a subagent is useful");
     expect(text).toContain("The user does not need to manually request or name a subagent");
     expect(text).toContain("the approval card is the user confirmation");
+    expect(text).toContain(
+      "Treat subagents as specialist tools: you remain responsible for the final user-facing answer.",
+    );
+    expect(text).toContain(
+      "`sessions_spawn.title` must be a short user-readable task name, and `sessions_spawn.message` must be a complete task brief.",
+    );
+    expect(text).toContain(
+      "After a child task can complete, call `sessions_yield` to recover completed or failed child results before writing the final answer.",
+    );
+    expect(text).toContain(
+      "Integrate completed child results into your final answer in your normal assistant voice; do not expose raw internal metadata.",
+    );
     rmSync(dir, { recursive: true });
   });
 

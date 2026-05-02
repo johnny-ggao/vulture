@@ -267,6 +267,51 @@ describe("AgentsPage — edit modal", () => {
     expect(screen.queryByLabelText("名称")).toBeNull();
   });
 
+  test("preview card is bound to the Identity tab in edit mode", () => {
+    // Round 25: the right-hand 智能体预览 only mirrors fields the
+    // user is editing on the Identity tab, so it hides on Tools /
+    // Skills / 协作 / 核心文件 to give the form back the freed space.
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[baseAgent]}
+        selectedAgentId="agent-1"
+      />,
+    );
+    openEditModal();
+    expect(screen.getByLabelText("智能体预览")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("tab", { name: "工具" }));
+    expect(screen.queryByLabelText("智能体预览")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "协作" }));
+    expect(screen.queryByLabelText("智能体预览")).toBeNull();
+
+    // Returning to Identity brings it back.
+    fireEvent.click(screen.getByRole("tab", { name: "身份" }));
+    expect(screen.getByLabelText("智能体预览")).toBeDefined();
+  });
+
+  test("preview card follows the same Identity-only rule in create mode", () => {
+    // 新建智能体页面和编辑页保持一致 — both modes scope the preview
+    // to the Identity tab.
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[]}
+        selectedAgentId=""
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "创建第一个智能体" }));
+    expect(screen.getByLabelText("智能体预览")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+    expect(screen.queryByLabelText("智能体预览")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "身份" }));
+    expect(screen.getByLabelText("智能体预览")).toBeDefined();
+  });
+
   test("does NOT show the unsaved indicator when draft matches the agent", () => {
     render(
       <AgentsPage

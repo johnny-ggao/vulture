@@ -479,18 +479,52 @@ describe("acceptance harness runner", () => {
           asSubagent: "subagent",
           childAgentId: "researcher",
           label: "Harness review",
+          title: "Audit harness product path",
+          task: "Inspect runtime coverage and confirm the parent can recover completed child results.",
           userInput: "Audit harness engineering and summarize the next risks.",
           childResult: "Runtime, tool contract, and product acceptance lanes are covered.",
-          finalText: "子智能体完成审计：runtime、tool contract、product acceptance 已覆盖。",
+          finalText:
+            "子智能体完成审计：Audit harness product path - Runtime, tool contract, and product acceptance lanes are covered.",
         },
         { action: "readRunEvents", run: "run", as: "events" },
-        { action: "assertRunEvents", events: "events", types: ["tool.ask", "tool.started", "tool.completed", "run.completed"] },
+        {
+          action: "assertRunEvents",
+          events: "events",
+          types: [
+            "tool.ask",
+            "tool.started",
+            "tool.completed",
+            "tool.planned",
+            "tool.started",
+            "tool.completed",
+            "run.completed",
+          ],
+        },
         { action: "listSubagentSessions", parentConversation: "conversation", parentRun: "run", as: "subagents" },
-        { action: "assertSubagentSessions", sessions: "subagents", containsSession: "subagent", parentConversation: "conversation", parentRun: "run", statuses: ["active"] },
+        {
+          action: "assertSubagentSessions",
+          sessions: "subagents",
+          containsSession: "subagent",
+          parentConversation: "conversation",
+          parentRun: "run",
+          statuses: ["completed"],
+          titles: ["Audit harness product path"],
+          tasks: ["Inspect runtime coverage and confirm the parent can recover completed child results."],
+          resultSummaries: ["Runtime, tool contract, and product acceptance lanes are covered."],
+        },
         { action: "listSubagentMessages", session: "subagent", as: "subagentMessages" },
         { action: "assertMessages", messages: "subagentMessages", roles: ["user", "assistant"], contains: ["Runtime, tool contract"] },
         { action: "listMessages", conversation: "conversation", as: "messages" },
-        { action: "assertMessages", messages: "messages", roles: ["user", "assistant"], contains: ["子智能体完成审计"] },
+        {
+          action: "assertMessages",
+          messages: "messages",
+          roles: ["user", "assistant"],
+          contains: [
+            "子智能体完成审计",
+            "Audit harness product path",
+            "Runtime, tool contract, and product acceptance lanes are covered.",
+          ],
+        },
       ],
     };
 
@@ -508,8 +542,20 @@ describe("acceptance harness runner", () => {
     expect(result.resources.agents.lead.handoffAgentIds).toEqual(["researcher"]);
     expect(result.resources.skills.skill.name).toBe("harness-review");
     expect(result.resources.runEvents.events.map((event) => event.type)).toEqual(
-      expect.arrayContaining(["tool.ask", "tool.started", "tool.completed", "run.completed"]),
+      expect.arrayContaining([
+        "tool.ask",
+        "tool.started",
+        "tool.completed",
+        "tool.planned",
+        "run.completed",
+      ]),
     );
+    expect(result.resources.subagentSessions.subagent).toMatchObject({
+      status: "completed",
+      title: "Audit harness product path",
+      task: "Inspect runtime coverage and confirm the parent can recover completed child results.",
+      resultSummary: "Runtime, tool contract, and product acceptance lanes are covered.",
+    });
     cleanup();
   });
 });

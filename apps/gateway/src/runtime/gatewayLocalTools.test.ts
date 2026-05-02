@@ -283,7 +283,11 @@ describe("gateway local tools", () => {
         },
         yield: (call) => {
           seenCalls.push({ tool: "sessions_yield", runId: call.runId, input: call.input });
-          return { activeRuns: [] };
+          return {
+            active: [],
+            completed: [{ sessionId: "sub-1", resultSummary: "child result" }],
+            failed: [],
+          };
         },
       },
     });
@@ -319,6 +323,20 @@ describe("gateway local tools", () => {
       tool: "sessions_send",
       runId: "r-parent",
       input: { sessionId: "sub-1", message: "continue" },
+    });
+
+    await expect(
+      tools({
+        callId: "c-session-yield",
+        runId: "r-parent",
+        tool: "sessions_yield",
+        workspacePath,
+        input: { parentRunId: "r-parent" },
+      }),
+    ).resolves.toEqual({
+      active: [],
+      completed: [{ sessionId: "sub-1", resultSummary: "child result" }],
+      failed: [],
     });
 
     await expect(

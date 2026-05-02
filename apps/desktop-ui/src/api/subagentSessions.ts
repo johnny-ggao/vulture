@@ -10,8 +10,14 @@ export interface SubagentSessionDto {
   agentId: string;
   conversationId: string;
   label: string;
+  title: string | null;
+  task: string | null;
   status: SubagentSessionStatus;
   messageCount: number;
+  resultSummary: string | null;
+  resultMessageId: string | null;
+  completedAt: string | null;
+  lastError: string | null;
   createdAt: string;
   updatedAt: string;
 }

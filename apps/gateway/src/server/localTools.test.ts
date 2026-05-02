@@ -86,6 +86,125 @@ describe("createGatewayServerLocalTools", () => {
     }
   });
 
+  test("sessions_spawn stores title/task and sessions_yield groups completed results", async () => {
+    const { cfg, cleanup } = freshCfg();
+    try {
+      const { stores } = createGatewayStores({ cfg });
+      const parentConversation = stores.conversationStore.create({
+        agentId: "local-work-agent",
+        title: "Parent",
+      });
+      const parentMessage = stores.messageStore.append({
+        conversationId: parentConversation.id,
+        role: "user",
+        content: "start",
+        runId: null,
+      });
+      const parentRun = stores.runStore.create({
+        conversationId: parentConversation.id,
+        agentId: "local-work-agent",
+        triggeredByMessageId: parentMessage.id,
+      });
+      const tools = createGatewayServerLocalTools({
+        stores,
+        shellTools: async () => {
+          throw new Error("shell should not be called");
+        },
+        mcp: {
+          canHandle: () => false,
+          execute: async () => undefined,
+        },
+        runtimeHooks: () => undefined,
+        startConversationRun: async (conversationId, input) => {
+          const message = stores.messageStore.append({
+            conversationId,
+            role: "user",
+            content: input,
+            runId: null,
+          });
+          const run = stores.runStore.create({
+            conversationId,
+            agentId: "local-work-agent",
+            triggeredByMessageId: message.id,
+          });
+          stores.runStore.markRunning(run.id);
+          return { conversationId, messageId: message.id, runId: run.id };
+        },
+      });
+
+      const spawned = await tools({
+        callId: "spawn-1",
+        runId: parentRun.id,
+        tool: "sessions_spawn",
+        input: {
+          agentId: "local-work-agent",
+          title: "Inspect docs",
+          label: "Docs worker",
+          message: "Read the docs and return the useful part.",
+        },
+        workspacePath: cfg.profileDir,
+        approvalToken: "approved",
+      }) as {
+        runId: string;
+        session: { id: string; title: string | null; task: string | null };
+      };
+
+      expect(spawned.session).toMatchObject({
+        title: "Inspect docs",
+        task: "Read the docs and return the useful part.",
+      });
+
+      await expect(
+        tools({
+          callId: "yield-active",
+          runId: parentRun.id,
+          tool: "sessions_yield",
+          input: { parentRunId: parentRun.id },
+          workspacePath: cfg.profileDir,
+        }),
+      ).resolves.toMatchObject({
+        active: [
+          {
+            sessionId: spawned.session.id,
+            id: spawned.session.id,
+            parentRunId: parentRun.id,
+            agentId: "local-work-agent",
+            title: "Inspect docs",
+            task: "Read the docs and return the useful part.",
+            status: "active",
+            activeRuns: [{ id: spawned.runId, status: "running" }],
+          },
+        ],
+        completed: [],
+        failed: [],
+      });
+
+      const result = stores.messageStore.append({
+        conversationId: stores.subagentSessionStore.get(spawned.session.id)!.conversationId,
+        role: "assistant",
+        content: "Useful part found.",
+        runId: spawned.runId,
+      });
+      stores.runStore.markSucceeded(spawned.runId, result.id);
+
+      await expect(
+        tools({
+          callId: "yield-1",
+          runId: parentRun.id,
+          tool: "sessions_yield",
+          input: { parentRunId: parentRun.id },
+          workspacePath: cfg.profileDir,
+        }),
+      ).resolves.toMatchObject({
+        active: [],
+        completed: [{ sessionId: spawned.session.id, resultSummary: "Useful part found." }],
+        failed: [],
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
   test("uses current web search settings for future web_search calls", async () => {
     const { cfg, cleanup } = freshCfg();
     try {
