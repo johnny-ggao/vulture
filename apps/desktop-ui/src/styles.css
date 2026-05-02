@@ -835,6 +835,13 @@ pre {
   flex: 1;
   overflow: auto;
   scroll-behavior: auto; /* JS handles smooth-scroll for the FAB only */
+  /* Reserve a "bumper" at the top + bottom so the agent-header /
+   * composer don't visually crash into messages when the user
+   * jumps to the start / end via Home / End keys. The bottom value
+   * matches the FAB clearance so 回到底部 also lands the user with
+   * the last message above the floating pill, not under it. */
+  scroll-padding-top: 12px;
+  scroll-padding-bottom: 24px;
 }
 .chat-stage.has-messages { padding: 28px 32px 32px; }
 .chat-stage:not(.has-messages) {
