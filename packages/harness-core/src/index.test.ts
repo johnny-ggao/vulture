@@ -11,7 +11,10 @@ import {
   buildHarnessBundleManifest,
   buildHarnessTriageReport,
   formatHarnessListLine,
+  getHarnessLaneEntry,
   HARNESS_ARTIFACT_CONTRACTS,
+  HARNESS_LANE_REGISTRY,
+  isHarnessLane,
   archiveHarnessArtifacts,
   inspectHarnessCatalog,
   inspectHarnessCatalogLanes,
@@ -21,10 +24,8 @@ import {
   writeHarnessArtifactHistoryReport,
   writeHarnessArtifactRetentionReport,
   writeHarnessBundleManifestReport,
-  writeHarnessTriageReport,
   writeHarnessCatalog,
   validateHarnessArtifactBundle,
-  writeHarnessArtifactValidationReport,
   writeHarnessDoctorReport,
   writeHarnessFailureReport,
   writeHarnessJUnitReport,
@@ -95,6 +96,27 @@ describe("harness-core", () => {
 
   test("formats list lines", () => {
     expect(formatHarnessListLine(scenarios[0]!)).toBe("launch\tLaunch\tdesktop,smoke");
+  });
+
+  test("exposes a known harness lane registry with required/optional flags", () => {
+    expect(HARNESS_LANE_REGISTRY.map((entry) => entry.lane)).toEqual([
+      "runtime",
+      "tool-contract",
+      "acceptance",
+      "desktop-e2e",
+      "live",
+    ]);
+    expect(HARNESS_LANE_REGISTRY.filter((entry) => entry.required).map((entry) => entry.lane)).toEqual([
+      "runtime",
+      "tool-contract",
+      "acceptance",
+    ]);
+    expect(getHarnessLaneEntry("desktop-e2e").command).toBe("bun run harness:desktop-e2e");
+    expect(getHarnessLaneEntry("live").command).toBe("bun run harness:live");
+    expect(isHarnessLane("runtime")).toBe(true);
+    expect(isHarnessLane("live")).toBe(true);
+    expect(isHarnessLane("not-a-lane")).toBe(false);
+    expect(() => getHarnessLaneEntry("nope" as never)).toThrow("Unknown harness lane: nope");
   });
 
   test("builds and writes a cross-lane harness catalog", () => {
@@ -181,13 +203,14 @@ describe("harness-core", () => {
 
     const checks = inspectHarnessCatalogLanes([
       {
-        lane: "bad lane",
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        lane: "bad lane" as never,
         scenarios: [
           { id: "bad id", name: "", tags: ["bad tag", "bad tag"] },
           { id: "bad id", name: "Duplicate", tags: [] },
         ],
       },
-      { lane: "bad lane", scenarios: [] },
+      { lane: "bad lane" as never, scenarios: [] },
     ]);
 
     expect(checks.map((check) => check.status)).toEqual([
@@ -288,10 +311,15 @@ describe("harness-core", () => {
         },
       });
 
+      expect(report.schemaVersion).toBe(2);
       expect(report.status).toBe("failed");
       expect(report.missingRequiredLanes).toEqual(["acceptance"]);
       expect(report.missingOptionalLanes).toEqual(["desktop-e2e"]);
       expect(report.doctor).toMatchObject({ checks: 1, passed: 1, failed: 0 });
+      expect(report.ci).toBeNull();
+      expect(report.artifactValidation).toBeNull();
+      expect(report.failures.summary.total).toBe(1);
+      expect(report.failures.items[0]).toMatchObject({ category: "lane", id: "acceptance" });
 
       const paths = writeHarnessReport(dir, {
         requiredLanes: ["runtime"],
@@ -299,8 +327,57 @@ describe("harness-core", () => {
       });
       expect(paths.jsonPath).toBe(join(dir, "report.json"));
       expect(paths.markdownPath).toBe(join(dir, "report.md"));
-      expect(JSON.parse(readFileSync(paths.jsonPath, "utf8")).status).toBe("passed");
+      const written = JSON.parse(readFileSync(paths.jsonPath, "utf8"));
+      expect(written.schemaVersion).toBe(2);
+      expect(written.status).toBe("passed");
+      expect(written.failures.summary.total).toBe(0);
       expect(readFileSync(paths.markdownPath, "utf8")).toContain("PASSED runtime");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("embeds ci, artifact validation, and failures in the unified report", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vulture-harness-report-unified-"));
+    try {
+      const { report } = writeHarnessReport(dir, {
+        generatedAt: "2026-05-03T00:00:00.000Z",
+        requiredLanes: ["runtime", "tool-contract", "acceptance"],
+        manifests: [
+          reportFixtureManifest("runtime"),
+          { ...reportFixtureManifest("tool-contract"), status: "failed", failed: 1, passed: 0 },
+          reportFixtureManifest("acceptance"),
+        ],
+        ci: [
+          { id: "runtime-harness", name: "Runtime", command: ["bun", "run", "harness:runtime"], status: "passed", durationMs: 10, exitCode: 0, signal: null },
+          { id: "tool-contract-harness", name: "Tool", command: ["bun", "run", "harness:tools"], status: "failed", durationMs: 12, exitCode: 1, signal: null, error: "boom" },
+        ],
+        artifactValidation: {
+          schemaVersion: 1,
+          generatedAt: "2026-05-03T00:00:00.000Z",
+          status: "failed",
+          checks: [
+            { id: "manifest-runtime", status: "passed", detail: "ok" },
+            { id: "junit-tool-contract", status: "failed", detail: "drift", path: "/tmp/junit", command: "bun run harness:tools" },
+          ],
+        },
+      });
+      expect(report.schemaVersion).toBe(2);
+      expect(report.ci).toMatchObject({ status: "failed", total: 2, passed: 1, failed: 1 });
+      expect(report.artifactValidation).toMatchObject({ status: "failed", total: 2, passed: 1, failed: 1 });
+      expect(report.failures.summary).toEqual({
+        total: 3,
+        ciSteps: 1,
+        lanes: 1,
+        artifactValidation: 1,
+      });
+      expect(report.failures.items.map((item) => item.category)).toEqual(["ci-step", "lane", "artifact-validation"]);
+      const markdown = readFileSync(join(dir, "report.md"), "utf8");
+      expect(markdown).toContain("## CI Steps");
+      expect(markdown).toContain("FAILED tool-contract-harness");
+      expect(markdown).toContain("## Artifact Validation");
+      expect(markdown).toContain("## Failures");
+      expect(markdown).toContain("ci-step: tool-contract-harness");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -334,9 +411,7 @@ describe("harness-core", () => {
       const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
       expect(report.status).toBe("passed");
       expect(report.checks.find((check) => check.id === "junit-runtime")?.status).toBe("passed");
-      const paths = writeHarnessArtifactValidationReport(join(root, "harness-report"), report);
-      expect(paths.jsonPath).toBe(join(root, "harness-report", "artifact-validation.json"));
-      expect(readFileSync(paths.markdownPath, "utf8")).toContain("PASSED harness-report");
+      expect(report.checks.find((check) => check.id === "harness-report")?.status).toBe("passed");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -346,8 +421,6 @@ describe("harness-core", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-harness-bundle-"));
     try {
       writeValidArtifactBundle(root);
-      writeFile(join(root, "harness-report", "artifact-validation.json"));
-      writeFile(join(root, "harness-report", "triage.json"));
       writeFile(join(root, "harness-report", "retention.json"));
       writeFile(join(root, "harness-report", "history.json"));
 
@@ -405,26 +478,19 @@ describe("harness-core", () => {
       {
         id: "harness-report",
         path: "harness-report/report.json",
-        schemaVersion: 1,
-        fields: ["schemaVersion", "generatedAt", "status", "lanes", "missingRequiredLanes", "missingOptionalLanes", "doctor"],
-      },
-      {
-        id: "ci-summary",
-        path: "harness-report/ci-summary.json",
-        schemaVersion: 1,
-        fields: ["schemaVersion", "generatedAt", "status", "total", "passed", "failed", "steps"],
-      },
-      {
-        id: "artifact-validation",
-        path: "harness-report/artifact-validation.json",
-        schemaVersion: 1,
-        fields: ["schemaVersion", "generatedAt", "status", "checks"],
-      },
-      {
-        id: "triage",
-        path: "harness-report/triage.json",
-        schemaVersion: 1,
-        fields: ["schemaVersion", "generatedAt", "status", "summary", "items"],
+        schemaVersion: 2,
+        fields: [
+          "schemaVersion",
+          "generatedAt",
+          "status",
+          "lanes",
+          "missingRequiredLanes",
+          "missingOptionalLanes",
+          "doctor",
+          "ci",
+          "artifactValidation",
+          "failures",
+        ],
       },
       {
         id: "retention",
@@ -454,11 +520,11 @@ describe("harness-core", () => {
       const checks = validateHarnessArtifactContracts(root);
       expect(checks.every((check) => check.status === "passed")).toBe(true);
 
-      mutateJson(join(root, "harness-report", "triage.json"), (triage) => ({
-        ...triage,
+      mutateJson(join(root, "harness-report", "report.json"), (report) => ({
+        ...report,
         surprise: true,
       }));
-      const failed = validateHarnessArtifactContracts(root).find((check) => check.id === "contract-triage");
+      const failed = validateHarnessArtifactContracts(root).find((check) => check.id === "contract-harness-report");
       expect(failed?.status).toBe("failed");
       expect(failed?.detail).toContain("unexpected fields: surprise");
       expect(failed?.hint).toContain("stable JSON contract");
@@ -485,13 +551,6 @@ describe("harness-core", () => {
       expect(check?.expected).toBe("tests=1, failures=0, testcase count=1");
       expect(check?.actual).toBe("tests=2, failures=0, testcase count=1");
       expect(check?.command).toBe("bun run harness:runtime");
-
-      const paths = writeHarnessArtifactValidationReport(join(root, "harness-report"), report);
-      const markdown = readFileSync(paths.markdownPath, "utf8");
-      expect(markdown).toContain("Expected: tests=1, failures=0, testcase count=1");
-      expect(markdown).toContain("Actual: tests=2, failures=0, testcase count=1");
-      expect(markdown).toContain("Hint: Compare junit.xml with the lane manifest");
-      expect(markdown).toContain("Command: bun run harness:runtime");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -566,19 +625,68 @@ describe("harness-core", () => {
     }
   });
 
-  test("fails artifact validation when ci summary counts contradict steps", () => {
+  test("fails report validation when embedded ci counts contradict steps", () => {
     const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
     try {
       writeValidArtifactBundle(root);
-      mutateJson(join(root, "harness-report", "ci-summary.json"), (summary) => ({
-        ...summary,
-        passed: 0,
+      mutateJson(join(root, "harness-report", "report.json"), (report) => ({
+        ...report,
+        ci: {
+          status: "passed",
+          total: 1,
+          passed: 0,
+          failed: 0,
+          steps: [{ id: "x", name: "X", command: ["bun"], status: "passed", exitCode: 0, signal: null, durationMs: 1 }],
+        },
       }));
 
-      const report = validateHarnessArtifactBundle(root, "2026-05-02T00:00:00.000Z");
+      const report = validateHarnessArtifactBundle(root, "2026-05-03T00:00:00.000Z");
       expect(report.status).toBe("failed");
-      expect(report.checks.find((check) => check.id === "ci-summary")?.detail).toContain(
-        "passed must equal passed steps",
+      expect(report.checks.find((check) => check.id === "harness-report")?.detail).toContain(
+        "ci.passed must equal passed steps",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails report validation when embedded artifactValidation counts drift", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeValidArtifactBundle(root);
+      mutateJson(join(root, "harness-report", "report.json"), (report) => ({
+        ...report,
+        artifactValidation: {
+          status: "passed",
+          total: 0,
+          passed: 1,
+          failed: 0,
+          checks: [{ id: "x", status: "passed", detail: "ok" }],
+        },
+      }));
+      const report = validateHarnessArtifactBundle(root, "2026-05-03T00:00:00.000Z");
+      expect(report.checks.find((check) => check.id === "harness-report")?.detail).toContain(
+        "artifactValidation.total must equal checks length",
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails report validation when embedded failures.summary disagrees with items", () => {
+    const root = mkdtempSync(join(tmpdir(), "vulture-harness-artifacts-"));
+    try {
+      writeValidArtifactBundle(root);
+      mutateJson(join(root, "harness-report", "report.json"), (report) => ({
+        ...report,
+        failures: {
+          summary: { total: 5, ciSteps: 0, lanes: 0, artifactValidation: 0 },
+          items: [],
+        },
+      }));
+      const report = validateHarnessArtifactBundle(root, "2026-05-03T00:00:00.000Z");
+      expect(report.checks.find((check) => check.id === "harness-report")?.detail).toContain(
+        "failures.summary.total must equal items length",
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -591,7 +699,7 @@ describe("harness-core", () => {
       const artifactRoot = join(root, "current");
       const archiveRoot = join(root, "harness-runs");
       writeFile(join(artifactRoot, "runtime-harness", "manifest.json"));
-      writeFile(join(artifactRoot, "harness-report", "ci-summary.json"));
+      writeFile(join(artifactRoot, "harness-report", "report.json"));
 
       archiveHarnessArtifacts({
         artifactRoot,
@@ -665,122 +773,98 @@ describe("harness-core", () => {
     }
   });
 
-  test("builds and writes failure triage reports", () => {
-    const root = mkdtempSync(join(tmpdir(), "vulture-harness-triage-"));
-    try {
-      const report = buildHarnessTriageReport({
-        generatedAt: "2026-05-02T00:03:00.000Z",
-        ciSteps: [
-          {
-            id: "runtime-harness",
-            name: "Runtime harness",
-            command: ["bun", "run", "harness:runtime"],
-            status: "failed",
-            error: "runtime failed",
-          },
-          {
-            id: "harness-report",
-            name: "Harness report",
-            command: ["bun", "run", "harness:report"],
-            status: "passed",
-          },
-        ],
-        harnessReport: {
-          schemaVersion: 1,
-          generatedAt: "2026-05-02T00:02:00.000Z",
+  test("builds failure triage reports", () => {
+    const report = buildHarnessTriageReport({
+      generatedAt: "2026-05-02T00:03:00.000Z",
+      ciSteps: [
+        {
+          id: "runtime-harness",
+          name: "Runtime harness",
+          command: ["bun", "run", "harness:runtime"],
           status: "failed",
-          lanes: [
-            {
-              lane: "runtime",
-              status: "failed",
-              total: 2,
-              passed: 1,
-              failed: 1,
-              artifactPath: "/tmp/runtime-failure",
-            },
-            { lane: "tool-contract", status: "missing", total: 0, passed: 0, failed: 0 },
-          ],
-          missingRequiredLanes: ["tool-contract"],
-          missingOptionalLanes: [],
+          error: "runtime failed",
         },
-        artifactValidationReport: {
-          schemaVersion: 1,
-          generatedAt: "2026-05-02T00:02:30.000Z",
-          status: "failed",
-          checks: [
-            {
-              id: "junit-runtime",
-              status: "failed",
-              detail: "junit drift",
-              path: "/tmp/runtime-harness/junit.xml",
-              command: "bun run harness:runtime",
-            },
-            { id: "doctor", status: "passed", detail: "ok" },
-          ],
-        },
-      });
-
-      expect(report.status).toBe("failed");
-      expect(report.summary).toEqual({
-        total: 4,
-        ciSteps: 1,
-        lanes: 2,
-        artifactValidation: 1,
-      });
-      expect(report.items.map((item) => item.category)).toEqual([
-        "ci-step",
-        "lane",
-        "lane",
-        "artifact-validation",
-      ]);
-
-      const paths = writeHarnessTriageReport(join(root, "harness-report"), report);
-      const markdown = readFileSync(paths.markdownPath, "utf8");
-      expect(JSON.parse(readFileSync(paths.jsonPath, "utf8")).summary.total).toBe(4);
-      expect(markdown).toContain("# Harness Failure Triage");
-      expect(markdown).toContain("runtime failed");
-      expect(markdown).toContain("Artifacts: /tmp/runtime-failure");
-      expect(markdown).toContain("Path: /tmp/runtime-harness/junit.xml");
-      expect(markdown).toContain("````\nbun run harness:runtime\n````");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("writes empty triage reports when there are no failures", () => {
-    const root = mkdtempSync(join(tmpdir(), "vulture-harness-triage-"));
-    try {
-      const report = buildHarnessTriageReport({
-        generatedAt: "2026-05-02T00:04:00.000Z",
-        ciSteps: [{
+        {
           id: "harness-report",
           name: "Harness report",
           command: ["bun", "run", "harness:report"],
           status: "passed",
-        }],
-        harnessReport: {
-          schemaVersion: 1,
-          generatedAt: "2026-05-02T00:03:00.000Z",
-          status: "passed",
-          lanes: [reportFixtureManifest("runtime")],
-          missingRequiredLanes: [],
-          missingOptionalLanes: [],
         },
-        artifactValidationReport: {
-          schemaVersion: 1,
-          generatedAt: "2026-05-02T00:03:30.000Z",
-          status: "passed",
-          checks: [{ id: "manifest-runtime", status: "passed", detail: "ok" }],
-        },
-      });
-      expect(report.status).toBe("passed");
-      expect(report.summary.total).toBe(0);
+      ],
+      harnessReport: {
+        lanes: [
+          {
+            lane: "runtime",
+            status: "failed",
+            total: 2,
+            passed: 1,
+            failed: 1,
+            artifactPath: "/tmp/runtime-failure",
+          },
+          { lane: "tool-contract", status: "missing", total: 0, passed: 0, failed: 0 },
+        ],
+        missingRequiredLanes: ["tool-contract"],
+      },
+      artifactValidationReport: {
+        schemaVersion: 1,
+        generatedAt: "2026-05-02T00:02:30.000Z",
+        status: "failed",
+        checks: [
+          {
+            id: "junit-runtime",
+            status: "failed",
+            detail: "junit drift",
+            path: "/tmp/runtime-harness/junit.xml",
+            command: "bun run harness:runtime",
+          },
+          { id: "doctor", status: "passed", detail: "ok" },
+        ],
+      },
+    });
 
-      const paths = writeHarnessTriageReport(join(root, "harness-report"), report);
-      expect(readFileSync(paths.markdownPath, "utf8")).toContain("No failures.");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    expect(report.status).toBe("failed");
+    expect(report.summary).toEqual({
+      total: 4,
+      ciSteps: 1,
+      lanes: 2,
+      artifactValidation: 1,
+    });
+    expect(report.items.map((item) => item.category)).toEqual([
+      "ci-step",
+      "lane",
+      "lane",
+      "artifact-validation",
+    ]);
+    expect(report.items[2]).toMatchObject({
+      category: "lane",
+      id: "tool-contract",
+      command: "bun run harness:tools",
+    });
+  });
+
+  test("returns empty triage when there are no failures", () => {
+    const report = buildHarnessTriageReport({
+      generatedAt: "2026-05-02T00:04:00.000Z",
+      ciSteps: [{
+        id: "harness-report",
+        name: "Harness report",
+        command: ["bun", "run", "harness:report"],
+        status: "passed",
+      }],
+      harnessReport: {
+        lanes: [{ lane: "runtime", status: "passed", total: 1, passed: 1, failed: 0 }],
+        missingRequiredLanes: [],
+      },
+      artifactValidationReport: {
+        schemaVersion: 1,
+        generatedAt: "2026-05-02T00:03:30.000Z",
+        status: "passed",
+        checks: [{ id: "manifest-runtime", status: "passed", detail: "ok" }],
+      },
+    });
+    expect(report.status).toBe("passed");
+    expect(report.summary.total).toBe(0);
+    expect(report.items).toEqual([]);
   });
 });
 
@@ -827,41 +911,16 @@ function writeValidArtifactBundle(root: string) {
   ]);
   writeHarnessDoctorReport(join(root, "harness-catalog"), doctor);
   writeHarnessReport(join(root, "harness-report"), {
+    generatedAt: "2026-05-02T00:00:00.000Z",
     requiredLanes: ["runtime", "tool-contract", "acceptance"],
     optionalLanes: ["desktop-e2e"],
     manifests,
     doctor,
   });
-  writeFileSync(
-    join(root, "harness-report", "ci-summary.json"),
-    `${JSON.stringify({
-      schemaVersion: 1,
-      generatedAt: "2026-05-02T00:00:00.000Z",
-      status: "passed",
-      total: 1,
-      passed: 1,
-      failed: 0,
-      steps: [{ id: "harness-report", name: "Harness report", command: ["bun"], status: "passed", exitCode: 0, signal: null, durationMs: 1 }],
-    })}\n`,
-  );
 }
 
 function writeFullReportArtifacts(root: string) {
   writeValidArtifactBundle(root);
-  const artifactReport = validateHarnessArtifactBundle(root, "2026-05-02T00:00:01.000Z");
-  writeHarnessArtifactValidationReport(join(root, "harness-report"), artifactReport);
-  const triage = buildHarnessTriageReport({
-    generatedAt: "2026-05-02T00:00:02.000Z",
-    ciSteps: [{
-      id: "harness-report",
-      name: "Harness report",
-      command: ["bun", "run", "harness:report"],
-      status: "passed",
-    }],
-    harnessReport: JSON.parse(readFileSync(join(root, "harness-report", "report.json"), "utf8")),
-    artifactValidationReport: artifactReport,
-  });
-  writeHarnessTriageReport(join(root, "harness-report"), triage);
   const retention = pruneHarnessArtifactSnapshots({
     archiveRoot: join(root, "harness-runs"),
     generatedAt: "2026-05-02T00:00:03.000Z",
