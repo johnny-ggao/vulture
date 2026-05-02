@@ -3022,12 +3022,20 @@ pre {
   gap: 16px;
 }
 .page-header h1 {
-  font-size: 28px; font-weight: 600; letter-spacing: -0.04em;
+  /* macOS Tahoe Title 1 (~22pt) instead of the 28px web-marketing
+   * heading. Tighter tracking + native font-weight 600 reads as a
+   * proper window title rather than a hero banner. */
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.022em;
   color: var(--text-primary);
+  text-wrap: balance;
 }
 .page-header p {
-  font-size: 14px; color: var(--text-secondary);
-  margin: 6px 0 0; max-width: 520px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 4px 0 0; max-width: 520px;
+  line-height: 1.45;
 }
 
 .page-card {
@@ -7632,11 +7640,23 @@ pre {
   color: var(--text-primary);
   font-size: 14px;
   font-family: inherit;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.text-input:hover:not(:disabled):not(:focus) {
+  border-color: var(--fill-secondary);
 }
 .text-input:focus {
   outline: 0;
   border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--fill-quaternary);
 }
 
 .stack-top-12 { margin-top: 12px; }
@@ -7670,12 +7690,24 @@ pre {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 13px;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
 .field textarea {
   height: auto;
   padding: 8px 10px;
   line-height: 1.5;
   resize: vertical;
+}
+/* macOS native inputs darken their border on hover before focus —
+ * gives the user a "this is interactive" cue without firing the
+ * full focus ring until they actually click in. */
+.field input:hover:not(:disabled):not(:focus),
+.field textarea:hover:not(:disabled):not(:focus),
+.field select:hover:not(:disabled):not(:focus) {
+  border-color: var(--fill-secondary);
 }
 .field input:focus,
 .field textarea:focus,
@@ -7684,8 +7716,18 @@ pre {
   border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
+.field input:disabled,
+.field textarea:disabled,
+.field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--fill-quaternary);
+}
 .field [aria-invalid="true"] {
   border-color: var(--danger);
+}
+.field [aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 28%, transparent);
 }
 
 .toggle-switch {
