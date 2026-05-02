@@ -6,6 +6,7 @@ import {
 } from "@vulture/harness-core";
 import { desktopScenarios } from "../apps/desktop-e2e/src/scenarios";
 import { defaultAcceptanceScenarios } from "../apps/gateway/src/harness/acceptanceSuite";
+import { defaultLiveHarnessScenarios } from "../apps/gateway/src/harness/liveHarness";
 import { defaultRuntimeHarnessScenarios } from "../apps/gateway/src/harness/runtimeHarness";
 import { defaultToolContractFixtures } from "../apps/gateway/src/harness/toolContractHarness";
 
@@ -42,6 +43,11 @@ export function harnessCatalogLanes(): HarnessCatalogLane[] {
       lane: "desktop-e2e",
       description: "Real Tauri shell smoke scenarios driven through WebDriver.",
       scenarios: desktopScenarios,
+    },
+    {
+      lane: "live",
+      description: "Real OpenAI calls. Opt-in via OPENAI_API_KEY; never auto-runs.",
+      scenarios: defaultLiveHarnessScenarios,
     },
   ];
 }

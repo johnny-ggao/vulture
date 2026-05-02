@@ -14,6 +14,7 @@
     "harness:acceptance": "bun --filter @vulture/gateway harness:acceptance",
     "harness:runtime": "bun --filter @vulture/gateway harness:runtime",
     "harness:tools": "bun --filter @vulture/gateway harness:tools",
+    "harness:live": "bun --filter @vulture/gateway harness:live",
     "harness:ui-smoke": "bun run --cwd apps/desktop-ui harness:ui-smoke",
     "harness:desktop-e2e": "bun --filter @vulture/desktop-e2e desktop-e2e",
     "harness:catalog": "bun scripts/harnessCatalog.ts",

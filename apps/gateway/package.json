@@ -9,6 +9,7 @@
     "harness:acceptance": "bun src/harness/acceptanceCli.ts",
     "harness:runtime": "bun src/harness/runtimeHarnessCli.ts",
     "harness:tools": "bun src/harness/toolContractHarnessCli.ts",
+    "harness:live": "bun src/harness/liveHarnessCli.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"
   },

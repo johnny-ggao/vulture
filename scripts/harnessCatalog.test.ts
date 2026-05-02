@@ -10,6 +10,7 @@ describe("harness catalog script", () => {
       "tool-contract",
       "acceptance",
       "desktop-e2e",
+      "live",
     ]);
 
     const catalog = buildHarnessCatalog(lanes, "2026-05-02T00:00:00.000Z");
