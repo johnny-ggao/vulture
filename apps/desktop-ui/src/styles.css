@@ -9202,35 +9202,43 @@ pre {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  border: 0.5px solid var(--glass-border);
+  /* Same popover-glass material as the rest of the floating chrome,
+   * so the hover-revealed action chips visually rhyme with menu /
+   * cmdk / scroll-fab surfaces instead of being a one-off white blob. */
+  background: var(--glass-popover-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
   min-height: 0;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, color 120ms ease,
+              border-color 120ms ease;
 }
 .agent-card-action:hover {
   background: var(--bg-primary);
+  border-color: color-mix(in oklab, var(--brand-500) 24%, var(--glass-border));
   color: var(--text-primary);
+}
+.agent-card-action:active {
+  background: var(--fill-quaternary);
 }
 .agent-card-action.danger:hover {
   background: var(--danger-bg);
+  border-color: color-mix(in oklab, var(--danger) 32%, var(--glass-border));
   color: var(--danger);
 }
 .agent-card-action:focus-visible {
   outline: 0;
+  border-color: var(--brand-500);
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
-
-@media (prefers-color-scheme: dark) {
+@media (prefers-reduced-transparency: reduce) {
   .agent-card-action {
-    background: rgba(31, 30, 28, 0.7);
-  }
-  .agent-card-action:hover {
     background: var(--bg-primary);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
 
@@ -9242,7 +9250,7 @@ pre {
   padding: 8px 12px;
   border-radius: var(--radius-md);
   background: var(--danger-bg);
-  border: 1px solid color-mix(in oklab, var(--danger) 28%, transparent);
+  border: 0.5px solid color-mix(in oklab, var(--danger) 32%, var(--glass-border));
   color: var(--danger);
   font-size: 12px;
   line-height: 1.45;
