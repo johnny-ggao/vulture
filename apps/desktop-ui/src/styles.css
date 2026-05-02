@@ -1084,14 +1084,26 @@ pre {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  /* Brand-tinted at peak so the pulse picks up the agent's accent
+   * colour during the active phase, but rests at text-tertiary so
+   * a stationary indicator doesn't overpower other UI. */
   background: var(--text-tertiary);
   animation: thinking-bounce 1.1s var(--ease-out) infinite both;
 }
+.thinking-dots span:nth-child(1) { animation-delay: 0ms; }
 .thinking-dots span:nth-child(2) { animation-delay: 140ms; }
 .thinking-dots span:nth-child(3) { animation-delay: 280ms; }
 @keyframes thinking-bounce {
-  0%, 60%, 100% { transform: translateY(0);   opacity: 0.45; }
-  30%           { transform: translateY(-3px); opacity: 1;    }
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+    background: var(--text-tertiary);
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+    background: var(--brand-500);
+  }
 }
 .thinking-fallback {
   display: none;
@@ -2451,11 +2463,33 @@ pre {
   border-color: var(--text-tertiary);
 }
 .approval-card-allow {
-  background: var(--brand-500);
+  /* Same gradient + inset highlight recipe as `.btn-primary`,
+   * `.composer-send`, and `.onboarding-primary`. The "allow"
+   * action is the screen's primary CTA so it should read as
+   * one family across the app. */
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--brand-500) 96%, white),
+    var(--brand-500)
+  );
   border-color: var(--brand-500);
   color: var(--button-primary-fg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 2px rgba(196, 78, 84, 0.18);
 }
-.approval-card-allow:hover:not(:disabled) { background: var(--brand-600); border-color: var(--brand-600); }
+.approval-card-allow:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-600));
+  border-color: var(--brand-600);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 4px 12px color-mix(in oklab, var(--brand-500) 32%, transparent);
+}
+.approval-card-allow:focus-visible,
+.approval-card-deny:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
 .approval-card-action-label { white-space: nowrap; }
 .approval-card-kbd {
   font-family: var(--font-mono);
