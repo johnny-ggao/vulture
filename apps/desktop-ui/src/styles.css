@@ -2405,7 +2405,7 @@ pre {
   display: grid;
   gap: 8px;
   padding: 10px 14px 12px 40px;
-  border-top: 1px solid var(--fill-quaternary);
+  border-top: 0.5px solid var(--glass-border);
   background: color-mix(in oklab, var(--fill-quaternary) 45%, transparent);
 }
 .subagent-message {
@@ -2429,9 +2429,10 @@ pre {
 /* ----- Approval card -------------------------------------------- */
 
 .approval-card {
-  border: 1px solid color-mix(in oklab, var(--warning) 38%, transparent);
+  border: 0.5px solid color-mix(in oklab, var(--warning) 42%, var(--glass-border));
   background: var(--warning-bg);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card-rest);
   padding: 14px 14px 12px;
   display: grid; gap: 10px;
   box-shadow: var(--shadow-card-rest);
