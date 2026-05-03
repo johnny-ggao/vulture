@@ -5,27 +5,29 @@ import type { LlmCallable, LlmYield } from "@vulture/agent-runtime";
  * scenarios can carry it as plain data. Internally compiled into LlmYield
  * sequences when the runtime calls the LLM.
  *
- * Future expansion: tool.plan / await.tool / failure entries to drive
- * approval flow scenarios end-to-end. The current shape covers text-only
- * runs.
+ * `tool.call` expands to the runtime's `tool.plan` + `await.tool` pair:
+ * the script emits the plan, the runtime invokes its toolCallable, and the
+ * script discards the tool result and continues with the next op. This
+ * unblocks scripted scenarios that need to drive real tool execution
+ * (memory, plan, MCP, approval-gated tools) without scripting branching
+ * on the tool's return value — branching belongs in a richer DSL future
+ * iteration.
  */
+export type ScriptedLlmYield =
+  | { kind: "text.delta"; text: string }
+  | {
+      kind: "usage";
+      usage: {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+      };
+    }
+  | { kind: "tool.call"; callId: string; tool: string; input?: unknown }
+  | { kind: "final"; text: string };
+
 export interface ScriptedLlmStep {
-  /** Streamed deltas in order. Concatenated for the assistant message. */
-  deltas?: string[];
-  /**
-   * Final assistant text. Required — the runtime expects a final text
-   * yield to terminate the run successfully.
-   */
-  final: string;
-  /**
-   * Optional usage block. Defaults to zero-token usage when omitted so the
-   * runtime still records a usage event for the run.
-   */
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-  };
+  yields: ScriptedLlmYield[];
 }
 
 export interface ScriptedLlmController {
@@ -52,8 +54,13 @@ export interface ScriptedLlmOptions {
 }
 
 const DEFAULT_FALLBACK: ScriptedLlmStep = {
-  final:
-    "OPENAI_API_KEY not configured. Set the key via Settings or set the env var, then retry.",
+  yields: [
+    {
+      kind: "final",
+      text:
+        "OPENAI_API_KEY not configured. Set the key via Settings or set the env var, then retry.",
+    },
+  ],
 };
 
 export function makeScriptedLlm(options: ScriptedLlmOptions = {}): ScriptedLlmController {
@@ -62,22 +69,30 @@ export function makeScriptedLlm(options: ScriptedLlmOptions = {}): ScriptedLlmCo
 
   const llm: LlmCallable = async function* (): AsyncGenerator<LlmYield, void, unknown> {
     const step = active ?? fallback;
-    for (const delta of step.deltas ?? []) {
-      yield { kind: "text.delta", text: delta };
+    for (const op of step.yields) {
+      if (op.kind === "tool.call") {
+        yield { kind: "tool.plan", callId: op.callId, tool: op.tool, input: op.input };
+        // The runtime resumes this generator with the tool's return value
+        // (or throws into it on failure). The current DSL discards the
+        // result; future ops can read it via branching primitives.
+        yield { kind: "await.tool", callId: op.callId };
+        continue;
+      }
+      if (op.kind === "usage") {
+        yield {
+          kind: "usage",
+          usage: {
+            inputTokens: op.usage.inputTokens ?? 0,
+            outputTokens: op.usage.outputTokens ?? 0,
+            totalTokens:
+              op.usage.totalTokens ??
+              (op.usage.inputTokens ?? 0) + (op.usage.outputTokens ?? 0),
+          },
+        };
+        continue;
+      }
+      yield op;
     }
-    if (step.usage) {
-      yield {
-        kind: "usage",
-        usage: {
-          inputTokens: step.usage.inputTokens ?? 0,
-          outputTokens: step.usage.outputTokens ?? 0,
-          totalTokens:
-            step.usage.totalTokens ??
-            (step.usage.inputTokens ?? 0) + (step.usage.outputTokens ?? 0),
-        },
-      };
-    }
-    yield { kind: "final", text: step.final };
   };
 
   return {

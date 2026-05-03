@@ -448,9 +448,11 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
       "Demonstrates the per-scenario llmScript injection path: the gateway routes the run through the shared ScriptedLlmController (instead of the stub fallback), and the assistant message contains exactly the scripted final text. This is the foundation for richer scripted scenarios (tool calls, approval flow, multi-turn) without needing a real LLM.",
     tags: ["fast", "scripted-llm", "chat"],
     llmScript: {
-      deltas: ["scripted hello "],
-      final: "scripted hello — acceptance LLM script reached the gateway",
-      usage: { inputTokens: 5, outputTokens: 7 },
+      yields: [
+        { kind: "text.delta", text: "scripted hello " },
+        { kind: "usage", usage: { inputTokens: 5, outputTokens: 7 } },
+        { kind: "final", text: "scripted hello — acceptance LLM script reached the gateway" },
+      ],
     },
     steps: [
       { action: "createConversation", as: "conv", agentId: "local-work-agent" },
@@ -468,6 +470,45 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
         messages: "messages",
         roles: ["user", "assistant"],
         contains: ["scripted hello — acceptance LLM script reached the gateway"],
+      },
+    ],
+  },
+  {
+    id: "scripted-llm-tool-call",
+    name: "Scripted LLM drives a real tool through the runtime",
+    description:
+      "Scripted LLM yields a tool.call → the DSL expands to tool.plan + await.tool → the runtime invokes the gateway's real toolCallable for memory_search → the script continues to a final assistant message. This proves the tool DSL extension end-to-end and unblocks the next iteration (approval flow scenarios) by removing the last LLM-side blocker.",
+    tags: ["fast", "scripted-llm", "tools"],
+    llmScript: {
+      yields: [
+        {
+          kind: "tool.call",
+          callId: "c-mem-search",
+          tool: "memory_search",
+          input: { query: "scripted-llm-acceptance-no-match" },
+        },
+        {
+          kind: "final",
+          text: "scripted llm: memory_search tool call completed",
+        },
+      ],
+    },
+    steps: [
+      { action: "createConversation", as: "conv", agentId: "local-work-agent" },
+      {
+        action: "sendMessage",
+        conversation: "conv",
+        input: "use the memory tool",
+        asRun: "run",
+        asMessage: "user",
+      },
+      { action: "waitForRun", run: "run", status: "succeeded" },
+      { action: "listMessages", conversation: "conv", as: "messages" },
+      {
+        action: "assertMessages",
+        messages: "messages",
+        roles: ["user", "assistant"],
+        contains: ["scripted llm: memory_search tool call completed"],
       },
     ],
   },
