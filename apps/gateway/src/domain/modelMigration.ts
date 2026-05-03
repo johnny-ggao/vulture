@@ -14,11 +14,14 @@ const LEGACY_GATEWAY_MODEL_REFS: Record<string, string> = {
 };
 
 export function normalizePersistedAgentModel(model: string): string {
-  const legacyGatewayModel = LEGACY_GATEWAY_MODEL_REFS[model];
+  const modelRef = model.trim();
+  if (modelRef === "") return model;
+
+  const legacyGatewayModel = LEGACY_GATEWAY_MODEL_REFS[modelRef];
   if (legacyGatewayModel) return legacyGatewayModel;
 
-  if (BARE_OPENAI_MODEL_IDS.has(model)) {
-    return `openai/${model}`;
+  if (BARE_OPENAI_MODEL_IDS.has(modelRef)) {
+    return `openai/${modelRef}`;
   }
 
   return model;

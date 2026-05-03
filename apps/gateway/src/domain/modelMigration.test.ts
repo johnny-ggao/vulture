@@ -25,6 +25,15 @@ describe("normalizePersistedAgentModel", () => {
     expect(normalizePersistedAgentModel("gateway/cheap")).toBe("openai/gpt-5.4-mini@codex");
   });
 
+  test("trims input before matching known migration refs", () => {
+    expect(normalizePersistedAgentModel(" gpt-5.4 ")).toBe("openai/gpt-5.4");
+    expect(normalizePersistedAgentModel(" gateway/auto ")).toBe("openai/gpt-5.5@codex");
+  });
+
+  test("preserves all-whitespace model values", () => {
+    expect(normalizePersistedAgentModel("   ")).toBe("   ");
+  });
+
   test("preserves unknown legacy model values", () => {
     expect(normalizePersistedAgentModel("custom-model")).toBe("custom-model");
     expect(normalizePersistedAgentModel("gpt-3.5-turbo")).toBe("gpt-3.5-turbo");
