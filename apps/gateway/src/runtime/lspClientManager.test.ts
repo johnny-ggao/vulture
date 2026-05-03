@@ -113,4 +113,26 @@ describe("LspClientManager", () => {
     await mgr.definition(root, join(root, "src", "a.ts"), 0, 0);
     expect(transports.length).toBe(1);
   });
+
+  test("different root produces separate handle", async () => {
+    const transports: StubTransport[] = [];
+    mgr = createLspClientManager({
+      idleTtlMs: 60_000,
+      sweepIntervalMs: 60_000,
+      transportFactory: async () => {
+        const t = new StubTransport();
+        transports.push(t);
+        return t;
+      },
+    });
+    const root2 = makeTsRepo();
+    try {
+      await mgr.hover(root, join(root, "src", "a.ts"), 0, 0);
+      await mgr.hover(root2, join(root2, "src", "a.ts"), 0, 0);
+      expect(transports.length).toBe(2);
+      expect(mgr.cacheSize()).toBe(2);
+    } finally {
+      rmSync(root2, { recursive: true, force: true });
+    }
+  });
 });

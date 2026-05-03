@@ -90,6 +90,6 @@ export class LspServerHandle {
   }
 }
 
-function pathToFileUri(path: string): string {
+export function pathToFileUri(path: string): string {
   return pathToFileURL(path).href;
 }

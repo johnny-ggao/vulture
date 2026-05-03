@@ -230,7 +230,7 @@ function safeRealpath(path: string): string | null {
   }
 }
 
-function isPathInside(root: string, candidate: string): boolean {
+export function isPathInside(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
