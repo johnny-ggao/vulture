@@ -76,4 +76,32 @@ describe("LspServerHandle", () => {
     handle.touch();
     expect(handle.lastUsedAt).toBeGreaterThan(before);
   });
+
+  test("ready() rejects when initialize never responds (init timeout)", async () => {
+    const t: LspTransport = {
+      send: () => new Promise(() => {}), // never resolves
+      notify: () => {},
+      dispose: async () => {},
+    };
+    const handle = new LspServerHandle(t, "/repo", "typescript", 50); // 50ms timeout
+    await expect(handle.ready()).rejects.toThrow(/init timeout/i);
+  });
+
+  test("after init failure, ready() retries instead of being stuck", async () => {
+    let attempts = 0;
+    const t: LspTransport = {
+      send: (_method: string) => {
+        attempts++;
+        if (attempts === 1) return new Promise(() => {}); // first attempt never resolves
+        return Promise.resolve({ capabilities: {} }); // second attempt succeeds
+      },
+      notify: () => {},
+      dispose: async () => {},
+    };
+    const handle = new LspServerHandle(t, "/repo", "typescript", 30);
+    await expect(handle.ready()).rejects.toThrow();
+    // Second call should retry and succeed
+    await handle.ready();
+    expect(attempts).toBe(2);
+  });
 });

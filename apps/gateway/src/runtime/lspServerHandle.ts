@@ -10,6 +10,8 @@ export interface LspTransport {
 export type LspLanguage = "typescript" | "rust";
 
 export class LspServerHandle {
+  private static readonly DEFAULT_INIT_TIMEOUT_MS = 30_000;
+
   private initPromise: Promise<void> | null = null;
   private openedFiles = new Set<string>();
   private _lastUsedAt = Date.now();
@@ -19,6 +21,7 @@ export class LspServerHandle {
     private readonly transport: LspTransport,
     private readonly workspaceRoot: string,
     private readonly language: LspLanguage,
+    private readonly initTimeoutMs: number = LspServerHandle.DEFAULT_INIT_TIMEOUT_MS,
   ) {}
 
   get lastUsedAt(): number {
@@ -33,19 +36,40 @@ export class LspServerHandle {
     if (this.disposed) throw new Error("LspServerHandle already disposed");
     if (!this.initPromise) {
       this.initPromise = (async () => {
-        await this.transport.send("initialize", {
-          processId: process.pid,
-          rootUri: pathToFileUri(this.workspaceRoot),
-          capabilities: {
-            textDocument: {
-              publishDiagnostics: { relatedInformation: true },
-              definition: {},
-              references: {},
-              hover: { contentFormat: ["markdown", "plaintext"] },
-            },
-          },
-        });
-        this.transport.notify("initialized", {});
+        let timerId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            this.transport.send("initialize", {
+              processId: process.pid,
+              rootUri: pathToFileUri(this.workspaceRoot),
+              capabilities: {
+                textDocument: {
+                  publishDiagnostics: { relatedInformation: true },
+                  definition: {},
+                  references: {},
+                  hover: { contentFormat: ["markdown", "plaintext"] },
+                },
+              },
+            }),
+            new Promise<never>((_, reject) => {
+              timerId = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `lsp init timeout after ${this.initTimeoutMs}ms`,
+                    ),
+                  ),
+                this.initTimeoutMs,
+              );
+            }),
+          ]);
+          this.transport.notify("initialized", {});
+        } catch (err) {
+          this.initPromise = null; // allow retry after failure
+          throw err;
+        } finally {
+          if (timerId !== undefined) clearTimeout(timerId);
+        }
       })();
     }
     return this.initPromise;

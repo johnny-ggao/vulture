@@ -142,7 +142,15 @@ export function createLspClientManager(opts: LspClientManagerOptions): LspClient
           };
         }
         const handle = new LspServerHandle(transport, root, language);
-        await handle.ready();
+        try {
+          await handle.ready();
+        } catch (err) {
+          await handle.dispose().catch(() => {});
+          return {
+            kind: "error",
+            error: { code: "lsp.indexing", message: (err as Error).message },
+          };
+        }
         handles.set(key, handle);
         return { kind: "ok", value: handle };
       } finally {
@@ -175,11 +183,11 @@ export function createLspClientManager(opts: LspClientManagerOptions): LspClient
     if (pre.kind === "error") return pre;
     const handle = await getHandle(root, pre.value.language);
     if (handle.kind === "error") return handle;
-    await handle.value.ensureOpen(filePath, langIdFor(pre.value.language));
     const uri = pathToFileUri(filePath);
     let raw: unknown;
     let timerId: ReturnType<typeof setTimeout> | undefined;
     try {
+      await handle.value.ensureOpen(filePath, langIdFor(pre.value.language));
       raw = await Promise.race([
         handle.value.send(method, params(uri)),
         new Promise<never>((_, reject) => {
