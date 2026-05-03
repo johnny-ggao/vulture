@@ -34,12 +34,12 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
         type="button"
         className="sidebar-brand"
         onClick={() => props.onSelectView("chat")}
-        aria-label="Vulture Work 首页"
+        aria-label="Vulture 首页"
       >
         <span className="sidebar-brand-mark">
-          <BrandMark size={30} />
+          <BrandMark size={30} transparent />
         </span>
-        <span className="sidebar-brand-text">Vulture Work</span>
+        <span className="sidebar-brand-text">Vulture</span>
       </button>
 
       <nav className="sidebar-nav">

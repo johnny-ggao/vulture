@@ -626,35 +626,16 @@ pre {
   flex-shrink: 0;
   width: 30px; height: 30px;
   border-radius: 8px;
-  /* When the mark holds an image (the new vulture icon), drop the
-   * gradient backplate so the icon's own palette can show through.
-   * The brand-mark-img inside renders rounded with a hairline ring. */
-  /* Subtle brand gradient + warm inner highlight so the mark reads
-   * as "branded" rather than a flat coloured square. The lift
-   * comes from a 1px inset white highlight (top edge) + a 4px
-   * brand-tinted shadow at rest. */
-  background:
-    linear-gradient(
-      155deg,
-      color-mix(in oklab, var(--brand-500) 88%, white) 0%,
-      var(--brand-500) 55%,
-      var(--brand-600) 100%
-    );
-  color: #fff;
+  background: color-mix(in oklab, var(--accio-layout-bg) 76%, transparent);
+  color: var(--text-primary);
   font-weight: 800;
   font-size: 16px;
   letter-spacing: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 1px 3px rgba(196, 78, 84, 0.22);
-  transition: transform var(--duration-medium) var(--ease-spring),
-              box-shadow var(--duration-medium) var(--ease-out);
+  box-shadow: none;
+  transition: transform var(--duration-medium) var(--ease-spring);
 }
 .sidebar-brand:hover .sidebar-brand-mark {
   transform: scale(1.04);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.26),
-    0 4px 10px rgba(196, 78, 84, 0.30);
 }
 .sidebar-brand-text {
   font-size: 17px;
