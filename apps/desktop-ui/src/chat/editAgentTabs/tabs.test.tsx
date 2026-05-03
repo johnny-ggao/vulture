@@ -78,14 +78,14 @@ describe("OverviewTab", () => {
     render(
       <OverviewTab
         agent={baseAgent}
-        draft={{ ...draftFromAgent(baseAgent), model: "gpt-5.4" }}
+        draft={{ ...draftFromAgent(baseAgent), model: "openai/gpt-5.4" }}
         authStatus={null}
         onChange={() => {}}
       />,
     );
     const field = screen.getByLabelText("模型") as HTMLSelectElement;
     expect(field.tagName).toBe("SELECT");
-    expect(field.value).toBe("gpt-5.4");
+    expect(field.value).toBe("openai/gpt-5.4");
   });
 
   test("model field falls back to a free-form input when nothing resolves", () => {

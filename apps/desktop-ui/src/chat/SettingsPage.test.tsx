@@ -7,6 +7,7 @@ import type {
   WebSearchSettingsResponse,
   WebSearchTestResult,
 } from "../api/webSearchSettings";
+import type { ModelSettingsResponse } from "../api/modelSettings";
 
 const baseServer: McpServer = {
   id: "official-filesystem",
@@ -29,6 +30,40 @@ const baseServer: McpServer = {
     toolCount: 2,
     updatedAt: "2026-04-28T00:00:00.000Z",
   },
+};
+
+const defaultModelSettings: ModelSettingsResponse = {
+  providers: [
+    {
+      id: "openai",
+      name: "OpenAI",
+      baseUrl: "https://api.openai.com/v1",
+      api: "openai-responses",
+      auth: "api-key",
+      models: [
+        { id: "gpt-5.5", modelRef: "openai/gpt-5.5", name: "GPT-5.5", reasoning: true, input: ["text", "image"] },
+        { id: "gpt-5.4", modelRef: "openai/gpt-5.4", name: "GPT-5.4", reasoning: true, input: ["text", "image"] },
+      ],
+      authProfiles: [
+        { id: "openai-api-key", provider: "openai", mode: "api_key", label: "OpenAI API Key", status: "missing" },
+      ],
+      authOrder: ["openai-api-key"],
+    },
+    {
+      id: "anthropic",
+      name: "Anthropic",
+      baseUrl: "https://api.anthropic.com",
+      api: "anthropic-messages",
+      auth: "api-key",
+      models: [
+        { id: "claude-sonnet-4.5", modelRef: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet 4.5", reasoning: true, input: ["text"] },
+      ],
+      authProfiles: [
+        { id: "anthropic-api-key", provider: "anthropic", mode: "api_key", label: "Anthropic API Key", status: "missing" },
+      ],
+      authOrder: ["anthropic-api-key"],
+    },
+  ],
 };
 
 function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
@@ -88,6 +123,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
     onLoadRunTrace: mock(async () => {
       throw new Error("unused");
     }),
+    onGetModelSettings: mock(async () => defaultModelSettings),
     onGetWebSearchSettings: mock(async (): Promise<WebSearchSettingsResponse> => ({
       settings: {
         provider: "duckduckgo-html",
@@ -244,7 +280,7 @@ describe("SettingsPage MCP tools", () => {
 });
 
 describe("SettingsPage Models", () => {
-  test("model tab shows a summary and provider directory", () => {
+  test("model tab shows a summary and provider directory", async () => {
     render(<SettingsPage {...props({
       authStatus: {
         apiKey: { state: "set", source: "keychain" },
@@ -256,12 +292,58 @@ describe("SettingsPage Models", () => {
 
     const summary = screen.getByLabelText("模型配置摘要");
     expect(within(summary).getByText(/已配置/)).toBeDefined();
-    expect(within(summary).getByText(/7 个提供方/)).toBeDefined();
+    await waitFor(() => {
+      expect(within(summary).getByText(/2 个提供方/)).toBeDefined();
+    });
     expect(within(summary).getByText(/当前查看/)).toBeDefined();
     expect(screen.queryByRole("heading", { level: 3, name: "默认值" })).toBeNull();
     expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
-    expect(screen.getAllByRole("option").length).toBeGreaterThan(4);
+    expect(screen.getAllByRole("option").length).toBeGreaterThan(1);
     expect(screen.getByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
+  });
+
+  test("model tab groups Codex under OpenAI instead of a gateway provider", async () => {
+    render(<SettingsPage {...props({
+      onGetModelSettings: mock(async (): Promise<ModelSettingsResponse> => ({
+        providers: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            baseUrl: "https://api.openai.com/v1",
+            api: "openai-responses",
+            auth: "api-key",
+            models: [
+              { id: "gpt-5.5", modelRef: "openai/gpt-5.5", name: "GPT-5.5", reasoning: true, input: ["text"] },
+            ],
+            authProfiles: [
+              { id: "codex", provider: "openai", mode: "oauth", label: "ChatGPT / Codex", status: "configured", email: "dev@example.com" },
+              { id: "openai-api-key", provider: "openai", mode: "api_key", label: "OpenAI API Key", status: "configured" },
+            ],
+            authOrder: ["codex", "openai-api-key"],
+          },
+          {
+            id: "anthropic",
+            name: "Anthropic",
+            api: "anthropic-messages",
+            models: [
+              { id: "claude-sonnet-4.5", modelRef: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet 4.5", reasoning: true, input: ["text"] },
+            ],
+            authProfiles: [
+              { id: "anthropic-api-key", provider: "anthropic", mode: "api_key", label: "Anthropic API Key", status: "missing" },
+            ],
+            authOrder: ["anthropic-api-key"],
+          },
+        ],
+      })),
+    })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+
+    expect(await screen.findByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
+    expect(screen.getByText("ChatGPT / Codex")).toBeDefined();
+    expect(screen.getByText("OpenAI API Key")).toBeDefined();
+    expect(screen.getByText("openai/gpt-5.5")).toBeDefined();
+    expect(screen.queryByText("Codex Gateway")).toBeNull();
   });
 });
 

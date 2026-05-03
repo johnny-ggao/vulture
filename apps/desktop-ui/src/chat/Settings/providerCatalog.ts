@@ -1,10 +1,8 @@
 import type { AuthStatusView } from "../../commandCenterTypes";
 
 /* ============================================================
- * Provider catalog — single source of truth for the list of
- * model providers + their model ids. Both the Settings model
- * section (full configuration UI) and the per-agent model
- * picker (AgentEditModal) read from this list.
+ * Provider catalog — fallback model list for the per-agent picker.
+ * Settings/ModelSection uses the gateway-owned /v1/model-settings catalog.
  *
  * State (configured / unconfigured) is computed separately
  * since it depends on backend authStatus + localStorage. The
@@ -17,8 +15,7 @@ export type ProviderId =
   | "deepseek"
   | "qwen"
   | "zhipu"
-  | "moonshot"
-  | "gateway";
+  | "moonshot";
 
 export interface ProviderModel {
   id: string;
@@ -34,8 +31,6 @@ export interface ProviderSpec {
   fg: string;
   placeholder: string;
   models: ReadonlyArray<ProviderModel>;
-  /** Internal providers (e.g. Codex Gateway) skip the manual API-key flow. */
-  internal?: boolean;
 }
 
 export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
@@ -48,11 +43,12 @@ export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
     fg: "#0a6b3d",
     placeholder: "sk-...",
     models: [
-      { id: "gpt-5.4", hint: "通用旗舰" },
-      { id: "gpt-5.4-mini", hint: "低成本 · 快" },
-      { id: "gpt-4o", hint: "兼容旧 agent" },
-      { id: "gpt-4o-mini", hint: "低成本 · 快" },
-      { id: "o3-mini", hint: "推理" },
+      { id: "openai/gpt-5.5", hint: "旗舰" },
+      { id: "openai/gpt-5.4", hint: "通用旗舰" },
+      { id: "openai/gpt-5.4-mini", hint: "低成本 · 快" },
+      { id: "openai/gpt-4o", hint: "兼容旧 agent" },
+      { id: "openai/gpt-4o-mini", hint: "低成本 · 快" },
+      { id: "openai/o3-mini", hint: "推理" },
     ],
   },
   {
@@ -64,9 +60,9 @@ export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
     fg: "#a04318",
     placeholder: "sk-ant-...",
     models: [
-      { id: "claude-sonnet-4.5", hint: "长上下文" },
-      { id: "claude-haiku-4-5", hint: "极速短任务" },
-      { id: "claude-opus-4", hint: "深度推理" },
+      { id: "anthropic/claude-sonnet-4.5", hint: "长上下文" },
+      { id: "anthropic/claude-haiku-4-5", hint: "极速短任务" },
+      { id: "anthropic/claude-opus-4", hint: "深度推理" },
     ],
   },
   {
@@ -78,9 +74,9 @@ export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
     fg: "#1f3a8a",
     placeholder: "sk-...",
     models: [
-      { id: "deepseek-v3.1", hint: "通用" },
-      { id: "deepseek-r1", hint: "推理" },
-      { id: "deepseek-coder-v2", hint: "代码" },
+      { id: "deepseek/deepseek-v3.1", hint: "通用" },
+      { id: "deepseek/deepseek-r1", hint: "推理" },
+      { id: "deepseek/deepseek-coder-v2", hint: "代码" },
     ],
   },
   {
@@ -92,10 +88,10 @@ export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
     fg: "#5b1a8a",
     placeholder: "sk-...",
     models: [
-      { id: "qwen3-max", hint: "长上下文" },
-      { id: "qwen3-plus", hint: "通用" },
-      { id: "qwen3-coder-plus", hint: "代码" },
-      { id: "qwen3-vl-plus", hint: "多模态" },
+      { id: "qwen/qwen3-max", hint: "长上下文" },
+      { id: "qwen/qwen3-plus", hint: "通用" },
+      { id: "qwen/qwen3-coder-plus", hint: "代码" },
+      { id: "qwen/qwen3-vl-plus", hint: "多模态" },
     ],
   },
   {
@@ -107,9 +103,9 @@ export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
     fg: "#1d5b46",
     placeholder: "<id>.<secret>",
     models: [
-      { id: "glm-4.6", hint: "通用" },
-      { id: "glm-4-plus", hint: "长上下文" },
-      { id: "glm-4-airx", hint: "低成本 · 快" },
+      { id: "zhipu/glm-4.6", hint: "通用" },
+      { id: "zhipu/glm-4-plus", hint: "长上下文" },
+      { id: "zhipu/glm-4-airx", hint: "低成本 · 快" },
     ],
   },
   {
@@ -121,25 +117,10 @@ export const PROVIDERS: ReadonlyArray<ProviderSpec> = [
     fg: "#7a4a00",
     placeholder: "sk-...",
     models: [
-      { id: "kimi-k2-0905", hint: "通用" },
-      { id: "moonshot-v1-128k", hint: "长上下文" },
-      { id: "moonshot-v1-32k", hint: "通用" },
+      { id: "moonshot/kimi-k2-0905", hint: "通用" },
+      { id: "moonshot/moonshot-v1-128k", hint: "长上下文" },
+      { id: "moonshot/moonshot-v1-32k", hint: "通用" },
     ],
-  },
-  {
-    id: "gateway",
-    name: "Codex Gateway",
-    domain: "gateway.local",
-    glyph: "C",
-    tint: "rgba(168, 62, 68, 0.10)",
-    fg: "#a83e44",
-    placeholder: "内置（无需密钥）",
-    models: [
-      { id: "gateway/auto", hint: "智能路由" },
-      { id: "gateway/long-context", hint: "长上下文" },
-      { id: "gateway/cheap", hint: "低成本 · 快" },
-    ],
-    internal: true,
   },
 ];
 
@@ -164,8 +145,7 @@ export function findProviderByModel(model: string): ProviderSpec | null {
 /* ============================================================
  * Configured-state computation. Mirrors the rules in
  * Settings/ModelSection.tsx:
- *   - openai   → backend keychain via authStatus.apiKey
- *   - gateway  → backend Codex login via authStatus.codex
+ *   - openai   → backend keychain or ChatGPT/Codex login
  *   - others   → localStorage flag (UI-only stub for now)
  * ============================================================ */
 
@@ -202,9 +182,9 @@ export function configuredProviderIds(
 ): ReadonlySet<ProviderId> {
   const set = new Set<ProviderId>();
   if (authStatus?.apiKey?.state === "set") set.add("openai");
-  if (authStatus?.codex?.state === "signed_in") set.add("gateway");
+  if (authStatus?.codex?.state === "signed_in") set.add("openai");
   for (const provider of PROVIDERS) {
-    if (provider.id === "openai" || provider.id === "gateway") continue;
+    if (provider.id === "openai") continue;
     if (readLocalProvider(provider.id).configured) set.add(provider.id);
   }
   return set;

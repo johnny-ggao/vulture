@@ -17,6 +17,7 @@ import {
   webSearchSettingsApi,
   type UpdateWebSearchSettings,
 } from "./api/webSearchSettings";
+import { modelSettingsApi } from "./api/modelSettings";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
   mcpServersApi,
@@ -332,6 +333,11 @@ export function App() {
   async function loadRunTrace(runId: string) {
     if (!apiClient) throw new Error("Gateway is not ready");
     return runLogsApi.trace(apiClient, runId);
+  }
+
+  async function getModelSettings() {
+    if (!apiClient) return { providers: [] };
+    return modelSettingsApi.get(apiClient);
   }
 
   async function getWebSearchSettings() {
@@ -1023,6 +1029,7 @@ export function App() {
               onListMcpServerTools={listMcpServerTools}
               onListRunLogs={listRunLogs}
               onLoadRunTrace={loadRunTrace}
+              onGetModelSettings={getModelSettings}
               onGetWebSearchSettings={getWebSearchSettings}
               onUpdateWebSearchSettings={updateWebSearchSettings}
               onTestWebSearchSettings={testWebSearchSettings}

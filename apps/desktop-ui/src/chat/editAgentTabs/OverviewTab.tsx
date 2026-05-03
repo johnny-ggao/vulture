@@ -176,8 +176,8 @@ function ModelField({ value, authStatus, onChange }: ModelFieldProps) {
       label="模型"
       hint={
         hasOptions
-          ? "仅显示已在「设置 → 模型」中配置的提供方对应模型。"
-          : "尚未配置任何模型提供方。请到「设置 → 模型」中添加密钥。"
+          ? "模型以 provider/model 保存；连接方式可在模型设置中调整默认优先级。"
+          : "尚未配置任何模型提供方。请到「设置 → 模型」中添加连接方式。"
       }
     >
       {hasOptions ? (

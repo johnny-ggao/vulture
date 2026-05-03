@@ -17,6 +17,7 @@ import type {
   WebSearchSettingsResponse,
   WebSearchTestResult,
 } from "../../api/webSearchSettings";
+import type { ModelSettingsResponse } from "../../api/modelSettings";
 
 export interface SettingsPageProps {
   onBack: () => void;
@@ -41,6 +42,7 @@ export interface SettingsPageProps {
   onListMcpServerTools: (id: string) => Promise<McpToolSummary[]>;
   onListRunLogs: (query: ListRunLogsQuery) => Promise<RunLogsListResponse>;
   onLoadRunTrace: (runId: string) => Promise<RunTraceResponse>;
+  onGetModelSettings: () => Promise<ModelSettingsResponse>;
   onGetWebSearchSettings: () => Promise<WebSearchSettingsResponse>;
   onUpdateWebSearchSettings: (
     input: UpdateWebSearchSettings,
