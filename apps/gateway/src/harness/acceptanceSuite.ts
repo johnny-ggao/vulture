@@ -474,6 +474,53 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
     ],
   },
   {
+    id: "scripted-llm-multi-step",
+    name: "Scripted LLM interleaves text + multiple tool calls in one run",
+    description:
+      "Drives the runtime through a realistic multi-step LLM trace: text delta → tool.call (memory_search) → text delta → tool.call (memory_get) → final. Proves the scripted DSL handles a sequence with mixed yield kinds (not just the trivial one-tool-then-final shape) and that the runtime tolerates text deltas being interleaved with tool calls. This is the foundation that future SDK-layer approval scripting will build on.",
+    tags: ["fast", "scripted-llm", "tools"],
+    llmScript: {
+      yields: [
+        { kind: "text.delta", text: "Searching memory once... " },
+        {
+          kind: "tool.call",
+          callId: "c-mem-search-1",
+          tool: "memory_search",
+          input: { query: "acceptance-multi-step-1", limit: null },
+        },
+        { kind: "text.delta", text: "now searching again with a different query... " },
+        {
+          kind: "tool.call",
+          callId: "c-mem-search-2",
+          tool: "memory_search",
+          input: { query: "acceptance-multi-step-2", limit: null },
+        },
+        { kind: "usage", usage: { inputTokens: 12, outputTokens: 18 } },
+        {
+          kind: "final",
+          text: "scripted llm: completed two-memory-search sequence",
+        },
+      ],
+    },
+    steps: [
+      { action: "createConversation", as: "conv", agentId: "local-work-agent" },
+      {
+        action: "sendMessage",
+        conversation: "conv",
+        input: "exercise the scripted multi-step path",
+        asRun: "run",
+      },
+      { action: "waitForRun", run: "run", status: "succeeded" },
+      { action: "listMessages", conversation: "conv", as: "messages" },
+      {
+        action: "assertMessages",
+        messages: "messages",
+        roles: ["user", "assistant"],
+        contains: ["scripted llm: completed two-memory-search sequence"],
+      },
+    ],
+  },
+  {
     id: "scripted-llm-tool-call",
     name: "Scripted LLM drives a real tool through the runtime",
     description:
