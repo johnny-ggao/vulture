@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ChatView } from "./ChatView";
 import type { MessageDto } from "../api/conversations";
@@ -573,5 +573,74 @@ describe("ChatView", () => {
       />,
     );
     expect(container.querySelector(".chat-scroll-bottom")).toBeNull();
+  });
+});
+
+describe("CodingAgentBanner integration", () => {
+  const baseProps = {
+    onSelectAgent: () => {},
+    messages: msgs,
+    runEvents: [],
+    runStatus: "idle" as const,
+    runError: null,
+    submittingApprovals: new Set<string>(),
+    resumingRun: false,
+    onSend: () => {},
+    onCancel: () => {},
+    onResume: () => {},
+    onDecide: () => {},
+  };
+
+  test("banner appears when active agent is coding-agent on a private workspace", () => {
+    render(
+      <ChatView
+        {...baseProps}
+        agents={[{ id: "coding-agent", name: "Vulture Coding", isPrivateWorkspace: true }]}
+        selectedAgentId="coding-agent"
+        onOpenAgentEdit={() => {}}
+      />,
+    );
+    expect(screen.getByText(/隔离工作区/i)).toBeTruthy();
+  });
+
+  test("banner hidden when active agent is general (not coding-agent)", () => {
+    render(
+      <ChatView
+        {...baseProps}
+        agents={[
+          { id: "local-work-agent", name: "Vulture", isPrivateWorkspace: true },
+          { id: "coding-agent", name: "Vulture Coding", isPrivateWorkspace: true },
+        ]}
+        selectedAgentId="local-work-agent"
+        onOpenAgentEdit={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/隔离工作区/i)).toBeNull();
+  });
+
+  test("banner hidden when coding-agent has a non-private workspace", () => {
+    render(
+      <ChatView
+        {...baseProps}
+        agents={[{ id: "coding-agent", name: "Vulture Coding", isPrivateWorkspace: false }]}
+        selectedAgentId="coding-agent"
+        onOpenAgentEdit={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/隔离工作区/i)).toBeNull();
+  });
+
+  test("clicking the banner action calls onOpenAgentEdit('coding-agent')", () => {
+    const onOpen = mock(() => {});
+    render(
+      <ChatView
+        {...baseProps}
+        agents={[{ id: "coding-agent", name: "Vulture Coding", isPrivateWorkspace: true }]}
+        selectedAgentId="coding-agent"
+        onOpenAgentEdit={onOpen}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /切换/i }));
+    expect(onOpen).toHaveBeenCalledWith("coding-agent");
   });
 });
