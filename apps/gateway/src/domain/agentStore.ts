@@ -71,10 +71,27 @@ export interface AgentCoreFile {
   content?: string;
 }
 
-const DEFAULT_AGENT: SaveAgentRequest = {
+const PRESET_GENERAL_INSTRUCTIONS = [
+  "You are Vulture, a local-first general assistant.",
+  "Complete the user's task directly; do not stall with standby phrases.",
+  "Inspect files and run tools to ground your answers — never claim a local action ran unless a tool result confirms it.",
+  "For workspace questions, read the directory before summarizing.",
+  "When the user is exploring an idea, ask focused clarifying questions before committing to an answer.",
+].join(" ");
+
+const PRESET_CODING_INSTRUCTIONS = [
+  "You are Vulture Coding, an engineering partner working inside a code repository.",
+  "Always read before editing; never invent APIs, file paths, or function signatures — confirm with the read or search tools first.",
+  "Prefer small, focused changes over sweeping rewrites; respect existing patterns in the repo.",
+  "Verify your work with builds, tests, or type-checks before claiming a change is complete.",
+  "When fixing bugs, find the root cause; do not paper over symptoms.",
+  "For risky operations (destructive shell, dependency changes, force pushes), surface the plan before executing.",
+].join(" ");
+
+const PRESET_GENERAL: SaveAgentRequest = {
   id: "local-work-agent",
-  name: "Local Work Agent",
-  description: "General local work assistant",
+  name: "Vulture",
+  description: "通用助手——日常工作、写作、研究、问答",
   model: "gpt-5.4",
   reasoning: "medium",
   toolPreset: "full",
@@ -82,15 +99,26 @@ const DEFAULT_AGENT: SaveAgentRequest = {
   toolExclude: [],
   tools: [...AGENT_TOOL_NAMES],
   handoffAgentIds: [],
-  instructions: [
-    "You are Vulture's local work agent.",
-    "Complete the user's task directly; do not reply with standby text like asking for another task.",
-    "For workspace questions, inspect the repository structure before summarizing.",
-    "For direct file reads, use the read tool before considering shell commands.",
-    "Request local actions through tools and never claim a local command ran unless a tool result confirms it.",
-    "Answer in concise Chinese when the user writes Chinese.",
-  ].join(" "),
+  avatar: "compass",
+  instructions: PRESET_GENERAL_INSTRUCTIONS,
 };
+
+const PRESET_CODING: SaveAgentRequest = {
+  id: "coding-agent",
+  name: "Vulture Coding",
+  description: "工程伙伴——面向代码仓库的开发与验证",
+  model: "gpt-5.4",
+  reasoning: "high",
+  toolPreset: "full",
+  toolInclude: [],
+  toolExclude: [],
+  tools: [...AGENT_TOOL_NAMES],
+  handoffAgentIds: [],
+  avatar: "circuit",
+  instructions: PRESET_CODING_INSTRUCTIONS,
+};
+
+const DEFAULT_AGENTS: readonly SaveAgentRequest[] = [PRESET_GENERAL, PRESET_CODING];
 
 function rowToAgent(r: AgentRow): Agent {
   const workspace_data = JSON.parse(r.workspace_json);
@@ -136,24 +164,24 @@ export class AgentStore {
   ) {}
 
   list(): Agent[] {
-    this.ensureDefault();
+    this.ensureDefaults();
     const rows = this.db.query("SELECT * FROM agents ORDER BY name ASC").all() as AgentRow[];
     return rows.map(rowToAgent);
   }
 
   get(id: string): Agent | null {
-    this.ensureDefault();
+    this.ensureDefaults();
     const row = this.db.query("SELECT * FROM agents WHERE id = ?").get(id) as AgentRow | undefined;
     return row ? rowToAgent(row) : null;
   }
 
   save(req: SaveAgentRequest): Agent {
-    this.ensureDefault();
+    this.ensureDefaults();
     return this._save(req);
   }
 
   delete(id: string): void {
-    this.ensureDefault();
+    this.ensureDefaults();
     const remaining = (
       this.db.query("SELECT COUNT(*) AS c FROM agents").get() as { c: number }
     ).c;
@@ -198,40 +226,47 @@ export class AgentStore {
     return { ...meta, content };
   }
 
-  private ensureDefault(): void {
-    const count = (this.db.query("SELECT COUNT(*) AS c FROM agents").get() as { c: number }).c;
-    if (count > 0) {
-      this.ensureDefaultToolsCurrent();
-      this.ensureLegacyPrivateWorkspacesCurrent();
-      this.ensureDefaultWorkspaceCurrent();
-      this.ensureAgentLayoutsCurrent();
-      return;
+  private ensureDefaults(): void {
+    for (const preset of DEFAULT_AGENTS) {
+      const existingRow = this.db
+        .query("SELECT * FROM agents WHERE id = ?")
+        .get(preset.id) as AgentRow | undefined;
+      if (!existingRow) {
+        this._save(preset);
+      }
     }
-    this._save(DEFAULT_AGENT);
+    // Migration / reconcile passes still run on every call.
+    this.ensureDefaultToolsCurrent();
+    this.ensureLegacyPrivateWorkspacesCurrent();
+    this.ensureDefaultWorkspaceCurrent();
+    this.ensureAgentLayoutsCurrent();
+    this.ensurePresetFieldsCurrent();
   }
 
   private ensureDefaultToolsCurrent(): void {
-    const existingRow = this.db
-      .query("SELECT * FROM agents WHERE id = ?")
-      .get(DEFAULT_AGENT.id) as AgentRow | undefined;
-    if (!existingRow) return;
-    const existingTools = JSON.parse(existingRow.tools) as string[];
-    const merged = [...new Set([...existingTools, ...AGENT_TOOL_NAMES])];
-    if (merged.length === existingTools.length) return;
-    const policy = toolPolicyFromSaveRequest({
-      ...DEFAULT_AGENT,
-      tools: merged as AgentToolName[],
-    });
-    this.db
-      .query("UPDATE agents SET tools = ?, tool_preset = ?, tool_include_json = ?, tool_exclude_json = ?, updated_at = ? WHERE id = ?")
-      .run(
-        JSON.stringify(policy.tools),
-        policy.toolPreset,
-        JSON.stringify(policy.toolInclude),
-        JSON.stringify(policy.toolExclude),
-        nowIso8601(),
-        DEFAULT_AGENT.id,
-      );
+    for (const preset of DEFAULT_AGENTS) {
+      const existingRow = this.db
+        .query("SELECT * FROM agents WHERE id = ?")
+        .get(preset.id) as AgentRow | undefined;
+      if (!existingRow) continue;
+      const existingTools = JSON.parse(existingRow.tools) as string[];
+      const merged = [...new Set([...existingTools, ...AGENT_TOOL_NAMES])];
+      if (merged.length === existingTools.length) continue;
+      const policy = toolPolicyFromSaveRequest({
+        ...preset,
+        tools: merged as AgentToolName[],
+      });
+      this.db
+        .query("UPDATE agents SET tools = ?, tool_preset = ?, tool_include_json = ?, tool_exclude_json = ?, updated_at = ? WHERE id = ?")
+        .run(
+          JSON.stringify(policy.tools),
+          policy.toolPreset,
+          JSON.stringify(policy.toolInclude),
+          JSON.stringify(policy.toolExclude),
+          nowIso8601(),
+          preset.id,
+        );
+    }
   }
 
   private ensureLegacyPrivateWorkspacesCurrent(): void {
@@ -447,33 +482,35 @@ export class AgentStore {
   }
 
   private ensureDefaultWorkspaceCurrent(): void {
-    const existingRow = this.db
-      .query("SELECT * FROM agents WHERE id = ?")
-      .get(DEFAULT_AGENT.id) as AgentRow | undefined;
-    if (!existingRow) return;
-    const existing = rowToAgent(existingRow).workspace as Workspace;
-    let desired = this.defaultWorkspaceFor(DEFAULT_AGENT.id, existing);
-    let replacingManagedDefaultWorkspace = false;
-    if (!desired) {
-      if (this.isLegacyPrivateWorkspace(DEFAULT_AGENT.id, existing.path)) {
-        desired = this.migrateLegacyPrivateWorkspace(DEFAULT_AGENT.id, DEFAULT_AGENT.name, existing);
-      } else if (this.isManagedPrivateWorkspace(DEFAULT_AGENT.id, existing)) {
-        desired = this.createPrivateWorkspace(DEFAULT_AGENT.id, DEFAULT_AGENT.name, existing);
-        replacingManagedDefaultWorkspace = true;
-      } else {
-        return;
+    for (const preset of DEFAULT_AGENTS) {
+      const existingRow = this.db
+        .query("SELECT * FROM agents WHERE id = ?")
+        .get(preset.id) as AgentRow | undefined;
+      if (!existingRow) continue;
+      const existing = rowToAgent(existingRow).workspace as Workspace;
+      let desired = this.defaultWorkspaceFor(preset.id, existing);
+      let replacingManagedDefaultWorkspace = false;
+      if (!desired) {
+        if (this.isLegacyPrivateWorkspace(preset.id, existing.path)) {
+          desired = this.migrateLegacyPrivateWorkspace(preset.id, preset.name, existing);
+        } else if (this.isManagedPrivateWorkspace(preset.id, existing)) {
+          desired = this.createPrivateWorkspace(preset.id, preset.name, existing);
+          replacingManagedDefaultWorkspace = true;
+        } else {
+          continue;
+        }
       }
+      if (existing.path === desired.path) continue;
+      if (
+        !replacingManagedDefaultWorkspace &&
+        !this.isEmptyPrivateWorkspace(preset.id, preset.name, existing.path)
+      ) {
+        continue;
+      }
+      this.db
+        .query("UPDATE agents SET workspace_json = ?, updated_at = ? WHERE id = ?")
+        .run(JSON.stringify(desired), nowIso8601(), preset.id);
     }
-    if (existing.path === desired.path) return;
-    if (
-      !replacingManagedDefaultWorkspace &&
-      !this.isEmptyPrivateWorkspace(DEFAULT_AGENT.id, DEFAULT_AGENT.name, existing.path)
-    ) {
-      return;
-    }
-    this.db
-      .query("UPDATE agents SET workspace_json = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(desired), nowIso8601(), DEFAULT_AGENT.id);
   }
 
   private workspaceFromRequest(
@@ -496,7 +533,7 @@ export class AgentStore {
   }
 
   private defaultWorkspaceFor(agentId: string, existing?: Workspace): Workspace | null {
-    if (agentId !== DEFAULT_AGENT.id) return null;
+    if (agentId !== PRESET_GENERAL.id) return null;
     const path = this.defaultWorkspacePath;
     if (!path || !existsSync(path) || !statSync(path).isDirectory()) return null;
     const now = nowIso8601();
@@ -558,6 +595,41 @@ export class AgentStore {
     }
     if (!existsSync(path) || !statSync(path).isDirectory()) return true;
     return readdirSync(path).length === 0;
+  }
+
+  private ensurePresetFieldsCurrent(): void {
+    for (const preset of DEFAULT_AGENTS) {
+      const existingRow = this.db
+        .query("SELECT * FROM agents WHERE id = ?")
+        .get(preset.id) as AgentRow | undefined;
+      if (!existingRow) continue;
+      const policy = toolPolicyFromSaveRequest(preset);
+      this.db
+        .query(
+          `UPDATE agents SET
+            name=?, description=?, model=?, reasoning=?,
+            tools=?, tool_preset=?, tool_include_json=?, tool_exclude_json=?,
+            skills=?, handoff_agent_ids_json=?,
+            instructions=?, avatar=?, updated_at=?
+           WHERE id=?`,
+        )
+        .run(
+          preset.name,
+          preset.description,
+          preset.model,
+          preset.reasoning,
+          JSON.stringify(policy.tools),
+          policy.toolPreset,
+          JSON.stringify(policy.toolInclude),
+          JSON.stringify(policy.toolExclude),
+          preset.skills === undefined ? null : JSON.stringify(preset.skills),
+          JSON.stringify(preset.handoffAgentIds ?? []),
+          preset.instructions,
+          preset.avatar ?? null,
+          nowIso8601(),
+          preset.id,
+        );
+    }
   }
 
   private ensureAgentLayoutsCurrent(): void {
