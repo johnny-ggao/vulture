@@ -12,13 +12,11 @@ import { RunEventStream } from "./RunEventStream";
 import { SubagentSessionPanel } from "./SubagentSessionPanel";
 import { useStickyBottomScroll } from "./useStickyBottomScroll";
 import { BrandMark } from "./components";
-import { CodingAgentBanner } from "./CodingAgentBanner";
 
 export interface ChatViewProps {
-  agents: ReadonlyArray<{ id: string; name: string; isPrivateWorkspace?: boolean }>;
+  agents: ReadonlyArray<{ id: string; name: string }>;
   selectedAgentId: string;
   onSelectAgent: (id: string) => void;
-  onOpenAgentEdit?: (agentId: string) => void;
   permissionMode?: ConversationPermissionMode;
   onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
   /**
@@ -74,10 +72,6 @@ export function ChatView(props: ChatViewProps) {
     ?? props.agents[0]
     ?? null;
   const showAgentHeader = hasContent && activeAgent;
-  const showCodingBanner =
-    activeAgent?.id === "coding-agent" &&
-    activeAgent.isPrivateWorkspace === true &&
-    props.onOpenAgentEdit !== undefined;
   const runEventsInsertionIndex = getRunEventsInsertionIndex(
     props.messages,
     props.runEvents,
@@ -145,13 +139,6 @@ export function ChatView(props: ChatViewProps) {
           </button>
         </div>
       ) : null}
-      {showCodingBanner && props.onOpenAgentEdit ? (
-        <CodingAgentBanner
-          agentId="coding-agent"
-          onOpenAgentEdit={props.onOpenAgentEdit}
-        />
-      ) : null}
-
       <section
         ref={stickyScroll.ref as React.RefObject<HTMLElement>}
         className={`chat-stage ${hasContent ? "has-messages" : ""}`}

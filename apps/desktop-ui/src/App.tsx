@@ -46,7 +46,6 @@ import { useGatewayBootstrap } from "./app/useGatewayBootstrap";
 import { useRunController } from "./app/useRunController";
 import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
-import type { AgentsTab } from "./chat/AgentEditModal";
 import { ArtifactsPage } from "./chat/ArtifactsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -76,12 +75,6 @@ export function App() {
   const [view, setView] = useState<ViewKey>("chat");
   const [settingsReturnView, setSettingsReturnView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
-  // Drives the CodingAgentBanner → AgentEditModal flow. Set when the
-  // user clicks the banner; consumed once by AgentsPage on mount.
-  const [agentEditTarget, setAgentEditTarget] = useState<{
-    agentId: string;
-    tab: AgentsTab;
-  } | null>(null);
   const conversations = useConversations(apiClient);
   const {
     profile,
@@ -550,22 +543,6 @@ export function App() {
     agentDelete.dismiss();
   }
 
-  // Called by ChatView when the user clicks the CodingAgentBanner.
-  // Switches to the Agents view and opens the edit modal for that agent.
-  function handleOpenAgentEdit(agentId: string) {
-    setAgentEditTarget({ agentId, tab: "overview" });
-    setSelectedAgentId(agentId);
-    setView("agents");
-  }
-
-  // Stable callback so AgentsPage's useEffect doesn't re-fire on every
-  // App render. AgentsPage calls this once after consuming the target;
-  // clearing the state prevents the modal from re-opening when the user
-  // navigates away from the agents view and back (AgentsPage remounts).
-  const consumeAgentEditTarget = useCallback(() => {
-    setAgentEditTarget(null);
-  }, []);
-
   // Open the native folder picker; on success, persist the choice on the
   // active conversation (or stage it locally if no conversation exists yet —
   // useRunController flushes the staged value on the implicit create).
@@ -884,10 +861,9 @@ export function App() {
         >
           {view === "chat" ? (
             <ChatView
-              agents={agents.map((a) => ({ id: a.id, name: a.name, isPrivateWorkspace: a.isPrivateWorkspace }))}
+              agents={agents.map((a) => ({ id: a.id, name: a.name }))}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
-              onOpenAgentEdit={handleOpenAgentEdit}
               permissionMode={runController.permissionMode}
               onChangePermissionMode={runController.changePermissionMode}
               workingDirectory={runController.workingDirectory}
@@ -932,8 +908,6 @@ export function App() {
               onLoadFile={handleLoadAgentFile}
               onSaveFile={handleSaveAgentFile}
               onDelete={handleDeleteAgent}
-              initialEditTarget={agentEditTarget}
-              onConsumeEditTarget={consumeAgentEditTarget}
             />
           ) : null}
           {view === "skills" ? (
