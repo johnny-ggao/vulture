@@ -250,8 +250,9 @@ export function RunEventStream(props: RunEventStreamProps) {
   // streaming flips off (terminal status).
   const showThinking =
     Boolean(props.streaming) && lastTextIdx === -1 && !props.resuming;
+  if (blocks.length === 0 && !showThinking) return null;
   return (
-    <div className="run-event-stream">
+    <div className="run-event-stream" role="group" aria-label="运行事件">
       {blocks.map((b, i) => {
         if (b.kind === "text") {
           return (

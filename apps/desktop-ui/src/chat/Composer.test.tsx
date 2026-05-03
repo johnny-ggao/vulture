@@ -31,6 +31,25 @@ describe("Composer", () => {
     expect(onSend).toHaveBeenCalledTimes(1);
   });
 
+  test("IME composition Enter does not send", () => {
+    const onSend = mock(() => {});
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={false}
+        onSend={onSend}
+        onCancel={() => {}}
+      />,
+    );
+    const ta = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: "中文输入" } });
+    fireEvent.keyDown(ta, { key: "Enter", shiftKey: false, isComposing: true });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(ta.value).toBe("中文输入");
+  });
+
   test("attaches selected files when sending", async () => {
     const onSend = mock(() => {});
     render(
@@ -99,6 +118,24 @@ describe("Composer", () => {
     );
     fireEvent.click(screen.getByLabelText("取消"));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  test("Meta+. and Ctrl+. cancel a running response", () => {
+    const onCancel = mock(() => {});
+    render(
+      <Composer
+        agents={agents}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        running={true}
+        onSend={() => {}}
+        onCancel={onCancel}
+      />,
+    );
+    fireEvent.keyDown(window, { key: ".", metaKey: true });
+    fireEvent.keyDown(window, { key: ".", ctrlKey: true });
+    fireEvent.keyDown(window, { key: ".", metaKey: true, shiftKey: true });
+    expect(onCancel).toHaveBeenCalledTimes(2);
   });
 
   test("agent picker shows current agent name", () => {

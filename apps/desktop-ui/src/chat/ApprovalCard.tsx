@@ -52,6 +52,7 @@ export function ApprovalCard(props: ApprovalCardProps) {
     if (props.submitting) return;
     allowRef.current?.focus({ preventScroll: true });
     function onKey(event: KeyboardEvent) {
+      if (event.isComposing) return;
       // Don't fight with composer / dialog handlers — only act on bare keys.
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       if (event.key === "Enter") {

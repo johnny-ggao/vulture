@@ -116,6 +116,38 @@ describe("ToolBlock", () => {
     expect(header.getAttribute("aria-expanded")).toBe("true");
   });
 
+  test("manual collapse persists when status changes to failed", () => {
+    const { container, rerender } = render(
+      <ToolBlock
+        callId="c1"
+        tool="shell.exec"
+        input={{ argv: ["pwd"] }}
+        status="running"
+      />,
+    );
+    const header = container.querySelector(".tool-block-header") as HTMLButtonElement;
+    expect(header.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(header);
+    expect(header.getAttribute("aria-expanded")).toBe("false");
+
+    rerender(
+      <ToolBlock
+        callId="c1"
+        tool="shell.exec"
+        input={{ argv: ["pwd"] }}
+        status="failed"
+        error={{ code: "exit", message: "boom" }}
+      />,
+    );
+    expect(
+      (container.querySelector(".tool-block-header") as HTMLButtonElement).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
+    expect(container.textContent).not.toContain("boom");
+  });
+
   test("expanded body uses the new section labels (调用参数 / 返回)", () => {
     const { container } = render(
       <ToolBlock

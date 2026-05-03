@@ -6587,12 +6587,20 @@ pre {
 .agent-edit-modal {
   max-width: 960px;
   width: min(960px, calc(100vw - 48px));
+  height: min(760px, 86vh);
   max-height: 86vh;
   display: flex;
   flex-direction: column;
   /* The card itself owns the rounded corners; inner sections meet
    * its edges directly so dividers run flush. */
   overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .agent-edit-modal {
+    height: min(760px, calc(100vh - 24px));
+    max-height: calc(100vh - 24px);
+  }
 }
 
 /* ---- Header ----------------------------------------------------- */
@@ -10436,4 +10444,2525 @@ pre {
   .composer { width: calc(100% - 28px); }
   .composer-controls { grid-template-columns: 1fr; }
   .settings-layout { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+ * Accio package reference refresh — chat / agents / skills
+ *
+ * Based on the local Accio app bundle in the repository root. The
+ * structural cues are Accio's compact workbench surfaces:
+ * - 24px title row, low-height controls, bg-[#FAFAFA]
+ * - Agents grid repeat(auto-fill,minmax(192px,1fr)), rounded-3xl cards
+ * - Skills as source/category controls + horizontal list rows
+ * Vulture's existing brand and neutral tokens stay in place.
+ * ============================================================ */
+
+.page {
+  width: 100%;
+  max-width: 1120px;
+  padding: 20px 28px 28px;
+}
+
+.page-header,
+.skills-header {
+  min-height: 60px;
+  margin-bottom: 14px;
+}
+
+.page-header h1,
+.skills-header-titles h1 {
+  font-size: 24px;
+  line-height: 1.12;
+  font-weight: 740;
+  letter-spacing: -0.025em;
+}
+
+.page-header p,
+.skills-header-sub {
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+.agents-toolbar,
+.skills-page-marketplace .skills-header {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agents-toolbar {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.agents-toolbar-search .search-input,
+.skills-search .search-input {
+  height: 34px;
+  border-radius: var(--radius-pill);
+  border-color: var(--fill-tertiary);
+  background: transparent;
+  font-size: 12px;
+}
+
+.agents-toolbar-meta {
+  gap: 10px;
+}
+
+.agents-toolbar-count,
+.agents-toolbar-sort-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.agents-sort-segmented,
+.segmented {
+  padding: 2px;
+  background: var(--fill-quaternary);
+  border-radius: var(--radius-pill);
+}
+
+.agents-sort-segment,
+.segmented-segment {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.agents-grid {
+  grid-template-columns: repeat(auto-fill, minmax(192px, 1fr));
+  gap: 24px;
+  margin-top: 0;
+  margin-bottom: 28px;
+}
+
+.agent-create-tile,
+.agent-card {
+  min-height: 240px;
+  border-radius: 24px;
+}
+
+.agent-create-tile {
+  gap: 10px;
+  padding: 24px;
+  border: 1.5px dashed var(--fill-secondary);
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.agent-create-tile:hover {
+  background: var(--brand-050);
+  border-color: color-mix(in oklab, var(--brand-500) 58%, var(--fill-secondary));
+  transform: translateY(-1px);
+}
+
+.agent-create-tile-glyph {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--fill-quaternary);
+}
+
+.agent-card {
+  border: 1px solid var(--fill-tertiary);
+  background: var(--bg-primary);
+  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
+}
+
+.agent-card:hover {
+  border-color: var(--fill-secondary);
+  box-shadow: 0 10px 24px rgba(15, 15, 15, 0.08);
+  transform: translateY(-2px);
+}
+
+.agent-card-surface {
+  padding: 0 18px 6px;
+  text-align: center;
+}
+
+.agent-card-banner {
+  height: 64px;
+  margin: -1px -19px 34px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), transparent 50%),
+    linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--brand-500) 16%, var(--bg-secondary)) 0%,
+      color-mix(in oklab, var(--brand-500) 6%, var(--bg-primary)) 100%
+    );
+}
+
+.agent-card-avatar {
+  top: 64px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 18px;
+}
+
+.agent-card-body {
+  align-items: center;
+  gap: 5px;
+}
+
+.agent-card-name {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+.agent-card-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  min-height: calc(2 * 1.45em);
+  color: var(--text-tertiary);
+}
+
+.agent-card-foot {
+  padding: 10px 18px 18px;
+}
+
+.agent-card-cta {
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--fill-tertiary);
+  background: transparent;
+  font-size: 12px;
+}
+
+.agent-card:hover .agent-card-cta {
+  border-color: var(--brand-500);
+  background: var(--brand-500);
+  color: #fff;
+}
+
+.agents-empty-page {
+  max-width: 520px;
+  margin: 48px auto 0;
+  border-radius: 24px;
+}
+
+.skills-page-marketplace {
+  max-width: 1120px;
+}
+
+.skills-page-marketplace .skills-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 12px 0;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+.skills-header-controls {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.skills-agent-select {
+  height: 34px;
+  max-width: 180px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+}
+
+.skills-search {
+  width: 192px;
+  flex: 0 0 192px;
+}
+
+.skills-policy {
+  margin-left: 0;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--fill-quaternary);
+}
+
+.skills-policy-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+}
+
+.skill-catalog-panel {
+  margin: 0 0 16px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--fill-tertiary);
+  background: color-mix(in oklab, var(--bg-primary) 82%, var(--bg-secondary));
+  box-shadow: none;
+}
+
+.skill-catalog-head {
+  margin-bottom: 10px;
+}
+
+.skill-catalog-titles h2 {
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.skill-catalog-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.skill-catalog-card {
+  min-height: 0;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.skills-market-body {
+  display: block;
+}
+
+.skills-cats {
+  position: static;
+  display: flex;
+  width: 100%;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--fill-quaternary);
+}
+
+.skills-cat {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+}
+
+.skills-cat.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.78),
+    0 1px 2px rgba(15, 15, 15, 0.06);
+}
+
+.skills-feature-block {
+  margin-bottom: 18px;
+}
+
+.skills-feature-row {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.skills-feature-card {
+  min-height: 112px;
+  border-radius: 16px;
+  border-color: var(--fill-tertiary);
+  background: var(--bg-primary);
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.skill-card {
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  border-radius: 16px;
+  border: 1px solid var(--fill-tertiary);
+  background: var(--bg-primary);
+  box-shadow: none;
+}
+
+.skill-card::before {
+  width: 0;
+}
+
+.skill-card:hover {
+  border-color: var(--fill-secondary);
+  box-shadow: 0 6px 16px rgba(15, 15, 15, 0.05);
+  transform: none;
+}
+
+.skill-card[data-enabled="false"] {
+  opacity: 1;
+  background: color-mix(in oklab, var(--bg-primary) 76%, var(--bg-secondary));
+}
+
+.skill-card-surface {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+}
+
+.skill-card-header {
+  gap: 10px;
+}
+
+.skill-card-dot {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.42), transparent 34%),
+    color-mix(in oklab, var(--brand-500) 14%, var(--bg-secondary));
+  border: 1px solid var(--fill-quaternary);
+}
+
+.skill-card-dot.is-model-visible {
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.50), transparent 34%),
+    color-mix(in oklab, var(--brand-500) 26%, var(--bg-secondary));
+}
+
+.skill-card-name {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.skill-card-desc {
+  margin: 5px 0 0 48px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.skill-card-toggle {
+  width: 76px;
+  flex: 0 0 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-left: 1px solid var(--fill-quaternary);
+  background: transparent;
+}
+
+.chat-stage:not(.has-messages) {
+  align-content: center;
+  place-items: center;
+  padding: 24px;
+}
+
+.empty-state {
+  width: min(680px, 100%);
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 0;
+  padding: 24px 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+
+.empty-state .hero-mark {
+  width: 72px;
+  height: 72px;
+  margin: 0 0 16px;
+  border-radius: 20px;
+  font-size: 30px;
+}
+
+.empty-state-kicker {
+  display: none;
+}
+
+.empty-state h2 {
+  margin-bottom: 7px;
+  font-size: 24px;
+  line-height: 1.16;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.empty-state p {
+  max-width: 520px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.empty-state .suggestion-chips {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  max-width: 600px;
+  margin-top: 20px;
+}
+
+.empty-state .suggestion-chip {
+  width: auto;
+  min-height: 34px;
+  height: 34px;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.composer-wrap {
+  padding: 14px 28px 22px;
+  background: linear-gradient(180deg, transparent, var(--bg-primary) 42%);
+}
+
+.composer {
+  max-width: 720px;
+  border-radius: 26px;
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.04),
+    0 10px 28px rgba(15, 15, 15, 0.07);
+}
+
+.composer textarea {
+  min-height: 54px;
+  font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .agent-card,
+  .skills-feature-card,
+  .skill-card,
+  .skill-catalog-panel {
+    border-color: var(--fill-secondary);
+  }
+
+  .agent-card-banner {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 50%),
+      linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--brand-500) 18%, var(--bg-tertiary)) 0%,
+        color-mix(in oklab, var(--brand-500) 7%, var(--bg-primary)) 100%
+      );
+  }
+
+  .skills-cat.active {
+    box-shadow:
+      inset 0 0.5px 0 rgba(255, 255, 255, 0.10),
+      0 1px 2px rgba(0, 0, 0, 0.38);
+  }
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 18px;
+  }
+
+  .skills-page-marketplace .skills-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .skills-header-controls {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .skills-search {
+    flex: 1 1 220px;
+    width: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .agents-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .agents-toolbar-meta {
+    justify-content: space-between;
+  }
+
+  .agents-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+  }
+
+  .skills-cats {
+    overflow-x: auto;
+  }
+
+  .skill-card-desc {
+    white-space: normal;
+  }
+
+  .empty-state .suggestion-chips {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .empty-state .suggestion-chip {
+    width: 100%;
+    white-space: normal;
+    min-height: 38px;
+  }
+}
+
+/* ============================================================
+ * Accio global workbench pass
+ *
+ * Extends the local Accio package reference beyond chat/agents/skills:
+ * flat warm layout background, compact navigation, quieter cards, and
+ * one shared primitive language for buttons, fields, modals, settings,
+ * history and artifacts. Brand hue stays Vulture salmon-rose.
+ * ============================================================ */
+
+:root {
+  --accio-layout-bg: #fafafa;
+  --accio-surface: #ffffff;
+  --accio-surface-muted: #f4f4f4;
+  --accio-border: rgba(15, 15, 15, 0.10);
+  --accio-border-strong: rgba(15, 15, 15, 0.16);
+  --accio-shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.04);
+  --accio-shadow-md: 0 8px 22px rgba(15, 15, 15, 0.08);
+  --accio-radius-card: 16px;
+  --accio-radius-object: 24px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accio-layout-bg: #09090b;
+    --accio-surface: #1f1f22;
+    --accio-surface-muted: rgba(39, 39, 42, 0.78);
+    --accio-border: rgba(255, 255, 255, 0.10);
+    --accio-border-strong: rgba(255, 255, 255, 0.16);
+    --accio-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+    --accio-shadow-md: 0 10px 24px rgba(0, 0, 0, 0.34);
+  }
+}
+
+.app-shell {
+  --sidebar-width: 276px;
+  background: var(--accio-layout-bg);
+}
+
+.titlebar {
+  background: color-mix(in oklab, var(--accio-layout-bg) 82%, transparent);
+  border-bottom-color: var(--accio-border);
+}
+
+.sidebar {
+  padding: 34px 10px 12px;
+  background: color-mix(in oklab, var(--accio-layout-bg) 76%, transparent);
+  border-right-color: var(--accio-border);
+}
+
+.sidebar-brand {
+  min-height: 34px;
+  margin: 0 8px 18px;
+  padding: 0 2px;
+  border-radius: 12px;
+}
+
+.sidebar-brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.sidebar-brand-text {
+  font-size: 16px;
+  font-weight: 740;
+}
+
+.sidebar-nav,
+.sidebar-foot {
+  gap: 3px;
+}
+
+.sb-item,
+.conversation,
+.settings-rail button {
+  min-height: 34px;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  transition:
+    background-color var(--duration-medium) var(--ease-standard),
+    border-color var(--duration-medium) var(--ease-standard),
+    color var(--duration-medium) var(--ease-standard),
+    box-shadow var(--duration-medium) var(--ease-standard);
+}
+
+.sb-item:hover,
+.conversation:hover,
+.settings-rail button:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+
+.sb-item-active,
+.sb-item-active:hover,
+.conversation.active,
+.settings-rail button.active {
+  background: color-mix(in oklab, var(--brand-500) 10%, transparent);
+  color: var(--brand-600);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brand-500) 16%, transparent);
+}
+
+.sb-item-active::before,
+.conversation.active::before,
+.settings-rail button.active::before {
+  left: -6px;
+  top: 9px;
+  bottom: 9px;
+}
+
+.chat-main-wrap,
+.content-panel {
+  background: var(--accio-layout-bg);
+}
+
+.chat-agent-header,
+.settings-section-head,
+.model-panel-head {
+  background: color-mix(in oklab, var(--accio-layout-bg) 88%, transparent);
+  border-color: var(--accio-border);
+}
+
+.runtime-debug {
+  padding: 9px 28px 6px;
+}
+
+.page {
+  max-width: 1120px;
+  padding: 22px 28px 32px;
+}
+
+.page-header,
+.skills-header {
+  min-height: 58px;
+}
+
+.page-header h1,
+.skills-header-titles h1,
+.artifacts-page .page-header h1 {
+  font-size: 24px;
+  font-weight: 740;
+  letter-spacing: -0.025em;
+}
+
+.page-card,
+.settings-empty,
+.settings-feedback,
+.skill-catalog-panel,
+.skills-feature-card,
+.skill-card,
+.artifact-row,
+.artifact-detail-inner,
+.artifact-preview-panel,
+.artifact-metadata,
+.modal-card {
+  border-color: var(--accio-border);
+  background: var(--accio-surface);
+  box-shadow: var(--accio-shadow-sm);
+}
+
+.page-card,
+.settings-section,
+.artifact-detail-inner,
+.skill-catalog-panel {
+  border-radius: var(--accio-radius-card);
+}
+
+.page-card {
+  padding: 16px;
+}
+
+.page-card h3,
+.settings-section-title,
+.model-panel-title,
+.artifact-detail-head h2 {
+  font-weight: 680;
+  letter-spacing: -0.018em;
+}
+
+.settings-page {
+  padding-top: 20px;
+}
+
+.settings-layout {
+  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: 24px;
+}
+
+.settings-rail {
+  gap: 4px;
+  padding: 4px;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--accio-surface-muted) 74%, transparent);
+}
+
+.settings-rail button.active::before {
+  display: none;
+}
+
+.settings-section {
+  gap: 14px;
+}
+
+.settings-section-head {
+  margin: -8px -10px 0;
+  padding: 10px 10px 12px;
+}
+
+.settings-section-body {
+  gap: 10px;
+}
+
+.settings-row,
+.profile-row {
+  padding: 10px 0;
+}
+
+.field {
+  gap: 6px;
+}
+
+.field input,
+.field textarea,
+.field select,
+.search-input,
+.history-drawer .search-field,
+.artifacts-toolbar select,
+.skills-agent-select,
+.skill-catalog-import input,
+.general-env input,
+.profile-create input {
+  border-color: var(--accio-border);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--accio-surface) 88%, transparent);
+  box-shadow: none;
+}
+
+.field input,
+.field select,
+.search-input {
+  height: 34px;
+}
+
+.field textarea {
+  min-height: 84px;
+}
+
+.field input:hover:not(:disabled):not(:focus),
+.field textarea:hover:not(:disabled):not(:focus),
+.field select:hover:not(:disabled):not(:focus),
+.search-input:hover:not(:focus-within),
+.history-drawer .search-field:hover:not(:focus-within) {
+  border-color: var(--accio-border-strong);
+  background: var(--accio-surface);
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus,
+.search-input:focus-within,
+.history-drawer .search-field:focus-within {
+  border-color: color-mix(in oklab, var(--brand-500) 68%, var(--accio-border));
+  background: var(--accio-surface);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-sm,
+.icon-btn,
+.message-action,
+.md-copy-btn,
+.agent-card-action,
+.composer-chip,
+.composer-attach,
+.history-filter-chip,
+.skills-policy-btn,
+.skills-cat {
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--brand-500);
+  color: #fff;
+  border: 1px solid var(--brand-500);
+  box-shadow: none;
+}
+
+.btn-primary:not(:disabled):hover {
+  background: var(--brand-600);
+  border-color: var(--brand-600);
+  box-shadow: none;
+}
+
+.btn-secondary {
+  border-color: var(--accio-border);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accio-border-strong);
+  background: var(--fill-quaternary);
+}
+
+.icon-btn,
+.message-action,
+.md-copy-btn,
+.agent-card-action {
+  border-radius: 10px;
+}
+
+.modal-overlay {
+  padding: 28px;
+  background: color-mix(in oklab, var(--scrim-modal) 82%, transparent);
+}
+
+.modal-card {
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--accio-surface) 92%, transparent);
+  box-shadow: var(--accio-shadow-md);
+}
+
+.modal-header,
+.modal-footer {
+  border-color: var(--accio-border);
+}
+
+.modal-header {
+  min-height: 48px;
+  padding: 12px 18px;
+}
+
+.modal-body {
+  padding: 18px;
+}
+
+.modal-footer {
+  padding: 12px 18px;
+  background: color-mix(in oklab, var(--accio-surface-muted) 58%, transparent);
+}
+
+.history-drawer {
+  background: color-mix(in oklab, var(--accio-surface) 88%, transparent);
+  border-right-color: var(--accio-border);
+}
+
+.history-drawer-header {
+  border-bottom-color: var(--accio-border);
+}
+
+.history-filter-chips {
+  gap: 6px;
+}
+
+.history-filter-chip {
+  border-radius: var(--radius-pill);
+  border-color: var(--accio-border);
+  background: transparent;
+}
+
+.history-filter-chip.active {
+  background: color-mix(in oklab, var(--brand-500) 10%, transparent);
+  border-color: color-mix(in oklab, var(--brand-500) 26%, var(--accio-border));
+  box-shadow: none;
+}
+
+.history-row {
+  border-radius: 14px;
+}
+
+.history-row.active {
+  background: color-mix(in oklab, var(--brand-500) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brand-500) 16%, transparent);
+}
+
+.history-row.active::before {
+  display: none;
+}
+
+.artifacts-page {
+  max-width: 1120px;
+}
+
+.artifacts-toolbar {
+  align-items: center;
+  padding: 10px 0;
+  margin-bottom: 12px;
+}
+
+.artifacts-layout {
+  grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.35fr);
+  gap: 14px;
+}
+
+.artifact-row {
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.artifact-row:hover,
+.artifact-row-active {
+  border-color: var(--accio-border-strong);
+  background: var(--accio-surface);
+  box-shadow: var(--accio-shadow-sm);
+}
+
+.artifact-detail-inner {
+  padding: 14px;
+}
+
+.artifact-meta-grid > div,
+.artifact-location code,
+.artifact-location a,
+.artifact-preview-panel,
+.artifact-metadata {
+  border-color: var(--accio-border);
+  border-radius: 12px;
+  background: var(--accio-surface-muted);
+}
+
+.message-list {
+  max-width: 860px;
+  gap: 20px;
+}
+
+.message-bubble {
+  max-width: min(76%, 720px);
+}
+
+.message.user .message-bubble {
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--brand-500) 9%, var(--accio-surface));
+  border-color: color-mix(in oklab, var(--brand-500) 20%, transparent);
+  box-shadow: none;
+}
+
+.message-avatar {
+  background: var(--accio-surface-muted);
+}
+
+.md-codeblock,
+.md-content .md-table-wrap {
+  border-color: var(--accio-border);
+  border-radius: 12px;
+}
+
+.md-codeblock-head,
+.md-content .md-table thead th {
+  background: var(--accio-surface);
+  border-color: var(--accio-border);
+}
+
+.md-codeblock,
+.md-content .md-table tbody {
+  background: var(--accio-surface-muted);
+}
+
+.composer-wrap {
+  border-top-color: var(--accio-border);
+  background: linear-gradient(180deg, transparent 0%, var(--accio-layout-bg) 40%);
+}
+
+.composer {
+  border-color: var(--accio-border);
+  background: color-mix(in oklab, var(--accio-surface) 94%, transparent);
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.04),
+    0 8px 28px rgba(15, 15, 15, 0.06);
+}
+
+.composer:focus-within {
+  border-color: color-mix(in oklab, var(--brand-500) 70%, var(--accio-border));
+  box-shadow:
+    0 0 0 3px var(--brand-ring),
+    0 8px 28px rgba(15, 15, 15, 0.07);
+}
+
+.composer-chip,
+.composer-attach,
+.composer-agent-search,
+.composer-permission-search,
+.composer-reasoning-search {
+  border-color: var(--accio-border);
+  background: transparent;
+}
+
+.composer-chip:hover,
+.composer-attach:hover {
+  border-color: var(--accio-border-strong);
+  background: var(--fill-quaternary);
+}
+
+.toggle-switch {
+  width: 32px;
+  height: 18px;
+}
+
+.toggle-switch .toggle-thumb {
+  width: 14px;
+  height: 14px;
+}
+
+.toggle-switch.checked .toggle-thumb {
+  transform: translateX(14px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sb-item-active,
+  .sb-item-active:hover,
+  .conversation.active,
+  .settings-rail button.active,
+  .history-row.active,
+  .history-filter-chip.active {
+    color: var(--brand-400);
+  }
+
+  .btn-primary {
+    color: #1a1a1a;
+  }
+
+  .composer {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.22),
+      0 10px 30px rgba(0, 0, 0, 0.32);
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    --sidebar-width: 248px;
+  }
+
+  .settings-layout,
+  .artifacts-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-rail {
+    position: static;
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .settings-rail button {
+    flex: 0 0 auto;
+  }
+}
+
+/* ============================================================
+ * Accio chat precision pass
+ * ============================================================ */
+
+:root {
+  --chat-thread-max: 824px;
+  --chat-composer-max: 760px;
+  --chat-scrollbar-size: 5px;
+  --chat-liquid-bg: color-mix(in oklab, var(--accio-surface) 82%, transparent);
+  --chat-liquid-border: color-mix(in oklab, var(--accio-border) 78%, transparent);
+  --chat-liquid-shadow:
+    inset -1px 0 rgba(255, 255, 255, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    0 1px 2px rgba(15, 15, 15, 0.04),
+    0 8px 40px rgba(31, 38, 135, 0.04);
+}
+
+.chat-main {
+  background: var(--accio-layout-bg);
+}
+
+.chat-stage {
+  scrollbar-width: none;
+  scroll-padding-bottom: 32px;
+}
+
+.chat-stage::-webkit-scrollbar,
+.composer textarea::-webkit-scrollbar {
+  width: var(--chat-scrollbar-size);
+  height: var(--chat-scrollbar-size);
+}
+
+.chat-stage::-webkit-scrollbar-thumb,
+.composer textarea::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-pill);
+  transition: background-color 100ms ease, border-width 100ms ease;
+}
+
+.chat-stage:hover::-webkit-scrollbar-thumb,
+.composer textarea:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-tertiary) 58%, transparent);
+  border-width: 1.5px;
+}
+
+.chat-stage:hover::-webkit-scrollbar-thumb:hover,
+.composer textarea:hover::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--text-secondary) 58%, transparent);
+  border-width: 0;
+}
+
+.chat-stage.has-messages {
+  padding: 24px 28px 28px;
+}
+
+.message-list {
+  width: min(var(--chat-thread-max), 100%);
+  max-width: var(--chat-thread-max);
+  gap: 22px;
+}
+
+.message {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 11px;
+  --phoenix-bubble-push-y: 1.35rem;
+  animation: phoenix-message-bubble-push-up 720ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.message.user {
+  grid-template-columns: minmax(0, 1fr) 28px;
+}
+
+@keyframes phoenix-message-bubble-push-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--phoenix-bubble-push-y), 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.message-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--accio-border);
+}
+
+.message-avatar-agent {
+  background: transparent;
+  box-shadow: none;
+}
+
+.message-avatar-agent .agent-avatar {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 10px !important;
+}
+
+.message.user .message-avatar {
+  border-radius: 50%;
+  background: var(--brand-500);
+  box-shadow: none;
+}
+
+.message-bubble {
+  max-width: min(100%, 720px);
+  font-size: 14px;
+  line-height: 1.62;
+  overflow-wrap: break-word;
+  word-break: normal;
+  min-width: 0;
+}
+
+.message.assistant .message-bubble {
+  width: min(100%, 720px);
+}
+
+.message.user .message-bubble {
+  max-width: min(72%, 620px);
+  padding: 9px 13px;
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--brand-500) 8%, var(--accio-surface));
+  border: 1px solid color-mix(in oklab, var(--brand-500) 18%, var(--accio-border));
+  color: var(--text-primary);
+}
+
+.message-text,
+.md-content {
+  text-align: left;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-break: auto;
+  hyphens: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.md-content *,
+.message-text * {
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+.md-content a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.md-content code,
+.md-content pre {
+  text-align: left;
+  word-spacing: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.md-content img {
+  object-fit: contain;
+  width: auto;
+  min-width: 0;
+  max-width: min(360px, 100%);
+  height: auto;
+  max-height: 280px;
+}
+
+.md-content .md-blockquote {
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--brand-500) 7%, transparent);
+  padding: 8px 12px;
+}
+
+.message-actions {
+  margin-top: 8px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.message.assistant:hover .message-actions,
+.message.assistant:focus-within .message-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.message-usage {
+  margin-top: 8px;
+}
+
+.status-banner {
+  max-width: min(var(--chat-composer-max), calc(100% - 48px));
+}
+
+.chat-scroll-bottom {
+  bottom: 112px;
+  background: color-mix(in oklab, var(--accio-surface) 78%, transparent);
+  border-color: var(--chat-liquid-border);
+  backdrop-filter: blur(32px) saturate(1.55);
+  -webkit-backdrop-filter: blur(32px) saturate(1.55);
+  box-shadow: var(--chat-liquid-shadow);
+}
+
+.composer-wrap {
+  border-top: 0;
+  padding: 12px 28px 22px;
+  background:
+    linear-gradient(180deg, transparent 0%, var(--accio-layout-bg) 42%),
+    var(--accio-layout-bg);
+}
+
+.composer {
+  max-width: var(--chat-composer-max);
+  border-radius: 24px;
+  border-color: var(--chat-liquid-border);
+  background: var(--chat-liquid-bg);
+  backdrop-filter: blur(32px) saturate(1.55);
+  -webkit-backdrop-filter: blur(32px) saturate(1.55);
+  box-shadow: var(--chat-liquid-shadow);
+  padding: 11px 12px 10px;
+}
+
+.composer:focus-within,
+.composer-dragging {
+  border-color: color-mix(in oklab, var(--brand-500) 58%, var(--chat-liquid-border));
+  box-shadow:
+    var(--chat-liquid-shadow),
+    0 0 0 3px color-mix(in oklab, var(--brand-500) 15%, transparent);
+}
+
+.composer textarea {
+  min-height: 48px;
+  max-height: 220px;
+  padding: 2px 2px 0;
+  font-size: 14px;
+  line-height: 1.55;
+  scrollbar-width: none;
+}
+
+.composer textarea::placeholder {
+  color: color-mix(in oklab, var(--text-tertiary) 82%, transparent);
+}
+
+.composer-controls {
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.composer-chip,
+.agent-picker-trigger,
+.composer-attach {
+  height: 28px;
+  border-radius: 10px;
+  border-color: var(--chat-liquid-border);
+  background: color-mix(in oklab, var(--accio-surface) 48%, transparent);
+  color: var(--text-secondary);
+}
+
+.composer-chip:hover,
+.agent-picker-trigger:hover,
+.composer-attach:hover {
+  border-color: var(--accio-border-strong);
+  background: color-mix(in oklab, var(--accio-surface-muted) 78%, transparent);
+  color: var(--text-primary);
+}
+
+.composer-chip[aria-expanded="true"],
+.composer-chip.active,
+.agent-picker-trigger[aria-expanded="true"] {
+  border-color: color-mix(in oklab, var(--brand-500) 34%, var(--chat-liquid-border));
+  background: color-mix(in oklab, var(--brand-500) 10%, transparent);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.composer-send,
+.composer-cancel {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+
+.composer-send {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 3px 10px color-mix(in oklab, var(--brand-500) 22%, transparent);
+}
+
+.composer-send:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 5px 14px color-mix(in oklab, var(--brand-500) 28%, transparent);
+}
+
+.composer-attachments {
+  margin-top: 9px;
+}
+
+.composer-attachment {
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accio-surface) 70%, transparent);
+  border-color: var(--chat-liquid-border);
+}
+
+.composer-dropzone {
+  border-radius: 24px;
+  background: color-mix(in oklab, var(--brand-500) 10%, var(--chat-liquid-bg));
+}
+
+.onboarding-card {
+  width: min(540px, 100%);
+  max-width: 540px;
+  padding: 18px 0 8px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.onboarding-card .hero-mark {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 18px;
+  border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 10px 24px color-mix(in oklab, var(--brand-500) 18%, transparent);
+}
+
+.onboarding-card h2 {
+  font-size: 24px;
+  line-height: 1.16;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.onboarding-card p {
+  margin-bottom: 22px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.onboarding-actions {
+  width: min(320px, 100%);
+  gap: 9px;
+}
+
+.onboarding-primary,
+.onboarding-secondary {
+  min-height: 64px;
+  padding: 12px 15px;
+  border-radius: 12px;
+}
+
+.onboarding-primary {
+  border-color: color-mix(in oklab, var(--brand-500) 76%, var(--accio-border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 22px color-mix(in oklab, var(--brand-500) 22%, transparent);
+}
+
+.onboarding-secondary {
+  border-color: var(--chat-liquid-border);
+  background: color-mix(in oklab, var(--accio-surface) 72%, transparent);
+}
+
+.onboarding-secondary:hover {
+  border-color: var(--accio-border-strong);
+  background: color-mix(in oklab, var(--accio-surface-muted) 82%, transparent);
+}
+
+.onboarding-text strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.onboarding-text small {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chat-liquid-bg: color-mix(in oklab, var(--accio-surface) 74%, transparent);
+    --chat-liquid-border: color-mix(in oklab, var(--accio-border) 82%, transparent);
+    --chat-liquid-shadow:
+      inset -1px 0 rgba(255, 255, 255, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 1px 2px rgba(0, 0, 0, 0.22),
+      0 8px 40px rgba(0, 0, 0, 0.24);
+  }
+
+  .chat-stage:hover::-webkit-scrollbar-thumb,
+  .composer textarea:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .chat-stage:hover::-webkit-scrollbar-thumb:hover,
+  .composer textarea:hover::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.45);
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-stage.has-messages {
+    padding: 18px 16px 24px;
+  }
+
+  .message-list,
+  .message.assistant .message-bubble {
+    width: 100%;
+  }
+
+  .message.user .message-bubble {
+    max-width: min(86%, 620px);
+  }
+
+  .composer-wrap {
+    padding: 10px 12px 14px;
+  }
+
+  .composer {
+    border-radius: 22px;
+  }
+
+  .composer-controls {
+    flex-wrap: wrap;
+  }
+
+  .composer-controls .spacer {
+    min-width: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message {
+    animation: none;
+  }
+
+  .message-actions {
+    transform: none;
+  }
+}
+
+/* ============================================================
+ * Accio run event precision pass — tools / approvals / recovery
+ * ============================================================ */
+
+:root {
+  --run-event-offset: 39px;
+  --run-event-max: 720px;
+  --run-card-bg: color-mix(in oklab, var(--accio-surface) 86%, transparent);
+  --run-card-muted-bg: color-mix(in oklab, var(--accio-surface-muted) 78%, transparent);
+  --run-card-border: color-mix(in oklab, var(--accio-border) 84%, transparent);
+  --run-card-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.035),
+    0 8px 28px rgba(15, 15, 15, 0.045);
+}
+
+.run-event-stream {
+  width: min(var(--run-event-max), calc(100% - var(--run-event-offset)));
+  margin: 4px 0 0 var(--run-event-offset);
+  gap: 9px;
+}
+
+.run-event-stream > * {
+  animation: phoenix-message-bubble-push-up 620ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.tool-block,
+.approval-card,
+.recovery-card,
+.run-error-card,
+.subagent-panel {
+  border: 1px solid var(--run-card-border);
+  border-radius: 14px;
+  background: var(--run-card-bg);
+  box-shadow: var(--run-card-shadow);
+}
+
+.tool-block {
+  overflow: hidden;
+}
+
+.tool-block:hover,
+.subagent-panel:hover {
+  border-color: var(--accio-border-strong);
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.04),
+    0 10px 30px rgba(15, 15, 15, 0.055);
+}
+
+.tool-block::before {
+  width: 2px;
+  opacity: 0.82;
+}
+
+.tool-block-planned::before {
+  background: color-mix(in oklab, var(--text-tertiary) 50%, transparent);
+}
+
+.tool-block-running {
+  border-color: color-mix(in oklab, var(--info) 24%, var(--run-card-border));
+}
+
+.tool-block-running::before {
+  background: var(--info);
+}
+
+.tool-block-completed {
+  border-color: color-mix(in oklab, var(--success) 18%, var(--run-card-border));
+}
+
+.tool-block-failed {
+  border-color: color-mix(in oklab, var(--danger) 26%, var(--run-card-border));
+}
+
+.tool-block-header {
+  min-height: 40px;
+  grid-template-columns: 13px 20px auto minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 11px 8px 12px;
+  border-radius: 13px;
+}
+
+.tool-block-header:hover {
+  background: color-mix(in oklab, var(--accio-surface-muted) 68%, transparent);
+}
+
+.tool-block-header:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--brand-ring) inset;
+}
+
+.tool-block-chevron {
+  color: var(--text-tertiary);
+}
+
+.tool-block-glyph {
+  width: 20px;
+  height: 20px;
+  border-radius: 8px;
+  background: var(--run-card-muted-bg);
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px var(--run-card-border);
+}
+
+.tool-block-glyph-shell {
+  color: var(--brand-600);
+  background: color-mix(in oklab, var(--brand-500) 10%, transparent);
+}
+
+.tool-block-glyph-file {
+  color: var(--info);
+  background: color-mix(in oklab, var(--info) 10%, transparent);
+}
+
+.tool-block-tool {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-primary);
+  letter-spacing: 0;
+}
+
+.tool-block-running .tool-block-tool {
+  color: transparent;
+  background-image:
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--text-secondary) 74%, transparent) 0%,
+      var(--text-primary) 48%,
+      color-mix(in oklab, var(--text-secondary) 74%, transparent) 100%
+    );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: tool-thinking-shimmer 3.2s linear infinite;
+}
+
+@keyframes tool-thinking-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.tool-block-input {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.tool-block-status .badge {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.tool-block-spinner {
+  width: 9px;
+  height: 9px;
+  border-width: 1.4px;
+}
+
+.tool-block-body {
+  gap: 9px;
+  padding: 10px 11px 11px;
+  border-top-color: var(--run-card-border);
+  background: color-mix(in oklab, var(--accio-surface-muted) 52%, transparent);
+}
+
+.tool-block-section {
+  gap: 5px;
+}
+
+.tool-block-section-head {
+  min-height: 22px;
+}
+
+.tool-block-section-label {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.04em;
+}
+
+.tool-block-copy {
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 7px;
+}
+
+.tool-block-copy:hover {
+  background: color-mix(in oklab, var(--accio-surface) 88%, transparent);
+}
+
+.tool-block-pre,
+.approval-card-preview-body {
+  scrollbar-width: none;
+}
+
+.tool-block-pre::-webkit-scrollbar,
+.approval-card-preview-body::-webkit-scrollbar {
+  width: var(--chat-scrollbar-size);
+  height: var(--chat-scrollbar-size);
+}
+
+.tool-block-pre::-webkit-scrollbar-thumb,
+.approval-card-preview-body::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--radius-pill);
+}
+
+.tool-block-pre:hover::-webkit-scrollbar-thumb,
+.approval-card-preview-body:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--text-tertiary) 56%, transparent);
+}
+
+.tool-block-pre {
+  border: 1px solid var(--run-card-border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--accio-surface) 74%, transparent);
+  padding: 8px 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.tool-block-section-error .tool-block-pre {
+  border-color: color-mix(in oklab, var(--danger) 24%, var(--run-card-border));
+  background: color-mix(in oklab, var(--danger-bg) 72%, var(--accio-surface));
+}
+
+.approval-card {
+  position: relative;
+  gap: 10px;
+  padding: 12px;
+  border-color: color-mix(in oklab, var(--warning) 26%, var(--run-card-border));
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--warning) 10%, transparent),
+      transparent 42%
+    ),
+    var(--run-card-bg);
+  overflow: hidden;
+}
+
+.approval-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: color-mix(in oklab, var(--warning) 76%, var(--brand-500));
+  pointer-events: none;
+}
+
+.approval-card-header {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 9px;
+}
+
+.approval-card-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--warning) 13%, var(--accio-surface));
+  color: color-mix(in oklab, var(--warning) 72%, var(--text-primary));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--warning) 20%, transparent);
+}
+
+.approval-card-meta {
+  align-items: center;
+  gap: 7px;
+}
+
+.approval-card-meta strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+
+.approval-card-tool,
+.run-error-card-code {
+  border-color: var(--run-card-border);
+  background: color-mix(in oklab, var(--accio-surface) 78%, transparent);
+}
+
+.approval-card-tool {
+  max-width: min(260px, 46vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  padding: 2px 7px;
+}
+
+.approval-card-risk {
+  border: 1px solid transparent;
+  font-size: 10.5px;
+  padding: 2px 7px;
+}
+
+.approval-card-risk-high {
+  border-color: color-mix(in oklab, var(--danger) 22%, transparent);
+  background: color-mix(in oklab, var(--danger-bg) 78%, transparent);
+}
+
+.approval-card-risk-medium {
+  border-color: color-mix(in oklab, var(--warning) 24%, transparent);
+  background: color-mix(in oklab, var(--warning) 10%, transparent);
+}
+
+.approval-card-reason {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.approval-card-preview {
+  gap: 5px;
+  border-color: var(--run-card-border);
+  border-radius: 11px;
+  background: color-mix(in oklab, var(--accio-surface) 78%, transparent);
+  padding: 9px 10px;
+}
+
+.approval-card-preview-label {
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.approval-card-preview-body {
+  max-height: calc(7em * 1.5);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.approval-card-preview-toggle {
+  border-radius: 7px;
+  color: var(--brand-600);
+}
+
+.approval-card-actions {
+  gap: 7px;
+  margin-top: 0;
+}
+
+.approval-card-actions button,
+.recovery-card-actions button {
+  min-height: 32px;
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+
+.approval-card-deny,
+.recovery-card-cancel {
+  border-color: var(--run-card-border);
+  background: color-mix(in oklab, var(--accio-surface) 62%, transparent);
+  color: var(--text-secondary);
+}
+
+.approval-card-deny:hover:not(:disabled),
+.recovery-card-cancel:hover:not(:disabled) {
+  border-color: var(--accio-border-strong);
+  background: color-mix(in oklab, var(--accio-surface-muted) 84%, transparent);
+  color: var(--text-primary);
+}
+
+.approval-card-allow,
+.recovery-card-resume {
+  border-color: color-mix(in oklab, var(--brand-500) 80%, var(--run-card-border));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 14px color-mix(in oklab, var(--brand-500) 20%, transparent);
+}
+
+.approval-card-kbd {
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+.recovery-card,
+.run-error-card {
+  padding: 11px 12px;
+}
+
+.recovery-card {
+  gap: 8px;
+  border-color: color-mix(in oklab, var(--info) 22%, var(--run-card-border));
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--info) 8%, transparent), transparent 42%),
+    var(--run-card-bg);
+}
+
+.recovery-card-header {
+  color: var(--text-primary);
+}
+
+.recovery-card-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--info) 10%, transparent);
+  color: var(--info);
+}
+
+.recovery-card-message {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.run-error-card {
+  grid-template-columns: 22px minmax(0, 1fr);
+  border-color: color-mix(in oklab, var(--danger) 24%, var(--run-card-border));
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--danger) 8%, transparent), transparent 42%),
+    var(--run-card-bg);
+}
+
+.run-error-card-icon {
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--danger) 10%, transparent);
+}
+
+.run-error-card-title {
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.recovery-boundary {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.recovery-boundary::before,
+.recovery-boundary::after {
+  background: var(--run-card-border);
+}
+
+.subagent-panel {
+  overflow: hidden;
+}
+
+.subagent-panel-head {
+  background: color-mix(in oklab, var(--accio-surface-muted) 70%, transparent);
+  border-bottom-color: var(--run-card-border);
+}
+
+.subagent-row:hover {
+  background: color-mix(in oklab, var(--accio-surface-muted) 70%, transparent);
+}
+
+.subagent-approvals {
+  gap: 9px;
+}
+
+.subagent-approvals .approval-card {
+  background: color-mix(in oklab, var(--warning) 6%, var(--run-card-bg));
+  box-shadow: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --run-card-bg: color-mix(in oklab, var(--accio-surface) 78%, transparent);
+    --run-card-muted-bg: color-mix(in oklab, var(--accio-surface-muted) 70%, transparent);
+    --run-card-border: color-mix(in oklab, var(--accio-border) 86%, transparent);
+    --run-card-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.18),
+      0 10px 30px rgba(0, 0, 0, 0.22);
+  }
+
+  .tool-block-running .tool-block-tool {
+    background-image:
+      linear-gradient(
+        90deg,
+        color-mix(in oklab, var(--text-tertiary) 70%, transparent) 0%,
+        var(--text-primary) 48%,
+        color-mix(in oklab, var(--text-tertiary) 70%, transparent) 100%
+      );
+  }
+}
+
+@media (max-width: 720px) {
+  .run-event-stream {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .tool-block-header {
+    grid-template-columns: 13px 20px minmax(0, 1fr) auto;
+  }
+
+  .tool-block-input {
+    grid-column: 3 / -1;
+    width: 100%;
+  }
+
+  .approval-card-header {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .approval-card-risk {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .approval-card-actions,
+  .recovery-card-actions {
+    width: 100%;
+  }
+
+  .approval-card-actions button,
+  .recovery-card-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-event-stream > *,
+  .tool-block-running .tool-block-tool {
+    animation: none;
+  }
+}
+
+/* ============================================================
+ * Ralph chat depth pass — final surface alignment
+ * ============================================================ */
+
+:root {
+  --chat-agent-strip-height: 44px;
+  --chat-inline-border: color-mix(in oklab, var(--accio-border) 86%, transparent);
+  --chat-inline-muted: color-mix(in oklab, var(--accio-surface-muted) 72%, transparent);
+}
+
+.chat-agent-header {
+  min-height: var(--chat-agent-strip-height);
+  padding: 7px 28px;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, var(--accio-layout-bg) 88%, transparent), transparent),
+    color-mix(in oklab, var(--accio-surface) 78%, transparent);
+  border-bottom-color: var(--chat-inline-border);
+  box-shadow: 0 1px 0 color-mix(in oklab, white 45%, transparent) inset;
+}
+
+.chat-agent-header .agent-avatar {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 9px !important;
+}
+
+.chat-agent-meta {
+  gap: 7px;
+}
+
+.chat-agent-name {
+  font-size: 12.5px;
+}
+
+.chat-agent-status {
+  height: 22px;
+  padding: 0 8px 0 7px;
+  border: 1px solid color-mix(in oklab, var(--info) 18%, var(--chat-inline-border));
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--info) 7%, transparent);
+  color: color-mix(in oklab, var(--info) 72%, var(--text-secondary));
+  font-weight: 600;
+}
+
+.chat-stage.has-messages {
+  padding-top: 22px;
+}
+
+.message-list {
+  gap: 18px;
+}
+
+.message + .message.user {
+  margin-top: 2px;
+}
+
+.message.assistant + .message.assistant {
+  margin-top: -2px;
+}
+
+.message-bubble {
+  letter-spacing: 0;
+}
+
+.message.user .message-bubble {
+  background:
+    linear-gradient(180deg, color-mix(in oklab, white 12%, transparent), transparent),
+    color-mix(in oklab, var(--brand-500) 7%, var(--accio-surface));
+}
+
+.message.assistant .message-bubble {
+  color: color-mix(in oklab, var(--text-primary) 96%, var(--text-secondary));
+}
+
+.md-content > * + * {
+  margin-top: 9px;
+}
+
+.md-content .md-h2 {
+  font-size: 16px;
+}
+
+.md-content .md-h3 {
+  font-size: 14px;
+}
+
+.md-content .md-list {
+  padding-left: 18px;
+}
+
+.md-content li + li {
+  margin-top: 3px;
+}
+
+.md-content .md-blockquote {
+  border-left-color: color-mix(in oklab, var(--brand-500) 44%, var(--chat-inline-border));
+  background: color-mix(in oklab, var(--brand-500) 5%, transparent);
+}
+
+.md-codeblock {
+  border-color: var(--chat-inline-border);
+  border-radius: 11px;
+  background: var(--chat-inline-muted);
+}
+
+.md-codeblock-head {
+  min-height: 30px;
+  padding: 5px 9px;
+  background: color-mix(in oklab, var(--accio-surface) 86%, transparent);
+  border-bottom-color: var(--chat-inline-border);
+}
+
+.md-codeblock pre {
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.md-copy-btn,
+.message-action,
+.tool-block-copy,
+.approval-card-preview-toggle {
+  min-height: 24px;
+}
+
+.message-attachments,
+.composer-attachments {
+  gap: 7px;
+}
+
+.message-attachment,
+.composer-attachment {
+  border-color: var(--chat-inline-border);
+  background: color-mix(in oklab, var(--accio-surface) 76%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 28%, transparent);
+}
+
+.message-attachment {
+  min-height: 32px;
+  border-radius: 10px;
+  padding: 5px 9px;
+}
+
+.message-attachment:hover,
+.composer-attachment:hover {
+  border-color: var(--accio-border-strong);
+  background: color-mix(in oklab, var(--accio-surface-muted) 80%, transparent);
+}
+
+.message-attachment-icon,
+.composer-attachment-icon {
+  border-radius: 7px;
+  background: var(--chat-inline-muted);
+}
+
+.message-actions {
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.message-action {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 3px 8px;
+}
+
+.message-action:hover,
+.message-action:focus-visible {
+  border-color: var(--chat-inline-border);
+  background: color-mix(in oklab, var(--accio-surface-muted) 78%, transparent);
+}
+
+.message-usage {
+  border: 1px solid var(--chat-inline-border);
+  background: color-mix(in oklab, var(--accio-surface-muted) 62%, transparent);
+}
+
+.thinking-dots {
+  min-height: 28px;
+  padding: 7px 0;
+}
+
+.streaming-caret {
+  width: 7px;
+  height: 13px;
+  background: color-mix(in oklab, var(--brand-500) 72%, var(--text-secondary));
+}
+
+.run-event-stream {
+  gap: 8px;
+  position: relative;
+  padding-left: 14px;
+}
+
+.run-event-stream::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 4px;
+  width: 1px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    color-mix(in oklab, var(--brand-500) 26%, var(--run-card-border)) 18%,
+    color-mix(in oklab, var(--run-card-border) 92%, transparent) 82%,
+    transparent
+  );
+  pointer-events: none;
+}
+
+.run-event-stream > .tool-block,
+.run-event-stream > .approval-card,
+.run-event-stream > .recovery-card,
+.run-event-stream > .run-error-card,
+.run-event-stream > .recovery-boundary,
+.run-event-stream > .subagent-panel {
+  position: relative;
+}
+
+.run-event-stream > .tool-block::after,
+.run-event-stream > .approval-card::after,
+.run-event-stream > .recovery-card::after,
+.run-event-stream > .run-error-card::after,
+.run-event-stream > .subagent-panel::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: -15px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accio-layout-bg);
+  border: 1px solid var(--run-card-border);
+  box-shadow: 0 0 0 2px var(--accio-layout-bg);
+}
+
+.run-event-stream > .tool-block-running::after,
+.run-event-stream > .approval-card::after,
+.run-event-stream > .recovery-card::after {
+  border-color: color-mix(in oklab, var(--brand-500) 46%, var(--run-card-border));
+  background: color-mix(in oklab, var(--brand-500) 38%, var(--accio-layout-bg));
+}
+
+.tool-block-header {
+  min-height: 38px;
+}
+
+.tool-block-status {
+  gap: 5px;
+}
+
+.tool-block-completed .tool-block-tool,
+.tool-block-completed .tool-block-input {
+  color: color-mix(in oklab, var(--text-secondary) 76%, var(--text-tertiary));
+}
+
+.tool-block-completed .tool-block-glyph {
+  color: color-mix(in oklab, var(--success) 60%, var(--text-secondary));
+  background: color-mix(in oklab, var(--success) 7%, var(--run-card-muted-bg));
+}
+
+.tool-block-completed {
+  box-shadow: none;
+}
+
+.tool-block-completed .badge {
+  opacity: 0.78;
+}
+
+.approval-card,
+.recovery-card,
+.run-error-card {
+  border-radius: 13px;
+}
+
+.approval-card-header,
+.recovery-card-header {
+  min-height: 24px;
+}
+
+.approval-card-preview {
+  margin-top: -1px;
+}
+
+.approval-card-actions,
+.recovery-card-actions {
+  padding-top: 2px;
+}
+
+.approval-card-actions button,
+.recovery-card-actions button {
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-spring);
+}
+
+.approval-card-actions button:hover:not(:disabled),
+.recovery-card-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.approval-card-actions button:active:not(:disabled),
+.recovery-card-actions button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.composer {
+  overflow: visible;
+}
+
+.composer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 24%, transparent);
+}
+
+.composer-controls {
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in oklab, var(--chat-liquid-border) 72%, transparent);
+}
+
+.composer-chip-label,
+.agent-picker-name {
+  max-width: 168px;
+}
+
+.composer-chip[aria-label^="思考模式"] {
+  color: color-mix(in oklab, var(--text-tertiary) 84%, var(--text-secondary));
+}
+
+.composer-chip[aria-label^="思考模式"] .composer-chip-icon {
+  color: color-mix(in oklab, var(--text-tertiary) 86%, var(--brand-500));
+}
+
+.composer-send,
+.composer-cancel,
+.composer-attach {
+  flex: 0 0 auto;
+}
+
+.empty-state,
+.onboarding-card {
+  transform: translateY(-10px);
+}
+
+.empty-state .suggestion-chip {
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 30%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chat-inline-border: color-mix(in oklab, var(--accio-border) 88%, transparent);
+    --chat-inline-muted: color-mix(in oklab, var(--accio-surface-muted) 64%, transparent);
+  }
+
+  .chat-agent-header {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .message-attachment,
+  .composer-attachment,
+  .composer::before,
+  .empty-state .suggestion-chip {
+    box-shadow: none;
+  }
+
+  .run-event-stream > .tool-block::after,
+  .run-event-stream > .approval-card::after,
+  .run-event-stream > .recovery-card::after,
+  .run-event-stream > .run-error-card::after,
+  .run-event-stream > .subagent-panel::after {
+    background: var(--accio-layout-bg);
+    box-shadow: 0 0 0 2px var(--accio-layout-bg);
+  }
+}
+
+@media (max-width: 720px) {
+  .chat-agent-header {
+    padding-inline: 16px;
+  }
+
+  .chat-agent-status {
+    max-width: 128px;
+  }
+
+  .composer-chip-label,
+  .agent-picker-name {
+    max-width: 112px;
+  }
+
+  .message-attachment,
+  .composer-attachment {
+    max-width: 100%;
+  }
+
+  .run-event-stream {
+    padding-left: 0;
+  }
+
+  .run-event-stream::before,
+  .run-event-stream > .tool-block::after,
+  .run-event-stream > .approval-card::after,
+  .run-event-stream > .recovery-card::after,
+  .run-event-stream > .run-error-card::after,
+  .run-event-stream > .subagent-panel::after {
+    display: none;
+  }
+
+  .empty-state,
+  .onboarding-card {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approval-card-actions button:hover:not(:disabled),
+  .recovery-card-actions button:hover:not(:disabled) {
+    transform: none;
+  }
 }

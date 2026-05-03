@@ -265,6 +265,29 @@ describe("reduceRunEvents", () => {
       />,
     );
     expect(container.querySelector(".thinking-dots")).toBeNull();
+    expect(container.querySelector(".run-event-stream")).toBeNull();
+  });
+
+  test("labels visible run event groups for assistive tech", () => {
+    render(
+      <RunEventStream
+        events={[
+          ev({
+            type: "tool.planned",
+            seq: 0,
+            callId: "c1",
+            tool: "shell.exec",
+            input: { argv: ["pwd"] },
+          }),
+        ]}
+        submittingApprovals={new Set()}
+        resuming={false}
+        onDecide={() => {}}
+        onResume={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByRole("group", { name: "运行事件" })).toBeDefined();
   });
 
   test("hides the thinking indicator while resuming (recovery flow owns the affordance)", () => {

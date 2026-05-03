@@ -187,7 +187,6 @@ export function SkillsPage(props: SkillsPageProps) {
   // render where data is null, churning the auto-close effect below.
   const items = useMemo(() => data?.items ?? [], [data]);
   const filtered = useMemo(() => filterSkills(items, query), [items, query]);
-  const grouped = useMemo(() => groupBySource(filtered), [filtered]);
 
   const detailSkill =
     detailSkillName !== null
@@ -601,23 +600,6 @@ function filterSkills(items: ReadonlyArray<SkillListItem>, query: string): Skill
     item.name.toLowerCase().includes(trimmed) ||
     (item.description ?? "").toLowerCase().includes(trimmed),
   );
-}
-
-function groupBySource(items: ReadonlyArray<SkillListItem>) {
-  const order: SkillListItem["source"][] = ["workspace", "profile"];
-  return order
-    .map((source) => ({
-      source,
-      items: items.filter((item) => item.source === source),
-    }))
-    .filter((group) => group.items.length > 0);
-}
-
-function policyLabel(policy: SkillListResponse["policy"] | undefined): string {
-  if (policy === "all") return "全部启用";
-  if (policy === "none") return "全部禁用";
-  if (policy === "allowlist") return "仅启用所选";
-  return "加载中";
 }
 
 function catalogStatusLabel(status: SkillCatalogEntry["lifecycleStatus"]): string {

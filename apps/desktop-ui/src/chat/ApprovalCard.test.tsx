@@ -1,5 +1,5 @@
 import { describe, expect, test, mock } from "bun:test";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ApprovalCard } from "./ApprovalCard";
 
 describe("ApprovalCard", () => {
@@ -15,6 +15,25 @@ describe("ApprovalCard", () => {
     );
     expect(screen.getByText(/shell\.exec/)).toBeDefined();
     expect(screen.getByText(/outside workspace/)).toBeDefined();
+  });
+
+  test("labels the alert dialog with title and reason", () => {
+    render(
+      <ApprovalCard
+        callId="c1"
+        tool="shell.exec"
+        reason="outside workspace"
+        submitting={false}
+        onDecide={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole("alertdialog");
+    const titleId = dialog.getAttribute("aria-labelledby");
+    const reasonId = dialog.getAttribute("aria-describedby");
+    expect(titleId).toBe("approval-title-c1");
+    expect(reasonId).toBe("approval-reason-c1");
+    expect(document.getElementById(titleId!)).not.toBeNull();
+    expect(document.getElementById(reasonId!)).not.toBeNull();
   });
 
   test("clicking 允许 calls onDecide('allow')", () => {
@@ -108,6 +127,24 @@ describe("ApprovalCard", () => {
     expect(preview?.textContent ?? "").toContain("/tmp/scratch");
   });
 
+  test("long tool input preview can be expanded and collapsed", () => {
+    render(
+      <ApprovalCard
+        callId="c1"
+        tool="custom.lookup"
+        reason="r"
+        input={{ query: "x".repeat(260) }}
+        submitting={false}
+        onDecide={() => {}}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "查看完整" });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "收起" })).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "收起" }));
+    expect(screen.getByRole("button", { name: "查看完整" })).toBeDefined();
+  });
+
   test("does not render preview when input is omitted", () => {
     const { container } = render(
       <ApprovalCard
@@ -163,6 +200,53 @@ describe("ApprovalCard", () => {
     // focused, etc.).
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     expect(onDecide).toHaveBeenCalledWith("c1", "allow");
+  });
+
+  test("focus starts on Allow when approval is actionable", async () => {
+    render(
+      <ApprovalCard
+        callId="c1"
+        tool="custom"
+        reason="r"
+        submitting={false}
+        onDecide={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "允许" }));
+    });
+  });
+
+  test("modified Enter and Escape keys are ignored", () => {
+    const onDecide = mock(() => {});
+    render(
+      <ApprovalCard
+        callId="c1"
+        tool="custom"
+        reason="r"
+        submitting={false}
+        onDecide={onDecide}
+      />,
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", ctrlKey: true }));
+    expect(onDecide).not.toHaveBeenCalled();
+  });
+
+  test("composition Enter and Escape keys are ignored", () => {
+    const onDecide = mock(() => {});
+    render(
+      <ApprovalCard
+        callId="c1"
+        tool="custom"
+        reason="r"
+        submitting={false}
+        onDecide={onDecide}
+      />,
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", isComposing: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true }));
+    expect(onDecide).not.toHaveBeenCalled();
   });
 
   test("Escape key activates Deny when not submitting", () => {

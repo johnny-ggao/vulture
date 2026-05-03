@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import type { ConversationPermissionMode, MessageDto } from "../api/conversations";
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
@@ -61,6 +61,10 @@ export function ChatView(props: ChatViewProps) {
     ?? props.agents[0]
     ?? null;
   const showAgentHeader = hasContent && activeAgent;
+  const runEventsInsertionIndex = getRunEventsInsertionIndex(
+    props.messages,
+    props.runEvents,
+  );
 
   // Local "dismissed" state for the send-error banner. We can't push
   // back to App.tsx (sendError is owned there for retry semantics), so
@@ -131,26 +135,23 @@ export function ChatView(props: ChatViewProps) {
       >
         {hasContent ? (
           <div className="message-list">
-            {props.messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                role={m.role}
-                content={m.content}
-                attachments={m.attachments}
-                agent={activeAgent ?? undefined}
-                usage={m.runId ? props.messageUsages?.get(m.runId) : null}
-              />
+            {props.messages.map((m, idx) => (
+              <Fragment key={m.id}>
+                {idx === runEventsInsertionIndex ? (
+                  <RunEventsSlot key="run-events" props={props} agent={activeAgent ?? undefined} />
+                ) : null}
+                <MessageBubble
+                  role={m.role}
+                  content={m.content}
+                  attachments={m.attachments}
+                  agent={activeAgent ?? undefined}
+                  usage={m.runId ? props.messageUsages?.get(m.runId) : null}
+                />
+              </Fragment>
             ))}
-            <RunEventStream
-              events={props.runEvents}
-              submittingApprovals={props.submittingApprovals}
-              resuming={props.resumingRun}
-              streaming={props.runStatus === "streaming" || props.runStatus === "connecting"}
-              agent={activeAgent ?? undefined}
-              onDecide={props.onDecide}
-              onResume={props.onResume}
-              onCancel={props.onCancel}
-            />
+            {runEventsInsertionIndex === props.messages.length ? (
+              <RunEventsSlot props={props} agent={activeAgent ?? undefined} />
+            ) : null}
             <SubagentSessionPanel
               sessions={props.subagentSessions ?? []}
               messagesBySessionId={props.subagentMessages ?? {}}
@@ -226,6 +227,39 @@ export function ChatView(props: ChatViewProps) {
       </section>
     </main>
   );
+}
+
+function RunEventsSlot({
+  props,
+  agent,
+}: {
+  props: ChatViewProps;
+  agent?: { id: string; name: string };
+}) {
+  return (
+    <RunEventStream
+      events={props.runEvents}
+      submittingApprovals={props.submittingApprovals}
+      resuming={props.resumingRun}
+      streaming={props.runStatus === "streaming" || props.runStatus === "connecting"}
+      agent={agent}
+      onDecide={props.onDecide}
+      onResume={props.onResume}
+      onCancel={props.onCancel}
+    />
+  );
+}
+
+function getRunEventsInsertionIndex(
+  messages: ReadonlyArray<MessageDto>,
+  runEvents: ReadonlyArray<AnyRunEvent>,
+): number {
+  const eventRunId = runEvents.find((event) => typeof event.runId === "string")?.runId;
+  if (!eventRunId) return messages.length;
+  const matchingAssistantIdx = messages.findIndex(
+    (message) => message.role === "assistant" && message.runId === eventRunId,
+  );
+  return matchingAssistantIdx === -1 ? messages.length : matchingAssistantIdx;
 }
 
 /**

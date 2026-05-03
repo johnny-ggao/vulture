@@ -163,7 +163,7 @@ export function Composer(props: ComposerProps) {
         placeholder="输入问题…（Enter 发送，Shift+Enter 换行）"
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             send();
           }

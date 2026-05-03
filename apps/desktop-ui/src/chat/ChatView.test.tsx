@@ -77,6 +77,87 @@ describe("ChatView", () => {
     expect(pill?.getAttribute("title") ?? "").toContain("125 total");
   });
 
+  test("keeps retained tool blocks above the completed assistant reply", () => {
+    const { container } = render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs}
+        runEvents={[
+          {
+            type: "tool.planned",
+            runId: "r-1",
+            seq: 1,
+            createdAt: "2026-04-27T00:00:00.000Z",
+            callId: "c1",
+            tool: "read",
+            input: { path: "package.json" },
+          },
+          {
+            type: "tool.completed",
+            runId: "r-1",
+            seq: 2,
+            createdAt: "2026-04-27T00:00:00.000Z",
+            callId: "c1",
+            output: { content: "ok" },
+          },
+        ]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+
+    const list = container.querySelector(".message-list") as HTMLElement;
+    const children = Array.from(list.children);
+    expect(children[0].classList.contains("message")).toBe(true);
+    expect(children[1].classList.contains("run-event-stream")).toBe(true);
+    expect(children[1].textContent).toContain("read");
+    expect(children[2].classList.contains("message")).toBe(true);
+    expect(children[2].textContent).toContain("hi back");
+  });
+
+  test("appends retained tool blocks after messages when their run is unmatched", () => {
+    const { container } = render(
+      <ChatView
+        agents={[{ id: "a1", name: "A" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={msgs}
+        runEvents={[
+          {
+            type: "tool.planned",
+            runId: "r-other",
+            seq: 1,
+            createdAt: "2026-04-27T00:00:00.000Z",
+            callId: "c1",
+            tool: "read",
+            input: { path: "package.json" },
+          },
+        ]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+
+    const list = container.querySelector(".message-list") as HTMLElement;
+    const children = Array.from(list.children);
+    expect(children.at(-1)?.classList.contains("run-event-stream")).toBe(true);
+    expect(children.at(-1)?.textContent).toContain("read");
+  });
+
   test("renders subagent sessions below the current conversation", () => {
     render(
       <ChatView
