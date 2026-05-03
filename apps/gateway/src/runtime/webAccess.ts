@@ -1,3 +1,5 @@
+import { Readability } from "@mozilla/readability";
+import { parseHTML } from "linkedom";
 import { ToolCallError } from "@vulture/agent-runtime";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 
@@ -95,7 +97,7 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
   const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) =>
     runFetchWithTimeout(options.fetch, input, init, timeoutMs);
   const fallbackSearchProvider =
-    options.searchProvider ?? new DuckDuckGoHtmlSearchProvider(fetchWithTimeout);
+    options.searchProvider ?? createDefaultFallbackSearchProvider(fetchWithTimeout);
 
   return {
     classifyUrl,
@@ -198,6 +200,85 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
       results: parseDuckDuckGoResults(html).slice(0, limit),
     };
   }
+}
+
+export class BingHtmlSearchProvider implements SearchProvider {
+  readonly id = "bing-html";
+
+  constructor(private readonly fetch: FetchLike) {}
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = `https://www.bing.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
+    const response = await this.fetch(url, {
+      headers: { "User-Agent": "Vulture/1.0" },
+    });
+    const html = await response.text();
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseBingResults(html).slice(0, limit),
+    };
+  }
+}
+
+export class BraveHtmlSearchProvider implements SearchProvider {
+  readonly id = "brave-html";
+
+  constructor(private readonly fetch: FetchLike) {}
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = `https://search.brave.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
+    const response = await this.fetch(url, {
+      headers: { "User-Agent": "Vulture/1.0" },
+    });
+    const html = await response.text();
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseBraveResults(html).slice(0, limit),
+    };
+  }
+}
+
+export function createFallbackSearchProvider(providers: readonly SearchProvider[]): SearchProvider {
+  if (providers.length === 0) {
+    throw new Error("createFallbackSearchProvider requires at least one provider");
+  }
+  return {
+    id: "fallback",
+    async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+      const errors: string[] = [];
+      for (const provider of providers) {
+        try {
+          const result = await provider.search(request);
+          if (result.results.length > 0) return result;
+          errors.push(`${provider.id}: empty`);
+        } catch (cause) {
+          errors.push(`${provider.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        }
+      }
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `web_search exhausted all providers (${errors.join("; ")})`,
+      );
+    },
+  };
+}
+
+export function createDefaultFallbackSearchProvider(fetch: FetchLike): SearchProvider {
+  return createFallbackSearchProvider([
+    new DuckDuckGoHtmlSearchProvider(fetch),
+    new BingHtmlSearchProvider(fetch),
+    new BraveHtmlSearchProvider(fetch),
+  ]);
 }
 
 export class SearxngSearchProvider implements SearchProvider {
@@ -334,6 +415,69 @@ function parseDuckDuckGoResults(html: string): WebSearchResult[] {
   return results;
 }
 
+function parseBingResults(html: string): WebSearchResult[] {
+  const results: WebSearchResult[] = [];
+  const blockPattern = /<li\b[^>]*class=["'][^"']*\bb_algo\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
+  for (const block of html.matchAll(blockPattern)) {
+    const inner = block[1] ?? "";
+    const headingMatch = inner.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
+    if (!headingMatch) continue;
+    const linkMatch = headingMatch[1].match(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+    const url = decodeHtml(linkMatch[1] ?? "").trim();
+    const title = decodeHtml(stripTags(linkMatch[2] ?? "")).trim();
+    if (!url || !title) continue;
+    const snippet = extractBingSnippet(inner);
+    results.push(snippet ? { title, url, snippet } : { title, url });
+  }
+  return results;
+}
+
+function extractBingSnippet(blockHtml: string): string | undefined {
+  const captionMatch = blockHtml.match(
+    /<div\b[^>]*class=["'][^"']*\bb_caption\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  );
+  const candidate = captionMatch?.[1] ?? blockHtml;
+  const pMatch = candidate.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
+  if (!pMatch) return undefined;
+  const text = normalizeWhitespace(decodeHtml(stripTags(pMatch[1] ?? "")));
+  return text.length > 0 ? text : undefined;
+}
+
+function parseBraveResults(html: string): WebSearchResult[] {
+  // Match "snippet" as a whole class token (not e.g. "snippet-description").
+  const SNIPPET_OPEN = /<div\b[^>]*\bclass=["'](?:[^"']*\s)?snippet(?:\s[^"']*)?["'][^>]*>/i;
+  const SNIPPET_OPEN_GLOBAL = new RegExp(SNIPPET_OPEN.source, "gi");
+  const blockStarts: number[] = [];
+  for (const match of html.matchAll(SNIPPET_OPEN_GLOBAL)) {
+    if (match.index !== undefined) blockStarts.push(match.index);
+  }
+  const results: WebSearchResult[] = [];
+  for (let i = 0; i < blockStarts.length; i += 1) {
+    const start = blockStarts[i];
+    const end = blockStarts[i + 1] ?? html.length;
+    const inner = html.slice(start, end);
+    const linkMatch = inner.match(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+    const url = decodeHtml(linkMatch[1] ?? "").trim();
+    const titleHtml = linkMatch[2] ?? "";
+    const titleMatch = titleHtml.match(
+      /<(?:div|span)\b[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span)>/i,
+    );
+    const titleSource = titleMatch?.[1] ?? titleHtml;
+    const title = decodeHtml(stripTags(titleSource)).trim();
+    if (!url || !title) continue;
+    const descMatch = inner.match(
+      /<div\b[^>]*\bclass=["'][^"']*\bsnippet-description\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    );
+    const snippet = descMatch
+      ? normalizeWhitespace(decodeHtml(stripTags(descMatch[1] ?? "")))
+      : "";
+    results.push(snippet ? { title, url, snippet } : { title, url });
+  }
+  return results;
+}
+
 function parseSearxngResults(payload: unknown): WebSearchResult[] {
   const value = isRecord(payload) ? payload : {};
   const results = Array.isArray(value.results) ? value.results : [];
@@ -357,48 +501,77 @@ function extractHtml(
   text: string;
   links: WebExtractLink[];
 } {
-  const withoutHidden = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
-  const bodyLike = withoutHidden.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ");
-  return {
-    title: firstTextMatch(withoutHidden, /<title[^>]*>([\s\S]*?)<\/title>/i),
-    description: metaContent(withoutHidden, "description"),
-    text: normalizeWhitespace(decodeHtml(stripTagsWithSpaces(bodyLike))),
-    links: extractLinks(withoutHidden, baseUrl, maxLinks),
-  };
+  const metadataDoc = parseHTML(html).document;
+  const title = readMetadataTitle(metadataDoc);
+  const description = readMetadataDescription(metadataDoc);
+  const links = collectDocumentLinks(metadataDoc, baseUrl, maxLinks);
+  const text = readReadableText(html);
+  return { title, description, text, links };
 }
 
-function firstTextMatch(value: string, pattern: RegExp): string | null {
-  const match = value.match(pattern);
-  const text = decodeHtml(stripTags(match?.[1] ?? "")).trim();
-  return text.length > 0 ? text : null;
+function readMetadataTitle(doc: Document): string | null {
+  const value = doc.querySelector("title")?.textContent ?? "";
+  const trimmed = decodeHtml(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
-function metaContent(html: string, name: string): string | null {
-  const pattern = new RegExp(`<meta\\b(?=[^>]*\\bname=["']${escapeRegExp(name)}["'])([^>]*)>`, "i");
-  const match = html.match(pattern);
-  const attrs = match?.[1] ?? "";
-  const content = attrs.match(/\bcontent=["']([^"']*)["']/i)?.[1] ?? "";
-  const text = decodeHtml(content).trim();
-  return text.length > 0 ? text : null;
+function readMetadataDescription(doc: Document): string | null {
+  const meta = doc.querySelector('meta[name="description" i]');
+  const value = meta?.getAttribute("content") ?? "";
+  const trimmed = decodeHtml(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
-function extractLinks(html: string, baseUrl: string, maxLinks: number): WebExtractLink[] {
+function collectDocumentLinks(doc: Document, baseUrl: string, maxLinks: number): WebExtractLink[] {
   const links: WebExtractLink[] = [];
   const seen = new Set<string>();
-  const pattern = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  for (const match of html.matchAll(pattern)) {
+  const anchors = doc.querySelectorAll("a[href]");
+  for (const anchor of anchors) {
     if (links.length >= maxLinks) break;
-    const href = decodeHtml(match[1] ?? "").trim();
-    const text = normalizeWhitespace(decodeHtml(stripTags(match[2] ?? "")));
+    const href = decodeHtml(anchor.getAttribute("href") ?? "").trim();
+    const text = normalizeWhitespace(anchor.textContent ?? "");
     const url = normalizeExtractedUrl(href, baseUrl);
     if (!url || seen.has(url)) continue;
     seen.add(url);
     links.push({ text, url });
   }
   return links;
+}
+
+function readReadableText(html: string): string {
+  const stripped = stripNonContentElements(html);
+  if (stripped.length > 0) return stripped;
+  return readabilityFallback(html);
+}
+
+function stripNonContentElements(html: string): string {
+  const { document } = parseHTML(html);
+  for (const selector of ["script", "style", "noscript", "nav", "header", "footer", "aside", "head"]) {
+    for (const el of document.querySelectorAll(selector)) {
+      el.remove();
+    }
+  }
+  const body = document.body ?? document.documentElement;
+  if (!body) return "";
+  // Replace tags with spaces so block-level boundaries stay separated in text output.
+  const text = (body.innerHTML ?? "").replace(/<[^>]+>/g, " ");
+  return normalizeWhitespace(decodeHtml(text));
+}
+
+function readabilityFallback(html: string): string {
+  try {
+    const { document } = parseHTML(html);
+    const reader = new Readability(document as unknown as globalThis.Document, {
+      charThreshold: 0,
+    });
+    const article = reader.parse();
+    if (article?.textContent) {
+      return normalizeWhitespace(article.textContent);
+    }
+  } catch {
+    // fall through to empty string; caller decides default
+  }
+  return "";
 }
 
 function normalizeExtractedUrl(value: string, baseUrl: string): string | null {
@@ -429,10 +602,6 @@ function stripTags(value: string): string {
   return value.replace(/<[^>]+>/g, "");
 }
 
-function stripTagsWithSpaces(value: string): string {
-  return value.replace(/<[^>]+>/g, " ");
-}
-
 function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -441,10 +610,6 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

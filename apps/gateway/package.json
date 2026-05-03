@@ -14,6 +14,7 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "@openai/agents": "^0.8.5",
     "@vulture/agent-runtime": "workspace:*",
     "@vulture/common": "workspace:*",
@@ -21,6 +22,7 @@
     "@vulture/llm": "workspace:*",
     "@vulture/protocol": "workspace:*",
     "hono": "^4.6.0",
+    "linkedom": "^0.18.12",
     "openai": "^6.26.0",
     "tinyglobby": "^0.2.16",
     "vscode-jsonrpc": "^8.2.1",
