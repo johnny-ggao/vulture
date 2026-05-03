@@ -6,12 +6,19 @@ import { requireIdempotencyKey, idempotencyCache } from "../middleware/idempoten
 export function agentsRouter(store: AgentStore): Hono {
   const app = new Hono();
 
-  app.get("/v1/agents", (c) => c.json({ items: store.list() }));
+  app.get("/v1/agents", (c) =>
+    c.json({
+      items: store.list().map((agent) => ({
+        ...agent,
+        isPrivateWorkspace: store.isUsingPrivateWorkspace(agent.id),
+      })),
+    }),
+  );
 
   app.get("/v1/agents/:id", (c) => {
     const a = store.get(c.req.param("id"));
     if (!a) return c.json({ code: "agent.not_found", message: c.req.param("id") }, 404);
-    return c.json(a);
+    return c.json({ ...a, isPrivateWorkspace: store.isUsingPrivateWorkspace(a.id) });
   });
 
   app.get("/v1/agents/:id/files", (c) => {

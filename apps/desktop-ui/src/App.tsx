@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AuthStatusView,
@@ -44,6 +44,7 @@ import { useGatewayBootstrap } from "./app/useGatewayBootstrap";
 import { useRunController } from "./app/useRunController";
 import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
+import type { AgentsTab } from "./chat/AgentEditModal";
 import { ArtifactsPage } from "./chat/ArtifactsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -73,6 +74,12 @@ export function App() {
   const [view, setView] = useState<ViewKey>("chat");
   const [settingsReturnView, setSettingsReturnView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Drives the CodingAgentBanner → AgentEditModal flow. Set when the
+  // user clicks the banner; consumed once by AgentsPage on mount.
+  const [agentEditTarget, setAgentEditTarget] = useState<{
+    agentId: string;
+    tab: AgentsTab;
+  } | null>(null);
   const conversations = useConversations(apiClient);
   const {
     profile,
@@ -541,6 +548,22 @@ export function App() {
     agentDelete.dismiss();
   }
 
+  // Called by ChatView when the user clicks the CodingAgentBanner.
+  // Switches to the Agents view and opens the edit modal for that agent.
+  function handleOpenAgentEdit(agentId: string) {
+    setAgentEditTarget({ agentId, tab: "overview" });
+    setSelectedAgentId(agentId);
+    setView("agents");
+  }
+
+  // Stable callback so AgentsPage's useEffect doesn't re-fire on every
+  // App render. AgentsPage calls this once after consuming the target;
+  // clearing the state prevents the modal from re-opening when the user
+  // navigates away from the agents view and back (AgentsPage remounts).
+  const consumeAgentEditTarget = useCallback(() => {
+    setAgentEditTarget(null);
+  }, []);
+
   // ---- Keyboard shortcuts ---------------------------------------
   // ⌘1-6 / Ctrl+1-6 jump between primary views. ⌘N starts a new
   // conversation (skipped when typing in any input/textarea so the
@@ -821,9 +844,10 @@ export function App() {
         >
           {view === "chat" ? (
             <ChatView
-              agents={agents.map((a) => ({ id: a.id, name: a.name }))}
+              agents={agents.map((a) => ({ id: a.id, name: a.name, isPrivateWorkspace: a.isPrivateWorkspace }))}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
+              onOpenAgentEdit={handleOpenAgentEdit}
               permissionMode={runController.permissionMode}
               onChangePermissionMode={runController.changePermissionMode}
               messages={runController.messages.items}
@@ -864,6 +888,8 @@ export function App() {
               onLoadFile={handleLoadAgentFile}
               onSaveFile={handleSaveAgentFile}
               onDelete={handleDeleteAgent}
+              initialEditTarget={agentEditTarget}
+              onConsumeEditTarget={consumeAgentEditTarget}
             />
           ) : null}
           {view === "skills" ? (

@@ -19,12 +19,12 @@ function freshApp() {
 }
 
 describe("/v1/agents", () => {
-  test("GET seeds and returns local-work-agent", async () => {
+  test("GET seeds and returns both preset agents", async () => {
     const { app, cleanup } = freshApp();
     const res = await app.request("/v1/agents", { headers: auth });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.items.map((a: { id: string }) => a.id)).toEqual(["local-work-agent"]);
+    expect(body.items.map((a: { id: string }) => a.id).sort()).toEqual(["coding-agent", "local-work-agent"]);
     cleanup();
   });
 
@@ -100,8 +100,23 @@ describe("/v1/agents", () => {
   });
 
   test("PATCH persists empty skills allowlist", async () => {
+    // Use a custom (non-preset) agent — preset fields are force-overwritten on every reconcile pass.
     const { app, cleanup } = freshApp();
-    const res = await app.request("/v1/agents/local-work-agent", {
+    await app.request("/v1/agents", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ka-skills-empty" },
+      body: JSON.stringify({
+        id: "custom-skills",
+        name: "Custom Skills",
+        description: "x",
+        model: "gpt-5.4",
+        reasoning: "low",
+        tools: [],
+        instructions: "x",
+      }),
+    });
+
+    const res = await app.request("/v1/agents/custom-skills", {
       method: "PATCH",
       headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({ skills: [] }),
@@ -109,12 +124,13 @@ describe("/v1/agents", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).skills).toEqual([]);
 
-    const get = await app.request("/v1/agents/local-work-agent", { headers: auth });
+    const get = await app.request("/v1/agents/custom-skills", { headers: auth });
     expect((await get.json()).skills).toEqual([]);
     cleanup();
   });
 
   test("PATCH persists handoff agent ids", async () => {
+    // Use a custom (non-preset) agent — preset fields are force-overwritten on every reconcile pass.
     const { app, cleanup } = freshApp();
     await app.request("/v1/agents", {
       method: "POST",
@@ -130,7 +146,21 @@ describe("/v1/agents", () => {
       }),
     });
 
-    const res = await app.request("/v1/agents/local-work-agent", {
+    await app.request("/v1/agents", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ka-custom-handoff" },
+      body: JSON.stringify({
+        id: "custom-handoff",
+        name: "Custom Handoff",
+        description: "x",
+        model: "gpt-5.4",
+        reasoning: "low",
+        tools: [],
+        instructions: "x",
+      }),
+    });
+
+    const res = await app.request("/v1/agents/custom-handoff", {
       method: "PATCH",
       headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({ handoffAgentIds: ["researcher"] }),
@@ -138,7 +168,7 @@ describe("/v1/agents", () => {
 
     expect(res.status).toBe(200);
     expect((await res.json()).handoffAgentIds).toEqual(["researcher"]);
-    const get = await app.request("/v1/agents/local-work-agent", { headers: auth });
+    const get = await app.request("/v1/agents/custom-handoff", { headers: auth });
     expect((await get.json()).handoffAgentIds).toEqual(["researcher"]);
     cleanup();
   });
@@ -175,7 +205,7 @@ describe("/v1/agents", () => {
 
     const get = await app.request("/v1/agents/local-work-agent/files/SOUL.md", { headers: auth });
     expect(get.status).toBe(200);
-    expect((await get.json()).file.content).toContain("Local Work Agent");
+    expect((await get.json()).file.content).toContain("Vulture");
 
     const put = await app.request("/v1/agents/local-work-agent/files/TOOLS.md", {
       method: "PUT",
@@ -211,17 +241,9 @@ describe("/v1/agents", () => {
     cleanup();
   });
 
-  test("DELETE last agent → 409 agent.cannot_delete_last", async () => {
-    const { app, cleanup } = freshApp();
-    await app.request("/v1/agents", { headers: auth });
-    const res = await app.request("/v1/agents/local-work-agent", {
-      method: "DELETE",
-      headers: auth,
-    });
-    expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe("agent.cannot_delete_last");
-    cleanup();
-  });
+  // NOTE: "DELETE last agent → 409 agent.cannot_delete_last" guard exists in AgentStore as a
+  // defensive check, but is unreachable through HTTP because both presets self-heal on every
+  // ensureDefaults() call (Decision #7). The guard remains in place for in-process callers.
 
   test("GET unknown id → 404 agent.not_found", async () => {
     const { app, cleanup } = freshApp();
@@ -242,6 +264,26 @@ describe("/v1/agents", () => {
       }),
     });
     expect(res.status).toBe(400);
+    cleanup();
+  });
+
+  test("GET /v1/agents returns isPrivateWorkspace: true for freshly seeded coding-agent", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents", { headers: auth });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const codingAgent = body.items.find((a: { id: string }) => a.id === "coding-agent");
+    expect(codingAgent).toBeDefined();
+    expect(codingAgent.isPrivateWorkspace).toBe(true);
+    cleanup();
+  });
+
+  test("GET /v1/agents/:id returns isPrivateWorkspace: true for freshly seeded coding-agent", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents/coding-agent", { headers: auth });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.isPrivateWorkspace).toBe(true);
     cleanup();
   });
 });

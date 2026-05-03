@@ -1231,6 +1231,61 @@ pre {
   border-color: color-mix(in oklab, var(--success) 32%, transparent);
 }
 
+/* CodingAgentBanner — workspace nudge strip shown above the chat */
+.coding-agent-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 6px 12px;
+  background: var(--info-bg);
+  border-bottom: 1px solid color-mix(in oklab, var(--info) 28%, transparent);
+  color: var(--info);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+.coding-agent-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+.coding-agent-banner-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.coding-agent-banner-action {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in oklab, var(--info) 40%, transparent);
+  background: color-mix(in oklab, var(--info) 10%, transparent);
+  color: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.coding-agent-banner-action:hover {
+  background: color-mix(in oklab, var(--info) 18%, transparent);
+}
+.coding-agent-banner-dismiss {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0.7;
+  font-size: 14px;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+.coding-agent-banner-dismiss:hover {
+  opacity: 1;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+
 /* Backwards-compatible aliases — kept so unrelated paths keep working */
 .reconnect-chip {
   margin: 8px auto 0;

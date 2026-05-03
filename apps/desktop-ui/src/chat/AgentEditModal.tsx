@@ -25,7 +25,7 @@ import {
 
 export type { AgentConfigPatch };
 
-type AgentsTab = "overview" | "tools" | "skills" | "handoff" | "core";
+export type AgentsTab = "overview" | "tools" | "skills" | "handoff" | "core";
 
 const EDIT_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
@@ -69,6 +69,12 @@ export interface AgentEditModalProps {
   onListFiles?: (id: string) => Promise<AgentCoreFilesResponse>;
   onLoadFile?: (id: string, name: string) => Promise<string>;
   onSaveFile?: (id: string, name: string, content: string) => Promise<void>;
+  /**
+   * Deep-link: open the modal with this tab pre-selected instead of
+   * "overview". Useful for banner links that should land on a specific
+   * tab (e.g. the coding-agent banner linking to the Core tab).
+   */
+  initialTab?: AgentsTab;
 }
 
 /**
@@ -91,7 +97,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
   const [fileContent, setFileContent] = useState("");
   const [fileStatus, setFileStatus] = useState("");
   const [fileBusy, setFileBusy] = useState(false);
-  const [tab, setTab] = useState<AgentsTab>("overview");
+  const [tab, setTab] = useState<AgentsTab>(props.initialTab ?? "overview");
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savedFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,11 +140,11 @@ export function AgentEditModal(props: AgentEditModalProps) {
   useEffect(() => {
     if (!open) return;
     setDraft(draftFromAgent(agent));
-    setTab("overview");
+    setTab(props.initialTab ?? "overview");
     setSavedFlash(false);
     setSaveError(null);
     setFileStatus("");
-  }, [open, agent?.id]);
+  }, [open, agent?.id, props.initialTab]);
 
   // Round 15 — focus management. When the modal opens, snapshot the
   // currently-focused element so we can return focus to it on close
@@ -337,6 +343,7 @@ export function AgentEditModal(props: AgentEditModalProps) {
       skills: parseSkills(draft.skillsText),
       instructions: draft.instructions.trim(),
       avatar: draft.avatar.trim() || undefined,
+      workspace: draft.workspace,
     };
     try {
       if (isCreate) {

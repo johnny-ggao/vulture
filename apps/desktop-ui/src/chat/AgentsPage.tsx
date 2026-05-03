@@ -6,6 +6,7 @@ import { AgentCard, AgentCreateTile, SearchInput, SectionCard } from "./componen
 import {
   AgentEditModal,
   type AgentConfigPatch,
+  type AgentsTab,
 } from "./AgentEditModal";
 
 export type { AgentConfigPatch };
@@ -83,6 +84,21 @@ export interface AgentsPageProps {
    * (typically a transient toast); the list dispatches immediately.
    */
   onDelete?: (id: string) => void;
+  /**
+   * When set, AgentsPage will open the AgentEditModal for the specified
+   * agent on the specified tab on mount (or when the value changes).
+   * Used by the App shell to navigate from the CodingAgentBanner click
+   * directly into the edit modal.
+   */
+  initialEditTarget?: { agentId: string; tab: AgentsTab } | null;
+  /**
+   * Called once after AgentsPage consumes `initialEditTarget` so the App
+   * shell can clear its state. Without this, navigating away from the
+   * agents view and back would re-open the modal because AgentsPage
+   * remounts and the useEffect re-fires on the still-present prop.
+   * Must be a stable reference (e.g. wrapped in useCallback).
+   */
+  onConsumeEditTarget?: () => void;
 }
 
 /**
@@ -92,6 +108,9 @@ export interface AgentsPageProps {
  */
 export function AgentsPage(props: AgentsPageProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Tracks the tab that should be pre-selected when the modal opens via
+  // an external trigger (e.g. CodingAgentBanner click from ChatView).
+  const [initialTab, setInitialTab] = useState<AgentsTab | undefined>(undefined);
   // Whether the AgentEditModal is open in create mode. Mutually
   // exclusive with editingId — clicking "新建智能体" sets this true,
   // and the same modal renders with `agent={null}` + onCreate.
@@ -111,6 +130,19 @@ export function AgentsPage(props: AgentsPageProps) {
   useEffect(() => {
     writeStored(STORAGE_KEY_SEARCH, search);
   }, [search]);
+
+  // Open the modal for the specified agent+tab when the App shell passes
+  // in an initialEditTarget (e.g. after the user clicks the CodingAgentBanner).
+  // After consuming, notify the parent so it can clear its state — otherwise
+  // re-mounting AgentsPage (e.g. nav away and back) would re-trigger this
+  // effect on the still-present prop and unexpectedly re-open the modal.
+  useEffect(() => {
+    if (props.initialEditTarget) {
+      setEditingId(props.initialEditTarget.agentId);
+      setInitialTab(props.initialEditTarget.tab);
+      props.onConsumeEditTarget?.();
+    }
+  }, [props.initialEditTarget, props.onConsumeEditTarget]);
 
   const editingAgent =
     editingId !== null
@@ -184,9 +216,11 @@ export function AgentsPage(props: AgentsPageProps) {
           agents={props.agents}
           toolGroups={props.toolGroups}
           authStatus={props.authStatus ?? null}
+          initialTab={initialTab}
           onClose={() => {
             setEditingId(null);
             setCreating(false);
+            setInitialTab(undefined);
           }}
           onSave={props.onSave}
           onCreate={handleCreate}
@@ -302,9 +336,11 @@ export function AgentsPage(props: AgentsPageProps) {
         agents={props.agents}
         toolGroups={props.toolGroups}
         authStatus={props.authStatus ?? null}
+        initialTab={initialTab}
         onClose={() => {
           setEditingId(null);
           setCreating(false);
+          setInitialTab(undefined);
         }}
         onSave={props.onSave}
         onCreate={handleCreate}

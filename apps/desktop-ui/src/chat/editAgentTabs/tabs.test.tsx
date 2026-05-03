@@ -8,7 +8,7 @@ import { localAgentFixture as baseAgent } from "../__fixtures__/agent";
 import type { AgentCoreFile } from "../../api/agents";
 
 describe("OverviewTab", () => {
-  test("renders the primary identity fields and the workspace info block", () => {
+  test("renders the primary identity fields and the workspace input", () => {
     render(
       <OverviewTab
         agent={baseAgent}
@@ -30,8 +30,9 @@ describe("OverviewTab", () => {
     expect(
       screen.getByRole("button", { name: "重新生成头像" }),
     ).toBeDefined();
-    expect(screen.getByText("Workspace")).toBeDefined();
-    expect(screen.getByText("/tmp/workspace")).toBeDefined();
+    // Task 5: workspace changed from a read-only InfoBlock to an editable input.
+    const wsInput = screen.getByLabelText("工作区") as HTMLInputElement;
+    expect(wsInput.value).toBe("/tmp/workspace");
   });
 
   test("editing the name calls onChange with a fresh draft", () => {
@@ -100,6 +101,38 @@ describe("OverviewTab", () => {
     );
     const field = screen.getByLabelText("模型") as HTMLInputElement;
     expect(field.tagName).toBe("INPUT");
+  });
+
+  test("workspace input is shown and editable in edit mode", () => {
+    const onChange = mock((_next: Draft) => {});
+    render(
+      <OverviewTab
+        agent={baseAgent}
+        draft={draftFromAgent(baseAgent)}
+        authStatus={null}
+        onChange={onChange}
+      />,
+    );
+    const input = screen.getByLabelText("工作区") as HTMLInputElement;
+    expect(input.tagName).toBe("INPUT");
+    expect(input.value).toBe("/tmp/workspace");
+    fireEvent.change(input, { target: { value: "/new/path" } });
+    expect(onChange).toHaveBeenCalled();
+    const next = onChange.mock.calls[0]![0] as ReturnType<typeof draftFromAgent>;
+    expect(next.workspace?.path).toBe("/new/path");
+    expect(next.workspace?.id).toBe("agent-1");
+  });
+
+  test("workspace input is hidden in create mode", () => {
+    render(
+      <OverviewTab
+        agent={null}
+        draft={draftFromAgent(null)}
+        authStatus={null}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText("工作区")).toBeNull();
   });
 });
 

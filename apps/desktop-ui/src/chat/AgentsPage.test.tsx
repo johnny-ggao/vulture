@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentsPage, type AgentConfigPatch } from "./AgentsPage";
 import type { Agent, AgentCoreFilesResponse } from "../api/agents";
 import { localAgentFixture as baseAgent } from "./__fixtures__/agent";
+import type { AgentsTab } from "./AgentEditModal";
 
 // Round 17: AgentsPage now persists sort + search via localStorage.
 // Clear those keys before every test so writes from one test don't
@@ -729,23 +730,10 @@ describe("AgentsPage — edit modal", () => {
     expect(screen.getByText(/已经选择了风格/)).toBeDefined();
   });
 
-  test("workspace block shows a copy button for the path", () => {
-    const { container } = render(
-      <AgentsPage
-        {...stableProps}
-        agents={[baseAgent]}
-        selectedAgentId="agent-1"
-      />,
-    );
-    openEditModal();
-    // Modal header carries the agent ID copy chip; the OverviewTab
-    // also carries a separate copy button for the workspace path.
-    // We pick the workspace button by its aria-label.
-    const copyBtn = container.querySelector(
-      `button[aria-label="复制 ${baseAgent.workspace.path}"]`,
-    );
-    expect(copyBtn).not.toBeNull();
-  });
+  // (Removed) "workspace block shows a copy button" — T5 of the preset-agents
+  // plan replaced the read-only workspace InfoBlock with an editable text
+  // input. The copy chip no longer exists; the OverviewTab tests cover the
+  // new editable behavior.
 
   // ---- Round 17: sort persistence + tablist arrow keys + revert ----
 
@@ -960,5 +948,30 @@ describe("AgentsPage — edit modal", () => {
       />,
     );
     expect(screen.queryByRole("tab", { name: "身份" })).toBeNull();
+  });
+
+  test("AgentsPage opens the modal for the agent in initialEditTarget on mount", () => {
+    const codingAgent: Agent = {
+      ...baseAgent,
+      id: "coding-agent",
+      name: "Vulture Coding",
+      isPrivateWorkspace: true,
+    };
+    const target: { agentId: string; tab: AgentsTab } = {
+      agentId: "coding-agent",
+      tab: "overview",
+    };
+    render(
+      <AgentsPage
+        {...stableProps}
+        agents={[codingAgent]}
+        selectedAgentId="coding-agent"
+        initialEditTarget={target}
+      />,
+    );
+    // The modal should be open — the Identity tab is visible.
+    expect(screen.getByRole("tab", { name: "身份" })).toBeDefined();
+    // And the agent name appears in the modal header.
+    expect(screen.getByRole("heading", { name: "Vulture Coding", level: 2 })).toBeDefined();
   });
 });
