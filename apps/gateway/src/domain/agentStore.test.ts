@@ -193,7 +193,7 @@ describe("AgentStore", () => {
     });
     expect(saved.id).toBe(brandId<AgentId>("coder"));
     expect(saved.description).toBe("Writes code");
-    expect(saved.model).toBe("gpt-5.4");
+    expect(saved.model).toBe("openai/gpt-5.4");
     expect(saved.reasoning).toBe("medium");
     expect(saved.workspace.path).toBe(join(dir, ".vuture", "workspace", "coder", "project"));
     const ids = store.list().map((a) => a.id).sort((a, b) => (a < b ? -1 : 1));

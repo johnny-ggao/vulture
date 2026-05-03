@@ -143,6 +143,8 @@ export const AgentSchema = z.object({
   id: SlugSchema,
   name: z.string().min(1),
   description: z.string(),
+  // Gateway normalizes persisted refs to provider/model where possible, but legacy
+  // and user-entered values remain valid strings.
   model: z.string().min(1),
   reasoning: ReasoningLevelSchema,
   tools: z.array(AgentToolNameSchema),
