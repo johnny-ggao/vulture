@@ -419,6 +419,104 @@ describe("gateway local tools", () => {
     ]);
   });
 
+  test("dispatches grep to runGrep", async () => {
+    const workspacePath = await tempWorkspace();
+    await writeFile(join(workspacePath, "a.ts"), "const foo = 1;\n");
+    const tools = makeGatewayLocalTools({ shellTools: async () => "shell" });
+    const result = await tools({
+      callId: "c1",
+      runId: "r1",
+      tool: "grep",
+      input: { pattern: "foo", path: workspacePath, regex: false },
+      workspacePath,
+    }) as { matches: unknown[] };
+    expect(result.matches.length).toBeGreaterThan(0);
+  });
+
+  test("dispatches glob to runGlob", async () => {
+    const workspacePath = await tempWorkspace();
+    await writeFile(join(workspacePath, "a.ts"), "");
+    await writeFile(join(workspacePath, "b.md"), "");
+    const tools = makeGatewayLocalTools({ shellTools: async () => "shell" });
+    const result = await tools({
+      callId: "c2",
+      runId: "r1",
+      tool: "glob",
+      input: { pattern: "**/*.ts", path: workspacePath },
+      workspacePath,
+    }) as { paths: string[] };
+    expect(result.paths.length).toBe(1);
+  });
+
+  test("lsp.diagnostics returns structured error when lspManager is not configured", async () => {
+    const workspacePath = await tempWorkspace();
+    const tools = makeGatewayLocalTools({ shellTools: async () => "shell" });
+    await expect(
+      tools({
+        callId: "c3",
+        runId: "r1",
+        tool: "lsp.diagnostics",
+        input: { filePath: "/tmp/x.ts" },
+        workspacePath,
+      }),
+    ).rejects.toThrow(/lsp.unavailable|lsp manager|not configured/i);
+  });
+
+  test("lsp.* dispatch routes to correct lspManager method", async () => {
+    const workspacePath = await tempWorkspace();
+    const calls: string[] = [];
+    const stubManager = {
+      diagnostics: async () => {
+        calls.push("diagnostics");
+        return { kind: "ok" as const, value: [] };
+      },
+      definition: async () => {
+        calls.push("definition");
+        return { kind: "ok" as const, value: [] };
+      },
+      references: async () => {
+        calls.push("references");
+        return { kind: "ok" as const, value: [] };
+      },
+      hover: async () => {
+        calls.push("hover");
+        return { kind: "ok" as const, value: null };
+      },
+      cacheSize: () => 0,
+      dispose: async () => {},
+    };
+    const tools = makeGatewayLocalTools({
+      shellTools: async () => "shell",
+      lspManager: stubManager,
+    });
+    const base = { runId: "r1", workspacePath, permissionMode: "default" as const };
+    await tools({
+      ...base,
+      callId: "1",
+      tool: "lsp.diagnostics",
+      input: { filePath: join(workspacePath, "a.ts") },
+    });
+    await tools({
+      ...base,
+      callId: "2",
+      tool: "lsp.definition",
+      input: { filePath: join(workspacePath, "a.ts"), line: 0, character: 0 },
+    });
+    await tools({
+      ...base,
+      callId: "3",
+      tool: "lsp.references",
+      input: { filePath: join(workspacePath, "a.ts"), line: 0, character: 0 },
+    });
+    await tools({
+      ...base,
+      callId: "4",
+      tool: "lsp.hover",
+      input: { filePath: join(workspacePath, "a.ts"), line: 0, character: 0 },
+    });
+    expect(calls).toEqual(["diagnostics", "definition", "references", "hover"]);
+  });
+
   test("MCP tools execute through injected MCP service and emit normal tool events", async () => {
     const workspacePath = await tempWorkspace();
     const events: unknown[] = [];

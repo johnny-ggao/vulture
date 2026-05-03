@@ -1,5 +1,6 @@
 import type { LlmCallable } from "@vulture/agent-runtime";
 import type { ModelProvider } from "@openai/agents";
+import type { LspClientManager } from "./runtime/lspClientManager";
 
 export interface GatewayConfig {
   port: number;
@@ -48,6 +49,12 @@ export interface GatewayConfig {
    * Production callers leave this off.
    */
   registerHarnessTestTools?: boolean;
+  /**
+   * Optional LSP client manager, constructed in main.ts so tests don't
+   * accumulate sweepers or SIGTERM listeners. Consumed in the local-tool
+   * dispatcher to handle lsp.* tool calls.
+   */
+  lspManager?: LspClientManager;
 }
 
 function required(

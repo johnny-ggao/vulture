@@ -177,6 +177,38 @@ export const defaultToolContractFixtures: ToolContractFixture[] = [
   fixture("browser.screenshot", "browser", "approval", true, true, () => ({
     fullPage: false,
   }), { fullPage: "no" }),
+  fixture("grep", "fs", "safe", true, false, () => ({
+    pattern: "TODO",
+    path: null,
+    glob: null,
+    regex: null,
+    caseSensitive: null,
+    maxMatches: null,
+  }), { pattern: 42, path: null, glob: null, regex: null, caseSensitive: null, maxMatches: null }),
+  fixture("glob", "fs", "safe", true, false, () => ({
+    pattern: "**/*.ts",
+    path: null,
+    maxResults: null,
+  }), { pattern: 42, path: null, maxResults: null }),
+  fixture("lsp.diagnostics", "lsp", "safe", true, false, () => ({
+    filePath: "src/index.ts",
+  }), { filePath: 42 }),
+  fixture("lsp.definition", "lsp", "safe", true, false, () => ({
+    filePath: "src/index.ts",
+    line: 10,
+    character: 5,
+  }), { filePath: "src/index.ts", line: "ten", character: 5 }),
+  fixture("lsp.references", "lsp", "safe", true, false, () => ({
+    filePath: "src/index.ts",
+    line: 10,
+    character: 5,
+    includeDeclaration: null,
+  }), { filePath: "src/index.ts", line: 10, character: 5, includeDeclaration: "yes" }),
+  fixture("lsp.hover", "lsp", "safe", true, false, () => ({
+    filePath: "src/index.ts",
+    line: 10,
+    character: 5,
+  }), { filePath: "src/index.ts", line: "ten", character: 5 }),
 ];
 
 export async function runToolContractHarness(

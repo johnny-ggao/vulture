@@ -14,7 +14,7 @@ export interface SkillEntry {
   description: string;
   filePath: string;
   baseDir: string;
-  source?: "profile" | "workspace";
+  source?: "builtin" | "profile" | "workspace" | "agent-core";
   modelInvocationEnabled: boolean;
   userInvocable?: boolean;
   metadata?: SkillMetadata;
@@ -23,6 +23,8 @@ export interface SkillEntry {
 export interface LoadSkillEntriesOptions {
   workspaceDir?: string;
   profileDir?: string;
+  agentCoreDir?: string;
+  builtinDir?: string;
   maxSkillFileBytes?: number;
 }
 
@@ -38,16 +40,24 @@ const DEFAULT_MAX_SKILL_FILE_BYTES = 256_000;
 
 export function loadSkillEntries(opts: LoadSkillEntriesOptions): SkillEntry[] {
   const maxSkillFileBytes = opts.maxSkillFileBytes ?? DEFAULT_MAX_SKILL_FILE_BYTES;
+  const builtinSkills = opts.builtinDir
+    ? loadFlatSkillsFromDir(opts.builtinDir, maxSkillFileBytes, "builtin")
+    : [];
   const profileSkills = opts.profileDir
     ? loadSkillsFromRoot(join(opts.profileDir, "skills"), maxSkillFileBytes, "profile")
     : [];
   const workspaceSkills = opts.workspaceDir
     ? loadSkillsFromRoot(join(opts.workspaceDir, "skills"), maxSkillFileBytes, "workspace")
     : [];
+  const agentCoreSkills = opts.agentCoreDir
+    ? loadSkillsFromRoot(join(opts.agentCoreDir, "skills"), maxSkillFileBytes, "agent-core")
+    : [];
   const merged = new Map<string, SkillEntry>();
 
+  for (const skill of builtinSkills) merged.set(skill.name, skill);
   for (const skill of profileSkills) merged.set(skill.name, skill);
   for (const skill of workspaceSkills) merged.set(skill.name, skill);
+  for (const skill of agentCoreSkills) merged.set(skill.name, skill);
 
   return Array.from(merged.values())
     .filter(isEligible)
@@ -90,10 +100,75 @@ export function formatSkillsForPrompt(entries: readonly SkillEntry[]): string {
   return lines.join("\n");
 }
 
+function loadFlatSkillsFromDir(
+  dir: string,
+  maxSkillFileBytes: number,
+  source: "builtin" | "profile" | "workspace" | "agent-core",
+): SkillEntry[] {
+  const root = resolve(dir);
+  if (!existsSync(root)) return [];
+  const rootRealPath = safeRealpath(root);
+  if (!rootRealPath) return [];
+
+  let files: string[];
+  try {
+    files = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && !entry.name.startsWith("."))
+      .map((entry) => join(root, entry.name))
+      .sort((left, right) => left.localeCompare(right));
+  } catch {
+    return [];
+  }
+
+  return files
+    .map((filePath) => loadSkillFromFlatFile(filePath, rootRealPath, maxSkillFileBytes, source))
+    .filter((entry): entry is SkillEntry => entry !== null);
+}
+
+function loadSkillFromFlatFile(
+  filePath: string,
+  rootRealPath: string,
+  maxSkillFileBytes: number,
+  source: "builtin" | "profile" | "workspace" | "agent-core",
+): SkillEntry | null {
+  if (isSymlink(filePath)) return null;
+  const fileRealPath = safeRealpath(filePath);
+  if (!fileRealPath || !isPathInside(rootRealPath, fileRealPath)) return null;
+
+  try {
+    if (statSync(fileRealPath).size > maxSkillFileBytes) return null;
+  } catch {
+    return null;
+  }
+
+  let raw: string;
+  try {
+    raw = readFileSync(fileRealPath, "utf8");
+  } catch {
+    return null;
+  }
+
+  const frontmatter = parseFrontmatter(raw);
+  const name = normalizeFrontmatterString(frontmatter.name) ?? basename(filePath, ".md");
+  const description = normalizeFrontmatterString(frontmatter.description);
+  if (!name || !description) return null;
+
+  return {
+    name,
+    description,
+    filePath: fileRealPath,
+    baseDir: rootRealPath,
+    source,
+    modelInvocationEnabled: parseBoolean(frontmatter["disable-model-invocation"]) !== true,
+    userInvocable: parseBoolean(frontmatter["user-invocable"]) ?? true,
+    metadata: parseSkillMetadata(frontmatter["metadata.openclaw"]),
+  };
+}
+
 function loadSkillsFromRoot(
   rootDir: string,
   maxSkillFileBytes: number,
-  source: "profile" | "workspace",
+  source: "builtin" | "profile" | "workspace" | "agent-core",
 ): SkillEntry[] {
   const root = resolve(rootDir);
   if (!existsSync(root)) return [];
@@ -103,9 +178,19 @@ function loadSkillsFromRoot(
   const rootSkill = loadSkillFromDirectory(root, rootRealPath, maxSkillFileBytes, source);
   if (rootSkill) return [rootSkill];
 
-  return listCandidateSkillDirs(root)
+  const subdirSkills = listCandidateSkillDirs(root)
     .map((candidate) => loadSkillFromDirectory(candidate, rootRealPath, maxSkillFileBytes, source))
     .filter((entry): entry is SkillEntry => entry !== null);
+
+  const flatFileSkills = loadFlatSkillsFromDir(root, maxSkillFileBytes, source);
+
+  // Within a single source, subdirectory-format skills (skill-name/SKILL.md) win
+  // over flat .md files (skill-name.md) of the same name — the directory format
+  // is more expressive (can carry sibling assets), so it wins ties.
+  const merged = new Map<string, SkillEntry>();
+  for (const skill of flatFileSkills) merged.set(skill.name, skill);
+  for (const skill of subdirSkills) merged.set(skill.name, skill);
+  return Array.from(merged.values());
 }
 
 function listCandidateSkillDirs(root: string): string[] {
@@ -123,7 +208,7 @@ function loadSkillFromDirectory(
   skillDir: string,
   rootRealPath: string,
   maxSkillFileBytes: number,
-  source: "profile" | "workspace",
+  source: "builtin" | "profile" | "workspace" | "agent-core",
 ): SkillEntry | null {
   const skillDirRealPath = safeRealpath(skillDir);
   if (!skillDirRealPath || !isPathInside(rootRealPath, skillDirRealPath)) return null;
@@ -223,7 +308,7 @@ function safeRealpath(path: string): string | null {
   }
 }
 
-function isPathInside(root: string, candidate: string): boolean {
+export function isPathInside(root: string, candidate: string): boolean {
   const rel = relative(root, candidate);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }

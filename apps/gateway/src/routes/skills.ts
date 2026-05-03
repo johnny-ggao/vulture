@@ -6,7 +6,7 @@ export interface SkillListItem {
   description: string;
   filePath: string;
   baseDir: string;
-  source: "profile" | "workspace";
+  source: "builtin" | "profile" | "workspace" | "agent-core";
   modelInvocationEnabled: boolean;
   userInvocable: boolean;
 }

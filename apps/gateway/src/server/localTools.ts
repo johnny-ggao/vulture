@@ -8,6 +8,7 @@ import {
 } from "../runtime/webAccess";
 import { tryEmitRuntimeHook, type RuntimeHookRunner } from "../runtime/runtimeHooks";
 import type { GatewayStores } from "./stores";
+import type { LspClientManager } from "../runtime/lspClientManager";
 
 export interface StartConversationRunResult {
   conversationId: string;
@@ -21,6 +22,7 @@ export interface CreateGatewayServerLocalToolsOptions {
   mcp: GatewayMcpTools;
   runtimeHooks: () => RuntimeHookRunner | undefined;
   fetch?: FetchLike;
+  lspManager?: LspClientManager;
   startConversationRun: (
     conversationId: string,
     input: string,
@@ -52,6 +54,7 @@ export function createGatewayServerLocalTools(
   return makeGatewayLocalTools({
     shellTools: opts.shellTools,
     appendEvent: (runId, partial) => runStore.appendEvent(runId, partial),
+    lspManager: opts.lspManager,
     webAccess: createWebAccessService({
       fetch: fetchImpl,
       resolveSearchProvider: ({ fetch }) => {

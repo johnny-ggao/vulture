@@ -1238,6 +1238,7 @@
                 "process",
                 "web_search",
                 "web_fetch",
+                "web_extract",
                 "sessions_list",
                 "sessions_history",
                 "sessions_send",
@@ -1248,7 +1249,19 @@
                 "memory_get",
                 "memory_append",
                 "browser.snapshot",
-                "browser.click"
+                "browser.click",
+                "browser.input",
+                "browser.scroll",
+                "browser.extract",
+                "browser.navigate",
+                "browser.wait",
+                "browser.screenshot",
+                "grep",
+                "glob",
+                "lsp.diagnostics",
+                "lsp.definition",
+                "lsp.references",
+                "lsp.hover"
               ]
             }
           },
@@ -1276,6 +1289,7 @@
                 "process",
                 "web_search",
                 "web_fetch",
+                "web_extract",
                 "sessions_list",
                 "sessions_history",
                 "sessions_send",
@@ -1286,7 +1300,19 @@
                 "memory_get",
                 "memory_append",
                 "browser.snapshot",
-                "browser.click"
+                "browser.click",
+                "browser.input",
+                "browser.scroll",
+                "browser.extract",
+                "browser.navigate",
+                "browser.wait",
+                "browser.screenshot",
+                "grep",
+                "glob",
+                "lsp.diagnostics",
+                "lsp.definition",
+                "lsp.references",
+                "lsp.hover"
               ]
             }
           },
@@ -1303,6 +1329,7 @@
                 "process",
                 "web_search",
                 "web_fetch",
+                "web_extract",
                 "sessions_list",
                 "sessions_history",
                 "sessions_send",
@@ -1313,7 +1340,19 @@
                 "memory_get",
                 "memory_append",
                 "browser.snapshot",
-                "browser.click"
+                "browser.click",
+                "browser.input",
+                "browser.scroll",
+                "browser.extract",
+                "browser.navigate",
+                "browser.wait",
+                "browser.screenshot",
+                "grep",
+                "glob",
+                "lsp.diagnostics",
+                "lsp.definition",
+                "lsp.references",
+                "lsp.hover"
               ]
             }
           },
@@ -1369,6 +1408,9 @@
           "instructions": {
             "type": "string",
             "minLength": 1
+          },
+          "avatar": {
+            "type": "string"
           },
           "createdAt": {
             "type": "string",
@@ -1544,6 +1586,7 @@
                 "process",
                 "web_search",
                 "web_fetch",
+                "web_extract",
                 "sessions_list",
                 "sessions_history",
                 "sessions_send",
@@ -1554,7 +1597,19 @@
                 "memory_get",
                 "memory_append",
                 "browser.snapshot",
-                "browser.click"
+                "browser.click",
+                "browser.input",
+                "browser.scroll",
+                "browser.extract",
+                "browser.navigate",
+                "browser.wait",
+                "browser.screenshot",
+                "grep",
+                "glob",
+                "lsp.diagnostics",
+                "lsp.definition",
+                "lsp.references",
+                "lsp.hover"
               ]
             }
           },
@@ -1582,6 +1637,7 @@
                 "process",
                 "web_search",
                 "web_fetch",
+                "web_extract",
                 "sessions_list",
                 "sessions_history",
                 "sessions_send",
@@ -1592,7 +1648,19 @@
                 "memory_get",
                 "memory_append",
                 "browser.snapshot",
-                "browser.click"
+                "browser.click",
+                "browser.input",
+                "browser.scroll",
+                "browser.extract",
+                "browser.navigate",
+                "browser.wait",
+                "browser.screenshot",
+                "grep",
+                "glob",
+                "lsp.diagnostics",
+                "lsp.definition",
+                "lsp.references",
+                "lsp.hover"
               ]
             }
           },
@@ -1609,6 +1677,7 @@
                 "process",
                 "web_search",
                 "web_fetch",
+                "web_extract",
                 "sessions_list",
                 "sessions_history",
                 "sessions_send",
@@ -1619,7 +1688,19 @@
                 "memory_get",
                 "memory_append",
                 "browser.snapshot",
-                "browser.click"
+                "browser.click",
+                "browser.input",
+                "browser.scroll",
+                "browser.extract",
+                "browser.navigate",
+                "browser.wait",
+                "browser.screenshot",
+                "grep",
+                "glob",
+                "lsp.diagnostics",
+                "lsp.definition",
+                "lsp.references",
+                "lsp.hover"
               ]
             }
           },
@@ -1665,6 +1746,9 @@
           "instructions": {
             "type": "string",
             "minLength": 1
+          },
+          "avatar": {
+            "type": "string"
           }
         },
         "required": [

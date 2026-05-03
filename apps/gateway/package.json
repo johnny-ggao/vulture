@@ -14,15 +14,18 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@vulture/protocol": "workspace:*",
-    "@vulture/common": "workspace:*",
+    "@openai/agents": "^0.8.5",
     "@vulture/agent-runtime": "workspace:*",
+    "@vulture/common": "workspace:*",
     "@vulture/harness-core": "workspace:*",
     "@vulture/llm": "workspace:*",
-    "@openai/agents": "^0.8.5",
+    "@vulture/protocol": "workspace:*",
+    "hono": "^4.6.0",
     "openai": "^6.26.0",
-    "zod": "^4.0.0",
-    "hono": "^4.6.0"
+    "tinyglobby": "^0.2.16",
+    "vscode-jsonrpc": "^8.2.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

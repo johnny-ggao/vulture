@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { Agent } from "@openai/agents";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { authMiddleware, originGuard } from "./middleware/auth";
 import { errorBoundary } from "./middleware/error";
 import type { GatewayConfig } from "./env";
@@ -37,6 +38,10 @@ import { makeArtifactAuditHooks } from "./runtime/artifactAuditHooks";
 import { createGatewayStores } from "./server/stores";
 import { mountGatewayRoutes } from "./server/routes";
 import { createGatewayServerLocalTools } from "./server/localTools";
+
+// Resolve at module load. server.ts lives at apps/gateway/src/server.ts;
+// `../builtin-skills/` lifts out of `src/` into `apps/gateway/builtin-skills/`.
+const BUILTIN_SKILLS_DIR = fileURLToPath(new URL("../builtin-skills/", import.meta.url));
 
 export function buildServer(cfg: GatewayConfig): Hono {
   // runtimeHooks is created below, but SubagentSessionStore needs to fire
@@ -187,6 +192,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
     const entries = loadSkillEntries({
       workspaceDir: agent.workspace.path,
       profileDir: cfg.profileDir,
+      agentCoreDir: agentStore.agentCorePath(agent.id),
+      builtinDir: BUILTIN_SKILLS_DIR,
     });
     return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
   };
@@ -264,6 +271,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
       canHandle: (toolName) => mcpClientManager.canHandle(toolName),
       execute: (call) => mcpClientManager.executeToolCall(call),
     },
+    lspManager: cfg.lspManager,
     runtimeHooks: () => runtimeHooksRef,
     startConversationRun,
   });

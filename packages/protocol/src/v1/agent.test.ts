@@ -3,6 +3,7 @@ import {
   AgentSchema,
   SaveAgentRequestSchema,
   AGENT_TOOL_NAMES,
+  AGENT_TOOL_PRESETS,
   type Agent,
 } from "./agent";
 import type { Workspace } from "./workspace";
@@ -109,5 +110,57 @@ describe("Agent schema", () => {
 
   test("AGENT_TOOL_NAMES is non-empty", () => {
     expect(AGENT_TOOL_NAMES.length).toBeGreaterThan(0);
+  });
+});
+
+const LSP_TOOLS = [
+  "lsp.diagnostics",
+  "lsp.definition",
+  "lsp.references",
+  "lsp.hover",
+] as const;
+
+describe("foundation tool additions", () => {
+  test("AGENT_TOOL_NAMES includes the six new tools", () => {
+    expect(AGENT_TOOL_NAMES).toContain("grep");
+    expect(AGENT_TOOL_NAMES).toContain("glob");
+    expect(AGENT_TOOL_NAMES).toContain("lsp.diagnostics");
+    expect(AGENT_TOOL_NAMES).toContain("lsp.definition");
+    expect(AGENT_TOOL_NAMES).toContain("lsp.references");
+    expect(AGENT_TOOL_NAMES).toContain("lsp.hover");
+  });
+
+  test("minimal preset gains grep + glob, no LSP", () => {
+    expect(AGENT_TOOL_PRESETS.minimal).toContain("grep");
+    expect(AGENT_TOOL_PRESETS.minimal).toContain("glob");
+    for (const lsp of LSP_TOOLS) {
+      expect(AGENT_TOOL_PRESETS.minimal).not.toContain(lsp);
+    }
+  });
+
+  test("standard preset gains grep + glob, no LSP", () => {
+    expect(AGENT_TOOL_PRESETS.standard).toContain("grep");
+    expect(AGENT_TOOL_PRESETS.standard).toContain("glob");
+    for (const lsp of LSP_TOOLS) {
+      expect(AGENT_TOOL_PRESETS.standard).not.toContain(lsp);
+    }
+  });
+
+  test("developer preset gains all six new tools", () => {
+    for (const name of ["grep", "glob", "lsp.diagnostics", "lsp.definition", "lsp.references", "lsp.hover"] as const) {
+      expect(AGENT_TOOL_PRESETS.developer).toContain(name);
+    }
+  });
+
+  test("tl preset gains grep + glob, no LSP", () => {
+    expect(AGENT_TOOL_PRESETS.tl).toContain("grep");
+    expect(AGENT_TOOL_PRESETS.tl).toContain("glob");
+    for (const lsp of LSP_TOOLS) {
+      expect(AGENT_TOOL_PRESETS.tl).not.toContain(lsp);
+    }
+  });
+
+  test("full preset stays equal to AGENT_TOOL_NAMES", () => {
+    expect([...AGENT_TOOL_PRESETS.full]).toEqual([...AGENT_TOOL_NAMES]);
   });
 });

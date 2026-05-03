@@ -134,6 +134,38 @@ const browserScreenshotParameters = z.object({
   fullPage: z.boolean().nullable(),
 });
 
+const grepParameters = z.object({
+  pattern: z.string(),
+  path: z.string().nullable(),
+  glob: z.string().nullable(),
+  regex: z.boolean().nullable(),
+  caseSensitive: z.boolean().nullable(),
+  maxMatches: z.number().int().positive().nullable(),
+});
+
+const globParameters = z.object({
+  pattern: z.string(),
+  path: z.string().nullable(),
+  maxResults: z.number().int().positive().nullable(),
+});
+
+const lspDiagnosticsParameters = z.object({
+  filePath: z.string(),
+});
+
+const lspPositionalParameters = z.object({
+  filePath: z.string(),
+  line: z.number().int().min(0),
+  character: z.number().int().min(0),
+});
+
+const lspReferencesParameters = z.object({
+  filePath: z.string(),
+  line: z.number().int().min(0),
+  character: z.number().int().min(0),
+  includeDeclaration: z.boolean().nullable(),
+});
+
 export function createCoreToolRegistry(extras: GatewayToolSpec[] = []): ToolRegistry {
   return new ToolRegistry([
     readTool(),
@@ -162,6 +194,12 @@ export function createCoreToolRegistry(extras: GatewayToolSpec[] = []): ToolRegi
     browserNavigateTool(),
     browserWaitTool(),
     browserScreenshotTool(),
+    grepTool(),
+    globTool(),
+    lspDiagnosticsTool(),
+    lspDefinitionTool(),
+    lspReferencesTool(),
+    lspHoverTool(),
     ...extras,
   ]);
 }
@@ -593,6 +631,105 @@ function browserScreenshotTool(): GatewayToolSpec {
   };
 }
 
+function grepTool(): GatewayToolSpec {
+  return {
+    id: "grep",
+    sdkName: "grep",
+    label: "Grep",
+    description:
+      "Search file contents for a pattern. Prefer this over shell.exec/grep — output is structured and avoids context bloat.",
+    parameters: grepParameters,
+    source: "core",
+    category: "fs",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "grep", input),
+  };
+}
+
+function globTool(): GatewayToolSpec {
+  return {
+    id: "glob",
+    sdkName: "glob",
+    label: "Glob",
+    description:
+      "List file paths matching a glob pattern. Prefer this over shell.exec/find for filename matching.",
+    parameters: globParameters,
+    source: "core",
+    category: "fs",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "glob", input),
+  };
+}
+
+function lspDiagnosticsTool(): GatewayToolSpec {
+  return {
+    id: "lsp.diagnostics",
+    sdkName: "lsp_diagnostics",
+    label: "LSP Diagnostics",
+    description:
+      "Read TypeScript or Rust diagnostics for a file. May surface lsp.no_project_config or lsp.indexing — retry after 30s on the latter.",
+    parameters: lspDiagnosticsParameters,
+    source: "core",
+    category: "lsp",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "lsp.diagnostics", input),
+  };
+}
+
+function lspDefinitionTool(): GatewayToolSpec {
+  return {
+    id: "lsp.definition",
+    sdkName: "lsp_definition",
+    label: "LSP Definition",
+    description: "Jump to the definition of the symbol at a position in a TS or Rust file.",
+    parameters: lspPositionalParameters,
+    source: "core",
+    category: "lsp",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "lsp.definition", input),
+  };
+}
+
+function lspReferencesTool(): GatewayToolSpec {
+  return {
+    id: "lsp.references",
+    sdkName: "lsp_references",
+    label: "LSP References",
+    description: "Find all references to the symbol at a position.",
+    parameters: lspReferencesParameters,
+    source: "core",
+    category: "lsp",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "lsp.references", input),
+  };
+}
+
+function lspHoverTool(): GatewayToolSpec {
+  return {
+    id: "lsp.hover",
+    sdkName: "lsp_hover",
+    label: "LSP Hover",
+    description: "Get type information / documentation for the symbol at a position.",
+    parameters: lspPositionalParameters,
+    source: "core",
+    category: "lsp",
+    risk: "safe",
+    idempotent: true,
+    needsApproval: () => ({ needsApproval: false }),
+    execute: (ctx, input) => executeViaGatewayTool(ctx, "lsp.hover", input),
+  };
+}
+
 function browserApprovalDecision(toolName: string): GatewayToolApprovalDecision {
   return {
     needsApproval: true,
@@ -656,6 +793,13 @@ export function coreToolApprovalDecision(
       return browserApprovalDecision(toolName);
     case "shell.exec":
       return shellExecApprovalDecision(input, workspacePath, permissionMode);
+    case "grep":
+    case "glob":
+    case "lsp.diagnostics":
+    case "lsp.definition":
+    case "lsp.references":
+    case "lsp.hover":
+      return { needsApproval: false };
     default:
       return { needsApproval: false };
   }
