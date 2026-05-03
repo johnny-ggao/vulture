@@ -340,8 +340,8 @@ describe("SettingsPage Models", () => {
     fireEvent.click(screen.getByRole("tab", { name: "模型" }));
 
     expect(await screen.findByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
-    expect(screen.getByText("ChatGPT / Codex")).toBeDefined();
-    expect(screen.getByText("OpenAI API Key")).toBeDefined();
+    expect(screen.getAllByText("ChatGPT / Codex").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("OpenAI API Key").length).toBeGreaterThan(0);
     expect(screen.getByText("openai/gpt-5.5")).toBeDefined();
     expect(screen.queryByText("Codex Gateway")).toBeNull();
   });

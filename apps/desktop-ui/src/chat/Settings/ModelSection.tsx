@@ -11,6 +11,7 @@ type BusyAction = "save" | "clear" | "signin" | "signout" | null;
 
 export function ModelSection(props: SettingsPageProps) {
   const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [activeId, setActiveId] = useState("openai");
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState("");
@@ -20,10 +21,16 @@ export function ModelSection(props: SettingsPageProps) {
     let cancelled = false;
     props.onGetModelSettings()
       .then((next) => {
-        if (!cancelled) setSettings(next);
+        if (!cancelled) {
+          setSettings(next);
+          setLoadFailed(false);
+        }
       })
       .catch(() => {
-        if (!cancelled) setSettings({ providers: [] });
+        if (!cancelled) {
+          setSettings({ providers: [] });
+          setLoadFailed(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -32,6 +39,7 @@ export function ModelSection(props: SettingsPageProps) {
 
   const providers = settings?.providers ?? [];
   const active = providers.find((provider) => provider.id === activeId) ?? providers[0] ?? null;
+  const isLoading = settings === null;
 
   useEffect(() => {
     if (providers.length === 0) return;
@@ -47,6 +55,21 @@ export function ModelSection(props: SettingsPageProps) {
 
   const configuredCount = useMemo(
     () => providers.filter((provider) => provider.authProfiles.some(isConfigured)).length,
+    [providers],
+  );
+  const totalModels = useMemo(
+    () => providers.reduce((sum, provider) => sum + provider.models.length, 0),
+    [providers],
+  );
+  const totalProfiles = useMemo(
+    () => providers.reduce((sum, provider) => sum + provider.authProfiles.length, 0),
+    [providers],
+  );
+  const configuredProfiles = useMemo(
+    () => providers.reduce(
+      (sum, provider) => sum + provider.authProfiles.filter(isConfigured).length,
+      0,
+    ),
     [providers],
   );
 
@@ -86,16 +109,23 @@ export function ModelSection(props: SettingsPageProps) {
       title="模型"
       description="配置模型提供商与连接方式。OpenAI API Key 与 ChatGPT/Codex 登录会合并在同一个 OpenAI 提供方下。"
     >
-      <div className="provider-summary-strip" aria-label="模型配置摘要">
+      <div className="provider-summary-strip" aria-label="模型配置摘要" aria-live="polite">
         <span><b>{configuredCount}</b> / {providers.length} 已配置</span>
         <span>{providers.length} 个提供方</span>
-        <span>当前查看 <b>{active?.name ?? "无"}</b> · {active?.models.length ?? 0} 个模型</span>
+        <span>{totalModels} 个模型</span>
+        <span>{configuredProfiles} / {totalProfiles} 个连接可用</span>
+        <span>当前查看 <b>{active?.name ?? "无"}</b></span>
       </div>
 
-      {providers.length === 0 || !active ? (
+      {isLoading ? (
+        <div className="provider-banner provider-banner-neutral" role="status">
+          <span className="provider-banner-mark" aria-hidden="true" />
+          <span>正在加载模型目录…</span>
+        </div>
+      ) : providers.length === 0 || !active ? (
         <div className="provider-banner">
           <span className="provider-banner-mark" aria-hidden="true" />
-          <span>暂时无法加载模型目录。</span>
+          <span>{loadFailed ? "暂时无法加载模型目录。" : "没有可用的模型提供方。"}</span>
         </div>
       ) : (
         <div className="provider-grid">
@@ -107,6 +137,7 @@ export function ModelSection(props: SettingsPageProps) {
             <ul className="provider-list" role="listbox" aria-label="模型提供商">
               {providers.map((provider) => {
                 const configured = provider.authProfiles.some(isConfigured);
+                const availableProfiles = provider.authProfiles.filter(isConfigured).length;
                 return (
                   <li key={provider.id}>
                     <button
@@ -124,7 +155,9 @@ export function ModelSection(props: SettingsPageProps) {
                       </span>
                       <span className="provider-text">
                         <span className="provider-name">{provider.name}</span>
-                        <span className="provider-domain">{provider.baseUrl ?? provider.api ?? provider.id}</span>
+                        <span className="provider-domain">
+                          {provider.models.length} models · {availableProfiles}/{provider.authProfiles.length} auth
+                        </span>
                       </span>
                       <span className={"provider-row-status" + (configured ? " on" : "")}>
                         {configured ? "已配置" : "未配置"}
@@ -150,6 +183,40 @@ export function ModelSection(props: SettingsPageProps) {
               </div>
               <ProviderStatusPill provider={active} />
             </header>
+
+            <div className="provider-detail-metrics" aria-label={`${active.name} 模型连接摘要`}>
+              <MetricCell label="模型" value={String(active.models.length)} />
+              <MetricCell
+                label="可用连接"
+                value={`${active.authProfiles.filter(isConfigured).length}/${active.authProfiles.length}`}
+              />
+              <MetricCell label="接口" value={apiLabel(active.api)} />
+              <MetricCell label="默认认证" value={authOrderLabel(active)} />
+            </div>
+
+            {active.authOrder.length > 0 ? (
+              <div className="provider-auth-order" aria-label="默认连接优先级">
+                <span className="provider-auth-order-label">默认优先级</span>
+                <div className="provider-auth-order-list">
+                  {active.authOrder.map((profileId, index) => {
+                    const profile = active.authProfiles.find((item) => item.id === profileId);
+                    return (
+                      <span
+                        key={`${profileId}-${index}`}
+                        className={
+                          "provider-auth-chip" +
+                          (profile?.status === "configured" ? " on" : "") +
+                          (profile?.status === "expired" || profile?.status === "error" ? " warn" : "")
+                        }
+                      >
+                        <span>{index + 1}</span>
+                        {profile?.label ?? profileId}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             <div className="provider-form-stack">
               {active.authProfiles.map((profile) => (
@@ -181,9 +248,10 @@ export function ModelSection(props: SettingsPageProps) {
               <ul className="provider-models-list">
                 {active.models.map((model) => (
                   <li key={model.modelRef} className="provider-model-row">
-                    <span className="provider-model-name">{model.modelRef}</span>
+                    <span className="provider-model-name">{model.name}</span>
                     <span className="provider-model-meta">
-                      {model.reasoning ? "推理" : "快速"} · {model.input.join(" / ")}
+                      <span>{model.modelRef}</span>
+                      <span>{model.reasoning ? "推理" : "快速"} · {model.input.join(" / ")}</span>
                     </span>
                   </li>
                 ))}
@@ -193,6 +261,15 @@ export function ModelSection(props: SettingsPageProps) {
         </div>
       )}
     </SettingsSection>
+  );
+}
+
+function MetricCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="provider-metric-cell">
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
   );
 }
 
@@ -253,6 +330,7 @@ function AuthProfileRow({
   return (
     <FormRow label={profile.label} hint={profileHint(profile)}>
       <div className="provider-key-display">
+        <span className="provider-profile-mode">{profileModeLabel(profile.mode)}</span>
         <span className="provider-key-masked">{profileDisplay(profile)}</span>
         <span className={"provider-status " + statusClass(profile.status)}>
           {statusLabel(profile.status)}
@@ -334,6 +412,19 @@ function ProviderStatusPill({ provider }: { provider: ModelProviderView }) {
   );
 }
 
+function apiLabel(api?: string): string {
+  if (api === "openai-responses") return "Responses";
+  if (api === "openai-codex-responses") return "Codex";
+  if (api === "anthropic-messages") return "Messages";
+  return api ?? "默认";
+}
+
+function authOrderLabel(provider: ModelProviderView): string {
+  const first = provider.authProfiles.find((profile) => profile.id === provider.authOrder[0]);
+  if (!first) return "未设置";
+  return first.label;
+}
+
 function isConfigured(profile: AuthProfileView): boolean {
   return profile.status === "configured";
 }
@@ -342,7 +433,15 @@ function profileHint(profile: AuthProfileView): string {
   if (profile.message) return profile.message;
   if (profile.mode === "oauth") return "OAuth / subscription-backed connection";
   if (profile.mode === "api_key") return "Static credential connection";
-  return "Connection profile";
+  if (profile.mode === "token") return "Token-backed connection";
+  return "No credential required";
+}
+
+function profileModeLabel(mode: AuthProfileView["mode"]): string {
+  if (mode === "api_key") return "API Key";
+  if (mode === "oauth") return "OAuth";
+  if (mode === "token") return "Token";
+  return "None";
 }
 
 function profileDisplay(profile: AuthProfileView): ReactNode {
