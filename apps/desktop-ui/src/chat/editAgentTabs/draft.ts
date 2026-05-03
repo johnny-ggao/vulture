@@ -19,6 +19,8 @@ export interface AgentConfigPatch {
   instructions: string;
   /** Preset key for the agent's avatar; empty/undefined falls back to default. */
   avatar?: string;
+  /** Workspace override — when set, the gateway reconciles via ensureAgentWorkspace. */
+  workspace?: { id: string; name: string; path: string };
 }
 
 /** Editable draft state shared between the modal shell and each tab. */
@@ -41,6 +43,11 @@ export interface Draft {
   instructions: string;
   /** Selected avatar preset key, "" for the default deterministic avatar. */
   avatar: string;
+  /**
+   * Workspace override. Undefined in create mode (server-allocated).
+   * In edit mode, initialised from agent.workspace and editable by the user.
+   */
+  workspace?: { id: string; name: string; path: string };
 }
 
 /**
@@ -67,6 +74,9 @@ export function draftFromAgent(agent: Agent | null): Draft {
         : agent.skills.join(", "),
     instructions: agent?.instructions ?? "",
     avatar: agent?.avatar ?? "",
+    workspace: agent
+      ? { id: agent.workspace.id, name: agent.workspace.name, path: agent.workspace.path }
+      : undefined,
   };
 }
 

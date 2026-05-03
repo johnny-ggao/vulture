@@ -121,7 +121,28 @@ export function OverviewTab({
         />
       ) : null}
       {agent ? (
-        <InfoBlock title="Workspace" value={agent.workspace.path} />
+        <Field
+          label="工作区"
+          hint="智能体执行 read/write/grep/glob 等本地工具时使用的根目录。"
+        >
+          <input
+            type="text"
+            value={draft.workspace?.path ?? agent.workspace.path}
+            onChange={(e) =>
+              onChange({
+                ...draft,
+                workspace: {
+                  id: draft.workspace?.id ?? agent.workspace.id,
+                  name: draft.workspace?.name ?? agent.workspace.name,
+                  path: e.target.value,
+                },
+              })
+            }
+            spellCheck={false}
+            autoComplete="off"
+            placeholder="/Users/you/Code/your-project"
+          />
+        </Field>
       ) : null}
     </div>
   );
