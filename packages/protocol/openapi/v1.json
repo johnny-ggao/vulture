@@ -1936,6 +1936,16 @@
               "auto_review",
               "full_access"
             ]
+          },
+          "workingDirectory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

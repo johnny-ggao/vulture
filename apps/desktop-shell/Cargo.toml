@@ -31,6 +31,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
 tauri.workspace = true
+tauri-plugin-dialog = "2"
 tokio.workspace = true
 tower.workspace = true
 tower-http.workspace = true

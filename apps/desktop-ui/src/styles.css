@@ -2112,6 +2112,67 @@ pre {
   pointer-events: none;
 }
 
+.composer-workdir-chip {
+  display: inline-flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--fill-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.composer-workdir-chip:hover {
+  border-color: var(--text-quaternary);
+}
+.composer-workdir-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 220px;
+}
+.composer-workdir-trigger:hover {
+  color: var(--text-primary);
+  background: var(--fill-quaternary);
+}
+.composer-workdir-trigger:active {
+  background: var(--fill-tertiary);
+}
+.composer-workdir-trigger:focus-visible {
+  outline: 0;
+  background: var(--brand-ring);
+}
+.composer-workdir-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-workdir-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  border: none;
+  border-left: 1px solid var(--fill-secondary);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.composer-workdir-clear:hover {
+  color: var(--text-primary);
+  background: var(--fill-quaternary);
+}
+
 /* Custom agent picker — replaces native <select> with brandable popover.
  * Trigger pill matches .chip in size/shape; menu floats above. */
 .agent-picker { position: relative; }

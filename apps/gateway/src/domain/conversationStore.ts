@@ -48,9 +48,17 @@ export class ConversationStore {
     const id = genId();
     this.db
       .query(
-        "INSERT INTO conversations(id, agent_id, title, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO conversations(id, agent_id, title, permission_mode, working_directory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(id, req.agentId, req.title ?? "", req.permissionMode ?? "default", now, now);
+      .run(
+        id,
+        req.agentId,
+        req.title ?? "",
+        req.permissionMode ?? "default",
+        req.workingDirectory ?? null,
+        now,
+        now,
+      );
     return this.get(id) as Conversation;
   }
 

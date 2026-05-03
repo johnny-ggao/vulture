@@ -23,6 +23,16 @@ const TEXTAREA_MAX_HEIGHT = 280;
 export interface ComposerProps {
   permissionMode?: ConversationPermissionMode;
   onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
+  /**
+   * Optional working-directory affordance. When provided the composer renders
+   * a chip below the textarea showing the current directory's basename (or
+   * "选择工作目录" when null). Clicking the chip should open a folder picker;
+   * clicking a small × clears it. The Composer doesn't open the picker itself
+   * — the parent owns the Tauri dialog integration.
+   */
+  workingDirectory?: string | null;
+  onPickWorkingDirectory?: () => void | Promise<void>;
+  onClearWorkingDirectory?: () => void | Promise<void>;
   running: boolean;
   onSend: (input: string, files: File[]) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
@@ -177,6 +187,13 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <div className="composer-controls">
+        {props.onPickWorkingDirectory ? (
+          <WorkingDirectoryChip
+            workingDirectory={props.workingDirectory ?? null}
+            onPick={props.onPickWorkingDirectory}
+            onClear={props.onClearWorkingDirectory}
+          />
+        ) : null}
         <ChipPopover<ConversationPermissionMode>
           ariaLabel="工具权限"
           icon={<ShieldIcon />}
@@ -279,6 +296,72 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+
+interface WorkingDirectoryChipProps {
+  workingDirectory: string | null;
+  onPick: () => void | Promise<void>;
+  onClear?: () => void | Promise<void>;
+}
+
+/**
+ * Composer chip that shows the active per-conversation working directory
+ * (basename only — full path lives in title) or "选择工作目录" when unset.
+ * Click → parent opens the folder picker. The little × on the right clears
+ * the override and falls back to the agent's bound workspace.
+ */
+function WorkingDirectoryChip({ workingDirectory, onPick, onClear }: WorkingDirectoryChipProps) {
+  const label = workingDirectory ? basename(workingDirectory) : "选择工作目录";
+  const titleText = workingDirectory ?? "尚未为本对话选择工作目录";
+  return (
+    <span className="composer-workdir-chip" title={titleText}>
+      <button
+        type="button"
+        className="composer-workdir-trigger"
+        aria-label={
+          workingDirectory
+            ? `当前工作目录: ${workingDirectory}（点击更换）`
+            : "选择工作目录"
+        }
+        onClick={() => void onPick()}
+      >
+        <FolderIcon />
+        <span className="composer-workdir-label">{label}</span>
+      </button>
+      {workingDirectory && onClear ? (
+        <button
+          type="button"
+          className="composer-workdir-clear"
+          aria-label="清除工作目录，回到智能体默认工作区"
+          onClick={() => void onClear()}
+        >
+          ×
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+function basename(path: string): string {
+  // Cross-platform basename — pick the last segment after / or \. Empty
+  // trailing segments (path ending in a separator) collapse to the prior one.
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+function FolderIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true">
+      <path
+        d="M1.5 3.5a1 1 0 0 1 1-1h3l1.5 1.5h5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        fill="none"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 interface ChipPopoverOption<V extends string> {
   value: V;

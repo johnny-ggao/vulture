@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
@@ -564,6 +565,29 @@ export function App() {
     setAgentEditTarget(null);
   }, []);
 
+  // Open the native folder picker; on success, persist the choice on the
+  // active conversation (or stage it locally if no conversation exists yet —
+  // useRunController flushes the staged value on the implicit create).
+  // openDialog returns null/undefined when the user cancels — leave state alone.
+  const handlePickWorkingDirectory = useCallback(async () => {
+    try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "选择工作目录",
+      });
+      if (typeof picked === "string" && picked.length > 0) {
+        await runController.setWorkingDirectory(picked);
+      }
+    } catch (cause) {
+      console.error("Folder picker failed", cause);
+    }
+  }, [runController]);
+
+  const handleClearWorkingDirectory = useCallback(async () => {
+    await runController.setWorkingDirectory(null);
+  }, [runController]);
+
   // ---- Keyboard shortcuts ---------------------------------------
   // ⌘1-6 / Ctrl+1-6 jump between primary views. ⌘N starts a new
   // conversation (skipped when typing in any input/textarea so the
@@ -850,6 +874,9 @@ export function App() {
               onOpenAgentEdit={handleOpenAgentEdit}
               permissionMode={runController.permissionMode}
               onChangePermissionMode={runController.changePermissionMode}
+              workingDirectory={runController.workingDirectory}
+              onPickWorkingDirectory={handlePickWorkingDirectory}
+              onClearWorkingDirectory={handleClearWorkingDirectory}
               messages={runController.messages.items}
               messageUsages={runController.messageUsages}
               subagentSessions={runController.subagentSessions}

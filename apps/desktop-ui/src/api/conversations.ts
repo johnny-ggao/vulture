@@ -43,6 +43,7 @@ export interface CreateConversationRequest {
   agentId: string;
   title?: string;
   permissionMode?: ConversationPermissionMode;
+  workingDirectory?: string | null;
 }
 
 export interface UpdateConversationRequest {

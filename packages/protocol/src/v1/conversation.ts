@@ -97,12 +97,14 @@ export const CreateConversationRequestSchema = z
     agentId: z.string().min(1),
     title: z.string().optional(),
     permissionMode: ConversationPermissionModeInputSchema.default("default"),
+    workingDirectory: z.string().nullable().optional(),
   })
   .strict();
 export type CreateConversationRequest = {
   agentId: string;
   title?: string;
   permissionMode?: ConversationPermissionMode;
+  workingDirectory?: string | null;
 };
 
 export const UpdateConversationRequestSchema = z

@@ -21,6 +21,15 @@ export interface ChatViewProps {
   onOpenAgentEdit?: (agentId: string) => void;
   permissionMode?: ConversationPermissionMode;
   onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
+  /**
+   * Active conversation's working-directory override (null = unset). When
+   * provided alongside `onPickWorkingDirectory`, the Composer renders a chip
+   * showing the current dir basename. The chip is suppressed entirely when
+   * the pick callback is omitted (e.g. test fixtures with no Tauri).
+   */
+  workingDirectory?: string | null;
+  onPickWorkingDirectory?: () => void | Promise<void>;
+  onClearWorkingDirectory?: () => void | Promise<void>;
 
   messages: ReadonlyArray<MessageDto>;
   messageUsages?: ReadonlyMap<string, TokenUsageDto>;
@@ -250,6 +259,9 @@ export function ChatView(props: ChatViewProps) {
         <Composer
           permissionMode={props.permissionMode}
           onChangePermissionMode={props.onChangePermissionMode}
+          workingDirectory={props.workingDirectory ?? null}
+          onPickWorkingDirectory={props.onPickWorkingDirectory}
+          onClearWorkingDirectory={props.onClearWorkingDirectory}
           running={running}
           onSend={props.onSend}
           onCancel={props.onCancel}
