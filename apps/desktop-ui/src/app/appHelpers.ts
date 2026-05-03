@@ -25,10 +25,10 @@ export interface ProfileListResponse {
  * Kept here (rather than a separate constants file) until copy is finalised.
  */
 export const DEFAULT_CHAT_SUGGESTIONS: ReadonlyArray<string> = [
-  "帮我审查最近的代码改动",
-  "解释这个错误日志",
-  "起草一份产品方案",
-  "总结这份文档",
+  "看看当前工作区，告诉我这是个什么项目",
+  "用 30 秒介绍你能帮我做什么",
+  "随便挑 3 件你能帮我做的事讲一下",
+  "现在适合做什么？给我几个具体方向",
 ];
 
 /** Re-insert a soft-deleted agent at its original position by createdAt. */
