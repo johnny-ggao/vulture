@@ -1,17 +1,26 @@
 import type { ApiClient } from "./client";
 
-export type WebSearchProviderId = "duckduckgo-html" | "searxng";
+export type WebSearchProviderId =
+  | "multi"
+  | "duckduckgo-html"
+  | "bing-html"
+  | "brave-html"
+  | "brave-api"
+  | "searxng";
 
 export interface WebSearchSettings {
   provider: WebSearchProviderId;
   searxngBaseUrl: string | null;
+  braveApiKey: string | null;
   updatedAt: string;
 }
 
 export interface WebSearchProviderDescriptor {
   id: WebSearchProviderId;
   label: string;
+  description?: string;
   requiresBaseUrl: boolean;
+  requiresApiKey: boolean;
 }
 
 export interface WebSearchSettingsResponse {
@@ -22,6 +31,7 @@ export interface WebSearchSettingsResponse {
 export interface UpdateWebSearchSettings {
   provider?: WebSearchProviderId;
   searxngBaseUrl?: string | null;
+  braveApiKey?: string | null;
 }
 
 export interface WebSearchTestResult {

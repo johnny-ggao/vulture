@@ -3,9 +3,11 @@ import { ToolCallError } from "@vulture/agent-runtime";
 import {
   BingHtmlSearchProvider,
   BraveHtmlSearchProvider,
+  BraveSearchApiProvider,
   createFallbackSearchProvider,
   createWebAccessService,
   DuckDuckGoHtmlSearchProvider,
+  searchProviderFromSettings,
   SearxngSearchProvider,
   type SearchProvider,
 } from "./webAccess";
@@ -258,6 +260,90 @@ describe("WebAccessService", () => {
     await expect(provider.search({ query: "x" })).rejects.toMatchObject({
       code: "tool.execution_failed",
     });
+  });
+
+  test("Brave API provider sends subscription token and parses web.results payload", async () => {
+    const requested: { url: string; headers: Record<string, string> }[] = [];
+    const provider = new BraveSearchApiProvider({
+      apiKey: "br-secret",
+      fetch: async (url, init) => {
+        requested.push({
+          url: String(url),
+          headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        });
+        return Response.json({
+          web: {
+            results: [
+              {
+                title: "Brave API Hit",
+                url: "https://example.com/api",
+                description: "API snippet",
+              },
+              { title: "", url: "https://drop.example.com" },
+            ],
+          },
+        });
+      },
+    });
+
+    await expect(provider.search({ query: "agent search", limit: 3 })).resolves.toEqual({
+      query: "agent search",
+      provider: "brave-api",
+      results: [
+        { title: "Brave API Hit", url: "https://example.com/api", snippet: "API snippet" },
+      ],
+    });
+    expect(requested[0].url).toContain("api.search.brave.com/res/v1/web/search");
+    expect(requested[0].url).toContain("count=3");
+    expect(requested[0].url).toContain("text_decorations=false");
+    expect(requested[0].headers["x-subscription-token"]).toBe("br-secret");
+  });
+
+  test("Brave API provider rejects missing key and surfaces non-2xx as a tool error", async () => {
+    expect(() => new BraveSearchApiProvider({ apiKey: "  ", fetch: async () => new Response() }))
+      .toThrow("Brave Search API key is required");
+
+    const provider = new BraveSearchApiProvider({
+      apiKey: "br-secret",
+      fetch: async () => new Response("rate limited", { status: 429 }),
+    });
+    await expect(provider.search({ query: "x" })).rejects.toMatchObject({
+      code: "tool.execution_failed",
+      message: "Brave Search API returned 429",
+    });
+  });
+
+  test("searchProviderFromSettings returns the correct provider per id", () => {
+    const fetchImpl = async () => new Response();
+    expect(searchProviderFromSettings({ provider: "multi", searxngBaseUrl: null }, fetchImpl)).toBeNull();
+    expect(
+      searchProviderFromSettings({ provider: "duckduckgo-html", searxngBaseUrl: null }, fetchImpl),
+    ).toBeInstanceOf(DuckDuckGoHtmlSearchProvider);
+    expect(
+      searchProviderFromSettings({ provider: "bing-html", searxngBaseUrl: null }, fetchImpl),
+    ).toBeInstanceOf(BingHtmlSearchProvider);
+    expect(
+      searchProviderFromSettings({ provider: "brave-html", searxngBaseUrl: null }, fetchImpl),
+    ).toBeInstanceOf(BraveHtmlSearchProvider);
+    expect(
+      searchProviderFromSettings(
+        { provider: "brave-api", searxngBaseUrl: null, braveApiKey: "abc" },
+        fetchImpl,
+      ),
+    ).toBeInstanceOf(BraveSearchApiProvider);
+    // brave-api without a key should refuse to instantiate
+    expect(
+      searchProviderFromSettings(
+        { provider: "brave-api", searxngBaseUrl: null, braveApiKey: null },
+        fetchImpl,
+      ),
+    ).toBeNull();
+    expect(
+      searchProviderFromSettings(
+        { provider: "searxng", searxngBaseUrl: "https://search.example.com/" },
+        fetchImpl,
+      ),
+    ).toBeInstanceOf(SearxngSearchProvider);
   });
 
   test("default WebAccessService uses fallback chain across DDG, Bing, Brave", async () => {

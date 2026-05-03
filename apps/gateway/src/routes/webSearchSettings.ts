@@ -14,7 +14,9 @@ import {
 export interface WebSearchProviderDescriptor {
   id: WebSearchProviderId;
   label: string;
+  description: string;
   requiresBaseUrl: boolean;
+  requiresApiKey: boolean;
 }
 
 export interface WebSearchSettingsResponse {
@@ -40,8 +42,50 @@ export interface WebSearchSettingsRouterDeps {
 }
 
 export const WEB_SEARCH_PROVIDER_DESCRIPTORS: WebSearchProviderDescriptor[] = [
-  { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-  { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+  {
+    id: "multi",
+    label: "Auto (DDG → Bing → Brave)",
+    description:
+      "Free, zero-config. Tries each engine's HTML page and falls back automatically when one is rate-limited.",
+    requiresBaseUrl: false,
+    requiresApiKey: false,
+  },
+  {
+    id: "duckduckgo-html",
+    label: "DuckDuckGo (HTML)",
+    description: "Scrapes duckduckgo.com/html. Free; no API key.",
+    requiresBaseUrl: false,
+    requiresApiKey: false,
+  },
+  {
+    id: "bing-html",
+    label: "Bing (HTML)",
+    description: "Scrapes bing.com/search. Free; no API key.",
+    requiresBaseUrl: false,
+    requiresApiKey: false,
+  },
+  {
+    id: "brave-html",
+    label: "Brave Search (HTML)",
+    description: "Scrapes search.brave.com. Free; no API key.",
+    requiresBaseUrl: false,
+    requiresApiKey: false,
+  },
+  {
+    id: "brave-api",
+    label: "Brave Search API",
+    description:
+      "Official Brave Search API. Higher quality, 2000 free queries/month. Requires an API key from search.brave.com/api.",
+    requiresBaseUrl: false,
+    requiresApiKey: true,
+  },
+  {
+    id: "searxng",
+    label: "SearXNG",
+    description: "Self-hosted or public SearXNG instance. Requires a base URL.",
+    requiresBaseUrl: true,
+    requiresApiKey: false,
+  },
 ];
 
 export function makeWebSearchSettingsTester(fetchImpl: FetchLike = fetch) {
@@ -114,6 +158,7 @@ function parsePatch(raw: unknown): UpdateWebSearchSettingsInput {
   return {
     provider: providerField(value.provider),
     searxngBaseUrl: nullableString(value.searxngBaseUrl),
+    braveApiKey: nullableString(value.braveApiKey),
   };
 }
 
@@ -136,19 +181,34 @@ function normalizeTestSettings(
   const provider = input.provider ?? current.provider;
   const searxngBaseUrl =
     input.searxngBaseUrl !== undefined ? input.searxngBaseUrl : current.searxngBaseUrl;
+  const braveApiKey =
+    input.braveApiKey !== undefined ? input.braveApiKey : current.braveApiKey;
   if (provider === "searxng" && !searxngBaseUrl) {
     throw new Error("searxngBaseUrl is required");
+  }
+  if (provider === "brave-api" && !braveApiKey) {
+    throw new Error("braveApiKey is required");
   }
   return {
     ...current,
     provider,
     searxngBaseUrl,
+    braveApiKey,
   };
 }
 
 function providerField(value: unknown): WebSearchProviderId | undefined {
   if (value === undefined) return undefined;
-  if (value === "duckduckgo-html" || value === "searxng") return value;
+  if (typeof value !== "string") throw new Error("provider is invalid");
+  const allowed: WebSearchProviderId[] = [
+    "multi",
+    "duckduckgo-html",
+    "bing-html",
+    "brave-html",
+    "brave-api",
+    "searxng",
+  ];
+  if (allowed.includes(value as WebSearchProviderId)) return value as WebSearchProviderId;
   throw new Error("provider is invalid");
 }
 

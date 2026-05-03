@@ -13,8 +13,9 @@ const TEST_QUERY = "OpenAI Agents SDK";
 
 export function WebSearchSection(props: SettingsPageProps) {
   const [settings, setSettings] = useState<WebSearchSettingsResponse | null>(null);
-  const [provider, setProvider] = useState<WebSearchProviderId>("duckduckgo-html");
+  const [provider, setProvider] = useState<WebSearchProviderId>("multi");
   const [searxngBaseUrl, setSearxngBaseUrl] = useState("");
+  const [braveApiKey, setBraveApiKey] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<WebSearchTestResult | null>(null);
@@ -28,6 +29,7 @@ export function WebSearchSection(props: SettingsPageProps) {
       setSettings(loaded);
       setProvider(loaded.settings.provider);
       setSearxngBaseUrl(loaded.settings.searxngBaseUrl ?? "");
+      setBraveApiKey(loaded.settings.braveApiKey ?? "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -42,7 +44,13 @@ export function WebSearchSection(props: SettingsPageProps) {
   const payload = useMemo(() => ({
     provider,
     searxngBaseUrl: provider === "searxng" ? searxngBaseUrl.trim() : null,
-  }), [provider, searxngBaseUrl]);
+    braveApiKey: provider === "brave-api" ? braveApiKey.trim() : null,
+  }), [provider, searxngBaseUrl, braveApiKey]);
+
+  const currentDescriptor = useMemo(
+    () => settings?.providers.find((descriptor) => descriptor.id === provider) ?? null,
+    [settings, provider],
+  );
 
   async function testSearch() {
     if (busy) return;
@@ -69,6 +77,7 @@ export function WebSearchSection(props: SettingsPageProps) {
       setSettings(updated);
       setProvider(updated.settings.provider);
       setSearxngBaseUrl(updated.settings.searxngBaseUrl ?? "");
+      setBraveApiKey(updated.settings.braveApiKey ?? "");
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -114,6 +123,7 @@ export function WebSearchSection(props: SettingsPageProps) {
             }}
           >
             {(settings?.providers ?? [
+              { id: "multi", label: "Auto (DDG → Bing → Brave)" },
               { id: "duckduckgo-html", label: "DuckDuckGo HTML" },
               { id: "searxng", label: "SearXNG" },
             ]).map((item) => (
@@ -123,6 +133,9 @@ export function WebSearchSection(props: SettingsPageProps) {
             ))}
           </select>
         </FormRow>
+        {currentDescriptor?.description ? (
+          <p className="settings-hint">{currentDescriptor.description}</p>
+        ) : null}
         <FormRow label="SearXNG URL" hint="仅选择 SearXNG 时需要。">
           <input
             className="provider-text-input"
@@ -132,6 +145,21 @@ export function WebSearchSection(props: SettingsPageProps) {
             placeholder="https://search.example.com"
             onChange={(event) => {
               setSearxngBaseUrl(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Brave API Key" hint="仅选择 Brave Search API 时需要。可在 search.brave.com/api 申请。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Brave API Key"
+            value={braveApiKey}
+            disabled={provider !== "brave-api" || busy === "load"}
+            placeholder="brave-api-key"
+            onChange={(event) => {
+              setBraveApiKey(event.target.value);
               setSaved(false);
               setTestResult(null);
             }}

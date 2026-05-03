@@ -126,26 +126,32 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
     onGetModelSettings: mock(async () => defaultModelSettings),
     onGetWebSearchSettings: mock(async (): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: "duckduckgo-html",
+        provider: "multi",
         searxngBaseUrl: null,
+        braveApiKey: null,
         updatedAt: "2026-05-01T00:00:00.000Z",
       },
       providers: [
-        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
+        { id: "brave-api", label: "Brave Search API", requiresBaseUrl: false, requiresApiKey: true },
       ],
     })),
     onUpdateWebSearchSettings: mock(async (
       input: UpdateWebSearchSettings,
     ): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: input.provider ?? "duckduckgo-html",
+        provider: input.provider ?? "multi",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
+        braveApiKey: input.braveApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
-        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
+        { id: "brave-api", label: "Brave Search API", requiresBaseUrl: false, requiresApiKey: true },
       ],
     })),
     onTestWebSearchSettings: mock(async (): Promise<WebSearchTestResult> => ({
@@ -375,13 +381,15 @@ describe("SettingsPage Web Search", () => {
       input: UpdateWebSearchSettings,
     ): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: input.provider ?? "duckduckgo-html",
+        provider: input.provider ?? "multi",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
+        braveApiKey: input.braveApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
-        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
       ],
     }));
     const onTestWebSearchSettings = mock(async (): Promise<WebSearchTestResult> => ({
@@ -410,6 +418,7 @@ describe("SettingsPage Web Search", () => {
       expect(onTestWebSearchSettings).toHaveBeenCalledWith({
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
+        braveApiKey: null,
         query: "OpenAI Agents SDK",
       });
     });
@@ -420,6 +429,7 @@ describe("SettingsPage Web Search", () => {
       expect(onUpdateWebSearchSettings).toHaveBeenCalledWith({
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
+        braveApiKey: null,
       });
     });
   });

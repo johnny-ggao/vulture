@@ -72,8 +72,15 @@ export interface SearchProvider {
 }
 
 export interface SearchProviderSettings {
-  provider: "duckduckgo-html" | "searxng";
+  provider:
+    | "multi"
+    | "duckduckgo-html"
+    | "bing-html"
+    | "brave-html"
+    | "brave-api"
+    | "searxng";
   searxngBaseUrl: string | null;
+  braveApiKey?: string | null;
 }
 
 export interface WebAccessService {
@@ -281,6 +288,52 @@ export function createDefaultFallbackSearchProvider(fetch: FetchLike): SearchPro
   ]);
 }
 
+export class BraveSearchApiProvider implements SearchProvider {
+  readonly id = "brave-api";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Brave Search API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = new URL("https://api.search.brave.com/res/v1/web/search");
+    url.searchParams.set("q", request.query);
+    url.searchParams.set("count", String(limit));
+    url.searchParams.set("text_decorations", "false");
+    const response = await this.fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        "X-Subscription-Token": this.apiKey,
+        "User-Agent": "Vulture/1.0",
+      },
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Brave Search API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Brave Search API invalid JSON");
+    });
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseBraveApiResults(payload).slice(0, limit),
+    };
+  }
+}
+
 export class SearxngSearchProvider implements SearchProvider {
   readonly id = "searxng";
   private readonly baseUrl: string;
@@ -317,9 +370,24 @@ export function searchProviderFromSettings(
   settings: SearchProviderSettings,
   fetch: FetchLike,
 ): SearchProvider | null {
-  if (settings.provider !== "searxng") return null;
-  if (!settings.searxngBaseUrl) return null;
-  return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
+  switch (settings.provider) {
+    case "multi":
+      return null; // fall through to default fallback chain
+    case "duckduckgo-html":
+      return new DuckDuckGoHtmlSearchProvider(fetch);
+    case "bing-html":
+      return new BingHtmlSearchProvider(fetch);
+    case "brave-html":
+      return new BraveHtmlSearchProvider(fetch);
+    case "brave-api":
+      if (!settings.braveApiKey) return null;
+      return new BraveSearchApiProvider({ apiKey: settings.braveApiKey, fetch });
+    case "searxng":
+      if (!settings.searxngBaseUrl) return null;
+      return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
+    default:
+      return null;
+  }
 }
 
 export function classifyUrl(value: unknown): WebUrlClassification {
@@ -476,6 +544,20 @@ function parseBraveResults(html: string): WebSearchResult[] {
     results.push(snippet ? { title, url, snippet } : { title, url });
   }
   return results;
+}
+
+function parseBraveApiResults(payload: unknown): WebSearchResult[] {
+  const value = isRecord(payload) ? payload : {};
+  const web = isRecord(value.web) ? value.web : {};
+  const results = Array.isArray(web.results) ? web.results : [];
+  return results.flatMap((item): WebSearchResult[] => {
+    if (!isRecord(item)) return [];
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const snippet = typeof item.description === "string" ? item.description.trim() : "";
+    if (!title || !url) return [];
+    return [{ title, url, ...(snippet ? { snippet } : {}) }];
+  });
 }
 
 function parseSearxngResults(payload: unknown): WebSearchResult[] {
