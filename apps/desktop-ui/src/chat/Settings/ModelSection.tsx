@@ -156,7 +156,7 @@ export function ModelSection(props: SettingsPageProps) {
                       <span className="provider-text">
                         <span className="provider-name">{provider.name}</span>
                         <span className="provider-domain">
-                          {provider.models.length} models · {availableProfiles}/{provider.authProfiles.length} auth
+                          {provider.models.length} 模型 · {availableProfiles}/{provider.authProfiles.length} 连接
                         </span>
                       </span>
                       <span className={"provider-row-status" + (configured ? " on" : "")}>
@@ -219,6 +219,10 @@ export function ModelSection(props: SettingsPageProps) {
             ) : null}
 
             <div className="provider-form-stack">
+              <div className="provider-section-head">
+                <span>连接方式</span>
+                <span>{active.authProfiles.length} 个</span>
+              </div>
               {active.authProfiles.map((profile) => (
                 <AuthProfileRow
                   key={profile.id}
@@ -249,9 +253,14 @@ export function ModelSection(props: SettingsPageProps) {
                 {active.models.map((model) => (
                   <li key={model.modelRef} className="provider-model-row">
                     <span className="provider-model-name">{model.name}</span>
-                    <span className="provider-model-meta">
-                      <span>{model.modelRef}</span>
-                      <span>{model.reasoning ? "推理" : "快速"} · {model.input.join(" / ")}</span>
+                    <span className="provider-model-ref">{model.modelRef}</span>
+                    <span className="provider-model-tags" aria-label={`${model.name} 能力`}>
+                      <span className={"provider-model-tag" + (model.reasoning ? " strong" : "")}>
+                        {model.reasoning ? "推理" : "快速"}
+                      </span>
+                      {model.input.map((input) => (
+                        <span key={input} className="provider-model-tag">{inputLabel(input)}</span>
+                      ))}
                     </span>
                   </li>
                 ))}
@@ -308,6 +317,7 @@ function AuthProfileRow({
             placeholder="sk-..."
             value={draftKey}
             onChange={(event) => onDraftKey(event.target.value)}
+            aria-label={`${profile.label} API Key`}
             autoComplete="off"
             spellCheck="false"
           />
@@ -431,10 +441,10 @@ function isConfigured(profile: AuthProfileView): boolean {
 
 function profileHint(profile: AuthProfileView): string {
   if (profile.message) return profile.message;
-  if (profile.mode === "oauth") return "OAuth / subscription-backed connection";
-  if (profile.mode === "api_key") return "Static credential connection";
-  if (profile.mode === "token") return "Token-backed connection";
-  return "No credential required";
+  if (profile.mode === "oauth") return "通过订阅或授权会话连接。";
+  if (profile.mode === "api_key") return "使用静态 API Key 连接。";
+  if (profile.mode === "token") return "使用 Bearer Token 连接。";
+  return "无需凭据即可连接。";
 }
 
 function profileModeLabel(mode: AuthProfileView["mode"]): string {
@@ -469,6 +479,15 @@ function statusClass(status: AuthProfileView["status"]): string {
   if (status === "configured") return "on";
   if (status === "expired" || status === "error") return "warn";
   return "off";
+}
+
+function inputLabel(input: string): string {
+  if (input === "text") return "文本";
+  if (input === "image") return "图像";
+  if (input === "audio") return "音频";
+  if (input === "video") return "视频";
+  if (input === "document") return "文档";
+  return "其他";
 }
 
 function providerGlyph(providerId: string): string {

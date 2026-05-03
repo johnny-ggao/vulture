@@ -300,6 +300,15 @@ describe("SettingsPage Models", () => {
     expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
     expect(screen.getAllByRole("option").length).toBeGreaterThan(1);
     expect(screen.getByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
+    expect(screen.getByText("连接方式")).toBeDefined();
+    expect(screen.getByText("使用静态 API Key 连接。")).toBeDefined();
+    expect(screen.getAllByText("推理").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("文本").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("图像").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "添加密钥" }));
+
+    expect(screen.getByLabelText("OpenAI API Key API Key")).toBeDefined();
   });
 
   test("model tab groups Codex under OpenAI instead of a gateway provider", async () => {

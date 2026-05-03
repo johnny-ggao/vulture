@@ -4176,6 +4176,22 @@ pre {
   background: color-mix(in oklab, var(--accio-surface, var(--bg-primary)) 88%, transparent);
   overflow: hidden;
 }
+.provider-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in oklab, var(--accio-border, var(--fill-quaternary)) 66%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 760;
+}
+.provider-section-head span:last-child {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
 .provider-form-stack .form-row {
   margin: 0;
   padding: 14px;
@@ -4300,22 +4316,42 @@ pre {
   white-space: nowrap;
   min-width: 0;
 }
-.provider-model-meta {
-  display: grid;
-  gap: 2px;
-  font-size: 11px;
-  color: var(--text-tertiary);
+.provider-model-ref {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.provider-model-meta span {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.provider-model-meta span:first-child {
-  font-family: var(--font-mono);
+.provider-model-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.provider-model-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid color-mix(in oklab, var(--accio-border, var(--fill-tertiary)) 70%, transparent);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accio-surface-muted, var(--fill-quaternary)) 64%, transparent);
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 680;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.provider-model-tag.strong {
+  border-color: color-mix(in oklab, var(--brand-500) 18%, transparent);
+  background: color-mix(in oklab, var(--brand-500) 7%, transparent);
+  color: var(--brand-600, var(--brand-500));
 }
 
 .provider-select {
