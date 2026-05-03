@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { describe, expect, test, mock } from "bun:test";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { HistoryDrawer } from "./HistoryDrawer";
 import type { ConversationDto } from "../api/conversations";
 
@@ -36,6 +36,100 @@ function renderDrawer(onDelete: ((id: string) => void) | undefined) {
 }
 
 describe("HistoryDrawer", () => {
+  test("renders as a labelled modal dialog", () => {
+    renderDrawer(undefined);
+
+    const dialog = screen.getByRole("dialog", { name: "历史" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.getAttribute("aria-describedby")).toBe("history-drawer-subtitle");
+  });
+
+  test("Escape closes the drawer", () => {
+    const onClose = mock(() => {});
+    render(
+      <HistoryDrawer
+        open
+        onClose={onClose}
+        items={items}
+        activeId={null}
+        onSelect={() => {}}
+        onNew={() => {}}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("focus enters the drawer and returns to the trigger on close", async () => {
+    const trigger = document.createElement("button");
+    trigger.textContent = "打开历史";
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const { unmount } = renderDrawer(undefined);
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByLabelText("搜索历史会话"));
+    });
+
+    unmount();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(trigger);
+    });
+    trigger.remove();
+  });
+
+  test("Tab focus wraps inside the drawer", async () => {
+    renderDrawer(mock(() => {}));
+    const search = screen.getByLabelText("搜索历史会话");
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(search);
+    });
+
+    const newConversation = screen.getByTitle("新建对话");
+    newConversation.focus();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "历史" }), {
+      key: "Tab",
+      shiftKey: true,
+    });
+
+    const deleteButtons = screen.getAllByRole("button", { name: "删除" });
+    expect(document.activeElement).toBe(deleteButtons[deleteButtons.length - 1]);
+
+    deleteButtons[deleteButtons.length - 1]?.focus();
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "历史" }), { key: "Tab" });
+    expect(document.activeElement).toBe(newConversation);
+  });
+
+  test("clicking the overlay closes while clicking the drawer itself does not", () => {
+    const onClose = mock(() => {});
+    const { container } = render(
+      <HistoryDrawer
+        open
+        onClose={onClose}
+        items={items}
+        activeId={null}
+        onSelect={() => {}}
+        onNew={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("dialog", { name: "历史" }));
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(container.querySelector(".history-drawer-overlay")!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("header shows context subtitle and conversation count", () => {
+    renderDrawer(undefined);
+
+    expect(screen.getByText("按智能体和标题回到最近上下文")).toBeDefined();
+    expect(screen.getByLabelText("2 条历史会话")).toBeDefined();
+  });
+
   test("clicking delete invokes onDelete with the row id (parent owns confirmation)", () => {
     const onDelete = mock((_id: string) => {});
     renderDrawer(onDelete);
@@ -121,16 +215,16 @@ describe("HistoryDrawer — agent filter chips", () => {
         onNew={() => {}}
       />,
     );
-    expect(screen.queryByRole("tablist", { name: /按智能体筛选/ })).toBeNull();
+    expect(screen.queryByRole("group", { name: /按智能体筛选/ })).toBeNull();
   });
 
   test("renders 全部 + per-agent chips with conversation counts", () => {
     renderMixed();
-    const tablist = screen.getByRole("tablist", { name: /按智能体筛选/ });
-    expect(tablist).toBeDefined();
-    expect(screen.getByRole("tab", { name: /全部/ })).toBeDefined();
-    expect(screen.getByRole("tab", { name: /Local Agent/ })).toBeDefined();
-    expect(screen.getByRole("tab", { name: /Research Agent/ })).toBeDefined();
+    const group = screen.getByRole("group", { name: /按智能体筛选/ });
+    expect(group).toBeDefined();
+    expect(within(group).getByRole("button", { name: /全部/ })).toBeDefined();
+    expect(within(group).getByRole("button", { name: /Local Agent/ })).toBeDefined();
+    expect(within(group).getByRole("button", { name: /Research Agent/ })).toBeDefined();
   });
 
   test("clicking an agent chip pins the list to that agent's conversations", () => {
@@ -138,7 +232,7 @@ describe("HistoryDrawer — agent filter chips", () => {
     expect(screen.getByText("Project plan")).toBeDefined();
     expect(screen.getByText("Literature review")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("tab", { name: /Research Agent/ }));
+    fireEvent.click(filterButton(/Research Agent/));
 
     expect(screen.queryByText("Project plan")).toBeNull();
     expect(screen.queryByText("Bug review")).toBeNull();
@@ -147,17 +241,17 @@ describe("HistoryDrawer — agent filter chips", () => {
 
   test("clicking 全部 clears the active filter", () => {
     renderMixed();
-    fireEvent.click(screen.getByRole("tab", { name: /Research Agent/ }));
+    fireEvent.click(filterButton(/Research Agent/));
     expect(screen.queryByText("Project plan")).toBeNull();
 
-    fireEvent.click(screen.getByRole("tab", { name: /全部/ }));
+    fireEvent.click(filterButton(/全部/));
     expect(screen.getByText("Project plan")).toBeDefined();
     expect(screen.getByText("Literature review")).toBeDefined();
   });
 
   test("filter and search compose — pinned agent + matching title only", () => {
     renderMixed();
-    fireEvent.click(screen.getByRole("tab", { name: /Local Agent/ }));
+    fireEvent.click(filterButton(/Local Agent/));
     fireEvent.change(screen.getByPlaceholderText(/搜索历史会话/), {
       target: { value: "project" },
     });
@@ -166,23 +260,23 @@ describe("HistoryDrawer — agent filter chips", () => {
     expect(screen.queryByText("Literature review")).toBeNull();
   });
 
-  test("active chip carries aria-selected=true; others aria-selected=false", () => {
+  test("active chip carries aria-pressed=true; others aria-pressed=false", () => {
     renderMixed();
-    fireEvent.click(screen.getByRole("tab", { name: /Research Agent/ }));
+    fireEvent.click(filterButton(/Research Agent/));
     expect(
-      screen.getByRole("tab", { name: /Research Agent/ }).getAttribute("aria-selected"),
+      filterButton(/Research Agent/).getAttribute("aria-pressed"),
     ).toBe("true");
     expect(
-      screen.getByRole("tab", { name: /全部/ }).getAttribute("aria-selected"),
+      filterButton(/全部/).getAttribute("aria-pressed"),
     ).toBe("false");
     expect(
-      screen.getByRole("tab", { name: /Local Agent/ }).getAttribute("aria-selected"),
+      filterButton(/Local Agent/).getAttribute("aria-pressed"),
     ).toBe("false");
   });
 
   test("auto-clears the filter when the pinned agent has no remaining conversations", () => {
     const { rerender } = renderMixed();
-    fireEvent.click(screen.getByRole("tab", { name: /Research Agent/ }));
+    fireEvent.click(filterButton(/Research Agent/));
     expect(screen.getByText("Literature review")).toBeDefined();
 
     // Drop agent-2's conversation; the filter should snap back to 全部.
@@ -198,7 +292,7 @@ describe("HistoryDrawer — agent filter chips", () => {
       />,
     );
     // Agent filter chips disappear (only one agent has conversations now).
-    expect(screen.queryByRole("tablist", { name: /按智能体筛选/ })).toBeNull();
+    expect(screen.queryByRole("group", { name: /按智能体筛选/ })).toBeNull();
     // The remaining conversations are visible.
     expect(screen.getByText("Project plan")).toBeDefined();
     expect(screen.getByText("Bug review")).toBeDefined();
@@ -206,9 +300,9 @@ describe("HistoryDrawer — agent filter chips", () => {
 
   test("filter resets when the drawer closes and reopens", () => {
     const { rerender } = renderMixed();
-    fireEvent.click(screen.getByRole("tab", { name: /Research Agent/ }));
+    fireEvent.click(filterButton(/Research Agent/));
     expect(
-      screen.getByRole("tab", { name: /Research Agent/ }).getAttribute("aria-selected"),
+      filterButton(/Research Agent/).getAttribute("aria-pressed"),
     ).toBe("true");
 
     rerender(
@@ -235,7 +329,14 @@ describe("HistoryDrawer — agent filter chips", () => {
     );
 
     expect(
-      screen.getByRole("tab", { name: /全部/ }).getAttribute("aria-selected"),
+      filterButton(/全部/).getAttribute("aria-pressed"),
     ).toBe("true");
   });
 });
+
+function filterButton(name: RegExp) {
+  return within(screen.getByRole("group", { name: /按智能体筛选/ })).getByRole(
+    "button",
+    { name },
+  );
+}

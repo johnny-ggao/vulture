@@ -89,6 +89,16 @@ function renderPage(overrides: Partial<RunLogsPageProps> = {}) {
 }
 
 describe("RunLogsPage", () => {
+  test("renders filters and refresh in a page toolbar", async () => {
+    renderPage();
+
+    expect(screen.getByRole("toolbar", { name: "运行日志筛选与刷新" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "状态" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "智能体" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "刷新" })).toBeDefined();
+    await screen.findByText("Diagnostics");
+  });
+
   test("loads summaries without loading trace details until a row is opened", async () => {
     const onLoadRunTrace = mock(async () => trace);
     renderPage({ onLoadRunTrace });

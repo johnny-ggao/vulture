@@ -509,7 +509,7 @@ pre {
   color: #fff;
   font-weight: 800;
   font-size: 16px;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     0 1px 3px rgba(196, 78, 84, 0.22);
@@ -525,7 +525,7 @@ pre {
 .sidebar-brand-text {
   font-size: 17px;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .sidebar-nav { display: grid; gap: 2px; }
@@ -804,7 +804,7 @@ pre {
 .chat-agent-name {
   font-size: 13px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -932,7 +932,7 @@ pre {
   );
   color: #fff;
   display: grid; place-items: center;
-  font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
+  font-size: 28px; font-weight: 700; letter-spacing: 0;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     0 10px 24px rgba(196, 78, 84, 0.18),
@@ -944,7 +944,7 @@ pre {
 .empty-state h2 {
   font-size: var(--text-xl);
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: 0;
   margin: 0 0 6px;
   color: var(--text-primary);
 }
@@ -1258,7 +1258,7 @@ pre {
 .md-content .md-h {
   margin: 0;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   line-height: 1.35;
   font-weight: 650;
 }
@@ -1317,7 +1317,7 @@ pre {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-weight: 650;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   text-align: left; /* JS will override per-column via inline style */
   border-bottom: 0.5px solid var(--glass-border);
   font-size: 11.5px;
@@ -1346,7 +1346,7 @@ pre {
   /* Slightly down-weighted vs body to keep paragraph rhythm; tracking
    * tightens to compensate for the wider monospace glyphs. */
   font-size: 12px;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   padding: 1.5px 5px;
   border-radius: 4px;
   /* Inline tag look — needs a darker fill than the page so it reads
@@ -2203,7 +2203,7 @@ pre {
   font-size: 12.5px;
   font-weight: 650;
   color: var(--text-primary);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 .tool-block-input {
@@ -2507,7 +2507,7 @@ pre {
   font-size: 13px;
   font-weight: 650;
   color: var(--warning);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .approval-card-tool {
   font-family: var(--font-mono);
@@ -2882,7 +2882,7 @@ pre {
   color: #fff;
   display: grid; place-items: center;
   font-size: 28px; font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   margin: 0 auto 18px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
@@ -2892,7 +2892,7 @@ pre {
 }
 .onboarding-card h2 {
   font-size: 24px; font-weight: 600;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   margin: 0 0 6px;
 }
 .onboarding-card p { color: var(--text-secondary); margin: 0 0 22px; }
@@ -2956,7 +2956,7 @@ pre {
 .onboarding-text strong {
   display: block;
   font-size: 14px;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .onboarding-text small {
   display: block;
@@ -3330,8 +3330,19 @@ pre {
   cursor: pointer; min-height: 0;
   transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
 }
-.history-row:hover .row-delete { opacity: 1; }
-.history-row .row-delete:hover { background: var(--danger-bg); color: var(--danger); }
+.history-row:hover .row-delete,
+.history-row:focus-within .row-delete,
+.history-row .row-delete:focus-visible {
+  opacity: 1;
+}
+.history-row:focus-within {
+  background: var(--fill-quaternary);
+}
+.history-row .row-delete:hover,
+.history-row .row-delete:focus-visible {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
 
 @keyframes hd-fade-in   { from { opacity: 0; } to { opacity: 1; } }
 @keyframes hd-slide-in  { from { transform: translateX(-100%); } to { transform: translateX(0); } }
@@ -3385,7 +3396,7 @@ pre {
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .modal-body { flex: 1; overflow: auto; padding: 20px; }
 .modal-footer {
@@ -3420,7 +3431,7 @@ pre {
    * proper window title rather than a hero banner. */
   font-size: var(--text-xl);
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: 0;
   color: var(--text-primary);
   text-wrap: balance;
 }
@@ -3527,7 +3538,7 @@ pre {
 .model-panel-title {
   font-size: 19px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   margin: 0;
 }
 .model-panel-sub {
@@ -3969,7 +3980,7 @@ pre {
   margin: 0;
   font-size: 19px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .settings-section-sub {
@@ -4024,7 +4035,7 @@ pre {
 .model-panel-title {
   font-size: 19px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .model-panel-sub {
   font-size: 13px;
@@ -5469,7 +5480,7 @@ pre {
   margin: 0;
   font-size: 15px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .section-card-desc {
@@ -5592,7 +5603,7 @@ pre {
   margin: 0;
   font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .placeholder-hero-sub {
@@ -5664,7 +5675,7 @@ pre {
   margin: 0 0 4px;
   font-size: 22px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .skills-header-sub {
@@ -6213,7 +6224,7 @@ pre {
   font-family: var(--font-mono);
   font-size: 14px;
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
@@ -6631,7 +6642,7 @@ pre {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  letter-spacing: -0.018em;
+  letter-spacing: 0;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6904,7 +6915,7 @@ pre {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--text-primary);
   max-width: 100%;
   overflow: hidden;
@@ -6978,7 +6989,7 @@ pre {
   font-weight: 600;
   font-family: var(--font-mono);
   font-size: 11.5px;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7159,7 +7170,7 @@ pre {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .agent-config-id {
   margin-top: 4px;
@@ -7472,7 +7483,7 @@ pre {
   margin: 0;
   font-size: var(--text-xl);
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .agents-empty-desc {
@@ -7623,7 +7634,7 @@ pre {
   margin: 0;
   font-size: var(--text-xl);
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .new-agent-step-subtitle {
@@ -8096,7 +8107,7 @@ pre {
 .agent-handoff-empty-text strong {
   font-size: 13px;
   color: var(--text-primary);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .agent-handoff-empty-text span {
   font-size: 12px;
@@ -8177,7 +8188,7 @@ pre {
   align-self: center;
   width: 100%;
   text-align: center;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .agent-skills-editor-chip {
   display: inline-flex;
@@ -8214,7 +8225,7 @@ pre {
 .agent-skills-editor-chip-name {
   font-family: var(--font-mono);
   font-size: 11.5px;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .agent-skills-editor-chip-remove {
   display: inline-grid;
@@ -8266,7 +8277,7 @@ pre {
   color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font-mono);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   transition:
     border-color var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out),
@@ -8342,7 +8353,7 @@ pre {
   gap: 4px;
   min-width: 0;
 }
-.agent-core-title { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.agent-core-title { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0; }
 .agent-core-sub {
   margin: 0;
   font-size: 12.5px;
@@ -8440,7 +8451,7 @@ pre {
   font-size: 11.5px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8925,7 +8936,7 @@ pre {
   gap: 4px;
   font-weight: 500;
   color: var(--text-primary);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .field-required { color: var(--danger); }
 .field-hint  { font-size: 11px; color: var(--text-tertiary); font-weight: 400; line-height: 1.45; }
@@ -9160,7 +9171,7 @@ pre {
 .run-logs-header h2 {
   font-size: var(--text-lg);
   font-weight: 600;
-  letter-spacing: -0.012em;
+  letter-spacing: 0;
   color: var(--text-primary);
   margin: 0;
 }
@@ -9734,7 +9745,7 @@ pre {
   place-items: center;
   flex-shrink: 0;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   font-feature-settings: "tnum";
   border-radius: 50%;
   user-select: none;
@@ -9762,7 +9773,7 @@ pre {
 .agent-avatar-picker-label {
   font-size: 12.5px;
   font-weight: 500;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .agent-avatar-regenerate {
@@ -9925,13 +9936,13 @@ pre {
 .agent-style-seed-label {
   font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   color: var(--text-primary);
 }
 .agent-style-seed-hint {
   font-size: 11.5px;
   color: var(--text-tertiary);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
 }
 .agent-style-seed-row {
   display: flex;
@@ -10171,7 +10182,7 @@ pre {
    * loud (was 14/650 which felt weighty against a small card). */
   font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.012em;
+  letter-spacing: 0;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10215,7 +10226,7 @@ pre {
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   cursor: pointer;
   min-height: 0;
   transition:
@@ -10474,7 +10485,7 @@ pre {
   font-size: 24px;
   line-height: 1.12;
   font-weight: 740;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 .page-header p,
@@ -10610,7 +10621,7 @@ pre {
 .agent-card-name {
   font-size: 15px;
   font-weight: 650;
-  letter-spacing: -0.012em;
+  letter-spacing: 0;
 }
 
 .agent-card-desc {
@@ -10708,7 +10719,7 @@ pre {
 
 .skill-catalog-titles h2 {
   font-size: 14px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .skill-catalog-grid {
@@ -10891,7 +10902,7 @@ pre {
   font-size: 24px;
   line-height: 1.16;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 .empty-state p {
@@ -11157,7 +11168,7 @@ pre {
 .artifacts-page .page-header h1 {
   font-size: 24px;
   font-weight: 740;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 .page-card,
@@ -11192,7 +11203,7 @@ pre {
 .model-panel-title,
 .artifact-detail-head h2 {
   font-weight: 680;
-  letter-spacing: -0.018em;
+  letter-spacing: 0;
 }
 
 .settings-page {
@@ -11905,7 +11916,7 @@ pre {
   font-size: 24px;
   line-height: 1.16;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
 }
 
 .onboarding-card p {
@@ -12964,5 +12975,1319 @@ pre {
   .approval-card-actions button:hover:not(:disabled),
   .recovery-card-actions button:hover:not(:disabled) {
     transform: none;
+  }
+}
+
+/* ============================================================
+ * Accio agents gallery pass
+ *
+ * The user-facing agents surface should read like Accio's assistant
+ * directory: broad page, one calm header/control row, large gallery
+ * cards with centered avatars and a single primary action. Vulture's
+ * brand hue stays intact; green Accio CTAs map to the local brand.
+ * ============================================================ */
+
+.agents-page {
+  max-width: 1320px;
+  padding: 54px 42px 44px;
+}
+
+.agents-page .agents-page-header {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(520px, auto);
+  align-items: start;
+  gap: 28px;
+  min-height: 128px;
+  margin-bottom: 4px;
+}
+
+.agents-page .agents-page-header-empty {
+  grid-template-columns: minmax(280px, 1fr);
+}
+
+.agents-page-title {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.agents-page .page-header h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.08;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: color-mix(in oklab, var(--text-primary) 96%, black);
+}
+
+.agents-page .page-header p {
+  margin: 0;
+  max-width: 560px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
+}
+
+.agents-page .agents-toolbar {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  width: min(640px, 100%);
+  margin: 3px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agents-page .agents-toolbar-sort {
+  gap: 0;
+  height: 36px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accio-surface-muted) 76%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 62%, transparent);
+  flex: 0 0 auto;
+}
+
+.agents-page .agents-toolbar-count {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px 0 16px;
+  border-radius: var(--radius-pill);
+  background: var(--accio-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 720;
+  letter-spacing: 0;
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.09),
+    inset 0 1px 0 color-mix(in oklab, white 78%, transparent);
+}
+
+.agents-page .agents-sort-segmented {
+  height: 30px;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agents-page .agents-sort-segment {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.agents-page .agents-sort-segment.active {
+  background: var(--accio-surface);
+  color: var(--text-primary);
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.09),
+    inset 0 1px 0 color-mix(in oklab, white 78%, transparent);
+}
+
+.agents-page .agents-toolbar-search {
+  width: 238px;
+  flex: 0 0 238px;
+}
+
+.agents-page .agents-toolbar-search .search-input {
+  height: 38px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklab, var(--accio-border) 88%, transparent);
+  background: var(--accio-surface);
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.03),
+    inset 0 1px 0 color-mix(in oklab, white 58%, transparent);
+}
+
+.agents-page .agents-toolbar-search .search-input input {
+  font-size: 13px;
+}
+
+.agents-page .agents-grid {
+  grid-template-columns: repeat(auto-fit, minmax(288px, 1fr));
+  gap: 30px;
+  margin-top: 0;
+  margin-bottom: 34px;
+}
+
+.agents-page .agents-empty-gallery {
+  grid-template-columns: minmax(288px, 360px);
+  margin-top: 56px;
+}
+
+.agents-page .agent-create-tile,
+.agents-page .agent-card {
+  min-height: 344px;
+  border-radius: 28px;
+}
+
+.agents-page .agent-create-tile {
+  gap: 20px;
+  padding: 42px 30px;
+  border: 1.5px dashed color-mix(in oklab, var(--text-tertiary) 32%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in oklab, white 48%, transparent), transparent 54%),
+    color-mix(in oklab, var(--accio-surface) 72%, transparent);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.agents-page .agent-create-tile:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 50%, var(--text-tertiary));
+  background:
+    radial-gradient(80% 70% at 50% 28%, color-mix(in oklab, var(--brand-500) 8%, transparent), transparent 72%),
+    var(--accio-surface);
+  color: var(--brand-600);
+  transform: translateY(-2px);
+}
+
+.agents-page .agent-create-tile-glyph {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--accio-surface);
+  border: 1px solid var(--accio-border);
+  color: color-mix(in oklab, var(--text-tertiary) 84%, var(--brand-500));
+  box-shadow:
+    0 6px 18px rgba(15, 15, 15, 0.08),
+    inset 0 1px 0 color-mix(in oklab, white 80%, transparent);
+}
+
+.agents-page .agent-create-tile-label {
+  font-size: 16px;
+  font-weight: 720;
+  letter-spacing: 0;
+}
+
+.agents-page .agent-create-tile-hint {
+  display: none;
+}
+
+.agents-page .agent-card {
+  border: 1px solid color-mix(in oklab, var(--accio-border) 86%, transparent);
+  background: var(--accio-surface);
+  box-shadow:
+    0 1px 2px rgba(15, 15, 15, 0.06),
+    0 9px 24px rgba(15, 15, 15, 0.07);
+  overflow: hidden;
+}
+
+.agents-page .agent-card:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 22%, var(--accio-border-strong));
+  box-shadow:
+    0 2px 4px rgba(15, 15, 15, 0.06),
+    0 14px 34px rgba(15, 15, 15, 0.10);
+  transform: translateY(-2px);
+}
+
+.agents-page .agent-card-surface {
+  flex: 1 1 auto;
+  padding: 40px 38px 4px;
+  align-items: center;
+  text-align: center;
+}
+
+.agents-page .agent-card-banner {
+  display: none;
+}
+
+.agents-page .agent-card-avatar {
+  position: static;
+  transform: none;
+  margin: 0 auto 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agents-page .agent-card-avatar .agent-avatar {
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 10px color-mix(in oklab, var(--brand-500) 5%, var(--accio-surface)),
+    inset 0 1px 0 color-mix(in oklab, white 28%, transparent);
+}
+
+.agents-page .agent-card-body {
+  gap: 14px;
+  width: 100%;
+}
+
+.agents-page .agent-card-name {
+  font-size: 20px;
+  line-height: 1.18;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+
+.agents-page .agent-card:hover .agent-card-name {
+  color: var(--text-primary);
+}
+
+.agents-page .agent-card-desc {
+  max-width: 270px;
+  min-height: calc(3 * 1.5em);
+  font-size: 15px;
+  line-height: 1.5;
+  color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
+  -webkit-line-clamp: 3;
+}
+
+.agents-page .agent-card-foot {
+  display: grid;
+  gap: 14px;
+  padding: 4px 36px 30px;
+}
+
+.agents-page .agent-card-cta {
+  width: 100%;
+  height: 48px;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--brand-500) 9%, var(--accio-surface-muted));
+  color: var(--brand-600);
+  font-size: 17px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.agents-page .agent-card-cta svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.9;
+}
+
+.agents-page .agent-card-cta:hover,
+.agents-page .agent-card:hover .agent-card-cta {
+  background: color-mix(in oklab, var(--brand-500) 13%, var(--accio-surface-muted));
+  color: var(--brand-600);
+  box-shadow: none;
+}
+
+.agents-page .agent-card-cta:active {
+  background: color-mix(in oklab, var(--brand-500) 18%, var(--accio-surface-muted));
+}
+
+.agents-page .agent-card-actions {
+  right: 18px;
+  top: 18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .agents-page .agents-toolbar-sort,
+  .agents-page .agents-toolbar-count,
+  .agents-page .agents-sort-segment.active,
+  .agents-page .agents-toolbar-search .search-input,
+  .agents-page .agent-create-tile-glyph {
+    box-shadow: none;
+  }
+
+  .agents-page .agent-create-tile {
+    background: color-mix(in oklab, var(--accio-surface) 72%, transparent);
+  }
+
+  .agents-page .agent-card {
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.30);
+  }
+
+  .agents-page .agent-card:hover {
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+  }
+}
+
+@media (max-width: 1100px) {
+  .agents-page .agents-page-header {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .agents-page .agents-toolbar {
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .agents-page {
+    padding: 26px 18px 30px;
+  }
+
+  .agents-page .page-header h1 {
+    font-size: 30px;
+  }
+
+  .agents-page .page-header p {
+    font-size: 14px;
+  }
+
+  .agents-page .agents-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .agents-page .agents-toolbar-sort {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .agents-page .agents-toolbar-search {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .agents-page .agents-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .agents-page .agents-empty-gallery {
+    margin-top: 26px;
+  }
+
+  .agents-page .agent-create-tile,
+  .agents-page .agent-card {
+    min-height: 308px;
+  }
+
+  .agents-page .agent-card-surface {
+    padding-inline: 28px;
+  }
+}
+
+/* ============================================================
+ * Unified workbench page pass
+ *
+ * Agents set the new page language: broad canvas, large title block,
+ * compact right-side controls, and substantial object cards. Extend
+ * that same rhythm to skills, artifacts, plugins, and scheduled-task
+ * placeholder pages without changing Vulture's brand palette.
+ * ============================================================ */
+
+.skills-page-marketplace,
+.artifacts-page,
+.placeholder-page {
+  max-width: 1320px;
+  padding: 54px 42px 44px;
+}
+
+.skills-page-marketplace .skills-page-header,
+.artifacts-page .artifacts-page-header,
+.placeholder-page .placeholder-page-header {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(520px, auto);
+  align-items: start;
+  gap: 28px;
+  min-height: 128px;
+  margin-bottom: 4px;
+}
+
+.placeholder-page .placeholder-page-header {
+  grid-template-columns: minmax(280px, 1fr);
+}
+
+.skills-page-marketplace .skills-page-header {
+  position: static;
+  top: auto;
+  z-index: auto;
+  padding: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.skills-page-title,
+.artifacts-page-title,
+.placeholder-page-title {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.skills-page-marketplace .skills-header-titles h1,
+.artifacts-page .page-header h1,
+.placeholder-page .page-header h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.08;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: color-mix(in oklab, var(--text-primary) 96%, black);
+}
+
+.skills-page-marketplace .skills-header-sub,
+.artifacts-page .page-header p,
+.placeholder-page .page-header p {
+  margin: 0;
+  max-width: 560px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
+}
+
+.skills-page-marketplace .skills-header-controls,
+.artifacts-page .artifacts-toolbar {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: min(720px, 100%);
+  margin: 3px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.skills-page-marketplace .skills-agent-select,
+.artifacts-page .artifacts-toolbar select,
+.artifacts-page .artifacts-toolbar .btn-secondary {
+  height: 38px;
+  border-radius: var(--radius-pill);
+  border-color: color-mix(in oklab, var(--accio-border) 88%, transparent);
+  background: var(--accio-surface);
+  font-size: 13px;
+}
+
+.skills-page-marketplace .skills-agent-select {
+  max-width: 210px;
+}
+
+.skills-page-marketplace .skills-search {
+  width: 238px;
+  flex: 0 0 238px;
+}
+
+.skills-page-marketplace .skills-search .search-input {
+  height: 38px;
+  border-radius: var(--radius-pill);
+  background: var(--accio-surface);
+}
+
+.skills-page-marketplace .skills-policy,
+.artifacts-page .artifacts-count {
+  height: 36px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accio-surface-muted) 76%, transparent);
+}
+
+.skills-page-marketplace .skills-policy-btn {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.artifacts-page .artifacts-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 16px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.artifacts-page .artifacts-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  height: 38px;
+  gap: 8px;
+  padding: 0 4px 0 12px;
+  border: 1px solid color-mix(in oklab, var(--accio-border) 88%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--accio-surface);
+}
+
+.artifacts-page .artifacts-toolbar label > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.artifacts-page .artifacts-toolbar label select {
+  height: 36px;
+  min-width: 112px;
+  border: 0;
+  background: transparent;
+}
+
+.artifacts-page .artifacts-layout {
+  grid-template-columns: minmax(330px, 0.9fr) minmax(0, 1.45fr);
+  gap: 30px;
+  margin-top: 0;
+}
+
+.artifacts-page .artifacts-list,
+.artifacts-page .artifact-detail {
+  border-radius: 28px;
+}
+
+.artifacts-page .artifact-row {
+  min-height: 92px;
+  padding: 18px;
+  border-radius: 22px;
+}
+
+.artifacts-page .artifact-detail-inner {
+  min-height: 344px;
+  padding: 28px;
+  border-radius: 28px;
+}
+
+.placeholder-page {
+  align-items: stretch;
+}
+
+.placeholder-page .placeholder-hero {
+  width: min(360px, 100%);
+  max-width: none;
+  min-height: 344px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 56px;
+  padding: 42px 30px;
+  border: 1.5px dashed color-mix(in oklab, var(--text-tertiary) 32%, transparent);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, color-mix(in oklab, white 48%, transparent), transparent 54%),
+    color-mix(in oklab, var(--accio-surface) 72%, transparent);
+  box-shadow: none;
+}
+
+.placeholder-page .placeholder-hero-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  border: 1px solid var(--accio-border);
+  background: var(--accio-surface);
+  color: color-mix(in oklab, var(--text-tertiary) 84%, var(--brand-500));
+}
+
+.placeholder-page .placeholder-hero-status {
+  border: 1px solid color-mix(in oklab, var(--brand-500) 20%, transparent);
+  background: color-mix(in oklab, var(--brand-500) 9%, var(--accio-surface-muted));
+  color: var(--brand-600);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.placeholder-page .placeholder-hero-title {
+  font-size: 20px;
+  line-height: 1.18;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.placeholder-page .placeholder-hero-sub {
+  max-width: 270px;
+  min-height: calc(2 * 1.5em);
+  font-size: 15px;
+  line-height: 1.5;
+  color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
+}
+
+.placeholder-page .placeholder-hero-teasers {
+  margin-top: 12px;
+  padding: 0;
+  gap: 8px;
+  background: transparent;
+}
+
+.placeholder-page .placeholder-hero-teasers li {
+  justify-content: center;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .placeholder-page .placeholder-hero {
+    background: color-mix(in oklab, var(--accio-surface) 72%, transparent);
+  }
+}
+
+@media (max-width: 1100px) {
+  .skills-page-marketplace .skills-page-header,
+  .artifacts-page .artifacts-page-header {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .skills-page-marketplace .skills-header-controls,
+  .artifacts-page .artifacts-toolbar {
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .skills-page-marketplace,
+  .artifacts-page,
+  .placeholder-page {
+    padding: 26px 18px 30px;
+  }
+
+  .skills-page-marketplace .skills-header-titles h1,
+  .artifacts-page .page-header h1,
+  .placeholder-page .page-header h1 {
+    font-size: 30px;
+  }
+
+  .skills-page-marketplace .skills-header-sub,
+  .artifacts-page .page-header p,
+  .placeholder-page .page-header p {
+    font-size: 14px;
+  }
+
+  .skills-page-marketplace .skills-header-controls,
+  .artifacts-page .artifacts-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .skills-page-marketplace .skills-agent-select,
+  .skills-page-marketplace .skills-search,
+  .artifacts-page .artifacts-toolbar label,
+  .artifacts-page .artifacts-toolbar select,
+  .artifacts-page .artifacts-toolbar .btn-secondary {
+    width: 100%;
+    max-width: none;
+    flex-basis: auto;
+  }
+
+  .artifacts-page .artifacts-toolbar label {
+    justify-content: space-between;
+  }
+
+  .artifacts-page .artifacts-layout {
+    gap: 16px;
+  }
+
+  .placeholder-page .placeholder-hero {
+    width: 100%;
+    min-height: 308px;
+    margin-top: 26px;
+  }
+}
+
+/* ============================================================
+ * Unified settings + diagnostics pass
+ *
+ * Settings and run logs now use the same broad workbench rhythm as
+ * agents / skills / artifacts: large title block, right-side toolbar,
+ * and calm object panels. Embedded diagnostics stays compact inside
+ * Settings so tab heights remain predictable.
+ * ============================================================ */
+
+.settings-page,
+.run-logs-page:not(.run-logs-embedded) {
+  max-width: 1320px;
+  padding: 54px 42px 44px;
+}
+
+.settings-page .settings-page-header,
+.run-logs-page:not(.run-logs-embedded) .run-logs-page-header {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(520px, auto);
+  align-items: start;
+  gap: 28px;
+  min-height: 128px;
+  margin-bottom: 4px;
+}
+
+.settings-page .settings-page-header {
+  grid-template-columns: minmax(280px, 1fr);
+}
+
+.settings-page-title,
+.run-logs-page-title {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.settings-page .page-header h1,
+.run-logs-page:not(.run-logs-embedded) .page-header h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.08;
+  font-weight: 760;
+  letter-spacing: 0;
+  color: color-mix(in oklab, var(--text-primary) 96%, black);
+}
+
+.settings-page .page-header p,
+.run-logs-page:not(.run-logs-embedded) .page-header p {
+  margin: 0;
+  max-width: 580px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
+}
+
+.settings-page .settings-layout {
+  grid-template-columns: minmax(172px, 200px) minmax(0, 1fr);
+  gap: 30px;
+  align-items: start;
+}
+
+.settings-page .settings-rail {
+  top: 54px;
+  padding: 6px;
+  border-radius: 18px;
+  background: color-mix(in oklab, var(--accio-surface-muted) 78%, transparent);
+}
+
+.settings-page .settings-content {
+  min-height: 560px;
+}
+
+.settings-page .settings-section,
+.run-logs-page:not(.run-logs-embedded) .run-logs-list,
+.run-logs-page:not(.run-logs-embedded) .run-log-detail {
+  border: 1px solid color-mix(in oklab, var(--accio-border) 86%, transparent);
+  border-radius: 28px;
+  background: var(--accio-surface);
+  box-shadow: var(--accio-shadow-sm);
+}
+
+.settings-page .settings-section {
+  padding: 16px;
+}
+
+.settings-page .settings-section-head {
+  margin: -16px -16px 2px;
+  padding: 16px 16px 14px;
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-toolbar {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: min(720px, 100%);
+  margin: 3px 0 0;
+  padding: 0;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-count {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accio-surface-muted) 76%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  height: 38px;
+  gap: 8px;
+  padding: 0 4px 0 12px;
+  border: 1px solid color-mix(in oklab, var(--accio-border) 88%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--accio-surface);
+  color: var(--text-secondary);
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-toolbar label > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-toolbar label select {
+  height: 36px;
+  min-width: 112px;
+  border: 0;
+  background: transparent;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-toolbar .btn-secondary {
+  height: 38px;
+  border-radius: var(--radius-pill);
+  border-color: color-mix(in oklab, var(--accio-border) 88%, transparent);
+  background: var(--accio-surface);
+  font-size: 13px;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-layout {
+  grid-template-columns: minmax(330px, 0.9fr) minmax(0, 1.45fr);
+  gap: 30px;
+  margin-top: 0;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-logs-list,
+.run-logs-page:not(.run-logs-embedded) .run-log-detail {
+  min-height: 460px;
+  padding: 16px;
+}
+
+.run-logs-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.run-logs-pane-head strong {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-log-row {
+  min-height: 92px;
+  margin-bottom: 10px;
+  padding: 18px;
+  border-radius: 22px;
+  box-shadow: none;
+}
+
+.run-logs-page:not(.run-logs-embedded) .run-trace-summary > div,
+.run-logs-page:not(.run-logs-embedded) .run-trace-section {
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.run-logs-embedded .run-logs-toolbar {
+  align-items: center;
+  margin: -2px 0 12px;
+}
+
+.run-logs-embedded .run-logs-count {
+  padding-bottom: 0;
+}
+
+.run-logs-embedded .run-logs-pane-head {
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 1100px) {
+  .run-logs-page:not(.run-logs-embedded) .run-logs-page-header {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .run-logs-page:not(.run-logs-embedded) .run-logs-toolbar {
+    justify-self: stretch;
+    width: 100%;
+  }
+}
+
+@media (max-width: 900px) {
+  .settings-page .settings-layout,
+  .run-logs-page:not(.run-logs-embedded) .run-logs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-page .settings-rail {
+    position: static;
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .settings-page .settings-rail button {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-page,
+  .run-logs-page:not(.run-logs-embedded) {
+    padding: 26px 18px 30px;
+  }
+
+  .settings-page .page-header h1,
+  .run-logs-page:not(.run-logs-embedded) .page-header h1 {
+    font-size: 30px;
+  }
+
+  .settings-page .page-header p,
+  .run-logs-page:not(.run-logs-embedded) .page-header p {
+    font-size: 14px;
+  }
+
+  .run-logs-page:not(.run-logs-embedded) .run-logs-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .run-logs-page:not(.run-logs-embedded) .run-logs-toolbar label,
+  .run-logs-page:not(.run-logs-embedded) .run-logs-toolbar label select,
+  .run-logs-page:not(.run-logs-embedded) .run-logs-toolbar .btn-secondary {
+    width: 100%;
+    max-width: none;
+    flex-basis: auto;
+  }
+
+  .run-logs-page:not(.run-logs-embedded) .run-logs-toolbar label {
+    justify-content: space-between;
+  }
+
+  .run-logs-page:not(.run-logs-embedded) .run-logs-layout {
+    gap: 16px;
+  }
+}
+
+/* ============================================================
+ * Accio chat entry + history pass
+ *
+ * The top-level chat experience should feel like the same workbench
+ * as the gallery pages: deliberate first-run entry, compact utility
+ * surfaces, and a history drawer that reads as an app panel.
+ * Theme colors stay on Vulture tokens.
+ * ============================================================ */
+
+.sidebar-brand-text {
+  white-space: nowrap;
+}
+
+.chat-stage:not(.has-messages) {
+  align-content: center;
+  justify-items: center;
+  padding: 34px 28px 28px;
+}
+
+.empty-state {
+  width: min(760px, 100%);
+  gap: 24px;
+  transform: translateY(-8px);
+}
+
+.empty-state-hero {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  text-align: center;
+}
+
+.empty-state-kicker,
+.onboarding-kicker {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  margin-bottom: 14px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--brand-500) 8%, var(--accio-surface-muted));
+  color: color-mix(in oklab, var(--brand-600) 78%, var(--text-secondary));
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0;
+}
+
+.empty-state .hero-mark,
+.onboarding-card .hero-mark {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 28%, color-mix(in oklab, white 54%, transparent), transparent 35%),
+    color-mix(in oklab, var(--brand-500) 12%, var(--accio-surface));
+  color: var(--brand-600);
+  box-shadow:
+    0 0 0 12px color-mix(in oklab, var(--brand-500) 4%, transparent),
+    inset 0 1px 0 color-mix(in oklab, white 78%, transparent);
+}
+
+.empty-state .hero-mark svg,
+.onboarding-card .hero-mark svg {
+  filter: none;
+}
+
+.empty-state h2,
+.onboarding-card h2 {
+  margin-bottom: 8px;
+  font-size: 30px;
+  line-height: 1.08;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.empty-state p,
+.onboarding-card p {
+  max-width: 560px;
+  font-size: 15px;
+  line-height: 1.52;
+  color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
+}
+
+.empty-state-suggestions {
+  width: min(620px, 100%);
+  padding: 16px;
+  border: 1px solid color-mix(in oklab, var(--accio-border) 86%, transparent);
+  border-radius: 24px;
+  background: color-mix(in oklab, var(--accio-surface) 92%, transparent);
+  box-shadow: var(--accio-shadow-sm);
+}
+
+.empty-state-suggestions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.empty-state-suggestions-head span:first-child {
+  color: var(--text-primary);
+}
+
+.empty-state .suggestion-chips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-width: none;
+  margin-top: 0;
+}
+
+.empty-state .suggestion-chip {
+  width: 100%;
+  min-height: 42px;
+  height: auto;
+  justify-content: flex-start;
+  padding: 9px 13px;
+  border-color: color-mix(in oklab, var(--accio-border) 92%, transparent);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+
+.empty-state .suggestion-chip:hover {
+  border-color: color-mix(in oklab, var(--brand-500) 28%, var(--accio-border));
+  background: color-mix(in oklab, var(--brand-500) 7%, transparent);
+}
+
+.onboarding-card {
+  width: min(520px, 100%);
+  padding: 34px 32px 22px;
+  border: 1px solid color-mix(in oklab, var(--accio-border) 88%, transparent);
+  border-radius: 28px;
+  background: color-mix(in oklab, var(--accio-surface) 92%, transparent);
+  box-shadow: var(--accio-shadow-sm);
+}
+
+.onboarding-hero {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.onboarding-card .hero-mark {
+  margin-bottom: 18px;
+}
+
+.onboarding-actions {
+  max-width: none;
+  gap: 10px;
+}
+
+.onboarding-primary,
+.onboarding-secondary {
+  min-height: 58px;
+  border-radius: 18px;
+}
+
+.onboarding-primary {
+  background: color-mix(in oklab, var(--brand-500) 12%, var(--accio-surface));
+  border-color: color-mix(in oklab, var(--brand-500) 30%, var(--accio-border));
+  color: var(--brand-600);
+  box-shadow: none;
+}
+
+.onboarding-primary .onboarding-icon,
+.onboarding-primary .onboarding-text small {
+  color: color-mix(in oklab, var(--brand-600) 76%, var(--text-secondary));
+}
+
+.onboarding-primary:hover {
+  background: color-mix(in oklab, var(--brand-500) 16%, var(--accio-surface));
+  box-shadow: none;
+}
+
+.onboarding-secondary {
+  border-color: var(--accio-border);
+  background: transparent;
+}
+
+.onboarding-trust-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.onboarding-trust-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accio-surface-muted) 74%, transparent);
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.history-drawer {
+  width: 408px;
+  background: color-mix(in oklab, var(--accio-surface) 94%, transparent);
+}
+
+.history-drawer-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 68px;
+  padding: 16px 14px 12px 18px;
+}
+
+.history-drawer-titleblock {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.history-drawer-header .title {
+  font-size: 20px;
+  line-height: 1.12;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.history-drawer-header .subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.history-drawer-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--accio-surface-muted) 78%, transparent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.history-drawer .search-field {
+  height: 38px;
+  margin: 0 16px 12px;
+  border-radius: var(--radius-pill);
+  border-color: color-mix(in oklab, var(--accio-border) 82%, transparent);
+  background: var(--accio-surface);
+}
+
+.history-filter-chips {
+  padding: 0 16px 12px;
+}
+
+.history-list {
+  padding: 6px 12px 14px;
+}
+
+.history-row {
+  border-radius: 16px;
+}
+
+.history-row .row-button {
+  min-height: 48px;
+  padding: 9px 9px 9px 11px;
+}
+
+.history-row:hover {
+  background: color-mix(in oklab, var(--accio-surface-muted) 72%, transparent);
+}
+
+.history-row.active {
+  background: color-mix(in oklab, var(--brand-500) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brand-500) 15%, transparent);
+}
+
+.history-empty {
+  margin: 20px 6px;
+  padding: 34px 24px;
+  border-radius: 24px;
+  background: color-mix(in oklab, var(--accio-surface-muted) 62%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .empty-state .hero-mark,
+  .onboarding-card .hero-mark,
+  .empty-state-suggestions,
+  .onboarding-card {
+    box-shadow: none;
+  }
+
+  .empty-state-kicker,
+  .onboarding-kicker,
+  .onboarding-primary,
+  .onboarding-primary .onboarding-icon,
+  .onboarding-primary .onboarding-text small {
+    color: var(--brand-400);
+  }
+}
+
+@media (max-width: 760px) {
+  .empty-state {
+    width: 100%;
+    transform: none;
+  }
+
+  .empty-state .suggestion-chips {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-card {
+    padding: 28px 20px 20px;
+  }
+
+  .history-drawer {
+    width: min(100vw, 408px);
   }
 }

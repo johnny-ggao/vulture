@@ -75,12 +75,12 @@ export function SettingsPage(props: SettingsPageProps) {
 
   return (
     <div className="page settings-page">
-      {/* No page-header — the rail label + each section's sticky h2
-          give the user enough orientation. Adding "设置" as h1 above
-          a "模型" h2 created a weak two-tier hierarchy. The page is
-          still labelled "设置" via the visually-hidden heading below
-          for screen readers. */}
-      <h1 className="visually-hidden">设置</h1>
+      <header className="page-header settings-page-header">
+        <div className="settings-page-title">
+          <h1>设置</h1>
+          <p>统一配置模型、工具、记忆、联网、消息渠道与运行诊断。</p>
+        </div>
+      </header>
       <div className="settings-layout">
         <div
           className="settings-rail"

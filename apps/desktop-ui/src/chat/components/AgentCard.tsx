@@ -52,7 +52,7 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
           }
         />
         <div className="agent-card-avatar">
-          <AgentAvatar agent={agent} size={48} shape="square" />
+          <AgentAvatar agent={agent} size={70} shape="circle" />
         </div>
         <div className="agent-card-body">
           <h3 className="agent-card-name">{agent.name || "未命名智能体"}</h3>
@@ -76,8 +76,8 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
             onOpenChat(agent.id);
           }}
         >
-          <ChatIcon />
-          <span>打开对话</span>
+          <PlusIcon />
+          <span>对话</span>
         </button>
       </div>
 
@@ -101,7 +101,7 @@ export function AgentCard({ agent, onOpenEdit, onOpenChat, onDelete }: AgentCard
   );
 }
 
-function ChatIcon() {
+function PlusIcon() {
   return (
     <svg
       viewBox="0 0 16 16"
@@ -114,7 +114,8 @@ function ChatIcon() {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M3 12V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6l-3 2z" />
+      <path d="M8 3.5v9" />
+      <path d="M3.5 8h9" />
     </svg>
   );
 }
@@ -136,4 +137,3 @@ function TrashIcon() {
     </svg>
   );
 }
-

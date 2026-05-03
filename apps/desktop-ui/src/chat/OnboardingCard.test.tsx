@@ -10,8 +10,10 @@ describe("OnboardingCard", () => {
         onFocusApiKey={() => {}}
       />,
     );
+    expect(screen.getByText("连接方式")).toBeDefined();
     expect(screen.getByText(/Sign in with ChatGPT/i)).toBeDefined();
     expect(screen.getByText(/OpenAI API key/i)).toBeDefined();
+    expect(screen.getByLabelText("登录方式说明")).toBeDefined();
   });
 
   test("ChatGPT sign in triggers callback", () => {

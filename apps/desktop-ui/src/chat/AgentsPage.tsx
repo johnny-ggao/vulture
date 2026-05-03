@@ -167,25 +167,16 @@ export function AgentsPage(props: AgentsPageProps) {
 
   if (props.agents.length === 0) {
     return (
-      <div className="page">
-        <header className="page-header">
-          <div>
+      <div className="page agents-page">
+        <header className="page-header agents-page-header agents-page-header-empty">
+          <div className="agents-page-title">
             <h1>智能体</h1>
             <p>每个智能体捆绑模型、工具权限与人格设置，用来开启不同场景的对话。</p>
           </div>
         </header>
-        <SectionCard className="agents-empty-page">
-          <div className="agents-empty-art" aria-hidden="true">
-            <EmptyAgentsIllustration />
-          </div>
-          <h2 className="agents-empty-title">还没有智能体</h2>
-          <p className="agents-empty-desc">
-            智能体捆绑模型、工具权限、Skills 与人格设置；按用途创建一个开始对话。
-          </p>
-          <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-            创建第一个智能体
-          </button>
-        </SectionCard>
+        <div className="agents-grid agents-empty-gallery">
+          <AgentCreateTile onClick={() => setCreating(true)} />
+        </div>
 
         <AgentEditModal
           open={modalOpen}
@@ -213,39 +204,24 @@ export function AgentsPage(props: AgentsPageProps) {
   const filteredEmpty = hasFilter && visibleCount === 0;
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <div>
+    <div className="page agents-page">
+      <header className="page-header agents-page-header">
+        <div className="agents-page-title">
           <h1>智能体</h1>
           <p>每个智能体捆绑模型、工具权限与人格设置，用来开启不同场景的对话。</p>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
-          新建智能体
-        </button>
-      </header>
 
-      <div className="agents-toolbar" role="toolbar" aria-label="智能体筛选与排序">
-        <div className="agents-toolbar-search">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="按名称 / 描述 / ID 搜索…"
-            ariaLabel="搜索智能体"
-            shortcut
-          />
-        </div>
-        <div className="agents-toolbar-meta">
-          <span className="agents-toolbar-count" aria-live="polite">
-            {hasFilter
-              ? `${visibleCount} / ${totalCount}`
-              : `${totalCount} 个智能体`}
-          </span>
+        <div className="agents-toolbar" role="toolbar" aria-label="智能体筛选与排序">
           <div
             className="agents-toolbar-sort"
             role="radiogroup"
             aria-label="排序方式"
           >
-            <span className="agents-toolbar-sort-label">排序</span>
+            <span className="agents-toolbar-count" aria-live="polite">
+              {hasFilter
+                ? `${visibleCount} / ${totalCount}`
+                : `${totalCount} 个智能体`}
+            </span>
             <div className="agents-sort-segmented">
               {SORT_OPTIONS.map((option) => {
                 const active = option.value === sort;
@@ -266,8 +242,17 @@ export function AgentsPage(props: AgentsPageProps) {
               })}
             </div>
           </div>
+          <div className="agents-toolbar-search">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="搜索智能体…"
+              ariaLabel="搜索智能体"
+              shortcut
+            />
+          </div>
         </div>
-      </div>
+      </header>
 
       {filteredEmpty ? (
         <SectionCard className="agents-empty-page">
@@ -285,13 +270,19 @@ export function AgentsPage(props: AgentsPageProps) {
           >
             查看全部智能体
           </button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setCreating(true)}
+          >
+            新建智能体
+          </button>
         </SectionCard>
       ) : (
         <div className="agents-grid">
           {/* Always-visible "新建智能体" tile lives inside the grid so
             * the affordance is right where the user is browsing —
-            * matches Accio's pattern. The page-header `+ 新建智能体`
-            * button stays for keyboard parity. */}
+            * matches Accio's pattern. */}
           <AgentCreateTile onClick={() => setCreating(true)} />
           {visibleAgents.map((agent) => (
             <AgentCard
@@ -322,28 +313,6 @@ export function AgentsPage(props: AgentsPageProps) {
         onSaveFile={props.onSaveFile}
       />
     </div>
-  );
-}
-
-function EmptyAgentsIllustration() {
-  return (
-    <svg
-      viewBox="0 0 96 96"
-      width="96"
-      height="96"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="14" y="22" width="68" height="42" rx="8" />
-      <rect x="22" y="14" width="52" height="6" rx="3" />
-      <circle cx="28" cy="38" r="6" />
-      <path d="M40 36h26" />
-      <path d="M40 44h18" />
-      <path d="M28 56h36" />
-    </svg>
   );
 }
 

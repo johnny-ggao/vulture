@@ -130,6 +130,24 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
 }
 
 describe("SettingsPage MCP tools", () => {
+  test("renders a visible workbench page heading above the settings tabs", () => {
+    render(<SettingsPage {...props()} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "设置" })).toBeDefined();
+    expect(screen.getByRole("tablist", { name: "设置分区" })).toBeDefined();
+  });
+
+  test("diagnostics tab keeps run logs in the embedded settings shell", async () => {
+    render(<SettingsPage {...props()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "运行日志" }));
+
+    expect(screen.getByRole("heading", { level: 2, name: "运行日志" })).toBeDefined();
+    expect(screen.getByRole("toolbar", { name: "运行日志筛选" })).toBeDefined();
+    expect(screen.queryByRole("toolbar", { name: "运行日志筛选与刷新" })).toBeNull();
+    await screen.findByText("没有匹配的运行日志。");
+  });
+
   test("tool checkbox updates the server disabledTools policy", async () => {
     const onUpdateMcpServer = mock(async (_id: string, patch) => ({ ...baseServer, ...patch }));
     render(<SettingsPage {...props({ onUpdateMcpServer })} />);

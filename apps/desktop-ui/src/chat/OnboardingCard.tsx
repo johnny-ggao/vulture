@@ -8,11 +8,14 @@ export interface OnboardingCardProps {
 export function OnboardingCard(props: OnboardingCardProps) {
   return (
     <div className="onboarding-card">
-      <div className="hero-mark">
-        <BrandMark size={64} />
+      <div className="onboarding-hero">
+        <span className="onboarding-kicker">连接方式</span>
+        <div className="hero-mark">
+          <BrandMark size={64} />
+        </div>
+        <h2>Vulture</h2>
+        <p>选择登录方式开始使用</p>
       </div>
-      <h2>Vulture</h2>
-      <p>选择登录方式开始使用</p>
       <div className="onboarding-actions">
         <button
           type="button"
@@ -36,6 +39,11 @@ export function OnboardingCard(props: OnboardingCardProps) {
             <small>按 token 计费</small>
           </div>
         </button>
+      </div>
+      <div className="onboarding-trust-row" aria-label="登录方式说明">
+        <span>本地工作台</span>
+        <span>可随时切换</span>
+        <span>保留现有模型设置</span>
       </div>
     </div>
   );

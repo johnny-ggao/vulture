@@ -10,11 +10,6 @@ export interface AgentCreateTileProps {
  * the first child. Same vertical rhythm as a regular AgentCard so the
  * grid stays tidy (uniform min-height + center-aligned content),
  * borrowed from Accio's product tile language.
- *
- * Always-visible primary affordance: the user doesn't need to scroll
- * back to the page header to create a new agent — the option is there
- * in the same surface they're browsing in. The page-header `+ 新建`
- * button stays for keyboard discoverability and parity.
  */
 export function AgentCreateTile({
   onClick,

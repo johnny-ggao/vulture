@@ -165,37 +165,48 @@ export function ChatView(props: ChatViewProps) {
           props.onboardingCard
         ) : (
           <div className="empty-state">
-            <div className="hero-mark" aria-hidden="true">
-              {/* When an agent is active, drop the brand mark in favour
-               * of the agent's first glyph — feels personal, mirrors
-               * the kit's "你好，<agent name>" empty hero. Falls back
-               * to the vulture brand icon when no agent is selected. */}
-              {activeAgent ? firstGlyph(activeAgent.name) : <BrandMark size={64} />}
+            <div className="empty-state-hero">
+              <span className="empty-state-kicker">
+                {activeAgent ? "当前智能体" : "Vulture Work"}
+              </span>
+              <div className="hero-mark" aria-hidden="true">
+                {/* When an agent is active, drop the brand mark in favour
+                 * of the agent's first glyph — feels personal, mirrors
+                 * the kit's "你好，<agent name>" empty hero. Falls back
+                 * to the vulture brand icon when no agent is selected. */}
+                {activeAgent ? firstGlyph(activeAgent.name) : <BrandMark size={64} />}
+              </div>
+              <h2>
+                {activeAgent ? `你好，${activeAgent.name}` : "Vulture"}
+              </h2>
+              <p>
+                {activeAgent
+                  ? "直接输入任务，或从下面的建议挑一条开始。"
+                  : "选择智能体，然后直接输入任务。"}
+              </p>
             </div>
-            <h2>
-              {activeAgent ? `你好，${activeAgent.name}` : "Vulture"}
-            </h2>
-            <p>
-              {activeAgent
-                ? "直接输入任务，或从下面的建议挑一条开始。"
-                : "选择智能体，然后直接输入任务。"}
-            </p>
             {props.suggestions && props.suggestions.length > 0 ? (
-              <ul className="suggestion-chips" aria-label="建议提问">
-                {props.suggestions.map((text) => (
-                  <li key={text}>
-                    <button
-                      type="button"
-                      className="suggestion-chip"
-                      onClick={() => {
-                        void props.onSend(text, []);
-                      }}
-                    >
-                      {text}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="empty-state-suggestions">
+                <div className="empty-state-suggestions-head">
+                  <span>开始工作</span>
+                  <span>{props.suggestions.length} 条建议</span>
+                </div>
+                <ul className="suggestion-chips" aria-label="建议提问">
+                  {props.suggestions.map((text) => (
+                    <li key={text}>
+                      <button
+                        type="button"
+                        className="suggestion-chip"
+                        onClick={() => {
+                          void props.onSend(text, []);
+                        }}
+                      >
+                        {text}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
         )}

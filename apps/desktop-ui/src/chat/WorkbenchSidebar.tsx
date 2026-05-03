@@ -39,7 +39,7 @@ export function WorkbenchSidebar(props: WorkbenchSidebarProps) {
         <span className="sidebar-brand-mark">
           <BrandMark size={30} />
         </span>
-        <span className="sidebar-brand-text">Vulture</span>
+        <span className="sidebar-brand-text">Vulture Work</span>
       </button>
 
       <nav className="sidebar-nav">

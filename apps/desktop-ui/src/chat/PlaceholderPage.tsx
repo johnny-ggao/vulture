@@ -30,13 +30,19 @@ export interface PlaceholderPageProps {
 export function PlaceholderPage(props: PlaceholderPageProps) {
   return (
     <div className="page placeholder-page">
+      <header className="page-header placeholder-page-header">
+        <div className="placeholder-page-title">
+          <h1>{props.title}</h1>
+          <p>{props.description}</p>
+        </div>
+      </header>
       <div className="placeholder-hero" role="region" aria-label={props.title}>
         <div className="placeholder-hero-icon" aria-hidden="true">
           {props.icon ?? <DefaultIcon />}
         </div>
         <span className="placeholder-hero-status">{props.status ?? "即将上线"}</span>
-        <h1 className="placeholder-hero-title">{props.title}</h1>
-        <p className="placeholder-hero-sub">{props.description}</p>
+        <h2 className="placeholder-hero-title">功能建设中</h2>
+        <p className="placeholder-hero-sub">优先交付以下能力，成熟后会进入这个页面。</p>
         {props.teasers && props.teasers.length > 0 ? (
           <ul className="placeholder-hero-teasers" aria-label="规划中">
             {props.teasers.map((line) => (

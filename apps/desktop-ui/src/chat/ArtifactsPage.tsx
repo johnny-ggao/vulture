@@ -83,42 +83,41 @@ export function ArtifactsPage(props: ArtifactsPageProps) {
 
   return (
     <div className="page artifacts-page">
-      <header className="page-header">
-        <div>
+      <header className="page-header artifacts-page-header">
+        <div className="artifacts-page-title">
           <h1>产物</h1>
           <p>运行生成的文本、文件、链接与结构化数据。</p>
         </div>
-        <button type="button" className="btn-secondary" disabled={state.loading} onClick={() => void load()}>
-          {state.loading ? "刷新中…" : "刷新"}
-        </button>
+        <div className="artifacts-toolbar" role="toolbar" aria-label="产物筛选与刷新">
+          <span className="artifacts-count" aria-live="polite">
+            {state.loading ? "加载中…" : `${filtered.length} 个`}
+          </span>
+          <label>
+            <span>智能体</span>
+            <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+              <option value="all">全部</option>
+              {props.agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>类型</span>
+            <select value={kind} onChange={(event) => setKind(event.target.value as KindFilter)}>
+              {KIND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn-secondary" disabled={state.loading} onClick={() => void load()}>
+            {state.loading ? "刷新中…" : "刷新"}
+          </button>
+        </div>
       </header>
-
-      <div className="artifacts-toolbar">
-        <label>
-          <span>智能体</span>
-          <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
-            <option value="all">全部</option>
-            {props.agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>类型</span>
-          <select value={kind} onChange={(event) => setKind(event.target.value as KindFilter)}>
-            {KIND_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="artifacts-count">
-          {state.loading ? "加载中…" : `${filtered.length} 个`}
-        </span>
-      </div>
 
       <ErrorAlert message={state.error} />
 

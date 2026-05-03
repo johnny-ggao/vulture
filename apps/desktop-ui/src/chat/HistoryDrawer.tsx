@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ConversationDto } from "../api/conversations";
 import { AgentAvatar } from "./components";
 
@@ -177,6 +177,9 @@ function bucketFor(updatedAt: string): string {
 
 export function HistoryDrawer(props: HistoryDrawerProps) {
   const [query, setQuery] = useState("");
+  const drawerRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   // null = "all agents"; an id pins the list to one agent's conversations.
   // The state survives close/reopen by default — see the useEffect below
   // that explicitly clears it when the drawer transitions to closed, so
@@ -189,6 +192,21 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
   // idempotent — closing twice is the same as closing once.
   useEffect(() => {
     if (!props.open) setAgentFilterId(null);
+  }, [props.open]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    queueMicrotask(() => {
+      const target = searchRef.current ?? firstFocusable(drawerRef.current);
+      target?.focus({ preventScroll: true });
+    });
+    return () => {
+      const node = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      queueMicrotask(() => node?.focus({ preventScroll: true }));
+    };
   }, [props.open]);
 
   // Esc closes the drawer when it's open. Listens at the window level
@@ -204,6 +222,26 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [props.open, props.onClose]);
+
+  function onDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Tab") return;
+    const focusables = getFocusable(drawerRef.current);
+    if (focusables.length === 0) {
+      event.preventDefault();
+      drawerRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    const first = focusables[0]!;
+    const last = focusables[focusables.length - 1]!;
+    const active = document.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus({ preventScroll: true });
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus({ preventScroll: true });
+    }
+  }
 
   // O(1) agent lookup for row rendering. Memoised so the map identity is
   // stable across re-renders when the agents array hasn't changed.
@@ -269,9 +307,27 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
 
   return (
     <div className="history-drawer-overlay" onClick={props.onClose}>
-      <div className="history-drawer" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="history-drawer"
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-drawer-title"
+        aria-describedby="history-drawer-subtitle"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="history-drawer-header">
-          <span className="title">历史</span>
+          <div className="history-drawer-titleblock">
+            <span className="title" id="history-drawer-title">历史</span>
+            <span className="subtitle" id="history-drawer-subtitle">
+              按智能体和标题回到最近上下文
+            </span>
+          </div>
+          <span className="history-drawer-count" aria-label={`${props.items.length} 条历史会话`}>
+            {props.items.length}
+          </span>
           <div className="actions">
             <button
               type="button"
@@ -292,6 +348,7 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
         <div className="search-field">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="search-field-icon"><circle cx="7" cy="7" r="4.5" /><path d="M14 14l-3.5-3.5" /></svg>
           <input
+            ref={searchRef}
             placeholder="搜索历史会话…"
             aria-label="搜索历史会话"
             value={query}
@@ -323,13 +380,12 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
         {agentsWithConversations.length >= 2 ? (
           <div
             className="history-filter-chips"
-            role="tablist"
+            role="group"
             aria-label="按智能体筛选"
           >
             <button
               type="button"
-              role="tab"
-              aria-selected={agentFilterId === null}
+              aria-pressed={agentFilterId === null}
               className={
                 "history-filter-chip" + (agentFilterId === null ? " active" : "")
               }
@@ -342,8 +398,7 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
               <button
                 key={agent.id}
                 type="button"
-                role="tab"
-                aria-selected={agentFilterId === agent.id}
+                aria-pressed={agentFilterId === agent.id}
                 className={
                   "history-filter-chip" +
                   (agentFilterId === agent.id ? " active" : "")
@@ -438,4 +493,24 @@ export function HistoryDrawer(props: HistoryDrawerProps) {
       </div>
     </div>
   );
+}
+
+function getFocusable(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      [
+        "button:not([disabled])",
+        "input:not([disabled])",
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        "a[href]",
+        "[tabindex]:not([tabindex='-1'])",
+      ].join(","),
+    ),
+  ).filter((node) => node.getAttribute("aria-hidden") !== "true");
+}
+
+function firstFocusable(root: HTMLElement | null): HTMLElement | null {
+  return getFocusable(root)[0] ?? null;
 }

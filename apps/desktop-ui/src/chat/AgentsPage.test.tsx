@@ -38,15 +38,16 @@ function openEditModal(agent: Agent = baseAgent) {
 
 describe("AgentsPage — browse view", () => {
   test("renders an empty state when there are no agents", () => {
-    render(
+    const { container } = render(
       <AgentsPage
         {...stableProps}
         agents={[]}
         selectedAgentId=""
       />,
     );
-    expect(screen.getByText(/还没有智能体/)).toBeDefined();
-    expect(screen.getByRole("button", { name: /创建第一个智能体/ })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "智能体", level: 1 })).toBeDefined();
+    expect(container.querySelector(".agents-empty-gallery")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "新建智能体" })).toBeDefined();
   });
 
   test("renders an agent card for each agent", () => {
@@ -156,6 +157,11 @@ describe("AgentsPage — browse view", () => {
       target: { value: "no-match-here" },
     });
     expect(screen.getByText(/没有匹配的智能体/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
+    expect(
+      screen.getByRole("heading", { name: "新建智能体", level: 2 }),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     fireEvent.click(
       screen.getByRole("button", { name: "查看全部智能体" }),
     );
@@ -302,7 +308,7 @@ describe("AgentsPage — edit modal", () => {
         selectedAgentId=""
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "创建第一个智能体" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
     expect(screen.getByLabelText("智能体预览")).toBeDefined();
 
     fireEvent.click(screen.getByRole("tab", { name: "技能" }));
@@ -715,8 +721,8 @@ describe("AgentsPage — edit modal", () => {
         selectedAgentId=""
       />,
     );
-    // Empty-state branch uses "创建第一个智能体" as the create CTA.
-    fireEvent.click(screen.getByRole("button", { name: "创建第一个智能体" }));
+    // Empty-state branch uses the same grid create tile as populated lists.
+    fireEvent.click(screen.getByRole("button", { name: "新建智能体" }));
     expect(screen.getByText(/选择一个起点/)).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "代码审阅" }));
     expect(screen.queryByText(/选择一个起点/)).toBeNull();

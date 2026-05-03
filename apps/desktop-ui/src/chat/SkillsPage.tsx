@@ -221,13 +221,11 @@ export function SkillsPage(props: SkillsPageProps) {
 
   return (
     <div className="page skills-page-marketplace">
-      {/* Sticky title row with the agent picker + search inline so the
-          toolbar reads as one focused control bar instead of three
-          competing rows. Policy switches collapse to small ghost
-          buttons on the right — they're rarely-used bulk actions, not
-          primary CTAs. */}
-      <header className="skills-header">
-        <div className="skills-header-titles">
+      {/* Title row with the agent picker + search inline so the toolbar
+          reads as one focused control bar. Policy switches stay small
+          on the right — they're bulk actions, not primary CTAs. */}
+      <header className="skills-header skills-page-header">
+        <div className="skills-header-titles skills-page-title">
           <h1>技能</h1>
           <p className="skills-header-sub">
             浏览可加载的能力包；选择一个智能体后按需启用。

@@ -23,6 +23,32 @@ const msgs: MessageDto[] = [
 ];
 
 describe("ChatView", () => {
+  test("empty state groups starter prompts inside a workbench suggestions panel", () => {
+    render(
+      <ChatView
+        agents={[{ id: "a1", name: "Accio" }]}
+        selectedAgentId="a1"
+        onSelectAgent={() => {}}
+        messages={[]}
+        runEvents={[]}
+        runStatus="idle"
+        runError={null}
+        submittingApprovals={new Set()}
+        resumingRun={false}
+        suggestions={["分析这个文件", "总结最近产物"]}
+        onSend={() => {}}
+        onCancel={() => {}}
+        onResume={() => {}}
+        onDecide={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("当前智能体")).toBeDefined();
+    expect(screen.getByText("开始工作")).toBeDefined();
+    expect(screen.getByText("2 条建议")).toBeDefined();
+    expect(screen.getByRole("list", { name: "建议提问" })).toBeDefined();
+  });
+
   test("renders historical messages", () => {
     render(
       <ChatView

@@ -50,6 +50,7 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 ];
 
 export function RunLogsPanel(props: RunLogsPageProps & { embedded?: boolean }) {
+  const embedded = props.embedded === true;
   const [status, setStatus] = useState<StatusFilter>("all");
   const [agentId, setAgentId] = useState("all");
   const [list, setList] = useState<ListState>({
@@ -113,49 +114,73 @@ export function RunLogsPanel(props: RunLogsPageProps & { embedded?: boolean }) {
     [list.items, trace.runId],
   );
 
+  const filterControls = (
+    <>
+      <span className="run-logs-count" aria-live="polite">
+        {list.loading ? "加载中..." : `${list.items.length} 条`}
+      </span>
+      <label>
+        <span>状态</span>
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value as StatusFilter)}
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>智能体</span>
+        <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+          <option value="all">全部</option>
+          {props.agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+
   return (
-    <div className={props.embedded ? "run-logs-page run-logs-embedded" : "page run-logs-page"}>
-      <header className={props.embedded ? "run-logs-header" : "page-header"}>
-        <div>
-          {props.embedded ? <h2>运行日志</h2> : <h1>运行日志</h1>}
+    <div className={embedded ? "run-logs-page run-logs-embedded" : "page run-logs-page"}>
+      <header className={embedded ? "run-logs-header" : "page-header run-logs-page-header"}>
+        <div className={embedded ? undefined : "run-logs-page-title"}>
+          {embedded ? <h2>运行日志</h2> : <h1>运行日志</h1>}
           <p>独立诊断视图，按需查看 run 的事件、工具、审批、恢复与产物记录。</p>
         </div>
-        <button type="button" className="btn-secondary" onClick={() => loadList()}>
-          刷新
-        </button>
+        {embedded ? (
+          <button type="button" className="btn-secondary" onClick={() => loadList()}>
+            刷新
+          </button>
+        ) : (
+          <div className="run-logs-toolbar" role="toolbar" aria-label="运行日志筛选与刷新">
+            {filterControls}
+            <button type="button" className="btn-secondary" onClick={() => loadList()}>
+              刷新
+            </button>
+          </div>
+        )}
       </header>
 
-      <div className="run-logs-toolbar">
-        <label>
-          <span>状态</span>
-          <select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>智能体</span>
-          <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
-            <option value="all">全部</option>
-            {props.agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="run-logs-count">
-          {list.loading ? "加载中..." : `${list.items.length} 条`}
-        </span>
-      </div>
+      {embedded ? (
+        <div className="run-logs-toolbar" role="toolbar" aria-label="运行日志筛选">
+          {filterControls}
+        </div>
+      ) : null}
 
       <ErrorAlert message={list.error} />
 
       <div className="run-logs-layout">
         <section className="run-logs-list" aria-label="运行日志列表">
+          <div className="run-logs-pane-head">
+            <span>Runs</span>
+            <strong>{list.items.length}</strong>
+          </div>
           {list.items.length === 0 && !list.loading ? (
             <div className="placeholder placeholder-tall">没有匹配的运行日志。</div>
           ) : (
@@ -197,6 +222,10 @@ export function RunLogsPanel(props: RunLogsPageProps & { embedded?: boolean }) {
         </section>
 
         <section className="run-log-detail" aria-label="运行日志详情">
+          <div className="run-logs-pane-head">
+            <span>Trace</span>
+            <strong>{trace.runId ? "已选择" : "未选择"}</strong>
+          </div>
           {!trace.runId ? (
             <div className="placeholder placeholder-tall">选择一条运行日志查看详情。</div>
           ) : trace.loading ? (
