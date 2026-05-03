@@ -3,19 +3,16 @@ import { z } from "zod";
 const NonEmptyIdSchema = z.string().trim().min(1);
 
 export const ModelApiSchema = z.enum([
-  "responses",
-  "chat_completions",
-  "anthropic_messages",
-  "openai_compatible",
-  "ollama",
-  "local",
+  "openai-responses",
+  "openai-codex-responses",
+  "anthropic-messages",
 ]);
 export type ModelApi = z.infer<typeof ModelApiSchema>;
 
-export const ModelProviderAuthModeSchema = z.enum(["api_key", "oauth", "local", "none"]);
+export const ModelProviderAuthModeSchema = z.enum(["api-key", "oauth", "token", "none"]);
 export type ModelProviderAuthMode = z.infer<typeof ModelProviderAuthModeSchema>;
 
-export const ModelInputTypeSchema = z.enum(["text", "image", "audio", "file"]);
+export const ModelInputTypeSchema = z.enum(["text", "image", "audio", "video", "document"]);
 export type ModelInputType = z.infer<typeof ModelInputTypeSchema>;
 
 export const ModelCatalogEntrySchema = z
@@ -27,33 +24,33 @@ export const ModelCatalogEntrySchema = z
     input: z.array(ModelInputTypeSchema),
     contextWindow: z.number().int().positive().optional(),
     maxTokens: z.number().int().positive().optional(),
-    compat: z.union([z.array(NonEmptyIdSchema), z.record(z.string(), z.unknown())]).optional(),
+    compat: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 export type ModelCatalogEntry = z.infer<typeof ModelCatalogEntrySchema>;
 
-export const AuthProfileModeSchema = z.enum(["api_key", "oauth", "local", "none"]);
+export const AuthProfileModeSchema = z.enum(["api_key", "oauth", "token", "none"]);
 export type AuthProfileMode = z.infer<typeof AuthProfileModeSchema>;
 
 export const AuthProfileStatusSchema = z.enum([
   "configured",
   "missing",
   "expired",
-  "refreshing",
   "error",
+  "unsupported",
 ]);
 export type AuthProfileStatus = z.infer<typeof AuthProfileStatusSchema>;
 
 export const AuthProfileViewSchema = z
   .object({
     id: NonEmptyIdSchema,
-    label: z.string().trim().min(1),
+    provider: NonEmptyIdSchema,
     mode: AuthProfileModeSchema,
+    label: z.string().trim().min(1),
     status: AuthProfileStatusSchema,
-    isDefault: z.boolean().default(false),
-    accountLabel: z.string().trim().min(1).nullable().optional(),
-    expiresAt: z.string().trim().min(1).nullable().optional(),
-    error: z.string().trim().min(1).nullable().optional(),
+    email: z.string().trim().min(1).optional(),
+    expiresAt: z.number().int().optional(),
+    message: z.string().trim().min(1).optional(),
   })
   .strict();
 export type AuthProfileView = z.infer<typeof AuthProfileViewSchema>;
@@ -62,9 +59,9 @@ export const ModelProviderViewSchema = z
   .object({
     id: NonEmptyIdSchema,
     name: z.string().trim().min(1),
-    api: ModelApiSchema,
-    authModes: z.array(ModelProviderAuthModeSchema),
     baseUrl: z.string().trim().min(1).nullable().optional(),
+    api: ModelApiSchema.optional(),
+    auth: ModelProviderAuthModeSchema.optional(),
     models: z.array(ModelCatalogEntrySchema),
     authProfiles: z.array(AuthProfileViewSchema),
     authOrder: z.array(NonEmptyIdSchema),
@@ -81,6 +78,7 @@ export type ModelSettingsResponse = z.infer<typeof ModelSettingsResponseSchema>;
 
 export const UpdateModelAuthOrderSchema = z
   .object({
+    provider: NonEmptyIdSchema,
     authOrder: z.array(NonEmptyIdSchema),
   })
   .strict();
@@ -91,7 +89,7 @@ export interface ParsedModelRef {
   modelRef: string;
   provider: string;
   model: string;
-  profileId: string | null;
+  profileId?: string;
   explicitProfile: boolean;
 }
 
@@ -139,14 +137,15 @@ export function parseModelRefWithProfile(
     return null;
   }
 
-  return {
+  const parsed: ParsedModelRef = {
     raw: value,
     modelRef,
     provider,
     model,
-    profileId,
     explicitProfile,
   };
+  if (profileId !== null) parsed.profileId = profileId;
+  return parsed;
 }
 
 function isKnownModelSuffix(suffix: string): boolean {

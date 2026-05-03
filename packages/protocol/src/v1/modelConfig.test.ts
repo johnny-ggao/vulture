@@ -31,7 +31,6 @@ describe("parseModelRefWithProfile", () => {
       modelRef: "anthropic/claude-sonnet@20251001",
       provider: "anthropic",
       model: "claude-sonnet@20251001",
-      profileId: null,
       explicitProfile: false,
     });
   });
@@ -53,7 +52,6 @@ describe("parseModelRefWithProfile", () => {
       modelRef: "ollama/gemma@q8_0",
       provider: "ollama",
       model: "gemma@q8_0",
-      profileId: null,
       explicitProfile: false,
     });
   });
@@ -75,7 +73,6 @@ describe("parseModelRefWithProfile", () => {
       modelRef: "openai/gpt-5.4",
       provider: "openai",
       model: "gpt-5.4",
-      profileId: null,
       explicitProfile: false,
     });
   });
@@ -91,12 +88,86 @@ describe("parseModelRefWithProfile", () => {
 
 describe("ModelSettingsResponseSchema", () => {
   test("exports the planned schema names", () => {
-    expect(ModelApiSchema.parse("responses")).toBe("responses");
-    expect(ModelProviderAuthModeSchema.parse("oauth")).toBe("oauth");
+    expect(ModelApiSchema.options).toEqual([
+      "openai-responses",
+      "openai-codex-responses",
+      "anthropic-messages",
+    ]);
+    expect(ModelProviderAuthModeSchema.options).toEqual(["api-key", "oauth", "token", "none"]);
+    expect(ModelInputTypeSchema.options).toEqual([
+      "text",
+      "image",
+      "audio",
+      "video",
+      "document",
+    ]);
+    expect(AuthProfileModeSchema.options).toEqual(["api_key", "oauth", "token", "none"]);
+    expect(AuthProfileStatusSchema.options).toEqual([
+      "configured",
+      "missing",
+      "expired",
+      "error",
+      "unsupported",
+    ]);
+    expect(ModelApiSchema.parse("openai-responses")).toBe("openai-responses");
+    expect(ModelProviderAuthModeSchema.parse("api-key")).toBe("api-key");
     expect(ModelInputTypeSchema.parse("text")).toBe("text");
     expect(AuthProfileModeSchema.parse("oauth")).toBe("oauth");
     expect(AuthProfileStatusSchema.parse("configured")).toBe("configured");
-    expect(UpdateModelAuthOrderSchema.parse({ authOrder: ["codex"] })).toEqual({
+    expect(UpdateModelAuthOrderSchema.parse({ provider: "openai", authOrder: ["codex"] }))
+      .toEqual({
+        provider: "openai",
+        authOrder: ["codex"],
+      });
+  });
+
+  test("rejects fields outside the planned wire contract", () => {
+    expect(() => ModelApiSchema.parse("responses")).toThrow();
+    expect(() => ModelProviderAuthModeSchema.parse("api_key")).toThrow();
+    expect(() => ModelInputTypeSchema.parse("file")).toThrow();
+    expect(() => AuthProfileStatusSchema.parse("refreshing")).toThrow();
+    expect(() => UpdateModelAuthOrderSchema.parse({ authOrder: ["codex"] })).toThrow();
+    expect(() =>
+      ModelCatalogEntrySchema.parse({
+        id: "gpt-5.5",
+        modelRef: "openai/gpt-5.5",
+        name: "GPT-5.5",
+        reasoning: true,
+        input: ["text"],
+        compat: ["agents-sdk"],
+      }),
+    ).toThrow();
+    expect(() =>
+      AuthProfileViewSchema.parse({
+        id: "codex",
+        provider: "openai",
+        label: "Codex",
+        mode: "oauth",
+        status: "configured",
+        accountLabel: "dev@example.com",
+      }),
+    ).toThrow();
+    expect(() =>
+      ModelProviderViewSchema.parse({
+        id: "openai",
+        name: "OpenAI",
+        api: "openai-responses",
+        authModes: ["oauth"],
+        models: [],
+        authProfiles: [],
+        authOrder: [],
+      }),
+    ).toThrow();
+  });
+
+  test("parses auth order updates with provider id", () => {
+    expect(
+      UpdateModelAuthOrderSchema.parse({
+        provider: "openai",
+        authOrder: ["codex"],
+      }),
+    ).toEqual({
+      provider: "openai",
       authOrder: ["codex"],
     });
   });
@@ -107,8 +178,8 @@ describe("ModelSettingsResponseSchema", () => {
         {
           id: "openai",
           name: "OpenAI",
-          api: "responses",
-          authModes: ["oauth", "api_key"],
+          api: "openai-responses",
+          auth: "api-key",
           models: [
             {
               id: "gpt-5.5",
@@ -118,17 +189,21 @@ describe("ModelSettingsResponseSchema", () => {
               input: ["text", "image"],
               contextWindow: 400000,
               maxTokens: 128000,
-              compat: ["agents-sdk"],
+              compat: {
+                agentsSdk: true,
+              },
             },
           ],
           authProfiles: [
             {
               id: "codex",
+              provider: "openai",
               label: "Codex",
               mode: "oauth",
               status: "configured",
-              isDefault: true,
-              accountLabel: "dev@example.com",
+              email: "dev@example.com",
+              expiresAt: 1770000000,
+              message: "Signed in",
             },
           ],
           authOrder: ["codex", "api-key"],
@@ -138,6 +213,9 @@ describe("ModelSettingsResponseSchema", () => {
 
     expect(parsed.providers[0]?.authProfiles[0]?.mode).toBe("oauth");
     expect(parsed.providers[0]?.authProfiles[0]?.status).toBe("configured");
+    expect(parsed.providers[0]?.authProfiles[0]?.provider).toBe("openai");
+    expect(parsed.providers[0]?.authProfiles[0]?.email).toBe("dev@example.com");
+    expect(parsed.providers[0]?.authProfiles[0]?.expiresAt).toBe(1770000000);
     expect(parsed.providers[0]?.authOrder).toEqual(["codex", "api-key"]);
   });
 
@@ -161,24 +239,23 @@ describe("ModelSettingsResponseSchema", () => {
     expect(
       AuthProfileViewSchema.parse({
         id: "api-key",
+        provider: "openai",
         label: "API key",
         mode: "api_key",
         status: "missing",
       }),
     ).toEqual({
       id: "api-key",
+      provider: "openai",
       label: "API key",
       mode: "api_key",
       status: "missing",
-      isDefault: false,
     });
 
     expect(
       ModelProviderViewSchema.parse({
         id: "openai",
         name: "OpenAI",
-        api: "responses",
-        authModes: ["oauth"],
         models: [],
         authProfiles: [],
         authOrder: [],
@@ -186,8 +263,6 @@ describe("ModelSettingsResponseSchema", () => {
     ).toEqual({
       id: "openai",
       name: "OpenAI",
-      api: "responses",
-      authModes: ["oauth"],
       models: [],
       authProfiles: [],
       authOrder: [],
