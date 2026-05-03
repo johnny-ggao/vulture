@@ -485,7 +485,7 @@ describe("preset agents seed", () => {
     const { store, cleanup } = freshStore();
     store.list();
     const identityMd = store.readAgentCoreFile("local-work-agent", "IDENTITY.md");
-    expect(identityMd.content).not.toContain("test-driven");
+    expect((identityMd.content ?? "").toLowerCase()).not.toContain("test-driven");
     cleanup();
   });
 
@@ -494,8 +494,8 @@ describe("preset agents seed", () => {
     store.list();
     const identityMd = store.readAgentCoreFile("coding-agent", "IDENTITY.md");
     expect(identityMd.content).toContain("Vulture Coding");
-    expect(identityMd.content).toContain("test-driven");
-    expect(identityMd.content).toContain("immutable");
+    expect((identityMd.content ?? "").toLowerCase()).toContain("test-driven");
+    expect((identityMd.content ?? "").toLowerCase()).toContain("immutable");
     cleanup();
   });
 
