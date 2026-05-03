@@ -19,6 +19,7 @@ import type {
 } from "../../api/webSearchSettings";
 
 export interface SettingsPageProps {
+  onBack: () => void;
   authStatus: AuthStatusView | null;
   browserStatus: BrowserRelayStatus | null;
   agents: ReadonlyArray<Agent>;

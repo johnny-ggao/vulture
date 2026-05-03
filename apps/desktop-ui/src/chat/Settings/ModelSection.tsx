@@ -35,7 +35,6 @@ interface LocalProviderState {
   endpoint?: string;
 }
 const LS_PROVIDER = (id: ProviderId) => `vulture.provider.${id}`;
-const LS_DEFAULTS = "vulture.provider.defaults";
 
 function readLocalProvider(id: ProviderId): LocalProviderState {
   try {
@@ -55,33 +54,11 @@ function writeLocalProvider(id: ProviderId, value: LocalProviderState) {
   }
 }
 
-interface DefaultsState {
-  provider: ProviderId;
-  model: string;
-}
-function readDefaults(): DefaultsState {
-  try {
-    const raw = localStorage.getItem(LS_DEFAULTS);
-    if (!raw) return { provider: "openai", model: PROVIDERS[0]!.models[0]!.id };
-    return JSON.parse(raw) as DefaultsState;
-  } catch {
-    return { provider: "openai", model: PROVIDERS[0]!.models[0]!.id };
-  }
-}
-function writeDefaults(value: DefaultsState) {
-  try {
-    localStorage.setItem(LS_DEFAULTS, JSON.stringify(value));
-  } catch {
-    /* no-op */
-  }
-}
-
 export function ModelSection(props: SettingsPageProps) {
   const [activeId, setActiveId] = useState<ProviderId>("openai");
   const [editing, setEditing] = useState(false);
   const [draftKey, setDraftKey] = useState("");
   const [busy, setBusy] = useState<"save" | "clear" | "signin" | "signout" | null>(null);
-  const [defaults, setDefaults] = useState<DefaultsState>(() => readDefaults());
 
   // Local-state map of all providers' configured/suffix flags. Re-read
   // from storage when the active provider changes since another tab
@@ -117,6 +94,21 @@ export function ModelSection(props: SettingsPageProps) {
     if (ls.configured) return { kind: "configured", suffix: ls.suffix ? `sk-•••${ls.suffix}` : "已配置" };
     return { kind: "empty" };
   }, [active.id, apiKey, codex, localState]);
+
+  const providerConfigured = useMemo(() => {
+    const next: Partial<Record<ProviderId, boolean>> = {};
+    for (const provider of PROVIDERS) {
+      if (provider.id === "openai") {
+        next[provider.id] = apiKey?.state === "set";
+      } else if (provider.id === "gateway") {
+        next[provider.id] = codex?.state === "signed_in";
+      } else {
+        next[provider.id] = !!localState[provider.id]?.configured;
+      }
+    }
+    return next as Record<ProviderId, boolean>;
+  }, [apiKey, codex, localState]);
+  const configuredCount = PROVIDERS.filter((provider) => providerConfigured[provider.id]).length;
 
   async function safeAction<T>(label: NonNullable<typeof busy>, fn: () => Promise<T>) {
     setBusy(label);
@@ -161,23 +153,6 @@ export function ModelSection(props: SettingsPageProps) {
     await safeAction("signout", () => props.onSignOutCodex());
   }
 
-  function setDefaultProvider(id: string) {
-    const provider = PROVIDERS.find((p) => p.id === id);
-    if (!provider) return;
-    const next: DefaultsState = {
-      provider: provider.id,
-      model: provider.models[0]?.id ?? defaults.model,
-    };
-    setDefaults(next);
-    writeDefaults(next);
-  }
-
-  function setDefaultModel(model: string) {
-    const next: DefaultsState = { ...defaults, model };
-    setDefaults(next);
-    writeDefaults(next);
-  }
-
   const isExperimental = active.id !== "openai" && active.id !== "gateway";
 
   return (
@@ -185,44 +160,49 @@ export function ModelSection(props: SettingsPageProps) {
       title="模型"
       description="配置模型提供商与对应的 API Key。每个智能体可在「模型」字段选择具体模型并按需覆盖。"
     >
+      <div className="provider-summary-strip" aria-label="模型配置摘要">
+        <span><b>{configuredCount}</b> / {PROVIDERS.length} 已配置</span>
+        <span>{PROVIDERS.length} 个提供方</span>
+        <span>当前查看 <b>{active.name}</b> · {active.models.length} 个模型</span>
+      </div>
+
       <div className="provider-grid">
-        <ul className="provider-list" role="listbox" aria-label="模型提供商">
-          {PROVIDERS.map((p) => {
-            const s =
-              p.id === "openai"
-                ? apiKey?.state === "set"
-                : p.id === "gateway"
-                ? codex?.state === "signed_in"
-                : localState[p.id]?.configured;
-            return (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={p.id === activeId}
-                  className={"provider-row" + (p.id === activeId ? " active" : "")}
-                  onClick={() => setActiveId(p.id)}
-                >
-                  <span
-                    className="provider-mark"
-                    style={{ background: p.tint, color: p.fg }}
+        <aside className="provider-sidebar">
+          <div className="provider-sidebar-head">
+            <span>模型提供商</span>
+            <span>{configuredCount} 已配置</span>
+          </div>
+          <ul className="provider-list" role="listbox" aria-label="模型提供商">
+            {PROVIDERS.map((p) => {
+              const configured = providerConfigured[p.id];
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={p.id === activeId}
+                    className={"provider-row" + (p.id === activeId ? " active" : "")}
+                    onClick={() => setActiveId(p.id)}
                   >
-                    {p.glyph}
-                  </span>
-                  <span className="provider-text">
-                    <span className="provider-name">{p.name}</span>
-                    <span className="provider-domain">{p.domain}</span>
-                  </span>
-                  <span
-                    className={"provider-dot" + (s ? " on" : "")}
-                    title={s ? "已配置" : "未配置"}
-                    aria-hidden="true"
-                  />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                    <span
+                      className="provider-mark"
+                      style={{ background: p.tint, color: p.fg }}
+                    >
+                      {p.glyph}
+                    </span>
+                    <span className="provider-text">
+                      <span className="provider-name">{p.name}</span>
+                      <span className="provider-domain">{p.domain}</span>
+                    </span>
+                    <span className={"provider-row-status" + (configured ? " on" : "")}>
+                      {configured ? "已配置" : "未配置"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
 
         <section className="provider-detail">
           <header className="provider-detail-head">
@@ -241,113 +221,116 @@ export function ModelSection(props: SettingsPageProps) {
 
           {isExperimental ? (
             <div className="provider-banner">
+              <span className="provider-banner-mark" aria-hidden="true" />
               <span>该提供方仅作 UI 配置预览，后端连接尚未开通；保存的密钥仅在本机记一个标记，不会真正用于推理。</span>
             </div>
           ) : null}
 
-          {/* API Key field — provider-specific behaviour */}
-          {active.id === "gateway" ? (
-            <CodexBlock
-              codex={codex ?? null}
-              onSignIn={handleSignIn}
-              onSignOut={handleSignOut}
-              busy={busy}
-            />
-          ) : editing ? (
-            <FormRow
-              label="API Key"
-              hint={
-                active.id === "openai"
-                  ? "存储在系统 keychain，仅当登录 ChatGPT 失败时使用。"
-                  : "本机仅保留尾 4 位以便识别；当前 UI 阶段不会上传。"
-              }
-            >
-              <div className="provider-key-edit">
-                <input
-                  type="password"
-                  className="provider-key-input"
-                  placeholder={active.placeholder}
-                  value={draftKey}
-                  onChange={(e) => setDraftKey(e.target.value)}
-                  autoComplete="off"
-                  spellCheck="false"
-                />
-                <button
-                  type="button"
-                  className="btn-primary btn-sm"
-                  onClick={handleSave}
-                  disabled={!draftKey.trim() || busy !== null}
-                >
-                  {busy === "save" ? "..." : "保存"}
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => {
-                    setEditing(false);
-                    setDraftKey("");
-                  }}
-                >
-                  取消
-                </button>
-              </div>
-            </FormRow>
-          ) : (
-            <FormRow
-              label="API Key"
-              hint={
-                active.id === "openai"
-                  ? "存储在系统 keychain。已登录 ChatGPT 时无需 API Key。"
-                  : "本机仅保留尾 4 位以便识别；当前 UI 阶段不会上传。"
-              }
-            >
-              <div className="provider-key-display">
-                <span className="provider-key-masked">
-                  {status.kind === "configured" ? status.suffix : <em className="provider-key-empty">未填写</em>}
-                </span>
-                <button
-                  type="button"
-                  className="btn-secondary btn-sm"
-                  onClick={() => setEditing(true)}
-                  disabled={busy !== null}
-                >
-                  {status.kind === "configured" ? "更换" : "添加密钥"}
-                </button>
-                {status.kind === "configured" ? (
+          <div className="provider-form-stack">
+            {/* API Key field — provider-specific behaviour */}
+            {active.id === "gateway" ? (
+              <CodexBlock
+                codex={codex ?? null}
+                onSignIn={handleSignIn}
+                onSignOut={handleSignOut}
+                busy={busy}
+              />
+            ) : editing ? (
+              <FormRow
+                label="API Key"
+                hint={
+                  active.id === "openai"
+                    ? "存储在系统 keychain，仅当登录 ChatGPT 失败时使用。"
+                    : "本机仅保留尾 4 位以便识别；当前 UI 阶段不会上传。"
+                }
+              >
+                <div className="provider-key-edit">
+                  <input
+                    type="password"
+                    className="provider-key-input"
+                    placeholder={active.placeholder}
+                    value={draftKey}
+                    onChange={(e) => setDraftKey(e.target.value)}
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
                   <button
                     type="button"
-                    className="btn-secondary btn-sm btn-danger-ghost"
-                    onClick={handleClear}
+                    className="btn-primary btn-sm"
+                    onClick={handleSave}
+                    disabled={!draftKey.trim() || busy !== null}
+                  >
+                    {busy === "save" ? "..." : "保存"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => {
+                      setEditing(false);
+                      setDraftKey("");
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+              </FormRow>
+            ) : (
+              <FormRow
+                label="API Key"
+                hint={
+                  active.id === "openai"
+                    ? "存储在系统 keychain。已登录 ChatGPT 时无需 API Key。"
+                    : "本机仅保留尾 4 位以便识别；当前 UI 阶段不会上传。"
+                }
+              >
+                <div className="provider-key-display">
+                  <span className="provider-key-masked">
+                    {status.kind === "configured" ? status.suffix : <em className="provider-key-empty">未填写</em>}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => setEditing(true)}
                     disabled={busy !== null}
                   >
-                    {busy === "clear" ? "..." : "移除"}
+                    {status.kind === "configured" ? "更换" : "添加密钥"}
                   </button>
-                ) : null}
-              </div>
-            </FormRow>
-          )}
+                  {status.kind === "configured" ? (
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm btn-danger-ghost"
+                      onClick={handleClear}
+                      disabled={busy !== null}
+                    >
+                      {busy === "clear" ? "..." : "移除"}
+                    </button>
+                  ) : null}
+                </div>
+              </FormRow>
+            )}
 
-          {/* Custom endpoint — local-only knob */}
-          {!active.internal ? (
-            <FormRow label="自定义 Endpoint" hint="留空则使用官方默认地址。">
-              <input
-                type="text"
-                className="provider-text-input"
-                placeholder={`https://${active.domain}`}
-                defaultValue={localState[active.id]?.endpoint ?? ""}
-                spellCheck="false"
-                onBlur={(e) => {
-                  const endpoint = e.currentTarget.value.trim();
-                  const next: LocalProviderState = {
-                    ...(localState[active.id] ?? { configured: false }),
-                    endpoint: endpoint || undefined,
-                  };
-                  writeLocalProvider(active.id, next);
-                  setLocalState((prev) => ({ ...prev, [active.id]: next }));
-                }}
-              />
-            </FormRow>
-          ) : null}
+            {/* Custom endpoint — local-only knob */}
+            {!active.internal ? (
+              <FormRow label="自定义 Endpoint" hint="留空则使用官方默认地址。">
+                <input
+                  type="text"
+                  className="provider-text-input"
+                  placeholder={`https://${active.domain}`}
+                  defaultValue={localState[active.id]?.endpoint ?? ""}
+                  spellCheck="false"
+                  onBlur={(e) => {
+                    const endpoint = e.currentTarget.value.trim();
+                    const next: LocalProviderState = {
+                      ...(localState[active.id] ?? { configured: false }),
+                      endpoint: endpoint || undefined,
+                    };
+                    writeLocalProvider(active.id, next);
+                    setLocalState((prev) => ({ ...prev, [active.id]: next }));
+                  }}
+                />
+              </FormRow>
+            ) : null}
+          </div>
 
           <div className="provider-models">
             <div className="provider-models-head">
@@ -366,37 +349,6 @@ export function ModelSection(props: SettingsPageProps) {
         </section>
       </div>
 
-      <section className="provider-defaults">
-        <h3 className="provider-defaults-title">默认值</h3>
-        <div className="provider-defaults-grid">
-          <FormRow label="默认提供方" hint="新建对话时默认使用。">
-            <select
-              className="provider-select"
-              value={defaults.provider}
-              onChange={(e) => setDefaultProvider(e.currentTarget.value)}
-            >
-              {PROVIDERS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </FormRow>
-          <FormRow label="默认模型">
-            <select
-              className="provider-select"
-              value={defaults.model}
-              onChange={(e) => setDefaultModel(e.currentTarget.value)}
-            >
-              {(PROVIDERS.find((p) => p.id === defaults.provider) ?? PROVIDERS[0]!).models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.id}
-                </option>
-              ))}
-            </select>
-          </FormRow>
-        </div>
-      </section>
     </SettingsSection>
   );
 }

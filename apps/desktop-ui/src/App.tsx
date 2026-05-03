@@ -34,6 +34,7 @@ import {
   type ProfileListResponse,
   type ProfileView,
 } from "./app/appHelpers";
+import { applyThemePreference, getThemePreference } from "./app/theme";
 import {
   loadGlobalSkillsWithGatewayRestartFallback as loadGlobalSkillsRetry,
   withGatewayRestartForMissingRoute,
@@ -56,6 +57,8 @@ import { Titlebar } from "./chat/Titlebar";
 import { WorkbenchSidebar, type ViewKey } from "./chat/WorkbenchSidebar";
 import { useConversations } from "./hooks/useConversations";
 
+applyThemePreference(getThemePreference());
+
 export function App() {
   const runtime = useRuntimeDescriptor();
   const apiClient = useMemo(
@@ -68,6 +71,7 @@ export function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatusView | null>(null);
   const [browserStatus, setBrowserStatus] = useState<BrowserRelayStatus | null>(null);
   const [view, setView] = useState<ViewKey>("chat");
+  const [settingsReturnView, setSettingsReturnView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
   const conversations = useConversations(apiClient);
   const {
@@ -358,7 +362,29 @@ export function App() {
   function startNewConversation() {
     runController.startNewConversation();
     setView("chat");
+    setSettingsReturnView("chat");
     setHistoryOpen(false);
+  }
+
+  function openSettings() {
+    setSettingsReturnView((current) => (view === "settings" ? current : view));
+    setView("settings");
+    setHistoryOpen(false);
+  }
+
+  function navigateToView(next: ViewKey) {
+    if (next === "settings") {
+      openSettings();
+      return;
+    }
+    setView(next);
+    setSettingsReturnView(next);
+    if (next !== "chat") setHistoryOpen(false);
+  }
+
+  function closeSettings() {
+    const target = settingsReturnView === "settings" ? "chat" : settingsReturnView;
+    navigateToView(target);
   }
 
   async function handleSwitchProfile(profileId: string) {
@@ -373,6 +399,7 @@ export function App() {
       setSelectedAgentId("");
       runController.resetForProfileSwitch();
       setView("chat");
+      setSettingsReturnView("chat");
       await Promise.all([refreshProfiles(), refreshAuthStatus()]);
       await loadGatewayState(switched.id);
     } catch (cause) {
@@ -463,6 +490,13 @@ export function App() {
     if (selectedAgentId === id) setSelectedAgentId(saved.id);
   }
 
+  async function handleSaveAgentSkills(id: string, skills: string[] | null) {
+    if (!apiClient) return;
+    const saved = await agentsApi.update(apiClient, id, { skills });
+    setAgents((prev) => prev.map((agent) => (agent.id === saved.id ? saved : agent)));
+    if (selectedAgentId === id) setSelectedAgentId(saved.id);
+  }
+
   async function handleListAgentFiles(id: string): Promise<AgentCoreFilesResponse> {
     if (!apiClient) throw new Error("Gateway is not ready");
     return agentsApi.listFiles(apiClient, id);
@@ -538,8 +572,7 @@ export function App() {
         const target = VIEW_KEYS[idx];
         if (target) {
           event.preventDefault();
-          setView(target);
-          setHistoryOpen(false);
+          navigateToView(target);
         }
         return;
       }
@@ -554,14 +587,14 @@ export function App() {
       // not be blackholed by an active text field.
       if (event.key === ",") {
         event.preventDefault();
-        setView("settings");
-        setHistoryOpen(false);
+        openSettings();
         return;
       }
       // ⌘B — toggle history drawer (sidebar-bar mnemonic). Skipped
       // while typing so it doesn't blackhole the bold-text shortcut.
       if (event.key === "b" || event.key === "B") {
         if (isTyping) return;
+        if (view === "settings") return;
         event.preventDefault();
         setHistoryOpen((open) => !open);
         return;
@@ -624,8 +657,7 @@ export function App() {
         keywords: [key, "view", "switch", "navigate"],
         shortcut: ["⌘", digit],
         execute: () => {
-          setView(key);
-          setHistoryOpen(false);
+          navigateToView(key);
         },
       });
     }
@@ -635,7 +667,10 @@ export function App() {
       group: "导航",
       keywords: ["history", "drawer", "记录"],
       shortcut: ["⌘", "B"],
-      execute: () => setHistoryOpen((open) => !open),
+      execute: () => {
+        if (view === "settings") return;
+        setHistoryOpen((open) => !open);
+      },
     });
     cmds.push({
       id: "view:settings:prefs",
@@ -644,8 +679,7 @@ export function App() {
       keywords: ["settings", "preferences", "设置", "config"],
       shortcut: ["⌘", ","],
       execute: () => {
-        setView("settings");
-        setHistoryOpen(false);
+        openSettings();
       },
     });
 
@@ -665,7 +699,7 @@ export function App() {
       label: "新建智能体",
       group: "操作",
       keywords: ["agent", "create", "new"],
-      execute: () => setView("agents"),
+      execute: () => navigateToView("agents"),
     });
     const runStatus = runController.runStream.status;
     if (
@@ -695,7 +729,7 @@ export function App() {
           keywords: [agent.id, agent.description ?? "", "agent"],
           execute: () => {
             setSelectedAgentId(agent.id);
-            setView("chat");
+            navigateToView("chat");
             setHistoryOpen(false);
           },
         });
@@ -736,11 +770,13 @@ export function App() {
     profiles,
     profile?.id,
     historyOpen,
+    view,
+    settingsReturnView,
     runController.runStream.status,
   ]);
 
   return (
-    <div className="app-shell">
+    <div className={"app-shell" + (view === "settings" ? " settings-mode" : "")}>
       {/* Skip-link — invisible until keyboard-focused, then surfaces
           as a brand-tinted pill at the top-left and jumps the user
           straight to <main>, bypassing the titlebar + sidebar. */}
@@ -756,18 +792,17 @@ export function App() {
       </a>
       <Titlebar />
       <div className="shell-body">
-        <div className="sidebar-frame">
-          <WorkbenchSidebar
-            view={view}
-            onSelectView={(v) => {
-              setView(v);
-              if (v !== "chat") setHistoryOpen(false);
-            }}
-            onNewConversation={startNewConversation}
-            historyOpen={historyOpen}
-            onToggleHistory={() => setHistoryOpen((o) => !o)}
-          />
-        </div>
+        {view !== "settings" ? (
+          <div className="sidebar-frame">
+            <WorkbenchSidebar
+              view={view}
+              onSelectView={navigateToView}
+              onNewConversation={startNewConversation}
+              historyOpen={historyOpen}
+              onToggleHistory={() => setHistoryOpen((o) => !o)}
+            />
+          </div>
+        ) : null}
         <main
           id="main-content"
           ref={mainRef}
@@ -822,7 +857,7 @@ export function App() {
               onCreate={handleCreateAgent}
               onOpenChat={(id) => {
                 setSelectedAgentId(id);
-                setView("chat");
+                navigateToView("chat");
               }}
               onSave={handleSaveAgent}
               onListFiles={handleListAgentFiles}
@@ -922,6 +957,7 @@ export function App() {
           ) : null}
           {view === "settings" ? (
             <SettingsPage
+              onBack={closeSettings}
               authStatus={authStatus}
               browserStatus={browserStatus}
               agents={agents}
@@ -959,14 +995,14 @@ export function App() {
       </div>
 
       <HistoryDrawer
-        open={historyOpen}
+        open={view !== "settings" && historyOpen}
         onClose={() => setHistoryOpen(false)}
         items={conversations.items}
         agents={agents}
         activeId={runController.activeConversationId}
         onSelect={(id) => {
           runController.selectConversation(id);
-          setView("chat");
+          navigateToView("chat");
         }}
         onNew={startNewConversation}
         onDelete={handleDeleteConversation}

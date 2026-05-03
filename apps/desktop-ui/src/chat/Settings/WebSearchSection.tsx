@@ -4,7 +4,8 @@ import type {
   WebSearchSettingsResponse,
   WebSearchTestResult,
 } from "../../api/webSearchSettings";
-import { ErrorAlert, Field } from "../components";
+import { ErrorAlert } from "../components";
+import { FormRow, SectionGroup } from "./GeneralSection";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
@@ -99,10 +100,10 @@ export function WebSearchSection(props: SettingsPageProps) {
           </div>
         </div>
       ) : (
-      <>
-      <div className="mcp-create-grid">
-        <Field label="搜索源">
+      <SectionGroup title="搜索源">
+        <FormRow label="搜索源">
           <select
+            className="provider-select"
             aria-label="搜索源"
             value={provider}
             disabled={busy === "load"}
@@ -121,9 +122,10 @@ export function WebSearchSection(props: SettingsPageProps) {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="SearXNG URL" hint="例如 https://search.example.com">
+        </FormRow>
+        <FormRow label="SearXNG URL" hint="仅选择 SearXNG 时需要。">
           <input
+            className="provider-text-input"
             aria-label="SearXNG URL"
             value={searxngBaseUrl}
             disabled={provider !== "searxng" || busy === "load"}
@@ -134,35 +136,34 @@ export function WebSearchSection(props: SettingsPageProps) {
               setTestResult(null);
             }}
           />
-        </Field>
-      </div>
-      <div className="mcp-create-actions">
-        <button type="button" className="btn-secondary" disabled={busy !== null} onClick={testSearch}>
-          {busy === "test" ? "测试中…" : "测试"}
-        </button>
-        <button type="button" className="btn-primary" disabled={busy !== null} onClick={save}>
-          {busy === "save" ? "保存中…" : "保存"}
-        </button>
-        {saved ? (
-          <span className="settings-feedback settings-feedback-success" role="status">
-            已保存
-          </span>
-        ) : null}
-      </div>
-      {testResult ? (
-        <div
-          className={
-            "settings-feedback" +
-            (testResult.ok ? " settings-feedback-success" : " settings-feedback-error")
-          }
-          role="status"
-        >
-          {testResult.ok
-            ? `${testResult.provider} · ${testResult.resultCount} 个结果`
-            : testResult.error ?? "测试失败"}
+        </FormRow>
+        <div className="settings-inline-actions">
+          <button type="button" className="btn-secondary" disabled={busy !== null} onClick={testSearch}>
+            {busy === "test" ? "测试中…" : "测试"}
+          </button>
+          <button type="button" className="btn-primary" disabled={busy !== null} onClick={save}>
+            {busy === "save" ? "保存中…" : "保存"}
+          </button>
+          {saved ? (
+            <span className="settings-feedback settings-feedback-success" role="status">
+              已保存
+            </span>
+          ) : null}
+          {testResult ? (
+            <span
+              className={
+                "settings-feedback" +
+                (testResult.ok ? " settings-feedback-success" : " settings-feedback-error")
+              }
+              role="status"
+            >
+              {testResult.ok
+                ? `${testResult.provider} · ${testResult.resultCount} 个结果`
+                : testResult.error ?? "测试失败"}
+            </span>
+          ) : null}
         </div>
-      ) : null}
-      </>
+      </SectionGroup>
       )}
     </SettingsSection>
   );

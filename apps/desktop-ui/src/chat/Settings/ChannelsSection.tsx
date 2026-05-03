@@ -33,8 +33,6 @@ interface ChannelSpec {
   fg: string;
   account: string;
   hint: string;
-  inbound: number;
-  outbound: number;
   status: "on" | "off";
 }
 
@@ -43,13 +41,11 @@ const CHANNELS: ReadonlyArray<ChannelSpec> = [
     id: "gmail",
     kind: "gmail",
     name: "Gmail",
-    glyph: "✉",
+    glyph: "G",
     tint: "rgba(212, 76, 64, 0.10)",
     fg: "#b13d2f",
     account: "me@example.com",
     hint: "IMAP + 应用专用密码",
-    inbound: 124,
-    outbound: 38,
     status: "on",
   },
   {
@@ -61,47 +57,39 @@ const CHANNELS: ReadonlyArray<ChannelSpec> = [
     fg: "#2553b8",
     account: "王同学（个人）",
     hint: "机器人 webhook",
-    inbound: 42,
-    outbound: 12,
     status: "on",
   },
   {
     id: "tg",
     kind: "telegram",
     name: "Telegram",
-    glyph: "✈",
+    glyph: "T",
     tint: "rgba(34, 158, 217, 0.10)",
     fg: "#1773a0",
     account: "@me_bot",
     hint: "Bot Token",
-    inbound: 18,
-    outbound: 6,
     status: "on",
   },
   {
     id: "sms",
     kind: "sms",
     name: "短信",
-    glyph: "✆",
+    glyph: "短",
     tint: "rgba(52, 199, 89, 0.10)",
     fg: "#1c8939",
     account: "+86 138 ****",
     hint: "通过 macOS 信使转发",
-    inbound: 3,
-    outbound: 0,
     status: "off",
   },
   {
     id: "webhook",
     kind: "webhook",
     name: "通用 Webhook",
-    glyph: "⚡",
+    glyph: "W",
     tint: "rgba(124, 58, 237, 0.10)",
     fg: "#5b29b8",
     account: "6 个端点",
     hint: "签名校验已开启",
-    inbound: 220,
-    outbound: 0,
     status: "on",
   },
 ];
@@ -205,10 +193,6 @@ export function ChannelsSection() {
           </DisabledSelect>
         </FormRow>
       </SectionGroup>
-
-      <p className="settings-shell-note">
-        消息渠道与路由规则均为 UI 预览，后端尚未启用；启用后将以本机隔离方式运行。
-      </p>
     </SettingsSection>
   );
 }
@@ -238,24 +222,6 @@ function ChannelCard({ channel }: { channel: ChannelSpec }) {
       </header>
 
       <p className="channel-card-hint">{channel.hint}</p>
-
-      <dl className="channel-card-stats" aria-label="本月流量">
-        <div className="channel-card-stat">
-          <dt>
-            <span aria-hidden="true">↓</span>
-            <span className="visually-hidden">收</span>
-          </dt>
-          <dd className="num">{channel.inbound}</dd>
-        </div>
-        <div className="channel-card-stat">
-          <dt>
-            <span aria-hidden="true">↑</span>
-            <span className="visually-hidden">发</span>
-          </dt>
-          <dd className="num">{channel.outbound}</dd>
-        </div>
-        <div className="channel-card-stat-meta">本月</div>
-      </dl>
 
       <footer className="channel-card-foot">
         <DisabledToggle on={isOn} />

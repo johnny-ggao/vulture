@@ -18,12 +18,6 @@ import type { SettingsPageProps } from "./types";
  * shells stay disabled until backend support lands.
  * ============================================================ */
 
-const PROFILES = [
-  { id: "work",     name: "工作", glyph: "工", tint: "rgba(16,107,61,0.10)",  fg: "#0a6b3d", desc: "公司账号 / Linear / Notion / Gmail",   sites: 12, cookies: 86,  active: true },
-  { id: "personal", name: "个人", glyph: "个", tint: "rgba(160,67,24,0.10)",  fg: "#a04318", desc: "个人邮箱、订阅与购物",                     sites: 4,  cookies: 22,  active: false },
-  { id: "research", name: "调研", glyph: "调", tint: "rgba(31,58,138,0.10)",  fg: "#1f3a8a", desc: "匿名调研，会话隔离",                       sites: 31, cookies: 144, active: false },
-] as const;
-
 const SENSITIVE = ["github.com", "linear.app", "notion.so", "mail.google.com"];
 
 export function BrowserSection(props: SettingsPageProps) {
@@ -80,36 +74,17 @@ export function BrowserSection(props: SettingsPageProps) {
         ) : null}
       </SectionGroup>
 
-      <SectionGroup title="浏览器 Profile" hint="每个 Profile 拥有独立 cookie 与登录态。">
-        <ul className="bp-list">
-          {PROFILES.map((p) => (
-            <li key={p.id} className={"bp-card" + (p.active ? " active" : "")}>
-              <span className="bp-mark" style={{ background: p.tint, color: p.fg }}>
-                {p.glyph}
-              </span>
-              <div className="bp-body">
-                <div className="bp-head">
-                  <span className="bp-name">{p.name}</span>
-                  {p.active ? <span className="provider-status on">使用中</span> : null}
-                </div>
-                <p className="bp-desc">{p.desc}</p>
-                <div className="bp-stats">
-                  <span><b>{p.sites}</b> 个站点</span>
-                  <span><b>{p.cookies}</b> 条 cookie</span>
-                  <span>缓存 18 MB</span>
-                </div>
-              </div>
-              <div className="bp-actions">
-                <button type="button" className="btn-secondary btn-sm" disabled>打开</button>
-                <button type="button" className="btn-secondary btn-sm" disabled>编辑</button>
-              </div>
-            </li>
-          ))}
-          <li className="bp-card bp-card-add">
-            <span className="bp-add-glyph">+</span>
-            <span>新建 Profile</span>
-          </li>
-        </ul>
+      <SectionGroup title="会话">
+        <FormRow label="默认会话" hint="浏览器会话设置尚未接入。">
+          <DisabledSelect value="work">
+            <option value="work">工作</option>
+            <option value="personal">个人</option>
+            <option value="research">调研</option>
+          </DisabledSelect>
+        </FormRow>
+        <FormRow label="会话隔离" hint="不同用途使用独立 cookie 与登录态。">
+          <DisabledToggle on />
+        </FormRow>
       </SectionGroup>
 
       <SectionGroup title="抓取与代理">
@@ -151,10 +126,6 @@ export function BrowserSection(props: SettingsPageProps) {
         </FormRow>
         <FormRow label="阻止追踪器"><DisabledToggle on /></FormRow>
       </SectionGroup>
-
-      <p className="settings-shell-note">
-        Profile 列表与抓取/安全设置为 UI 预留位置；实际生效以「浏览器中继」配对状态为准。
-      </p>
     </SettingsSection>
   );
 }

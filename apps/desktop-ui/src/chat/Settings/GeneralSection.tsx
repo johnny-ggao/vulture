@@ -1,91 +1,38 @@
 import { useState } from "react";
-import { Field, SectionCard } from "../components";
+import {
+  getThemePreference,
+  setThemePreference,
+  type ThemePreference,
+} from "../../app/theme";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
 /* ============================================================
  * GeneralSection (C2)
  *
- * Anchored on Profiles (real, backend-backed) + a kit-faithful UI shell
- * for the rest of the personal-workbench surfaces: appearance / language /
+ * Compact shell for the personal-workbench surfaces: appearance / language /
  * hotkeys / startup / quiet hours / privacy / data dir.
  *
  * Surfaces marked "unwired" are intentionally non-functional — they show
  * the user where each knob will live without pretending to do anything.
  * ============================================================ */
 export function GeneralSection(props: SettingsPageProps) {
-  const [profileName, setProfileName] = useState("");
-  const [busy, setBusy] = useState(false);
+  void props;
+  const [theme, setTheme] = useState<ThemePreference>(() => getThemePreference());
 
-  async function createProfile() {
-    const name = profileName.trim();
-    if (!name || busy) return;
-    setBusy(true);
-    try {
-      await props.onCreateProfile(name);
-      setProfileName("");
-    } finally {
-      setBusy(false);
-    }
+  function updateTheme(next: ThemePreference) {
+    setTheme(next);
+    setThemePreference(next);
   }
 
   return (
     <SettingsSection
       title="通用"
-      description="Profiles 切换、外观与语言、快捷键、启动、安静时段、隐私与数据。"
+      description="外观、语言、快捷键、启动、安静时段、隐私与数据。"
     >
-      <SectionCard
-        title="Profiles"
-        description="切换或新建 profile（独立的 agent 集合 + 设置）"
-      >
-        <div className="profile-list">
-          {props.profiles.map((profile) => {
-            const active = profile.id === props.activeProfileId;
-            const switching = props.switchingProfileId === profile.id;
-            return (
-              <div key={profile.id} className="profile-row">
-                <div>
-                  <div className="profile-name">{profile.name}</div>
-                  <div className="profile-id">{profile.id}</div>
-                </div>
-                <button
-                  type="button"
-                  className={active ? "btn-primary" : "btn-secondary"}
-                  disabled={active || props.switchingProfileId !== null}
-                  onClick={() => props.onSwitchProfile(profile.id)}
-                >
-                  {active ? "当前" : switching ? "切换中..." : "切换"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-        <div className="profile-create">
-          <Field label="新建 profile">
-            <input
-              value={profileName}
-              placeholder="Profile name"
-              onChange={(event) => setProfileName(event.target.value)}
-            />
-          </Field>
-          <button
-            type="button"
-            className="btn-primary profile-create-submit"
-            disabled={busy || props.switchingProfileId !== null || !profileName.trim()}
-            onClick={createProfile}
-          >
-            {busy ? "新建中…" : "新建"}
-          </button>
-        </div>
-      </SectionCard>
-
       <SectionGroup title="外观与语言">
-        <FormRow label="外观" hint="跟随系统 / 浅色 / 深色。当前跟随系统。">
-          <DisabledSegmented value="system" options={[
-            { v: "system", l: "系统" },
-            { v: "light", l: "浅色" },
-            { v: "dark", l: "深色" },
-          ]} />
+        <FormRow label="外观">
+          <ThemeSegmented value={theme} onChange={updateTheme} />
         </FormRow>
         <FormRow label="语言">
           <DisabledSelect value="zh">
@@ -148,11 +95,37 @@ export function GeneralSection(props: SettingsPageProps) {
           </div>
         </FormRow>
       </SectionGroup>
-
-      <p className="settings-shell-note">
-        以上分组中标注为禁用的项目尚未接入后端，仅展示规划中的入口位置。
-      </p>
     </SettingsSection>
+  );
+}
+
+function ThemeSegmented({
+  value,
+  onChange,
+}: {
+  value: ThemePreference;
+  onChange: (value: ThemePreference) => void;
+}) {
+  const options: ReadonlyArray<{ value: ThemePreference; label: string }> = [
+    { value: "system", label: "系统" },
+    { value: "light", label: "浅色" },
+    { value: "dark", label: "深色" },
+  ];
+  return (
+    <div className="segmented appearance-segmented" role="radiogroup" aria-label="外观">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          className={"segmented-segment" + (value === option.value ? " active" : "")}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

@@ -488,7 +488,7 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
-  test("settings can create and switch to a new profile", async () => {
+  test("settings general tab no longer exposes profile management", async () => {
     const { cleanup } = setup();
 
     render(<App />);
@@ -502,37 +502,46 @@ describe("App integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     await waitFor(() => {
-      expect(screen.getByText("Profiles")).toBeDefined();
+      expect(screen.getByRole("heading", { name: "通用", level: 2 })).toBeDefined();
     });
 
-    const input = screen.getByPlaceholderText("Profile name") as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "Work" } });
-    fireEvent.click(screen.getByRole("button", { name: "新建" }));
+    expect(screen.queryByText("Profiles")).toBeNull();
+    expect(screen.queryByPlaceholderText("Profile name")).toBeNull();
 
-    // handleSwitchProfile flips the view back to "chat" once the new
-    // profile becomes active, so re-open settings to verify the list.
+    cleanup();
+  }, 15_000);
+
+  test("settings opens as a standalone page with a back button", async () => {
+    const { cleanup } = setup();
+
+    render(<App />);
+
     await waitFor(
       () => {
-        // Wait for the profile switch to settle — chat is the default
-        // post-switch view, so the agent picker should be re-rendered.
         expect(screen.getByText("Local Work Agent")).toBeDefined();
       },
       { timeout: 5000 },
     );
+
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
 
-    await waitFor(
-      () => {
-        // The newly created "Work" profile is now the active one — the
-        // matching row in the Settings profile list carries the "当前"
-        // marker. (Was previously asserted via the runtime debug strip
-        // in the page header, which got removed.)
-        const workRow = screen.getByText("Work").closest(".profile-row");
-        expect(workRow).not.toBeNull();
-        expect(workRow!.textContent ?? "").toContain("当前");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "返回应用" })).toBeDefined();
+      expect(screen.getByRole("tablist", { name: "设置分区" })).toBeDefined();
+    });
+    expect(screen.queryByLabelText("主导航")).toBeNull();
+    expect(screen.queryByRole("heading", { level: 1, name: "设置" })).toBeNull();
+    expect(screen.queryByText("统一配置模型、工具、记忆、联网、消息渠道与运行诊断。")).toBeNull();
+
+    fireEvent.keyDown(window, { key: "b", metaKey: true });
+    expect(screen.queryByRole("dialog", { name: "历史" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回应用" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("主导航")).toBeDefined();
+      expect(screen.getByText("Local Work Agent")).toBeDefined();
+    });
 
     cleanup();
   }, 15_000);
@@ -667,15 +676,9 @@ describe("App integration", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /Local Work Agent/, level: 3 })).toBeDefined();
     });
-    // Click the page-header primary-styled "新建智能体" button to open
-    // the unified editor in create mode (the same modal as edit, just
-    // with a blank draft).
-    const newAgentButtons = screen.getAllByRole("button", { name: "新建智能体" });
-    const headerButton = newAgentButtons.find((btn) =>
-      btn.classList.contains("btn-primary"),
-    );
-    if (!headerButton) throw new Error("page-header create button missing");
-    fireEvent.click(headerButton);
+    // The Accio-style page keeps the create affordance inside the card
+    // grid, so open create mode through the grid tile.
+    fireEvent.click(screen.getByLabelText("新建智能体"));
     // Editor opens with the placeholder hero name + 创建 button. Tools
     // tab still works without the catalog route — the field renders
     // even when the upstream tool list is unavailable.
@@ -689,30 +692,11 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
-  test("can send a message after creating and switching profile", async () => {
+  test("can send a message from the default profile", async () => {
     const { cleanup } = setup();
 
     render(<App />);
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Local Work Agent")).toBeDefined();
-      },
-      { timeout: 5000 },
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "设置" }));
-    const input = (await waitFor(
-      () => screen.getByPlaceholderText("Profile name"),
-    )) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "Work" } });
-    fireEvent.click(screen.getByRole("button", { name: "新建" }));
-
-    // handleSwitchProfile flips back to chat once the new profile is
-    // active. We rely on the chat composer's agent picker re-rendering
-    // with "Local Work Agent" to know the switch landed before sending
-    // a message. (Was previously asserted via the runtime debug strip
-    // in the page header, which got removed.)
     await waitFor(
       () => {
         expect(screen.getByText("Local Work Agent")).toBeDefined();
@@ -937,14 +921,9 @@ describe("App integration", () => {
     cleanup();
   }, 15_000);
 
-  test("skills page lists skills and saves agent skill policy", async () => {
-    const patches: unknown[] = [];
+  test("skills page lists global skills without agent policy controls", async () => {
     const { dir, cleanup } = setup({
-      onRequest: (path, init) => {
-        if (path === "/v1/agents/local-work-agent" && init?.method === "PATCH") {
-          patches.push(JSON.parse(String(init.body)));
-        }
-      },
+      onRequest: () => undefined,
     });
     mkdirSync(join(dir, "skills", "csv"), { recursive: true });
     writeFileSync(
@@ -977,27 +956,13 @@ describe("App integration", () => {
         // in both featured strip + grid card so getAllByText is needed.
         expect(screen.getAllByText("csv-insights").length).toBeGreaterThan(0);
         expect(screen.getAllByText("Summarize CSV reports.").length).toBeGreaterThan(0);
-        // The grid card carries the toggle (featured strip is browse-only),
-        // so getByRole on switch is still uniquely matchable.
-        const toggle = screen.getByRole("switch", { name: /csv-insights/ });
-        expect(toggle.getAttribute("aria-checked")).toBe("true");
+        expect(screen.queryByRole("switch", { name: /csv-insights/ })).toBeNull();
       },
       { timeout: 5000 },
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "全禁用" }));
-    await waitFor(() => {
-      expect(patches).toContainEqual({ skills: [] });
-      const toggle = screen.getByRole("switch", { name: /csv-insights/ });
-      expect(toggle.getAttribute("aria-checked")).toBe("false");
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "全启用" }));
-    await waitFor(() => {
-      expect(patches).toContainEqual({ skills: null });
-      const toggle = screen.getByRole("switch", { name: /csv-insights/ });
-      expect(toggle.getAttribute("aria-checked")).toBe("true");
-    });
+    expect(screen.queryByRole("button", { name: "全禁用" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "全启用" })).toBeNull();
 
     cleanup();
   }, 15_000);

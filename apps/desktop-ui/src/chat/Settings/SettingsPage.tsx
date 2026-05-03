@@ -75,43 +75,59 @@ export function SettingsPage(props: SettingsPageProps) {
 
   return (
     <div className="page settings-page">
-      <header className="page-header settings-page-header">
-        <div className="settings-page-title">
-          <h1>设置</h1>
-          <p>统一配置模型、工具、记忆、联网、消息渠道与运行诊断。</p>
-        </div>
-      </header>
       <div className="settings-layout">
-        <div
-          className="settings-rail"
-          role="tablist"
-          aria-label="设置分区"
-          aria-orientation="vertical"
-          onKeyDown={onTabKey}
-        >
-          {SECTIONS.map((s) => {
-            const active = section === s.key;
-            return (
-              <button
-                key={s.key}
-                ref={(node) => {
-                  tabRefs.current[s.key] = node;
-                }}
-                type="button"
-                role="tab"
-                id={`settings-tab-${s.key}`}
-                aria-controls={`settings-panel-${s.key}`}
-                aria-selected={active}
-                tabIndex={active ? 0 : -1}
-                className={active ? "active" : ""}
-                onClick={() => activateTab(s.key, false)}
-              >
-                {s.icon}
-                <span>{s.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        <aside className="settings-sidebar" aria-label="设置导航">
+          <button
+            type="button"
+            className="settings-back-button"
+            onClick={props.onBack}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M10 3.5 5.5 8l4.5 4.5" />
+            </svg>
+            <span>返回应用</span>
+          </button>
+          <div
+            className="settings-rail"
+            role="tablist"
+            aria-label="设置分区"
+            aria-orientation="vertical"
+            onKeyDown={onTabKey}
+          >
+            {SECTIONS.map((s) => {
+              const active = section === s.key;
+              return (
+                <button
+                  key={s.key}
+                  ref={(node) => {
+                    tabRefs.current[s.key] = node;
+                  }}
+                  type="button"
+                  role="tab"
+                  id={`settings-tab-${s.key}`}
+                  aria-controls={`settings-panel-${s.key}`}
+                  aria-selected={active}
+                  tabIndex={active ? 0 : -1}
+                  className={active ? "active" : ""}
+                  onClick={() => activateTab(s.key, false)}
+                >
+                  {s.icon}
+                  <span>{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
         <div
           className="settings-content"
           role="tabpanel"

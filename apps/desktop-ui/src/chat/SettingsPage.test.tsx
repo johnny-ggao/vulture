@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react/pure";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react/pure";
 import { SettingsPage, type SettingsPageProps } from "./SettingsPage";
 import type { McpServer } from "../api/mcpServers";
 import type {
@@ -33,6 +33,7 @@ const baseServer: McpServer = {
 
 function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
   return {
+    onBack: mock(() => undefined),
     authStatus: null,
     browserStatus: null,
     agents: [{
@@ -130,11 +131,36 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
 }
 
 describe("SettingsPage MCP tools", () => {
-  test("renders a visible workbench page heading above the settings tabs", () => {
+  test("renders standalone settings navigation above the settings tabs", () => {
+    const onBack = mock(() => undefined);
+    render(<SettingsPage {...props({ onBack })} />);
+
+    expect(screen.queryByRole("heading", { level: 1, name: "设置" })).toBeNull();
+    expect(screen.queryByText("统一配置模型、工具、记忆、联网、消息渠道与运行诊断。")).toBeNull();
+    expect(screen.getByRole("tablist", { name: "设置分区" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回应用" }));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  test("appearance setting updates and persists the theme preference", () => {
+    localStorage.removeItem("vulture.theme");
+    delete document.documentElement.dataset.theme;
+    document.documentElement.style.removeProperty("color-scheme");
+
     render(<SettingsPage {...props()} />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "设置" })).toBeDefined();
-    expect(screen.getByRole("tablist", { name: "设置分区" })).toBeDefined();
+    expect(screen.queryByText("跟随系统 / 浅色 / 深色。当前跟随系统。")).toBeNull();
+    expect(screen.getByRole("radio", { name: "系统" }).getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("radio", { name: "深色" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(localStorage.getItem("vulture.theme")).toBe("dark");
+    expect(screen.getByRole("radio", { name: "深色" }).getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(screen.getByRole("radio", { name: "系统" }));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem("vulture.theme")).toBeNull();
   });
 
   test("diagnostics tab keeps run logs in the embedded settings shell", async () => {
@@ -214,6 +240,28 @@ describe("SettingsPage MCP tools", () => {
     fireEvent.click(screen.getByRole("button", { name: "工具" }));
 
     expect(await screen.findByRole("checkbox", { name: /read_text_file/ })).toBeDefined();
+  });
+});
+
+describe("SettingsPage Models", () => {
+  test("model tab shows a summary and provider directory", () => {
+    render(<SettingsPage {...props({
+      authStatus: {
+        apiKey: { state: "set", source: "keychain" },
+        codex: { state: "not_signed_in" },
+      },
+    })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+
+    const summary = screen.getByLabelText("模型配置摘要");
+    expect(within(summary).getByText(/已配置/)).toBeDefined();
+    expect(within(summary).getByText(/7 个提供方/)).toBeDefined();
+    expect(within(summary).getByText(/当前查看/)).toBeDefined();
+    expect(screen.queryByRole("heading", { level: 3, name: "默认值" })).toBeNull();
+    expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
+    expect(screen.getAllByRole("option").length).toBeGreaterThan(4);
+    expect(screen.getByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
   });
 });
 
