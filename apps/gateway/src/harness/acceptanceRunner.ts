@@ -7,6 +7,7 @@ import { ConversationStore } from "../domain/conversationStore";
 import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { SubagentSessionStore } from "../domain/subagentSessionStore";
+import type { ScriptedLlmStep } from "../runtime/scriptedLlm";
 
 export type AcceptanceRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "recoverable";
 
@@ -246,6 +247,14 @@ export interface AcceptanceScenario {
   description?: string;
   tags?: string[];
   steps: AcceptanceStep[];
+  /**
+   * Optional LLM script applied for the duration of this scenario. The
+   * acceptance suite installs it on the shared ScriptedLlmController before
+   * the scenario starts and clears it after. Scenarios without an llmScript
+   * fall back to the controller's default placeholder so the existing suite
+   * keeps passing unchanged.
+   */
+  llmScript?: ScriptedLlmStep;
 }
 
 export interface AcceptanceRunnerOptions {

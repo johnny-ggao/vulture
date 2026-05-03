@@ -18,6 +18,7 @@ import {
 } from "./acceptanceSuite";
 import { loadAcceptanceScenarioFiles } from "./acceptanceScenarioLoader";
 import type { AcceptanceScenario } from "./acceptanceRunner";
+import { makeScriptedLlm } from "../runtime/scriptedLlm";
 
 const TOKEN = "x".repeat(43);
 
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
   mkdirSync(workspaceDir, { recursive: true });
 
   const restoreOpenAIKey = disableRealLlmUnlessOptedIn();
+  const scriptedLlm = makeScriptedLlm();
   try {
     const makeApp = () => buildServer({
       port: Number(process.env.VULTURE_ACCEPTANCE_PORT ?? 4099),
@@ -47,6 +49,11 @@ async function main(): Promise<void> {
       shellPid: process.pid,
       profileDir,
       privateWorkspaceHomeDir: workspaceDir,
+      // Acceptance always routes the LLM through the shared scripted
+      // controller. Scenarios without an llmScript fall back to the
+      // controller's default (matches the previous makeStubLlmFallback
+      // text), so legacy scenarios pass unchanged.
+      llmOverride: scriptedLlm.llm,
     });
     const app = makeApp();
 
@@ -59,6 +66,7 @@ async function main(): Promise<void> {
       restartApp: makeApp,
       pollIntervalMs: Number(process.env.VULTURE_ACCEPTANCE_POLL_MS ?? 25),
       timeoutMs: Number(process.env.VULTURE_ACCEPTANCE_TIMEOUT_MS ?? 5_000),
+      scriptedLlm,
     });
     const summary = writeAcceptanceSuiteArtifacts(artifactDir, results);
     const junitPath = writeAcceptanceJUnitReport(artifactDir, results);

@@ -276,15 +276,17 @@ export function buildServer(cfg: GatewayConfig): Hono {
     permissionModeForRun,
   });
 
-  llm = makeLazyLlm({
-    toolNames: AGENT_TOOL_NAMES,
-    toolCallable: tools,
-    approvalCallable,
-    mcpToolProvider: () => mcpClientManager.getSdkToolsForRun(),
-    runtimeHooks,
-    shellCallbackUrl: cfg.shellCallbackUrl,
-    shellToken: cfg.token,
-  });
+  llm = cfg.llmOverride
+    ? cfg.llmOverride
+    : makeLazyLlm({
+        toolNames: AGENT_TOOL_NAMES,
+        toolCallable: tools,
+        approvalCallable,
+        mcpToolProvider: () => mcpClientManager.getSdkToolsForRun(),
+        runtimeHooks,
+        shellCallbackUrl: cfg.shellCallbackUrl,
+        shellToken: cfg.token,
+      });
   void mcpClientManager.getSdkToolsForRun().catch((err) => {
     console.warn("[gateway] MCP startup discovery failed", err instanceof Error ? err.message : String(err));
   });

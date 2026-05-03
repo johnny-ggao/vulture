@@ -1,3 +1,5 @@
+import type { LlmCallable } from "@vulture/agent-runtime";
+
 export interface GatewayConfig {
   port: number;
   token: string;
@@ -7,6 +9,14 @@ export interface GatewayConfig {
   defaultWorkspace?: string;
   privateWorkspaceHomeDir?: string;
   memorySuggestionsEnabled?: boolean;
+  /**
+   * Test/harness-only injection point. When set, buildServer wires this
+   * LlmCallable straight into runOrchestrator instead of the default
+   * makeLazyLlm chain (Codex → API key → stub fallback). Acceptance scenarios
+   * use this to script multi-turn LLM behavior without a real model.
+   * Production callers leave this undefined.
+   */
+  llmOverride?: LlmCallable;
 }
 
 function required(

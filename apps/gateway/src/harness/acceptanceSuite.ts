@@ -12,6 +12,7 @@ import {
   type AcceptanceRunResult,
   type AcceptanceScenario,
 } from "./acceptanceRunner";
+import type { ScriptedLlmController } from "../runtime/scriptedLlm";
 
 export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
   {
@@ -441,6 +442,36 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
     ],
   },
   {
+    id: "scripted-llm-text-yield",
+    name: "Scripted LLM produces deterministic assistant text",
+    description:
+      "Demonstrates the per-scenario llmScript injection path: the gateway routes the run through the shared ScriptedLlmController (instead of the stub fallback), and the assistant message contains exactly the scripted final text. This is the foundation for richer scripted scenarios (tool calls, approval flow, multi-turn) without needing a real LLM.",
+    tags: ["fast", "scripted-llm", "chat"],
+    llmScript: {
+      deltas: ["scripted hello "],
+      final: "scripted hello — acceptance LLM script reached the gateway",
+      usage: { inputTokens: 5, outputTokens: 7 },
+    },
+    steps: [
+      { action: "createConversation", as: "conv", agentId: "local-work-agent" },
+      {
+        action: "sendMessage",
+        conversation: "conv",
+        input: "ping the scripted LLM",
+        asRun: "run",
+        asMessage: "user",
+      },
+      { action: "waitForRun", run: "run", status: "succeeded" },
+      { action: "listMessages", conversation: "conv", as: "messages" },
+      {
+        action: "assertMessages",
+        messages: "messages",
+        roles: ["user", "assistant"],
+        contains: ["scripted hello — acceptance LLM script reached the gateway"],
+      },
+    ],
+  },
+  {
     id: "parallel-runs-smoke",
     name: "Parallel runs across distinct conversations",
     description:
@@ -481,6 +512,13 @@ export interface AcceptanceSuiteOptions {
   timeoutMs?: number;
   profileDir?: string;
   restartApp?: () => Hono;
+  /**
+   * Per-scenario LLM script controller. When provided, the suite installs
+   * each scenario's `llmScript` (or null) before running it and resets the
+   * controller after the suite completes. Scenarios without an llmScript
+   * keep the controller's default fallback.
+   */
+  scriptedLlm?: ScriptedLlmController;
 }
 
 export interface AcceptanceSuiteSummary {
@@ -501,19 +539,24 @@ export interface AcceptanceSuiteArtifact extends AcceptanceSuiteSummary {
 
 export async function runAcceptanceSuite(options: AcceptanceSuiteOptions): Promise<AcceptanceRunResult[]> {
   const results: AcceptanceRunResult[] = [];
-  for (const scenario of options.scenarios ?? defaultAcceptanceScenarios) {
-    results.push(
-      await runAcceptanceScenario({
-        app: options.app,
-        token: options.token,
-        artifactDir: options.artifactDir,
-        scenario,
-        pollIntervalMs: options.pollIntervalMs,
-        timeoutMs: options.timeoutMs,
-        profileDir: options.profileDir,
-        restartApp: options.restartApp,
-      }),
-    );
+  try {
+    for (const scenario of options.scenarios ?? defaultAcceptanceScenarios) {
+      options.scriptedLlm?.setStep(scenario.llmScript ?? null);
+      results.push(
+        await runAcceptanceScenario({
+          app: options.app,
+          token: options.token,
+          artifactDir: options.artifactDir,
+          scenario,
+          pollIntervalMs: options.pollIntervalMs,
+          timeoutMs: options.timeoutMs,
+          profileDir: options.profileDir,
+          restartApp: options.restartApp,
+        }),
+      );
+    }
+  } finally {
+    options.scriptedLlm?.reset();
   }
   return results;
 }
