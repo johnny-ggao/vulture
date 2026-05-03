@@ -87,6 +87,88 @@ describe("harness trend analyzer", () => {
     expect(desktop!.passRate).toBeNull();
   });
 
+  test("flags a step whose latest duration is more than 2x baseline P50", () => {
+    const trend = buildHarnessTrend({
+      archiveRoot: "/tmp/archive",
+      generatedAt: "2026-05-04T00:00:00.000Z",
+      snapshots: [
+        // Newest first. Latest run is 3x slower than the historical baseline.
+        snapshot("run-3", "2026-05-03T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 900), step("typecheck", "passed", 1100)],
+          lanes: [],
+        }),
+        snapshot("run-2", "2026-05-02T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 300), step("typecheck", "passed", 1050)],
+          lanes: [],
+        }),
+        snapshot("run-1", "2026-05-01T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 290), step("typecheck", "passed", 1040)],
+          lanes: [],
+        }),
+      ],
+    });
+    expect(trend.regressions).toHaveLength(1);
+    expect(trend.regressions[0]).toMatchObject({
+      stepId: "acceptance",
+      runId: "run-3",
+      currentMs: 900,
+    });
+    expect(trend.regressions[0]!.baselineP50Ms).toBeCloseTo(295);
+    expect(trend.regressions[0]!.ratio).toBeCloseTo(900 / 295, 2);
+    expect(trend.regressions[0]!.detail).toContain("3.05× baseline");
+  });
+
+  test("does not flag regressions when latest is within 2x of baseline", () => {
+    const trend = buildHarnessTrend({
+      archiveRoot: "/tmp/archive",
+      snapshots: [
+        snapshot("run-3", "2026-05-03T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 500)],
+          lanes: [],
+        }),
+        snapshot("run-2", "2026-05-02T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 300)],
+          lanes: [],
+        }),
+        snapshot("run-1", "2026-05-01T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 290)],
+          lanes: [],
+        }),
+      ],
+    });
+    expect(trend.regressions).toEqual([]);
+  });
+
+  test("skips regression detection for new steps without baseline history", () => {
+    const trend = buildHarnessTrend({
+      archiveRoot: "/tmp/archive",
+      snapshots: [
+        snapshot("run-2", "2026-05-02T00:00:00.000Z", "passed", {
+          steps: [step("brand-new", "passed", 9999)],
+          lanes: [],
+        }),
+        snapshot("run-1", "2026-05-01T00:00:00.000Z", "passed", {
+          steps: [step("known", "passed", 100)],
+          lanes: [],
+        }),
+      ],
+    });
+    expect(trend.regressions).toEqual([]);
+  });
+
+  test("does not flag regressions on a single-snapshot window", () => {
+    const trend = buildHarnessTrend({
+      archiveRoot: "/tmp/archive",
+      snapshots: [
+        snapshot("run-1", "2026-05-01T00:00:00.000Z", "passed", {
+          steps: [step("acceptance", "passed", 1000)],
+          lanes: [],
+        }),
+      ],
+    });
+    expect(trend.regressions).toEqual([]);
+  });
+
   test("ignores three-fail-in-a-row as ongoing failure (not a flake)", () => {
     const trend = buildHarnessTrend({
       archiveRoot: "/tmp/archive",
@@ -162,6 +244,9 @@ describe("harness trend analyzer", () => {
       expect(markdown).toContain("## Lane pass rate");
       expect(markdown).toContain("## Flake candidates");
       expect(markdown).toContain("No pass->fail->pass patterns detected.");
+      expect(markdown).toContain("## Regressions");
+      expect(markdown).toContain("Threshold: latest run > 2× baseline P50");
+      expect(markdown).toContain("No regressions detected.");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

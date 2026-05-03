@@ -103,10 +103,20 @@ bun run harness:trend
 
 Reads `.artifacts/harness-runs/<id>/harness-report/report.json` for each
 retained snapshot, computes per-step P50 / P95 / max duration, per-step and
-per-lane pass rate, and pass→fail→pass flake candidates over the last 30 runs
-(override with `VULTURE_HARNESS_TREND_LIMIT`). Writes `trend.json` and
-`trend.md` next to `report.json`. `harness:ci` invokes this automatically at
-the end of every run when at least one snapshot exists.
+per-lane pass rate, pass→fail→pass flake candidates, and per-step performance
+regressions over the last 30 runs (override with
+`VULTURE_HARNESS_TREND_LIMIT`). Writes `trend.json` and `trend.md` next to
+`report.json`. `harness:ci` invokes this automatically at the end of every
+run when at least one snapshot exists.
+
+Regression detection is auto-adaptive: for each CI step in the latest
+snapshot, the trend computes the baseline P50 across the rest of the window
+and flags the step when the latest run took more than 2× the baseline. The
+2× ratio is intentionally conservative — real regressions (cold cache, infra
+change, new dependency) reliably exceed it while normal run-to-run noise
+stays under. New steps without baseline history are skipped. Regressions are
+advisory: they print as warnings during `harness:ci` but do not currently
+fail the build.
 
 Run the CI harness bundle:
 

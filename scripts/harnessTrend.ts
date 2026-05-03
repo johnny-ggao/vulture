@@ -45,6 +45,24 @@ export interface HarnessTrendFlakeCandidate {
   runs: [string, string, string];
 }
 
+export interface HarnessTrendStepRegression {
+  stepId: string;
+  runId: string;
+  currentMs: number;
+  baselineP50Ms: number;
+  thresholdMs: number;
+  ratio: number;
+  detail: string;
+}
+
+/**
+ * Threshold multiplier for the latest snapshot's duration vs the rest of the
+ * window's baseline P50. 2× is conservative on purpose: real regressions
+ * (cold cache, infra change, new dependency) reliably exceed 2×, while
+ * normal run-to-run noise stays under it.
+ */
+export const HARNESS_TREND_REGRESSION_RATIO = 2;
+
 export interface HarnessTrendReport {
   schemaVersion: 1;
   generatedAt: string;
@@ -56,6 +74,7 @@ export interface HarnessTrendReport {
   steps: HarnessTrendStepStat[];
   lanes: HarnessTrendLaneStat[];
   flakeCandidates: HarnessTrendFlakeCandidate[];
+  regressions: HarnessTrendStepRegression[];
 }
 
 export interface BuildHarnessTrendInput {
@@ -84,7 +103,49 @@ export function buildHarnessTrend(input: BuildHarnessTrendInput): HarnessTrendRe
     steps: computeStepStats(sorted),
     lanes: computeLaneStats(sorted),
     flakeCandidates: detectFlakeCandidates(sorted),
+    regressions: detectRegressions(sorted),
   };
+}
+
+function detectRegressions(
+  snapshots: readonly HarnessTrendSnapshot[],
+): HarnessTrendStepRegression[] {
+  if (snapshots.length < 2) return [];
+  const [latest, ...baseline] = snapshots; // newest-first ordering
+  if (!latest) return [];
+
+  const baselineDurations = new Map<string, number[]>();
+  for (const snap of baseline) {
+    for (const step of snap.report.ci?.steps ?? []) {
+      if (typeof step.durationMs !== "number") continue;
+      const arr = baselineDurations.get(step.id) ?? [];
+      arr.push(step.durationMs);
+      baselineDurations.set(step.id, arr);
+    }
+  }
+
+  const regressions: HarnessTrendStepRegression[] = [];
+  for (const step of latest.report.ci?.steps ?? []) {
+    if (typeof step.durationMs !== "number") continue;
+    const samples = baselineDurations.get(step.id);
+    if (!samples || samples.length === 0) continue;
+    const sortedSamples = [...samples].sort((left, right) => left - right);
+    const baselineP50 = quantile(sortedSamples, 0.5);
+    if (baselineP50 <= 0) continue;
+    const threshold = baselineP50 * HARNESS_TREND_REGRESSION_RATIO;
+    if (step.durationMs <= threshold) continue;
+    const ratio = step.durationMs / baselineP50;
+    regressions.push({
+      stepId: step.id,
+      runId: latest.id,
+      currentMs: step.durationMs,
+      baselineP50Ms: baselineP50,
+      thresholdMs: threshold,
+      ratio,
+      detail: `latest run took ${Math.round(step.durationMs)}ms, ${ratio.toFixed(2)}× baseline P50 ${Math.round(baselineP50)}ms (threshold ${Math.round(threshold)}ms)`,
+    });
+  }
+  return regressions.sort((left, right) => left.stepId.localeCompare(right.stepId));
 }
 
 export function readHarnessTrendSnapshots(
@@ -269,6 +330,20 @@ function renderTrendMarkdown(trend: HarnessTrendReport): string {
       );
     }
   }
+  lines.push(
+    "",
+    "## Regressions",
+    "",
+    `Threshold: latest run > ${HARNESS_TREND_REGRESSION_RATIO}× baseline P50 (rest of window)`,
+    "",
+  );
+  if (trend.regressions.length === 0) {
+    lines.push("No regressions detected.");
+  } else {
+    for (const regression of trend.regressions) {
+      lines.push(`- ${regression.stepId}: ${regression.detail}`);
+    }
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -302,6 +377,7 @@ async function main(): Promise<void> {
   console.log(`Harness trend: ${trend.window} snapshots`);
   console.log(`Range: ${trend.earliest} -> ${trend.latest}`);
   console.log(`Flake candidates: ${trend.flakeCandidates.length}`);
+  console.log(`Regressions: ${trend.regressions.length}`);
   console.log(`JSON: ${jsonPath}`);
   console.log(`Markdown: ${markdownPath}`);
 }

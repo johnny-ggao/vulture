@@ -193,7 +193,14 @@ async function main(): Promise<void> {
   if (trendSnapshots.length > 0) {
     const trend = buildHarnessTrend({ snapshots: trendSnapshots, archiveRoot, generatedAt });
     const trendPaths = writeHarnessTrendReport(reportDir, trend);
-    console.log(`Trend window: ${trend.window} snapshots, flake candidates: ${trend.flakeCandidates.length}`);
+    console.log(
+      `Trend window: ${trend.window} snapshots, flake candidates: ${trend.flakeCandidates.length}, regressions: ${trend.regressions.length}`,
+    );
+    if (trend.regressions.length > 0) {
+      for (const regression of trend.regressions) {
+        console.log(`  REGRESSION ${regression.stepId}: ${regression.detail}`);
+      }
+    }
     console.log(`Trend JSON: ${trendPaths.jsonPath}`);
   }
 
