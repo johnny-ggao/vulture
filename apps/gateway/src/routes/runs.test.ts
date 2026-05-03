@@ -1,7 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { projectBootstrapPrompt } from "./runs";
 import { openDatabase } from "../persistence/sqlite";
 import { applyMigrations } from "../persistence/migrate";
 import { ConversationStore } from "../domain/conversationStore";
@@ -1182,5 +1183,87 @@ describe("/v1/runs", () => {
 
     db.close();
     rmSync(dir, { recursive: true });
+  });
+});
+
+describe("projectBootstrapPrompt", () => {
+  test("returns undefined for non-coding agents", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "boot-"));
+    writeFileSync(join(dir, "AGENTS.md"), "# rules");
+    try {
+      const out = await projectBootstrapPrompt({
+        agentId: "local-work-agent",
+        workingDirectory: dir,
+      });
+      expect(out).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  test("returns undefined when no working directory", async () => {
+    const out = await projectBootstrapPrompt({
+      agentId: "coding-agent",
+      workingDirectory: null,
+    });
+    expect(out).toBeUndefined();
+  });
+
+  test("returns undefined when working directory has no recognized files", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "boot-"));
+    try {
+      const out = await projectBootstrapPrompt({
+        agentId: "coding-agent",
+        workingDirectory: dir,
+      });
+      expect(out).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  test("includes AGENTS.md, README.md, package.json content for coding-agent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "boot-"));
+    writeFileSync(join(dir, "AGENTS.md"), "# Project rules\nDo TDD.");
+    writeFileSync(join(dir, "README.md"), "# Foo\nA toy project.");
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "foo", version: "0.1.0" }),
+    );
+    try {
+      const out = await projectBootstrapPrompt({
+        agentId: "coding-agent",
+        workingDirectory: dir,
+      });
+      expect(out).toBeDefined();
+      expect(out).toContain("<project_bootstrap>");
+      expect(out).toContain("### AGENTS.md");
+      expect(out).toContain("Do TDD.");
+      expect(out).toContain("### README.md");
+      expect(out).toContain("A toy project.");
+      expect(out).toContain("### package.json");
+      expect(out).toContain('"name":"foo"');
+      expect(out).toContain("</project_bootstrap>");
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
+  });
+
+  test("truncates files larger than the per-file budget", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "boot-"));
+    const huge = "x".repeat(20_000);
+    writeFileSync(join(dir, "README.md"), huge);
+    try {
+      const out = await projectBootstrapPrompt({
+        agentId: "coding-agent",
+        workingDirectory: dir,
+      });
+      expect(out).toBeDefined();
+      expect(out).toContain("…(truncated)");
+      // Total length should be well under the original 20KB.
+      expect(out!.length).toBeLessThan(8_000);
+    } finally {
+      rmSync(dir, { recursive: true });
+    }
   });
 });

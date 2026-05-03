@@ -406,10 +406,15 @@ export async function startConversationRun(
       agentId: conv.agentId,
       triggeredByMessageId: userMsg.id,
     });
+    // The run we just created already counts in listForConversation, so
+    // "first run" really means "no prior runs". <= 1 captures that.
+    const isFirstRun =
+      deps.runs.listForConversation(input.conversationId).length <= 1;
     contextPrompt = combineContextPrompts(
       await safeMemoryPrompt(deps, { agentId: conv.agentId, input: input.input }),
       deps.skillsPromptForAgent?.({ id: conv.agentId }),
       conversationContextPrompt(conv),
+      isFirstRun ? await projectBootstrapPrompt(conv) : undefined,
     );
     const baseSession = deps.contexts
       ? new VultureConversationSession(deps.contexts, input.conversationId)
@@ -504,6 +509,79 @@ function rollbackPendingUserMessage(
       err instanceof Error ? err.message : String(err),
     );
   }
+}
+
+const PROJECT_BOOTSTRAP_FILES = [
+  "AGENTS.md",
+  "README.md",
+  "README",
+  "package.json",
+  "Cargo.toml",
+  "pyproject.toml",
+  "go.mod",
+  "deno.json",
+  "deno.jsonc",
+] as const;
+
+const PROJECT_BOOTSTRAP_FILE_LIMIT = 4_000; // chars per file
+const PROJECT_BOOTSTRAP_TOTAL_LIMIT = 12_000; // chars across all files
+
+/**
+ * On the FIRST run of a coding-agent conversation that has a working
+ * directory, eagerly read a small set of project metadata files (AGENTS.md,
+ * README, package.json, Cargo.toml, etc.) and surface their content in the
+ * context prompt. Mirrors how Claude Code reads CLAUDE.md and how Codex
+ * reads AGENTS.md — orienting the agent without the user having to ask.
+ *
+ * Scoped to coding-agent only because the general-purpose Vulture has no
+ * use for hundreds of tokens of build manifests on every fresh chat.
+ *
+ * Cheap: only runs once per conversation; reads up to 4KB per file and
+ * 12KB total; silently drops anything that doesn't exist or fails to read.
+ */
+export async function projectBootstrapPrompt(conv: {
+  agentId: string;
+  workingDirectory: string | null;
+}): Promise<string | undefined> {
+  if (conv.agentId !== "coding-agent") return undefined;
+  if (!conv.workingDirectory) return undefined;
+
+  const { readFile, stat } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+
+  const sections: string[] = [];
+  let totalSize = 0;
+  for (const name of PROJECT_BOOTSTRAP_FILES) {
+    if (totalSize >= PROJECT_BOOTSTRAP_TOTAL_LIMIT) break;
+    const filePath = join(conv.workingDirectory, name);
+    try {
+      const info = await stat(filePath);
+      if (!info.isFile()) continue;
+      let content = await readFile(filePath, "utf8");
+      if (content.length > PROJECT_BOOTSTRAP_FILE_LIMIT) {
+        content =
+          content.slice(0, PROJECT_BOOTSTRAP_FILE_LIMIT) + "\n\n…(truncated)";
+      }
+      const remainingBudget = PROJECT_BOOTSTRAP_TOTAL_LIMIT - totalSize;
+      if (content.length > remainingBudget) {
+        content = content.slice(0, remainingBudget) + "\n\n…(truncated)";
+      }
+      sections.push(`### ${name}\n\n${content}`);
+      totalSize += content.length;
+    } catch {
+      // ENOENT / permission denied / not a regular file — skip silently.
+    }
+  }
+
+  if (sections.length === 0) return undefined;
+  return [
+    "<project_bootstrap>",
+    `Auto-loaded project metadata from ${conv.workingDirectory} (first turn only).`,
+    "Use this to orient before reaching for read/grep/glob — it covers the most common entry points.",
+    "",
+    sections.join("\n\n"),
+    "</project_bootstrap>",
+  ].join("\n");
 }
 
 /**
