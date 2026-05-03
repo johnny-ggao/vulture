@@ -44,8 +44,9 @@ describe("runGrep (JS fallback)", () => {
         useRipgrep: false,
       });
       const matchedTexts = result.matches.map((m) => m.text);
+      expect(result.matches.length).toBeGreaterThan(0);
       expect(matchedTexts.some((t) => t.includes("Foo"))).toBe(true);
-      expect(matchedTexts.every((t) => !t.includes("foo bar"))).toBe(true);
+      expect(matchedTexts.every((t) => !t.toLowerCase().includes("foo bar"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

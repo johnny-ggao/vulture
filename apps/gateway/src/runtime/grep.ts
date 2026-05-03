@@ -33,7 +33,12 @@ export async function runGrep(opts: GrepOptions): Promise<GrepResult> {
   const matcher = compileMatcher(opts.pattern, opts.regex ?? false, opts.caseSensitive ?? false);
 
   const files = opts.glob
-    ? ((await tinyGlob(opts.glob, { cwd: root, absolute: true, dot: false })) as string[])
+    ? ((await tinyGlob(opts.glob, {
+        cwd: root,
+        absolute: true,
+        dot: false,
+        followSymbolicLinks: false,
+      })) as string[])
     : await walk(root);
 
   const matches: GrepMatch[] = [];
@@ -47,8 +52,10 @@ export async function runGrep(opts: GrepOptions): Promise<GrepResult> {
     let content: string;
     try {
       content = await readFile(file, "utf8");
-    } catch {
-      continue; // binary file or permission error — skip
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "EISDIR" || code === "EACCES") continue;
+      throw err;
     }
     const lines = content.split("\n");
     for (let i = 0; i < lines.length; i++) {
@@ -99,6 +106,7 @@ async function walk(root: string): Promise<string[]> {
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
         if (entry.name.startsWith(".")) continue; // skip hidden
+        if (entry.isSymbolicLink()) continue; // avoid symlink cycles
         await visit(join(dir, entry.name));
       } else if (entry.isFile()) {
         out.push(join(dir, entry.name));
