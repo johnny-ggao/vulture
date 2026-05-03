@@ -26,7 +26,8 @@ describe("server integration (full stack)", () => {
 
     const list1 = await app.request("/v1/agents", { headers: auth });
     expect(list1.status).toBe(200);
-    expect((await list1.json()).items.map((a: { id: string }) => a.id)).toEqual([
+    expect((await list1.json()).items.map((a: { id: string }) => a.id).sort()).toEqual([
+      "coding-agent",
       "local-work-agent",
     ]);
 

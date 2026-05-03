@@ -90,19 +90,36 @@ describe("/v1/skills", () => {
   });
 
   test("marks skills disabled when the agent allowlist is empty", async () => {
+    // Use a custom (non-preset) agent — preset fields are force-overwritten on every reconcile pass.
     const { app, dir, cleanup } = freshApp();
+    const TOKEN = "x".repeat(43);
+    const auth = { Authorization: `Bearer ${TOKEN}` };
     mkdirSync(join(dir, "skills"), { recursive: true });
     writeSkill(join(dir, "skills"), "csv", {
       name: "csv-insights",
       description: "Summarize CSV reports.",
     });
 
-    await app.request("/v1/agents/local-work-agent", {
+    await app.request("/v1/agents", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ks-skills-disabled" },
+      body: JSON.stringify({
+        id: "custom-agent",
+        name: "Custom Agent",
+        description: "x",
+        model: "gpt-5.4",
+        reasoning: "low",
+        tools: [],
+        instructions: "x",
+      }),
+    });
+
+    await app.request("/v1/agents/custom-agent", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({ skills: [] }),
     });
-    const res = await app.request("/v1/skills?agentId=local-work-agent");
+    const res = await app.request("/v1/skills?agentId=custom-agent");
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -118,7 +135,10 @@ describe("/v1/skills", () => {
   });
 
   test("marks only allowlisted skills enabled", async () => {
+    // Use a custom (non-preset) agent — preset fields are force-overwritten on every reconcile pass.
     const { app, dir, cleanup } = freshApp();
+    const TOKEN = "x".repeat(43);
+    const auth = { Authorization: `Bearer ${TOKEN}` };
     mkdirSync(join(dir, "skills"), { recursive: true });
     writeSkill(join(dir, "skills"), "csv", {
       name: "csv-insights",
@@ -129,12 +149,26 @@ describe("/v1/skills", () => {
       description: "Draft polished copy.",
     });
 
-    await app.request("/v1/agents/local-work-agent", {
+    await app.request("/v1/agents", {
+      method: "POST",
+      headers: { ...auth, "Content-Type": "application/json", "Idempotency-Key": "ks-skills-allow" },
+      body: JSON.stringify({
+        id: "custom-agent2",
+        name: "Custom Agent 2",
+        description: "x",
+        model: "gpt-5.4",
+        reasoning: "low",
+        tools: [],
+        instructions: "x",
+      }),
+    });
+
+    await app.request("/v1/agents/custom-agent2", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...auth, "Content-Type": "application/json" },
       body: JSON.stringify({ skills: ["writer"] }),
     });
-    const res = await app.request("/v1/skills?agentId=local-work-agent");
+    const res = await app.request("/v1/skills?agentId=custom-agent2");
 
     expect(res.status).toBe(200);
     const body = await res.json();
