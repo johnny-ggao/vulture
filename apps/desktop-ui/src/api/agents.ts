@@ -47,6 +47,12 @@ export interface Agent {
   instructions: string;
   /** Preset key owned by the client (e.g. "default", "founder"). */
   avatar?: string;
+  /**
+   * Whether the agent is currently using a gateway-managed private workspace.
+   * When true, the UI may show the coding-agent banner prompting the user to
+   * point the agent at a real repository.
+   */
+  isPrivateWorkspace?: boolean;
   createdAt: string;
   updatedAt: string;
 }

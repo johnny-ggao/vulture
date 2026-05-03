@@ -244,4 +244,24 @@ describe("/v1/agents", () => {
     expect(res.status).toBe(400);
     cleanup();
   });
+
+  test("GET /v1/agents returns isPrivateWorkspace: true for freshly seeded coding-agent", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents", { headers: auth });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const codingAgent = body.items.find((a: { id: string }) => a.id === "coding-agent");
+    expect(codingAgent).toBeDefined();
+    expect(codingAgent.isPrivateWorkspace).toBe(true);
+    cleanup();
+  });
+
+  test("GET /v1/agents/:id returns isPrivateWorkspace: true for freshly seeded coding-agent", async () => {
+    const { app, cleanup } = freshApp();
+    const res = await app.request("/v1/agents/coding-agent", { headers: auth });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.isPrivateWorkspace).toBe(true);
+    cleanup();
+  });
 });

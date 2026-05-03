@@ -200,6 +200,13 @@ export class AgentStore {
     return this.agentRootPathFor(agent);
   }
 
+  isUsingPrivateWorkspace(id: string): boolean {
+    this.ensureDefaults();
+    const agent = this.get(id);
+    if (!agent) return false;
+    return this.isManagedPrivateWorkspace(id, agent.workspace as Workspace);
+  }
+
   agentCorePath(id: string): string {
     return join(this.agentRootPath(id), "agent-core");
   }

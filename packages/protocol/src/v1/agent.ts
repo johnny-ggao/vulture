@@ -159,6 +159,12 @@ export const AgentSchema = z.object({
    * the desktop app.
    */
   avatar: z.string().optional(),
+  /**
+   * Whether the agent is currently using a gateway-managed private workspace.
+   * When true, the UI may show the coding-agent banner prompting the user to
+   * point the agent at a real repository.
+   */
+  isPrivateWorkspace: z.boolean().optional(),
   createdAt: Iso8601Schema,
   updatedAt: Iso8601Schema,
 });

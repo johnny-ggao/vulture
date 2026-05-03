@@ -519,3 +519,34 @@ describe("preset agents seed", () => {
   });
 
 });
+
+describe("isUsingPrivateWorkspace", () => {
+  test("returns true for freshly seeded coding-agent", () => {
+    const { store, cleanup } = freshStore();
+    store.list(); // seed both presets
+    expect(store.isUsingPrivateWorkspace("coding-agent")).toBe(true);
+    cleanup();
+  });
+
+  test("returns false after user changes workspace to a custom path", () => {
+    const customWs = mkdtempSync(join(tmpdir(), "custom-ws-"));
+    const { store, cleanup } = freshStore();
+    const agent = store.get("coding-agent")!;
+    store.save({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      model: agent.model,
+      reasoning: agent.reasoning,
+      tools: agent.tools,
+      toolPreset: agent.toolPreset,
+      toolInclude: agent.toolInclude,
+      toolExclude: agent.toolExclude,
+      instructions: agent.instructions,
+      workspace: { id: "custom-ws", name: "Custom", path: customWs },
+    });
+    expect(store.isUsingPrivateWorkspace("coding-agent")).toBe(false);
+    cleanup();
+    rmSync(customWs, { recursive: true });
+  });
+});
