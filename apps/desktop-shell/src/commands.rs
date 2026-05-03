@@ -5,7 +5,10 @@ use tokio::sync::oneshot;
 use vulture_core::RuntimeDescriptor;
 
 use crate::{
-    auth::{unified_auth_status, AuthStatusView, OpenAiAuthStatus, SetOpenAiApiKeyRequest},
+    auth::{
+        unified_auth_status, AuthStatusView, ClearModelApiKeyRequest, OpenAiAuthStatus,
+        SetModelApiKeyRequest, SetOpenAiApiKeyRequest,
+    },
     codex_auth::{
         creds_from_token_response, delete_store, ensure_store_with_import,
         exchange_authorization_code, open_browser, read_store, start_callback_server, write_store,
@@ -35,6 +38,26 @@ pub fn set_openai_api_key(
 pub fn clear_openai_api_key(state: State<'_, AppState>) -> Result<OpenAiAuthStatus, String> {
     state
         .clear_openai_api_key()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_model_api_key(
+    state: State<'_, AppState>,
+    request: SetModelApiKeyRequest,
+) -> Result<(), String> {
+    state
+        .set_model_api_key(request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn clear_model_api_key(
+    state: State<'_, AppState>,
+    request: ClearModelApiKeyRequest,
+) -> Result<(), String> {
+    state
+        .clear_model_api_key(request)
         .map_err(|error| error.to_string())
 }
 

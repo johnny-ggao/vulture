@@ -6,12 +6,7 @@ import {
   type McpToolProvider,
   type SdkApprovalCallable,
 } from "./openaiLlm";
-import {
-  fetchCodexToken,
-  makeCodexLlm,
-  type CodexShellError,
-  type CodexShellResponse,
-} from "./codexLlm";
+import { resolveRuntimeModelProvider } from "./modelProviderResolver";
 
 export interface ResolveLlmDeps {
   toolNames: readonly string[];
@@ -35,64 +30,19 @@ export interface ResolveLlmDeps {
  */
 export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
   return async function* (input): AsyncGenerator<LlmYield, void, unknown> {
-    let codexState: "available" | "not_signed_in" | "expired" = "not_signed_in";
-    let codexToken: CodexShellResponse | undefined;
-    try {
-      codexToken = await fetchCodexToken({
-        shellUrl: deps.shellCallbackUrl,
-        bearer: deps.shellToken,
-        fetch: deps.fetch,
-      });
-      codexState = "available";
-    } catch (cause) {
-      const err = cause as CodexShellError;
-      switch (err.code) {
-        case "auth.codex_expired":
-          codexState = "expired";
-          break;
-        case "auth.codex_not_signed_in":
-        case "internal":
-        default:
-          // Treat shell faults the same as "not signed in" — falls through to
-          // API key (or stub) so a transient shell error doesn't block the run.
-          codexState = "not_signed_in";
-          break;
-      }
-    }
+    const resolved = await resolveRuntimeModelProvider({
+      modelRef: input.model,
+      env: deps.env,
+      shellCallbackUrl: deps.shellCallbackUrl,
+      shellToken: deps.shellToken,
+      fetch: deps.fetch,
+      runId: input.runId,
+    });
 
-    if (codexState === "available") {
-      const inner = makeCodexLlm({
-        shellUrl: deps.shellCallbackUrl,
-        shellBearer: deps.shellToken,
-        toolNames: deps.toolNames,
-        toolCallable: deps.toolCallable,
-        fetch: deps.fetch,
-        codexToken,
-        approvalCallable: deps.approvalCallable,
-        mcpToolProvider: deps.mcpToolProvider,
-        runFactory: deps.runFactory,
-        runtimeHooks: deps.runtimeHooks,
-      });
-      yield* inner(input);
-      return;
-    }
-
-    if (codexState === "expired") {
-      // Explicit fallback (do NOT silently downgrade to API key — see spec
-      // invariant 4: avoid surprise billing).
-      yield {
-        kind: "final",
-        text: "Codex 已过期，请重新登录（侧栏 设置 → Sign in with ChatGPT）",
-      };
-      return;
-    }
-
-    // codexState === "not_signed_in" → API key path
-    const env = deps.env ?? process.env;
-    const apiKey = env.OPENAI_API_KEY;
-    if (apiKey) {
+    if (resolved.kind === "provider") {
       const inner = makeOpenAILlm({
-        apiKey,
+        apiKey: resolved.apiKey,
+        modelProvider: resolved.modelProvider,
         toolNames: deps.toolNames,
         toolCallable: deps.toolCallable,
         approvalCallable: deps.approvalCallable,
@@ -100,9 +50,23 @@ export function makeLazyLlm(deps: ResolveLlmDeps): LlmCallable {
         runFactory: deps.runFactory,
         runtimeHooks: deps.runtimeHooks,
       });
-      yield* inner(input);
+      yield* inner({ ...input, model: resolved.model });
       return;
     }
-    yield* makeStubLlmFallback()(input);
+
+    if (
+      resolved.provider === "openai" &&
+      resolved.profileId === "openai-api-key" &&
+      resolved.message.includes("OPENAI_API_KEY")
+    ) {
+      yield* makeStubLlmFallback()(input);
+      return;
+    }
+
+    yield {
+      kind: "final",
+      text: resolved.message,
+    };
+    return;
   };
 }

@@ -1,4 +1,5 @@
 mod codex_routes;
+mod model_auth_routes;
 
 use std::{
     collections::HashMap,
@@ -22,6 +23,7 @@ use serde_json::{json, Value};
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 use vulture_tool_gateway::{AuditStore, PolicyDecision, PolicyEngine, ToolRequest};
 
+use crate::auth::{KeychainSecretStore, SecretStore};
 use crate::browser::{
     protocol::{BrowserRelayMessage, BrowserTab},
     relay::{BrowserActionResult, BrowserRelayState},
@@ -29,6 +31,7 @@ use crate::browser::{
 use crate::codex_auth::RefreshSingleton;
 use crate::tool_executor::{execute_shell, ShellExecInput};
 use codex_routes::{auth_codex_handler, auth_codex_refresh_handler, CodexState};
+use model_auth_routes::{auth_model_api_key_handler, auth_model_profiles_handler};
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -140,6 +143,11 @@ fn build_router(state: ShellState, codex_state: CodexState) -> Router {
     let codex_router = Router::new()
         .route("/auth/codex", get(auth_codex_handler))
         .route("/auth/codex/refresh", post(auth_codex_refresh_handler))
+        .route("/auth/model-profiles", get(auth_model_profiles_handler))
+        .route(
+            "/auth/model-api-key/:profile_id",
+            get(auth_model_api_key_handler),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -606,6 +614,7 @@ pub async fn serve(port: u16, token: String, audit_db_path: PathBuf) -> Result<T
         token,
         Arc::new(RwLock::new(audit_db_path)),
         Arc::new(RwLock::new(std::env::temp_dir())),
+        Arc::new(KeychainSecretStore),
         RefreshSingleton::default(),
         Arc::new(Mutex::new(BrowserRelayState::default())),
     )
@@ -636,6 +645,7 @@ pub async fn serve_with_codex(
         token,
         Arc::new(RwLock::new(audit_db_path)),
         Arc::new(RwLock::new(profile_dir)),
+        Arc::new(KeychainSecretStore),
         refresh,
         Arc::new(Mutex::new(BrowserRelayState::default())),
     )
@@ -647,6 +657,7 @@ pub async fn serve_with_codex_and_browser_relay(
     token: String,
     audit_db_path: Arc<RwLock<PathBuf>>,
     profile_dir: Arc<RwLock<PathBuf>>,
+    secret_store: Arc<dyn SecretStore>,
     refresh: RefreshSingleton,
     browser_relay: Arc<Mutex<BrowserRelayState>>,
 ) -> Result<ToolCallbackHandle> {
@@ -658,6 +669,7 @@ pub async fn serve_with_codex_and_browser_relay(
     };
     let codex_state = CodexState {
         profile_dir,
+        secret_store,
         refresh,
     };
 
@@ -901,6 +913,7 @@ mod tests {
             token.clone(),
             Arc::new(RwLock::new(audit_path)),
             Arc::new(RwLock::new(std::env::temp_dir())),
+            Arc::new(crate::auth::MemorySecretStore::default()),
             RefreshSingleton::default(),
             relay,
         )
@@ -1013,6 +1026,7 @@ mod tests {
             token.clone(),
             Arc::new(RwLock::new(audit_path)),
             Arc::new(RwLock::new(std::env::temp_dir())),
+            Arc::new(crate::auth::MemorySecretStore::default()),
             RefreshSingleton::default(),
             relay,
         )

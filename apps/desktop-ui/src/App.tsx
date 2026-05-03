@@ -17,6 +17,7 @@ import {
   webSearchSettingsApi,
   type UpdateWebSearchSettings,
 } from "./api/webSearchSettings";
+import { modelSettingsApi } from "./api/modelSettings";
 import { memoriesApi, type Memory, type MemoryStatus } from "./api/memories";
 import {
   mcpServersApi,
@@ -192,17 +193,17 @@ export function App() {
     }
   }
 
-  async function handleSaveApiKey(apiKey: string) {
+  async function handleSaveApiKey(profileId: string, apiKey: string) {
     try {
-      await invoke("set_openai_api_key", { request: { apiKey } });
+      await invoke("set_model_api_key", { request: { profileId, apiKey } });
     } finally {
       void refreshAuthStatus();
     }
   }
 
-  async function handleClearApiKey() {
+  async function handleClearApiKey(profileId: string) {
     try {
-      await invoke("clear_openai_api_key");
+      await invoke("clear_model_api_key", { request: { profileId } });
     } finally {
       void refreshAuthStatus();
     }
@@ -332,6 +333,11 @@ export function App() {
   async function loadRunTrace(runId: string) {
     if (!apiClient) throw new Error("Gateway is not ready");
     return runLogsApi.trace(apiClient, runId);
+  }
+
+  async function getModelSettings() {
+    if (!apiClient) return { providers: [] };
+    return modelSettingsApi.get(apiClient);
   }
 
   async function getWebSearchSettings() {
@@ -1023,6 +1029,7 @@ export function App() {
               onListMcpServerTools={listMcpServerTools}
               onListRunLogs={listRunLogs}
               onLoadRunTrace={loadRunTrace}
+              onGetModelSettings={getModelSettings}
               onGetWebSearchSettings={getWebSearchSettings}
               onUpdateWebSearchSettings={updateWebSearchSettings}
               onTestWebSearchSettings={testWebSearchSettings}

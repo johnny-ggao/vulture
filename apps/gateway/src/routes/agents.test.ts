@@ -47,7 +47,7 @@ describe("/v1/agents", () => {
     const body = await res.json();
     expect(body.id).toBe("coder");
     expect(body.description).toBe("x");
-    expect(body.model).toBe("gpt-5.4");
+    expect(body.model).toBe("openai/gpt-5.4");
     expect(body.reasoning).toBe("low");
     cleanup();
   });

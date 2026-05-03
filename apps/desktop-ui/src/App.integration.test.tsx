@@ -84,10 +84,10 @@ mock.module("@tauri-apps/api/core", () => ({
       return { url: "", alreadyAuthenticated: false };
     }
     if (cmd === "sign_out_chatgpt") return undefined;
-    if (cmd === "set_openai_api_key") {
+    if (cmd === "set_openai_api_key" || cmd === "set_model_api_key") {
       return { configured: true, source: "keychain" };
     }
-    if (cmd === "clear_openai_api_key") {
+    if (cmd === "clear_openai_api_key" || cmd === "clear_model_api_key") {
       return { configured: false, source: "missing" };
     }
     if (cmd === "restart_gateway") {

@@ -12,14 +12,26 @@ use axum::{
 use serde::Serialize;
 use serde_json::json;
 
+use crate::auth::{KeychainSecretStore, SecretStore};
 use crate::codex_auth::{
     creds_from_token_response, read_store, unix_now_ms, write_store, RefreshSingleton, TOKEN_URL,
 };
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct CodexState {
     pub profile_dir: Arc<RwLock<PathBuf>>,
+    pub secret_store: Arc<dyn SecretStore>,
     pub refresh: RefreshSingleton,
+}
+
+impl Default for CodexState {
+    fn default() -> Self {
+        Self {
+            profile_dir: Arc::new(RwLock::new(std::env::temp_dir())),
+            secret_store: Arc::new(KeychainSecretStore),
+            refresh: RefreshSingleton::default(),
+        }
+    }
 }
 
 #[derive(Serialize)]

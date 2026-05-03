@@ -27,6 +27,7 @@ import type {
   WorkspaceId,
 } from "@vulture/protocol/src/v1/workspace";
 import { nowIso8601, type Iso8601 } from "@vulture/protocol/src/v1/index";
+import { normalizePersistedAgentModel } from "./modelMigration";
 
 interface AgentRow {
   id: string;
@@ -136,7 +137,7 @@ function rowToAgent(r: AgentRow): Agent {
     id: brandId<AgentId>(r.id),
     name: r.name,
     description: r.description,
-    model: r.model,
+    model: normalizePersistedAgentModel(r.model),
     reasoning: r.reasoning as ReasoningLevel,
     tools: toolPolicy.tools,
     toolPreset: toolPolicy.toolPreset,
@@ -285,6 +286,7 @@ export class AgentStore {
       req.workspace,
     );
     const toolPolicy = toolPolicyFromSaveRequest(req);
+    const model = normalizePersistedAgentModel(req.model);
     this.ensureAgentCoreFiles({ ...req, ...toolPolicy }, workspace);
     // `avatar` is opaque to the gateway — the client owns the
     // preset registry. Only the empty string is normalised to NULL
@@ -301,7 +303,7 @@ export class AgentStore {
         .run(
           req.name,
           req.description,
-          req.model,
+          model,
           req.reasoning,
           JSON.stringify(toolPolicy.tools),
           toolPolicy.toolPreset,
@@ -325,7 +327,7 @@ export class AgentStore {
           req.id,
           req.name,
           req.description,
-          req.model,
+          model,
           req.reasoning,
           JSON.stringify(toolPolicy.tools),
           toolPolicy.toolPreset,
@@ -602,7 +604,7 @@ export class AgentStore {
         .run(
           preset.name,
           preset.description,
-          preset.model,
+          normalizePersistedAgentModel(preset.model),
           preset.reasoning,
           JSON.stringify(policy.tools),
           policy.toolPreset,

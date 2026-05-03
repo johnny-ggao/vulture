@@ -12,8 +12,8 @@ use vulture_core::{AppPaths, Profile, ProfileId, RuntimeDescriptor, StorageLayou
 
 use crate::{
     auth::{
-        auth_status, resolve_openai_api_key, KeychainSecretStore, OpenAiAuthStatus, SecretStore,
-        SetOpenAiApiKeyRequest,
+        auth_status, resolve_openai_api_key, ClearModelApiKeyRequest, KeychainSecretStore,
+        OpenAiAuthStatus, SecretStore, SetModelApiKeyRequest, SetOpenAiApiKeyRequest,
     },
     browser::relay::{BrowserRelayState, BrowserRelayStatus},
     codex_auth::RefreshSingleton,
@@ -46,7 +46,7 @@ pub struct AppState {
     profile: RwLock<ActiveProfile>,
     profile_dir_handle: Arc<RwLock<PathBuf>>,
     audit_db_path_handle: Arc<RwLock<PathBuf>>,
-    secret_store: Box<dyn SecretStore>,
+    secret_store: Arc<dyn SecretStore>,
     browser_relay: Arc<Mutex<BrowserRelayState>>,
     runtime_descriptor: RwLock<Option<RuntimeDescriptor>>,
     /// Shared with the supervisor task so the loop can publish state transitions
@@ -123,7 +123,7 @@ impl AppState {
             profile: RwLock::new(current),
             profile_dir_handle: Arc::new(RwLock::new(profile_dir)),
             audit_db_path_handle: Arc::new(RwLock::new(audit_db_path)),
-            secret_store,
+            secret_store: Arc::from(secret_store),
             browser_relay: Arc::new(Mutex::new(BrowserRelayState::default())),
             runtime_descriptor: RwLock::new(None),
             supervisor_status: Arc::new(RwLock::new(SupervisorStatus {
@@ -263,21 +263,36 @@ impl AppState {
     }
 
     pub fn set_openai_api_key(&self, request: SetOpenAiApiKeyRequest) -> Result<OpenAiAuthStatus> {
-        let api_key = request.api_key.trim();
-        if api_key.is_empty() {
-            return Err(anyhow!("OpenAI API key must not be empty"));
-        }
-
-        let secret_ref = self.openai_secret_ref();
-        self.secret_store.set(&secret_ref, api_key)?;
+        self.set_model_api_key(SetModelApiKeyRequest {
+            profile_id: "openai-api-key".to_string(),
+            api_key: request.api_key,
+        })?;
         let _resolved_key = self.resolve_openai_api_key()?;
         self.openai_auth_status()
     }
 
     pub fn clear_openai_api_key(&self) -> Result<OpenAiAuthStatus> {
-        let secret_ref = self.openai_secret_ref();
-        self.secret_store.clear(&secret_ref)?;
+        self.clear_model_api_key(ClearModelApiKeyRequest {
+            profile_id: "openai-api-key".to_string(),
+        })?;
         self.openai_auth_status()
+    }
+
+    pub fn set_model_api_key(&self, request: SetModelApiKeyRequest) -> Result<()> {
+        let api_key = request.api_key.trim();
+        if api_key.is_empty() {
+            return Err(anyhow!("model API key must not be empty"));
+        }
+
+        let secret_ref = self.model_api_key_secret_ref(&request.profile_id)?;
+        self.secret_store.set(&secret_ref, api_key)?;
+        Ok(())
+    }
+
+    pub fn clear_model_api_key(&self, request: ClearModelApiKeyRequest) -> Result<()> {
+        let secret_ref = self.model_api_key_secret_ref(&request.profile_id)?;
+        self.secret_store.clear(&secret_ref)?;
+        Ok(())
     }
 
     pub fn resolve_openai_api_key(&self) -> Result<String> {
@@ -353,12 +368,21 @@ impl AppState {
         self.secret_store.as_ref()
     }
 
+    pub fn secret_store_handle(&self) -> Arc<dyn SecretStore> {
+        Arc::clone(&self.secret_store)
+    }
+
     pub fn openai_secret_ref(&self) -> String {
         self.profile
             .read()
             .expect("profile lock poisoned")
             .openai_secret_ref
             .clone()
+    }
+
+    pub fn model_api_key_secret_ref(&self, profile_id: &str) -> Result<String> {
+        let profile = self.profile.read().expect("profile lock poisoned");
+        model_api_key_secret_ref(&profile.view.id, &profile.openai_secret_ref, profile_id)
     }
 
     pub fn request_supervisor_restart(&self) {
@@ -383,6 +407,20 @@ fn load_profile(root: &Path, profile_id: &str) -> Result<Profile> {
     )
     .with_context(|| format!("failed to parse profile at {}", profile_path.display()))?;
     Ok(profile)
+}
+
+pub fn model_api_key_secret_ref(
+    profile_id: &str,
+    openai_secret_ref: &str,
+    model_profile_id: &str,
+) -> Result<String> {
+    match model_profile_id {
+        "openai-api-key" => Ok(openai_secret_ref.to_string()),
+        "anthropic-api-key" => Ok(format!("vulture:profile:{profile_id}:anthropic")),
+        _ => Err(anyhow!(
+            "unsupported model API key profile: {model_profile_id}"
+        )),
+    }
 }
 
 fn read_active_profile_id(root: &Path) -> Option<String> {

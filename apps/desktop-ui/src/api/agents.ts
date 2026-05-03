@@ -35,6 +35,7 @@ export interface Agent {
   id: string;
   name: string;
   description: string;
+  /** Preferred shape is provider/model or provider/model@profile. */
   model: string;
   reasoning: ReasoningLevel;
   tools: AgentToolName[];
@@ -61,6 +62,7 @@ export interface SaveAgentRequest {
   id: string;
   name: string;
   description: string;
+  /** Preferred shape is provider/model or provider/model@profile. */
   model: string;
   reasoning: ReasoningLevel;
   tools: AgentToolName[];

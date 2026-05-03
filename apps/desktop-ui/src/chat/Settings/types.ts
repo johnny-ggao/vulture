@@ -17,6 +17,7 @@ import type {
   WebSearchSettingsResponse,
   WebSearchTestResult,
 } from "../../api/webSearchSettings";
+import type { ModelSettingsResponse } from "../../api/modelSettings";
 
 export interface SettingsPageProps {
   onBack: () => void;
@@ -41,6 +42,7 @@ export interface SettingsPageProps {
   onListMcpServerTools: (id: string) => Promise<McpToolSummary[]>;
   onListRunLogs: (query: ListRunLogsQuery) => Promise<RunLogsListResponse>;
   onLoadRunTrace: (runId: string) => Promise<RunTraceResponse>;
+  onGetModelSettings: () => Promise<ModelSettingsResponse>;
   onGetWebSearchSettings: () => Promise<WebSearchSettingsResponse>;
   onUpdateWebSearchSettings: (
     input: UpdateWebSearchSettings,
@@ -52,7 +54,7 @@ export interface SettingsPageProps {
   onSwitchProfile: (profileId: string) => Promise<void>;
   onSignInWithChatGPT: () => Promise<void>;
   onSignOutCodex: () => Promise<void>;
-  onSaveApiKey: (apiKey: string) => Promise<void>;
-  onClearApiKey: () => Promise<void>;
+  onSaveApiKey: (profileId: string, apiKey: string) => Promise<void>;
+  onClearApiKey: (profileId: string) => Promise<void>;
   onStartBrowserPairing: () => Promise<void>;
 }

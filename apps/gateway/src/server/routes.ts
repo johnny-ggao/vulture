@@ -20,6 +20,7 @@ import { runTraceRouter } from "../routes/runTrace";
 import { browserCapabilitiesRouter } from "../routes/browserCapabilities";
 import { mcpProxyRouter } from "../routes/mcpProxy";
 import { runtimeDiagnosticsRouter } from "../routes/runtimeDiagnostics";
+import { modelSettingsRouter } from "../routes/modelSettings";
 import { filesRouter } from "../routes/files";
 import {
   makeWebSearchSettingsTester,
@@ -92,6 +93,14 @@ export function mountGatewayRoutes(opts: MountGatewayRoutesOptions): void {
   app.route("/", browserCapabilitiesRouter());
   app.route("/", mcpProxyRouter());
   app.route("/", runtimeDiagnosticsRouter());
+  app.route(
+    "/",
+    modelSettingsRouter({
+      shellCallbackUrl: cfg.shellCallbackUrl,
+      shellToken: cfg.token,
+      env: process.env,
+    }),
+  );
   app.route("/", filesRouter());
   app.route(
     "/",
