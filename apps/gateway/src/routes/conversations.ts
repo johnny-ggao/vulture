@@ -49,8 +49,17 @@ export function conversationsRouter(deps: ConversationsDeps): Hono {
     if (!parsed.success) {
       return c.json({ code: "internal", message: parsed.error.message }, 400);
     }
-    const updated = deps.conversations.updatePermissionMode(id, parsed.data.permissionMode!);
-    if (!updated) return c.json({ code: "conversation.not_found", message: id }, 404);
+    const existing = deps.conversations.get(id);
+    if (!existing) return c.json({ code: "conversation.not_found", message: id }, 404);
+    let updated = existing;
+    if (parsed.data.permissionMode !== undefined) {
+      updated =
+        deps.conversations.updatePermissionMode(id, parsed.data.permissionMode) ?? updated;
+    }
+    if (parsed.data.workingDirectory !== undefined) {
+      updated =
+        deps.conversations.updateWorkingDirectory(id, parsed.data.workingDirectory) ?? updated;
+    }
     return c.json(updated);
   });
 

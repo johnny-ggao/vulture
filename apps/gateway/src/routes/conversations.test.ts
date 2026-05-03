@@ -85,6 +85,30 @@ describe("/v1/conversations", () => {
     cleanup();
   });
 
+  test("PATCH sets and clears the conversation working directory", async () => {
+    const { app, convs, cleanup } = fresh();
+    const c = convs.create({ agentId: "a-1" });
+    expect(c.workingDirectory).toBeNull();
+
+    const setRes = await app.request(`/v1/conversations/${c.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ workingDirectory: "/Users/me/Code/proj" }),
+    });
+    expect(setRes.status).toBe(200);
+    expect((await setRes.json()).workingDirectory).toBe("/Users/me/Code/proj");
+    expect(convs.get(c.id)?.workingDirectory).toBe("/Users/me/Code/proj");
+
+    const clearRes = await app.request(`/v1/conversations/${c.id}`, {
+      method: "PATCH",
+      headers: { ...auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ workingDirectory: null }),
+    });
+    expect(clearRes.status).toBe(200);
+    expect((await clearRes.json()).workingDirectory).toBeNull();
+    cleanup();
+  });
+
   test("POST without Idempotency-Key → 400", async () => {
     const { app, cleanup } = fresh();
     const res = await app.request("/v1/conversations", {

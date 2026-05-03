@@ -14,6 +14,7 @@ describe("Conversation + Message schemas", () => {
     agentId: "local-work-agent" as Conversation["agentId"],
     title: "Hello",
     permissionMode: "default",
+    workingDirectory: null,
     createdAt: "2026-04-26T00:00:00.000Z" as Conversation["createdAt"],
     updatedAt: "2026-04-26T00:00:00.000Z" as Conversation["updatedAt"],
   };

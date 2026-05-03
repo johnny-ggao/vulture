@@ -7,6 +7,13 @@ export interface ConversationDto {
   agentId: string;
   title: string;
   permissionMode: ConversationPermissionMode;
+  /**
+   * Per-conversation working directory override. When set, file-touching
+   * tools and the @-mention picker resolve paths against this directory
+   * instead of the agent's default workspace. `null` means "use the
+   * agent's default workspace".
+   */
+  workingDirectory: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -40,6 +47,11 @@ export interface CreateConversationRequest {
 
 export interface UpdateConversationRequest {
   permissionMode?: ConversationPermissionMode;
+  /**
+   * Pass an absolute path to set, or `null` to clear and fall back to the
+   * agent's default workspace. Omit to leave the current value alone.
+   */
+  workingDirectory?: string | null;
 }
 
 export const conversationsApi = {
