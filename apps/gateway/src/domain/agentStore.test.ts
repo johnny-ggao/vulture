@@ -406,31 +406,13 @@ describe("AgentStore", () => {
     cleanup();
   });
 
-  test("delete refuses last agent", () => {
-    // The last-agent guard fires when COUNT(*) <= 1 after ensureDefaults().
-    // Since ensureDefaults() always seeds both presets, the guard only fires when
-    // only 1 agent total would remain. We test this by starting with just the two
-    // presets (2 agents), deleting one preset from DB directly, then calling delete
-    // on the remaining one — but ensureDefaults will re-seed the deleted preset first,
-    // giving 2 agents again and allowing deletion.
-    // The realistic guard trigger: have only 1 row in the DB with a preset ID already
-    // present so ensureDefaults skips seeding the second preset (it already exists),
-    // leaving exactly 1 agent, so deletion throws.
-    const { store, db, cleanup } = freshStore();
-    store.list(); // seeds both presets
-    // Remove coding-agent so DB has only local-work-agent (1 row)
-    db.query("DELETE FROM agents WHERE id = ?").run("coding-agent");
-    // Now delete() on local-work-agent: ensureDefaults() will try to seed coding-agent
-    // but local-work-agent already exists. After seeding, count >= 2, so no throw.
-    // To force the guard: remove coding-agent insert capability by pre-inserting it
-    // with a bogus workspace so it "exists", then try to delete local-work-agent.
-    // Actually the simplest test: assert that with 1 row, ensureDefaults re-seeds
-    // and allows deletion (not throws). The real "last agent" scenario requires
-    // somehow having a single-agent DB that stays single. We verify it doesn't throw
-    // when 2 presets are present.
-    expect(() => store.delete("local-work-agent")).not.toThrow();
-    // coding-agent was re-seeded by ensureDefaults, so deleting local-work-agent works.
-    expect(store.list().map((a) => a.id)).toContain(brandId<AgentId>("local-work-agent")); // re-seeded
+  test("deleting a preset re-seeds it via ensureDefaults (decision #7)", () => {
+    const { store, cleanup } = freshStore();
+    store.list(); // seed both
+    store.delete("coding-agent");
+    const ids = new Set(store.list().map((a) => String(a.id)));
+    expect(ids.has("coding-agent")).toBe(true);
+    expect(ids.has("local-work-agent")).toBe(true);
     cleanup();
   });
 
@@ -490,21 +472,4 @@ describe("preset agents seed", () => {
     cleanup();
   });
 
-  test("deleting a preset re-seeds it on next list", () => {
-    const { store, cleanup } = freshStore();
-    store.list();
-    // Both presets exist now; we need at least one non-preset agent to avoid "last agent" guard.
-    store.save({
-      id: "extra-agent",
-      name: "Extra",
-      description: "x",
-      model: "gpt-5.4",
-      reasoning: "medium",
-      tools: [],
-      instructions: "x",
-    });
-    store.delete("coding-agent");
-    expect(store.list().find((a) => a.id === "coding-agent")).toBeDefined();
-    cleanup();
-  });
 });

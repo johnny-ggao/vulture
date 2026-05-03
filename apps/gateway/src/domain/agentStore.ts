@@ -88,7 +88,7 @@ const PRESET_CODING_INSTRUCTIONS = [
   "For risky operations (destructive shell, dependency changes, force pushes), surface the plan before executing.",
 ].join(" ");
 
-const PRESET_GENERAL: SaveAgentRequest = {
+const PRESET_GENERAL: Readonly<SaveAgentRequest> = Object.freeze({
   id: "local-work-agent",
   name: "Vulture",
   description: "通用助手——日常工作、写作、研究、问答",
@@ -101,9 +101,9 @@ const PRESET_GENERAL: SaveAgentRequest = {
   handoffAgentIds: [],
   avatar: "compass",
   instructions: PRESET_GENERAL_INSTRUCTIONS,
-};
+});
 
-const PRESET_CODING: SaveAgentRequest = {
+const PRESET_CODING: Readonly<SaveAgentRequest> = Object.freeze({
   id: "coding-agent",
   name: "Vulture Coding",
   description: "工程伙伴——面向代码仓库的开发与验证",
@@ -116,9 +116,12 @@ const PRESET_CODING: SaveAgentRequest = {
   handoffAgentIds: [],
   avatar: "circuit",
   instructions: PRESET_CODING_INSTRUCTIONS,
-};
+});
 
-const DEFAULT_AGENTS: readonly SaveAgentRequest[] = [PRESET_GENERAL, PRESET_CODING];
+const DEFAULT_AGENTS: readonly Readonly<SaveAgentRequest>[] = Object.freeze([
+  PRESET_GENERAL,
+  PRESET_CODING,
+]);
 
 function rowToAgent(r: AgentRow): Agent {
   const workspace_data = JSON.parse(r.workspace_json);
@@ -236,37 +239,13 @@ export class AgentStore {
       }
     }
     // Migration / reconcile passes still run on every call.
-    this.ensureDefaultToolsCurrent();
+    // ensurePresetFieldsCurrent unconditionally rewrites tools / tool_preset /
+    // tool_include_json / tool_exclude_json, so a separate "tools-current"
+    // reconcile pass would be dead code.
     this.ensureLegacyPrivateWorkspacesCurrent();
     this.ensureDefaultWorkspaceCurrent();
     this.ensureAgentLayoutsCurrent();
     this.ensurePresetFieldsCurrent();
-  }
-
-  private ensureDefaultToolsCurrent(): void {
-    for (const preset of DEFAULT_AGENTS) {
-      const existingRow = this.db
-        .query("SELECT * FROM agents WHERE id = ?")
-        .get(preset.id) as AgentRow | undefined;
-      if (!existingRow) continue;
-      const existingTools = JSON.parse(existingRow.tools) as string[];
-      const merged = [...new Set([...existingTools, ...AGENT_TOOL_NAMES])];
-      if (merged.length === existingTools.length) continue;
-      const policy = toolPolicyFromSaveRequest({
-        ...preset,
-        tools: merged as AgentToolName[],
-      });
-      this.db
-        .query("UPDATE agents SET tools = ?, tool_preset = ?, tool_include_json = ?, tool_exclude_json = ?, updated_at = ? WHERE id = ?")
-        .run(
-          JSON.stringify(policy.tools),
-          policy.toolPreset,
-          JSON.stringify(policy.toolInclude),
-          JSON.stringify(policy.toolExclude),
-          nowIso8601(),
-          preset.id,
-        );
-    }
   }
 
   private ensureLegacyPrivateWorkspacesCurrent(): void {
