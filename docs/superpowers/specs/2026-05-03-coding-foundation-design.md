@@ -34,7 +34,7 @@ Vulture's repo is TypeScript (apps + packages) and Rust (Tauri shell + crates). 
 
 ## Confirmed Decisions
 
-1. **Six new tools, all read-only, auto-approve.** No write/exec semantics. Policy entries in `crates/tool-gateway` map all six to the same auto-approve class as `read`.
+1. **Six new tools, all read-only, auto-approve.** No write/exec semantics. Approval is handled in TS via `coreToolApprovalDecision` (returns `{ needsApproval: false }`) — these tools are TS-local (added to `LOCAL_TOOL_NAMES` in `gatewayLocalTools.ts`) and never traverse the Rust `crates/tool-gateway`. No Rust changes required.
 2. **Tool preset assignments**:
    - `minimal` and `standard` gain `grep` and `glob` (basic discovery — every preset benefits).
    - `developer` gains all four `lsp.*` on top of grep/glob.
@@ -85,7 +85,7 @@ tl: [/* existing */, "grep", "glob"],
 full: AGENT_TOOL_NAMES, // unchanged shape
 ```
 
-Codegen runs to regenerate Rust bindings. `crates/tool-gateway` policy table gains six entries, all routed to the read-only auto-approve class. `apps/gateway/src/tools/coreTools.ts` registers six new dispatch handlers backed by:
+No Rust binding changes — the protocol's `AGENT_TOOL_NAMES` enum is TS-only and is not mirrored by `crates/tool-gateway` (which deals with system-level dispatch only). The new tools are added to `LOCAL_TOOL_NAMES` in `apps/gateway/src/runtime/gatewayLocalTools.ts` so they are handled inside the gateway and never fall through to the Rust shell-tools layer. `apps/gateway/src/tools/coreTools.ts` registers six new dispatch handlers backed by:
 
 - `grep` → `runtime/grep.ts` (ripgrep child process if available, JS fallback otherwise).
 - `glob` → `runtime/glob.ts` (existing matcher).
@@ -284,9 +284,9 @@ The following are known capability gaps. They will be filed as follow-up specs a
 
 - `packages/protocol/src/v1/agent.ts` — append six tool names, update preset arrays.
 - `packages/protocol/src/v1/agent.test.ts` — preset coverage, enum exhaustiveness.
-- Codegen output for Rust schema bindings.
-- `crates/tool-gateway/...` — policy entries for the six new tools, audit hooks.
-- `apps/gateway/src/tools/coreTools.ts` — register six new handlers.
+- `apps/gateway/src/runtime/gatewayLocalTools.ts` — extend `LOCAL_TOOL_NAMES`, add dispatch arms for the six new tools.
+- `apps/gateway/src/runtime/gatewayLocalTools.test.ts` — coverage for grep/glob/lsp dispatch.
+- `apps/gateway/src/tools/coreTools.ts` — register six new handlers + approval decisions.
 - `apps/gateway/src/runtime/grep.ts` — new file (ripgrep + JS fallback).
 - `apps/gateway/src/runtime/glob.ts` — new file (matcher wrapper).
 - `apps/gateway/src/runtime/lspClientManager.ts` — new file.
