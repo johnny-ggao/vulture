@@ -354,6 +354,19 @@ describe("SettingsPage Models", () => {
     expect(screen.getByText("openai/gpt-5.5")).toBeDefined();
     expect(screen.queryByText("Codex Gateway")).toBeNull();
   });
+
+  test("model tab lets Anthropic API key profile enter edit mode", async () => {
+    render(<SettingsPage {...props()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: /Anthropic/ })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("option", { name: /Anthropic/ }));
+    fireEvent.click(screen.getByRole("button", { name: "添加密钥" }));
+
+    expect(screen.getByLabelText("Anthropic API Key API Key")).toBeDefined();
+  });
 });
 
 describe("SettingsPage Web Search", () => {

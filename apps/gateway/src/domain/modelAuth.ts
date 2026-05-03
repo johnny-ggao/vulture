@@ -29,6 +29,10 @@ interface ShellModelAuthResponse {
   auth_order?: unknown;
 }
 
+interface ShellModelApiKeyResponse {
+  api_key?: unknown;
+}
+
 const EMPTY_MODEL_AUTH_SNAPSHOT: ModelAuthSnapshot = {
   profiles: [],
   authOrder: {},
@@ -53,6 +57,29 @@ export async function fetchShellModelAuthSnapshot(opts: {
     };
   } catch {
     return EMPTY_MODEL_AUTH_SNAPSHOT;
+  }
+}
+
+export async function fetchShellModelApiKey(opts: {
+  shellCallbackUrl: string;
+  shellToken: string;
+  profileId: string;
+  fetch?: ModelSettingsFetch;
+}): Promise<string | null> {
+  try {
+    const fetchImpl = opts.fetch ?? fetch;
+    const res = await fetchImpl(
+      `${opts.shellCallbackUrl}/auth/model-api-key/${encodeURIComponent(opts.profileId)}`,
+      { headers: { Authorization: `Bearer ${opts.shellToken}` } },
+    );
+    if (!res.ok) return null;
+
+    const raw = (await res.json()) as ShellModelApiKeyResponse;
+    return typeof raw.api_key === "string" && raw.api_key.trim() !== ""
+      ? raw.api_key
+      : null;
+  } catch {
+    return null;
   }
 }
 

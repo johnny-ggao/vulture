@@ -193,17 +193,17 @@ export function App() {
     }
   }
 
-  async function handleSaveApiKey(apiKey: string) {
+  async function handleSaveApiKey(profileId: string, apiKey: string) {
     try {
-      await invoke("set_openai_api_key", { request: { apiKey } });
+      await invoke("set_model_api_key", { request: { profileId, apiKey } });
     } finally {
       void refreshAuthStatus();
     }
   }
 
-  async function handleClearApiKey() {
+  async function handleClearApiKey(profileId: string) {
     try {
-      await invoke("clear_openai_api_key");
+      await invoke("clear_model_api_key", { request: { profileId } });
     } finally {
       void refreshAuthStatus();
     }

@@ -54,7 +54,7 @@ export interface SettingsPageProps {
   onSwitchProfile: (profileId: string) => Promise<void>;
   onSignInWithChatGPT: () => Promise<void>;
   onSignOutCodex: () => Promise<void>;
-  onSaveApiKey: (apiKey: string) => Promise<void>;
-  onClearApiKey: () => Promise<void>;
+  onSaveApiKey: (profileId: string, apiKey: string) => Promise<void>;
+  onClearApiKey: (profileId: string) => Promise<void>;
   onStartBrowserPairing: () => Promise<void>;
 }

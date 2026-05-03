@@ -30,6 +30,19 @@ pub struct SetOpenAiApiKeyRequest {
     pub api_key: String,
 }
 
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetModelApiKeyRequest {
+    pub profile_id: String,
+    pub api_key: String,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearModelApiKeyRequest {
+    pub profile_id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthStatusView {

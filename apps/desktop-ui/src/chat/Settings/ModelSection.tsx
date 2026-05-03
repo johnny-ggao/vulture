@@ -86,14 +86,14 @@ export function ModelSection(props: SettingsPageProps) {
 
   async function handleSaveApiKey() {
     const key = draftKey.trim();
-    if (!key) return;
-    await safeAction("save", () => props.onSaveApiKey(key));
+    if (!key || !editingProfileId) return;
+    await safeAction("save", () => props.onSaveApiKey(editingProfileId, key));
     setEditingProfileId(null);
     setDraftKey("");
   }
 
-  async function handleClearApiKey() {
-    await safeAction("clear", () => props.onClearApiKey());
+  async function handleClearApiKey(profileId: string) {
+    await safeAction("clear", () => props.onClearApiKey(profileId));
   }
 
   async function handleSignIn() {
@@ -237,7 +237,7 @@ export function ModelSection(props: SettingsPageProps) {
                     setEditingProfileId(null);
                     setDraftKey("");
                   }}
-                  onClearApiKey={handleClearApiKey}
+                  onClearApiKey={() => handleClearApiKey(profile.id)}
                   onSignIn={handleSignIn}
                   onSignOut={handleSignOut}
                 />
@@ -307,11 +307,11 @@ function AuthProfileRow({
   onSignIn: () => void;
   onSignOut: () => void;
 }) {
-  const canEditApiKey = profile.id === "openai-api-key";
+  const canEditApiKey = profile.mode === "api_key";
   const canUseCodexOauth = profile.id === "codex";
   const identity = profileIdentity(profile);
 
-  if (editing && profile.id === "openai-api-key") {
+  if (editing && canEditApiKey) {
     return (
       <div className="provider-connection-row editing">
         <div className="provider-connection-main">

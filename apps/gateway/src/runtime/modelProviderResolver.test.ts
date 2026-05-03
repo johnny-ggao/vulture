@@ -77,7 +77,7 @@ describe("resolveRuntimeModelProvider", () => {
   test("Anthropic missing auth error mentions Anthropic and not OPENAI_API_KEY", async () => {
     const result = await resolveRuntimeModelProvider({
       modelRef: "anthropic/claude-sonnet-4.5",
-      env: {},
+      env: { ANTHROPIC_API_KEY: "" },
       shellCallbackUrl: "http://shell:4199",
       shellToken: "bearer",
       fetch: shellWithoutCodexFetch,
@@ -107,6 +107,47 @@ describe("resolveRuntimeModelProvider", () => {
     expect(result.profileId).toBe("anthropic-api-key");
     expect(result.apiKey).toBe("sk-ant-test");
     expect(result.modelProvider).toBeDefined();
+  });
+
+  test("Anthropic API key profile works from shell keychain credential", async () => {
+    const fetchFn = (async (url: string | URL | Request) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/auth/model-profiles")) {
+        return new Response(
+          JSON.stringify({
+            profiles: [
+              {
+                id: "anthropic-api-key",
+                provider: "anthropic",
+                mode: "api_key",
+                label: "Anthropic API Key",
+                status: "configured",
+              },
+            ],
+            auth_order: { anthropic: ["anthropic-api-key"] },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u.endsWith("/auth/model-api-key/anthropic-api-key")) {
+        return Response.json({ api_key: "sk-ant-keychain" });
+      }
+      throw new Error(`unexpected fetch ${u}`);
+    }) as typeof fetch;
+
+    const result = await resolveRuntimeModelProvider({
+      modelRef: "anthropic/claude-sonnet-4.5",
+      env: { ANTHROPIC_API_KEY: "" },
+      shellCallbackUrl: "http://shell:4199",
+      shellToken: "bearer",
+      fetch: fetchFn,
+    });
+
+    expect(result.kind).toBe("provider");
+    if (result.kind !== "provider") throw new Error("expected model provider");
+    expect(result.provider).toBe("anthropic");
+    expect(result.profileId).toBe("anthropic-api-key");
+    expect(result.apiKey).toBe("sk-ant-keychain");
   });
 
   test("bare model defaults to openai provider", async () => {

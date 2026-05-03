@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
     app_state.set_runtime_descriptor(descriptor.clone());
     let profile_dir_handle = app_state.profile_dir_handle();
     let audit_db_path_handle = app_state.audit_db_path_handle();
+    let secret_store_handle = app_state.secret_store_handle();
 
     // 5. Shell HTTP callback server (held for the run; Drop on exit).
     //    The audit DB is owned exclusively by tool_callback::serve(); the path
@@ -76,6 +77,7 @@ async fn main() -> Result<()> {
         token.clone(),
         audit_db_path_handle,
         profile_dir_handle.clone(),
+        secret_store_handle,
         app_state.codex_refresh.clone(),
         app_state.browser_relay_handle(),
     )
@@ -120,6 +122,8 @@ async fn main() -> Result<()> {
             commands::get_openai_auth_status,
             commands::set_openai_api_key,
             commands::clear_openai_api_key,
+            commands::set_model_api_key,
+            commands::clear_model_api_key,
             commands::start_chatgpt_login,
             commands::sign_out_chatgpt,
             commands::get_auth_status,

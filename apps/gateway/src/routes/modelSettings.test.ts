@@ -133,6 +133,35 @@ describe("/v1/model-settings", () => {
     );
   });
 
+  test("projects Anthropic API key configured from shell keychain profile", async () => {
+    const res = await app({
+      env: {},
+      fetch: async () => Response.json({
+        profiles: [
+          {
+            id: "anthropic-api-key",
+            provider: "anthropic",
+            mode: "api_key",
+            label: "Anthropic API Key",
+            status: "configured",
+          },
+        ],
+        auth_order: { anthropic: ["anthropic-api-key"] },
+      }),
+    }).request("/v1/model-settings");
+
+    expect(res.status).toBe(200);
+    const body = ModelSettingsResponseSchema.parse(await res.json());
+    const anthropic = body.providers.find((provider) => provider.id === "anthropic");
+    expect(anthropic?.authProfiles).toContainEqual({
+      id: "anthropic-api-key",
+      provider: "anthropic",
+      mode: "api_key",
+      label: "Anthropic API Key",
+      status: "configured",
+    });
+  });
+
   test("projects Anthropic API key missing without env", async () => {
     const res = await app({ env: {} }).request("/v1/model-settings");
 

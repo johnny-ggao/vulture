@@ -1,6 +1,6 @@
 import type { ModelProvider } from "@openai/agents";
 import type { AuthProfileView } from "@vulture/protocol/src/v1/modelConfig";
-import { fetchShellModelAuthSnapshot } from "../domain/modelAuth";
+import { fetchShellModelApiKey, fetchShellModelAuthSnapshot } from "../domain/modelAuth";
 import { makeAnthropicModelProvider } from "./anthropicModelProvider";
 import { fetchCodexToken, makeCodexModelProvider, type CodexShellError } from "./codexLlm";
 import { parseModelRefWithProfile, type ParsedModelRef } from "./modelRef";
@@ -149,7 +149,13 @@ async function resolveProfile(opts: {
   }
 
   if (opts.profile.id === "openai-api-key" && opts.parsed.provider === "openai") {
-    const apiKey = opts.env.OPENAI_API_KEY;
+    const apiKey = await resolveApiKey({
+      envValue: opts.env.OPENAI_API_KEY,
+      shellCallbackUrl: opts.shellCallbackUrl,
+      shellToken: opts.shellToken,
+      profileId: opts.profile.id,
+      fetch: opts.fetch,
+    });
     if (!apiKey) {
       return errorForProfile(
         opts.parsed,
@@ -168,7 +174,13 @@ async function resolveProfile(opts: {
   }
 
   if (opts.profile.id === "anthropic-api-key" && opts.parsed.provider === "anthropic") {
-    const apiKey = opts.env.ANTHROPIC_API_KEY;
+    const apiKey = await resolveApiKey({
+      envValue: opts.env.ANTHROPIC_API_KEY,
+      shellCallbackUrl: opts.shellCallbackUrl,
+      shellToken: opts.shellToken,
+      profileId: opts.profile.id,
+      fetch: opts.fetch,
+    });
     if (!apiKey) {
       return errorForProfile(
         opts.parsed,
@@ -191,6 +203,23 @@ async function resolveProfile(opts: {
     opts.profile.id,
     `${opts.profile.label} is not supported by the gateway runtime yet.`,
   );
+}
+
+async function resolveApiKey(opts: {
+  envValue?: string;
+  shellCallbackUrl: string;
+  shellToken: string;
+  profileId: string;
+  fetch?: typeof fetch;
+}): Promise<string | null> {
+  const envValue = opts.envValue?.trim();
+  if (envValue) return envValue;
+  return fetchShellModelApiKey({
+    shellCallbackUrl: opts.shellCallbackUrl,
+    shellToken: opts.shellToken,
+    profileId: opts.profileId,
+    fetch: opts.fetch,
+  });
 }
 
 async function resolveCodexProfile(opts: {
