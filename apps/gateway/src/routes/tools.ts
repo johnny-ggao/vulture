@@ -32,6 +32,7 @@ const CATEGORY_LABELS: Record<GatewayToolCategory, string> = {
   agents: "Agents",
   memory: "Memory",
   browser: "Browser",
+  lsp: "LSP",
 };
 
 const CATEGORY_ORDER: GatewayToolCategory[] = [
@@ -43,6 +44,7 @@ const CATEGORY_ORDER: GatewayToolCategory[] = [
   "agents",
   "memory",
   "browser",
+  "lsp",
 ];
 
 export function toolsRouter(): Hono {

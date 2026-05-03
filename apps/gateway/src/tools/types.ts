@@ -13,7 +13,8 @@ export type GatewayToolCategory =
   | "web"
   | "sessions"
   | "memory"
-  | "agents";
+  | "agents"
+  | "lsp";
 
 export interface GatewayToolRunContext {
   runId: string;

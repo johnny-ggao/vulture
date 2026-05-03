@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolCallable } from "@vulture/agent-runtime";
 import { RunContext } from "@openai/agents";
-import { createCoreToolRegistry } from "./coreTools";
+import { createCoreToolRegistry, coreToolApprovalDecision } from "./coreTools";
 import { resolveEffectiveTools } from "./registry";
 import { sdkApprovalDecision, toSdkTool, type GatewayToolRunContext } from "./sdkAdapter";
 import {
@@ -476,6 +476,32 @@ describe("gateway tool sdk adapter", () => {
     );
 
     expect(String(result)).toContain("policy denied");
+  });
+});
+
+const FOUNDATION_TOOL_IDS = [
+  "grep",
+  "glob",
+  "lsp.diagnostics",
+  "lsp.definition",
+  "lsp.references",
+  "lsp.hover",
+] as const;
+
+describe("foundation tool registry", () => {
+  test("registry contains the six new tools", () => {
+    const registry = createCoreToolRegistry();
+    for (const id of FOUNDATION_TOOL_IDS) {
+      const found = registry.get(id);
+      expect(found).toBeDefined();
+    }
+  });
+
+  test("new tools are read-only auto-approve", () => {
+    for (const id of FOUNDATION_TOOL_IDS) {
+      const decision = coreToolApprovalDecision(id, {}, "/tmp");
+      expect(decision.needsApproval).toBe(false);
+    }
   });
 });
 
