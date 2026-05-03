@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   AuthStatusView,
@@ -529,6 +529,14 @@ export function App() {
     setView("agents");
   }
 
+  // Stable callback so AgentsPage's useEffect doesn't re-fire on every
+  // App render. AgentsPage calls this once after consuming the target;
+  // clearing the state prevents the modal from re-opening when the user
+  // navigates away from the agents view and back (AgentsPage remounts).
+  const consumeAgentEditTarget = useCallback(() => {
+    setAgentEditTarget(null);
+  }, []);
+
   // ---- Keyboard shortcuts ---------------------------------------
   // ⌘1-6 / Ctrl+1-6 jump between primary views. ⌘N starts a new
   // conversation (skipped when typing in any input/textarea so the
@@ -853,6 +861,7 @@ export function App() {
               onSaveFile={handleSaveAgentFile}
               onDelete={handleDeleteAgent}
               initialEditTarget={agentEditTarget}
+              onConsumeEditTarget={consumeAgentEditTarget}
             />
           ) : null}
           {view === "skills" ? (

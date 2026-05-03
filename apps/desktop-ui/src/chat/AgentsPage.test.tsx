@@ -724,23 +724,10 @@ describe("AgentsPage — edit modal", () => {
     expect(screen.getByText(/已经选择了风格/)).toBeDefined();
   });
 
-  test("workspace block shows a copy button for the path", () => {
-    const { container } = render(
-      <AgentsPage
-        {...stableProps}
-        agents={[baseAgent]}
-        selectedAgentId="agent-1"
-      />,
-    );
-    openEditModal();
-    // Modal header carries the agent ID copy chip; the OverviewTab
-    // also carries a separate copy button for the workspace path.
-    // We pick the workspace button by its aria-label.
-    const copyBtn = container.querySelector(
-      `button[aria-label="复制 ${baseAgent.workspace.path}"]`,
-    );
-    expect(copyBtn).not.toBeNull();
-  });
+  // (Removed) "workspace block shows a copy button" — T5 of the preset-agents
+  // plan replaced the read-only workspace InfoBlock with an editable text
+  // input. The copy chip no longer exists; the OverviewTab tests cover the
+  // new editable behavior.
 
   // ---- Round 17: sort persistence + tablist arrow keys + revert ----
 

@@ -91,6 +91,14 @@ export interface AgentsPageProps {
    * directly into the edit modal.
    */
   initialEditTarget?: { agentId: string; tab: AgentsTab } | null;
+  /**
+   * Called once after AgentsPage consumes `initialEditTarget` so the App
+   * shell can clear its state. Without this, navigating away from the
+   * agents view and back would re-open the modal because AgentsPage
+   * remounts and the useEffect re-fires on the still-present prop.
+   * Must be a stable reference (e.g. wrapped in useCallback).
+   */
+  onConsumeEditTarget?: () => void;
 }
 
 /**
@@ -125,14 +133,16 @@ export function AgentsPage(props: AgentsPageProps) {
 
   // Open the modal for the specified agent+tab when the App shell passes
   // in an initialEditTarget (e.g. after the user clicks the CodingAgentBanner).
-  // The effect fires once per distinct target reference — App.tsx holds
-  // this in useState so it's stable until the user triggers it again.
+  // After consuming, notify the parent so it can clear its state — otherwise
+  // re-mounting AgentsPage (e.g. nav away and back) would re-trigger this
+  // effect on the still-present prop and unexpectedly re-open the modal.
   useEffect(() => {
     if (props.initialEditTarget) {
       setEditingId(props.initialEditTarget.agentId);
       setInitialTab(props.initialEditTarget.tab);
+      props.onConsumeEditTarget?.();
     }
-  }, [props.initialEditTarget]);
+  }, [props.initialEditTarget, props.onConsumeEditTarget]);
 
   const editingAgent =
     editingId !== null
