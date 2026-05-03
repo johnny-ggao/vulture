@@ -28,27 +28,38 @@ export interface GrepResult {
 const DEFAULT_MAX_MATCHES = 200;
 const SKIP_DIRS = new Set(["node_modules", ".git", "target", "dist", "build", ".next", ".cache"]);
 
-let ripgrepDetected: boolean | null = null;
+let ripgrepPromise: Promise<boolean> | null = null;
 
-export async function detectRipgrep(): Promise<boolean> {
-  if (ripgrepDetected !== null) return ripgrepDetected;
-  ripgrepDetected = await new Promise<boolean>((resolve) => {
-    const proc = spawn("rg", ["--version"], { stdio: "ignore" });
-    proc.on("error", () => resolve(false));
-    proc.on("exit", (code) => resolve(code === 0));
-  });
-  return ripgrepDetected;
+export function detectRipgrep(): Promise<boolean> {
+  if (!ripgrepPromise) {
+    ripgrepPromise = new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const settle = (val: boolean) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(val);
+      };
+      const proc = spawn("rg", ["--version"], { stdio: "ignore" });
+      proc.on("error", () => settle(false));
+      proc.on("exit", (code) => settle(code === 0));
+    });
+  }
+  return ripgrepPromise;
 }
 
-interface RipgrepEvent {
-  type: "match" | "begin" | "end" | "summary";
-  data: {
-    path: { text: string };
-    line_number: number;
-    lines: { text: string };
-    submatches: { start: number; end: number }[];
-  };
-}
+type RipgrepEvent =
+  | { type: "begin"; data: { path: { text: string } } }
+  | { type: "end"; data: { path: { text: string } } }
+  | { type: "summary"; data: unknown }
+  | {
+      type: "match";
+      data: {
+        path: { text: string };
+        line_number: number;
+        lines: { text: string };
+        submatches: { start: number; end: number }[];
+      };
+    };
 
 async function runGrepWithRipgrep(opts: GrepOptions, max: number): Promise<GrepResult> {
   const args = ["--json", "-n", "--column"];
@@ -60,10 +71,19 @@ async function runGrepWithRipgrep(opts: GrepOptions, max: number): Promise<GrepR
   return new Promise<GrepResult>((resolve, reject) => {
     const matches: GrepMatch[] = [];
     let truncated = false;
-    const proc = spawn("rg", args);
+    let settled = false;
+    let killing = false;
+    const done = (result?: GrepResult, err?: unknown) => {
+      if (settled) return;
+      settled = true;
+      if (err) reject(err);
+      else resolve(result!);
+    };
+    const proc = spawn("rg", args, { stdio: ["ignore", "pipe", "ignore"] });
     let stdoutBuf = "";
 
     proc.stdout.on("data", (chunk: Buffer) => {
+      if (killing) return;
       stdoutBuf += chunk.toString("utf8");
       let nl: number;
       while ((nl = stdoutBuf.indexOf("\n")) !== -1) {
@@ -73,23 +93,19 @@ async function runGrepWithRipgrep(opts: GrepOptions, max: number): Promise<GrepR
         try {
           const obj = JSON.parse(line) as RipgrepEvent;
           if (obj.type !== "match") continue;
-          if (matches.length >= max) {
-            truncated = true;
-            proc.kill();
-            return;
-          }
           for (const sub of obj.data.submatches) {
+            if (matches.length >= max) {
+              truncated = true;
+              killing = true;
+              proc.kill();
+              return;
+            }
             matches.push({
               file: obj.data.path.text,
               line: obj.data.line_number,
               column: sub.start + 1,
               text: obj.data.lines.text.replace(/\n$/, ""),
             });
-            if (matches.length >= max) {
-              truncated = true;
-              proc.kill();
-              return;
-            }
           }
         } catch {
           // ignore non-JSON lines
@@ -97,8 +113,8 @@ async function runGrepWithRipgrep(opts: GrepOptions, max: number): Promise<GrepR
       }
     });
 
-    proc.on("error", reject);
-    proc.on("exit", () => resolve({ matches, truncated }));
+    proc.on("error", (err) => done(undefined, err));
+    proc.on("exit", () => done({ matches, truncated }));
   });
 }
 

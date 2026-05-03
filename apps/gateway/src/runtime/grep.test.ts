@@ -114,6 +114,8 @@ ripgrepDescribe("runGrep (ripgrep path)", () => {
       const jsResult = await runGrep({ pattern: "foo", path: root, regex: false, useRipgrep: false });
       const rgFiles = new Set(rgResult.matches.map((m) => m.file));
       const jsFiles = new Set(jsResult.matches.map((m) => m.file));
+      expect(rgResult.matches.length).toBeGreaterThan(0);
+      expect(rgResult.matches.length).toBe(jsResult.matches.length);
       expect(rgFiles).toEqual(jsFiles);
     } finally {
       rmSync(root, { recursive: true, force: true });
