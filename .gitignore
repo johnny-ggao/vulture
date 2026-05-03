@@ -15,3 +15,7 @@ dist/
 *.pkg
 apps/desktop-shell/gen/
 openclaw/
+deer-flow/
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+.codex/
