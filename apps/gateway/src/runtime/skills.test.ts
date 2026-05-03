@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   mkdirSync,
+  mkdtempSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -175,4 +176,92 @@ describe("skill runtime", () => {
       cleanup(outside);
     }
   });
+});
+
+test("loadSkillEntries reads from builtinDir", () => {
+  const root = mkdtempSync(join(tmpdir(), "skills-builtin-"));
+  const builtin = join(root, "builtin");
+  mkdirSync(builtin, { recursive: true });
+  writeFileSync(
+    join(builtin, "alpha.md"),
+    "---\nname: alpha\ndescription: alpha skill\n---\n\nbody",
+  );
+  try {
+    const entries = loadSkillEntries({
+      workspaceDir: join(root, "ws"),
+      builtinDir: builtin,
+    });
+    expect(entries.find((e) => e.name === "alpha")?.source).toBe("builtin");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("profile skill overrides builtin with same name", () => {
+  const root = mkdtempSync(join(tmpdir(), "skills-override-"));
+  const builtin = join(root, "builtin");
+  const profile = join(root, "profile");
+  mkdirSync(builtin, { recursive: true });
+  mkdirSync(join(profile, "skills"), { recursive: true });
+  writeFileSync(
+    join(builtin, "alpha.md"),
+    "---\nname: alpha\ndescription: builtin version\n---\n",
+  );
+  writeFileSync(
+    join(profile, "skills", "alpha.md"),
+    "---\nname: alpha\ndescription: overridden\n---\n",
+  );
+  try {
+    const entries = loadSkillEntries({
+      workspaceDir: join(root, "ws"),
+      profileDir: profile,
+      builtinDir: builtin,
+    });
+    const alpha = entries.find((e) => e.name === "alpha");
+    expect(alpha?.description).toBe("overridden");
+    expect(alpha?.source).toBe("profile");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("missing builtinDir does not throw and yields no builtin entries", () => {
+  const root = mkdtempSync(join(tmpdir(), "skills-missing-"));
+  try {
+    const entries = loadSkillEntries({
+      workspaceDir: join(root, "ws"),
+      builtinDir: join(root, "does-not-exist"),
+    });
+    expect(entries.filter((e) => e.source === "builtin")).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("agent-core skill overrides builtin (existing precedence preserved)", () => {
+  const root = mkdtempSync(join(tmpdir(), "skills-precedence-"));
+  const builtin = join(root, "builtin");
+  const agentCore = join(root, "agent-core");
+  mkdirSync(builtin, { recursive: true });
+  mkdirSync(join(agentCore, "skills"), { recursive: true });
+  writeFileSync(
+    join(builtin, "alpha.md"),
+    "---\nname: alpha\ndescription: builtin\n---\n",
+  );
+  writeFileSync(
+    join(agentCore, "skills", "alpha.md"),
+    "---\nname: alpha\ndescription: agent-core wins\n---\n",
+  );
+  try {
+    const entries = loadSkillEntries({
+      workspaceDir: join(root, "ws"),
+      agentCoreDir: agentCore,
+      builtinDir: builtin,
+    });
+    const alpha = entries.find((e) => e.name === "alpha");
+    expect(alpha?.description).toBe("agent-core wins");
+    expect(alpha?.source).toBe("agent-core");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
