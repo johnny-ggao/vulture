@@ -134,7 +134,7 @@ const browserScreenshotParameters = z.object({
   fullPage: z.boolean().nullable(),
 });
 
-export function createCoreToolRegistry(): ToolRegistry {
+export function createCoreToolRegistry(extras: GatewayToolSpec[] = []): ToolRegistry {
   return new ToolRegistry([
     readTool(),
     writeTool(),
@@ -162,6 +162,7 @@ export function createCoreToolRegistry(): ToolRegistry {
     browserNavigateTool(),
     browserWaitTool(),
     browserScreenshotTool(),
+    ...extras,
   ]);
 }
 

@@ -275,6 +275,14 @@ export function runsRouter(deps: RunsDeps): Hono {
     const lastSeqHeader = c.req.header("Last-Event-ID");
     const lastSeq = lastSeqHeader ? Number.parseInt(lastSeqHeader, 10) : -1;
 
+    // Snapshot mode: return current events as JSON without keeping the
+    // connection open. Used by harness polling helpers (e.g. waitForToolAsk)
+    // that need to inspect events on a still-running run.
+    if (c.req.query("mode") === "snapshot") {
+      const events = deps.runs.listEventsAfter(rid, lastSeq);
+      return c.json({ items: events });
+    }
+
     return streamSSE(c, async (stream) => {
       await writeRunEventStream({ runs: deps.runs }, rid, lastSeq, stream);
     });

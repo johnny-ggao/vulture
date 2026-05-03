@@ -13,6 +13,7 @@ import {
   type AcceptanceScenario,
 } from "./acceptanceRunner";
 import type { ScriptedLlmController } from "../runtime/scriptedLlm";
+import type { ScriptedModelController } from "../runtime/scriptedModelProvider";
 
 export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
   {
@@ -442,16 +443,14 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
     ],
   },
   {
-    id: "scripted-llm-text-yield",
-    name: "Scripted LLM produces deterministic assistant text",
+    id: "scripted-model-text-yield",
+    name: "Scripted ModelProvider produces deterministic assistant text",
     description:
-      "Demonstrates the per-scenario llmScript injection path: the gateway routes the run through the shared ScriptedLlmController (instead of the stub fallback), and the assistant message contains exactly the scripted final text. This is the foundation for richer scripted scenarios (tool calls, approval flow, multi-turn) without needing a real LLM.",
+      "Drives the gateway through the OpenAI Agents SDK Runner with a scripted ModelProvider that emits one turn of plain assistant text. Verifies the SDK Runner accepts our scripted response_done shape and the assistant message is persisted with the scripted text.",
     tags: ["fast", "scripted-llm", "chat"],
-    llmScript: {
-      yields: [
-        { kind: "text.delta", text: "scripted hello " },
-        { kind: "usage", usage: { inputTokens: 5, outputTokens: 7 } },
-        { kind: "final", text: "scripted hello — acceptance LLM script reached the gateway" },
+    modelScript: {
+      turns: [
+        { text: "scripted hello — acceptance LLM script reached the gateway" },
       ],
     },
     steps: [
@@ -560,6 +559,98 @@ export const defaultAcceptanceScenarios: AcceptanceScenario[] = [
     ],
   },
   {
+    id: "approval-allow-execute",
+    name: "Approval allow → tool executes → run succeeds",
+    description:
+      "Drives the gateway through the OpenAI Agents SDK Runner with a scripted ModelProvider. Turn 1 emits a function_call for harness.test_approval (always-approval-required test tool). The SDK pauses on needsApproval, emits tool.ask, and waits. The scenario polls for tool.ask, POSTs decision=allow, the SDK resumes, the tool's no-op execute returns ok, and turn 2 emits the final assistant text. Asserts the run reaches succeeded and the assistant message contains the scripted final.",
+    tags: ["fast", "approvals", "scripted-llm", "tools"],
+    modelScript: {
+      turns: [
+        {
+          toolCalls: [
+            {
+              callId: "c-allow-1",
+              name: "harness_test_approval",
+              arguments: { message: "allow path" },
+            },
+          ],
+        },
+        { text: "scripted llm: approval allow path completed" },
+      ],
+    },
+    steps: [
+      { action: "createConversation", as: "conv", agentId: "local-work-agent" },
+      {
+        action: "sendMessage",
+        conversation: "conv",
+        input: "drive the approval allow path",
+        asRun: "run",
+      },
+      { action: "waitForToolAsk", run: "run", callId: "c-allow-1" },
+      {
+        action: "postApproval",
+        run: "run",
+        callId: "c-allow-1",
+        decision: "allow",
+        expectStatus: 202,
+      },
+      { action: "waitForRun", run: "run", status: "succeeded" },
+      { action: "listMessages", conversation: "conv", as: "messages" },
+      {
+        action: "assertMessages",
+        messages: "messages",
+        roles: ["user", "assistant"],
+        contains: ["scripted llm: approval allow path completed"],
+      },
+    ],
+  },
+  {
+    id: "approval-deny-refuse",
+    name: "Approval deny → tool refused → assistant sees denial",
+    description:
+      "Mirror of approval-allow-execute but POSTs decision=deny. The SDK feeds 'user denied <tool>' back to the model as the tool's output instead of executing the tool. Turn 2's assistant text is then produced normally. Asserts the assistant message contains the denial-acknowledgment text, proving the deny path threads through the production approval queue and reaches the model as a tool-output without executing the tool.",
+    tags: ["fast", "approvals", "scripted-llm", "tools"],
+    modelScript: {
+      turns: [
+        {
+          toolCalls: [
+            {
+              callId: "c-deny-1",
+              name: "harness_test_approval",
+              arguments: { message: "deny path" },
+            },
+          ],
+        },
+        { text: "scripted llm: tool was denied as expected" },
+      ],
+    },
+    steps: [
+      { action: "createConversation", as: "conv", agentId: "local-work-agent" },
+      {
+        action: "sendMessage",
+        conversation: "conv",
+        input: "drive the approval deny path",
+        asRun: "run",
+      },
+      { action: "waitForToolAsk", run: "run", callId: "c-deny-1" },
+      {
+        action: "postApproval",
+        run: "run",
+        callId: "c-deny-1",
+        decision: "deny",
+        expectStatus: 202,
+      },
+      { action: "waitForRun", run: "run", status: "succeeded" },
+      { action: "listMessages", conversation: "conv", as: "messages" },
+      {
+        action: "assertMessages",
+        messages: "messages",
+        roles: ["user", "assistant"],
+        contains: ["scripted llm: tool was denied as expected"],
+      },
+    ],
+  },
+  {
     id: "parallel-runs-smoke",
     name: "Parallel runs across distinct conversations",
     description:
@@ -601,12 +692,14 @@ export interface AcceptanceSuiteOptions {
   profileDir?: string;
   restartApp?: () => Hono;
   /**
-   * Per-scenario LLM script controller. When provided, the suite installs
-   * each scenario's `llmScript` (or null) before running it and resets the
-   * controller after the suite completes. Scenarios without an llmScript
-   * keep the controller's default fallback.
+   * Per-scenario LLM script controllers. The suite installs each
+   * scenario's `llmScript` / `modelScript` (or null) before running and
+   * resets both controllers after the suite completes. The two
+   * controllers are independent: legacy scenarios use scriptedLlm,
+   * approval-flow scenarios use scriptedModel.
    */
   scriptedLlm?: ScriptedLlmController;
+  scriptedModel?: ScriptedModelController;
 }
 
 export interface AcceptanceSuiteSummary {
@@ -630,6 +723,7 @@ export async function runAcceptanceSuite(options: AcceptanceSuiteOptions): Promi
   try {
     for (const scenario of options.scenarios ?? defaultAcceptanceScenarios) {
       options.scriptedLlm?.setStep(scenario.llmScript ?? null);
+      options.scriptedModel?.setStep(scenario.modelScript ?? null);
       results.push(
         await runAcceptanceScenario({
           app: options.app,
@@ -645,6 +739,7 @@ export async function runAcceptanceSuite(options: AcceptanceSuiteOptions): Promi
     }
   } finally {
     options.scriptedLlm?.reset();
+    options.scriptedModel?.reset();
   }
   return results;
 }

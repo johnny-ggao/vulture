@@ -18,11 +18,13 @@ import { AGENT_TOOL_NAMES } from "@vulture/protocol/src/v1/agent";
 import { ApprovalQueue } from "./runtime/approvalQueue";
 import { makeShellApprovalHandler, makeShellCallbackTools } from "./runtime/shellCallbackTools";
 import { makeLazyLlm } from "./runtime/resolveLlm";
+import { harnessTestApprovalTool } from "./runtime/harnessTestApprovalTool";
 import { orchestrateRun } from "./runtime/runOrchestrator";
 import { recoverInflightRuns } from "./runtime/runRecovery";
 import { extractMemorySuggestions } from "./runtime/memorySuggestionExtractor";
 import {
   composeSystemPromptWithContext,
+  makeOpenAILlm,
   makeSdkTool,
   sdkStateHasInterruptions,
   type SdkRunContext,
@@ -276,17 +278,53 @@ export function buildServer(cfg: GatewayConfig): Hono {
     permissionModeForRun,
   });
 
-  llm = cfg.llmOverride
-    ? cfg.llmOverride
-    : makeLazyLlm({
-        toolNames: AGENT_TOOL_NAMES,
+  const harnessExtraTools = cfg.registerHarnessTestTools ? [harnessTestApprovalTool()] : [];
+  const harnessExtraToolNames = cfg.registerHarnessTestTools ? ["harness.test_approval"] : [];
+  const llmToolNames = [...AGENT_TOOL_NAMES, ...harnessExtraToolNames];
+  const sdkDrivenLlm = cfg.scriptedModelProvider
+    ? makeOpenAILlm({
+        // SDK Runner path with a scripted ModelProvider — exercises the
+        // real approval gate, tool dispatch, and run loop without calling
+        // a real model. apiKey is unused because the scripted provider
+        // never opens a network connection.
+        apiKey: "scripted",
+        modelProvider: cfg.scriptedModelProvider,
+        toolNames: llmToolNames,
         toolCallable: tools,
         approvalCallable,
         mcpToolProvider: () => mcpClientManager.getSdkToolsForRun(),
         runtimeHooks,
-        shellCallbackUrl: cfg.shellCallbackUrl,
-        shellToken: cfg.token,
-      });
+        extraTools: harnessExtraTools,
+      })
+    : null;
+  if (cfg.llmOverride && sdkDrivenLlm) {
+    // Both scripted controllers wired (acceptance harness). Route each
+    // call dynamically: scriptedLlm takes precedence only when it has an
+    // active step (legacy scenarios), otherwise SDK path runs.
+    const llmOverride = cfg.llmOverride;
+    const hasScript = cfg.llmOverrideHasScript ?? (() => true);
+    llm = async function* routedLlm(input) {
+      if (hasScript()) {
+        yield* llmOverride(input);
+        return;
+      }
+      yield* sdkDrivenLlm(input);
+    };
+  } else if (cfg.llmOverride) {
+    llm = cfg.llmOverride;
+  } else if (sdkDrivenLlm) {
+    llm = sdkDrivenLlm;
+  } else {
+    llm = makeLazyLlm({
+      toolNames: AGENT_TOOL_NAMES,
+      toolCallable: tools,
+      approvalCallable,
+      mcpToolProvider: () => mcpClientManager.getSdkToolsForRun(),
+      runtimeHooks,
+      shellCallbackUrl: cfg.shellCallbackUrl,
+      shellToken: cfg.token,
+    });
+  }
   void mcpClientManager.getSdkToolsForRun().catch((err) => {
     console.warn("[gateway] MCP startup discovery failed", err instanceof Error ? err.message : String(err));
   });

@@ -1,4 +1,5 @@
 import type { LlmCallable } from "@vulture/agent-runtime";
+import type { ModelProvider } from "@openai/agents";
 
 export interface GatewayConfig {
   port: number;
@@ -12,11 +13,41 @@ export interface GatewayConfig {
   /**
    * Test/harness-only injection point. When set, buildServer wires this
    * LlmCallable straight into runOrchestrator instead of the default
-   * makeLazyLlm chain (Codex → API key → stub fallback). Acceptance scenarios
-   * use this to script multi-turn LLM behavior without a real model.
+   * makeLazyLlm chain (Codex → API key → stub fallback). This bypasses the
+   * OpenAI Agents SDK Runner — useful for scripting LlmYield-level
+   * behavior, but it also bypasses the SDK approval gate. For approval
+   * end-to-end tests use scriptedModelProvider instead.
    * Production callers leave this undefined.
    */
   llmOverride?: LlmCallable;
+  /**
+   * When both llmOverride and scriptedModelProvider are set, this thunk is
+   * consulted on each LLM call to decide which path runs. Returning `true`
+   * routes to llmOverride (legacy LlmCallable), `false` routes to the SDK
+   * Runner driven by scriptedModelProvider. The acceptance harness uses
+   * this to switch per-scenario based on which scripted controller has an
+   * active step. When unset, llmOverride takes priority over scripted
+   * ModelProvider as long as it is provided.
+   */
+  llmOverrideHasScript?: () => boolean;
+  /**
+   * Test/harness-only ModelProvider override. When set, the gateway runs
+   * the real OpenAI Agents SDK Runner against this provider — so the SDK
+   * approval gate, tool dispatch, and run loop behave exactly like
+   * production, just driven by a scripted "model" instead of a real one.
+   * Acceptance scenarios use this to script approval allow/deny e2e.
+   * Production callers leave this undefined.
+   */
+  scriptedModelProvider?: ModelProvider;
+  /**
+   * When true, buildServer registers the harness.test_approval tool. The
+   * tool always requires approval and trivially echoes its input on
+   * execute, giving acceptance scenarios a deterministic way to drive
+   * the SDK approval gate without depending on workspace boundaries
+   * (write/edit/shell.exec) or the desktop shell bridge (browser.*).
+   * Production callers leave this off.
+   */
+  registerHarnessTestTools?: boolean;
 }
 
 function required(

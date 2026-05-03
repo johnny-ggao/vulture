@@ -19,6 +19,7 @@ import {
 import { loadAcceptanceScenarioFiles } from "./acceptanceScenarioLoader";
 import type { AcceptanceScenario } from "./acceptanceRunner";
 import { makeScriptedLlm } from "../runtime/scriptedLlm";
+import { makeScriptedModelProvider } from "../runtime/scriptedModelProvider";
 
 const TOKEN = "x".repeat(43);
 
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
 
   const restoreOpenAIKey = disableRealLlmUnlessOptedIn();
   const scriptedLlm = makeScriptedLlm();
+  const scriptedModel = makeScriptedModelProvider();
   try {
     const makeApp = () => buildServer({
       port: Number(process.env.VULTURE_ACCEPTANCE_PORT ?? 4099),
@@ -49,11 +51,15 @@ async function main(): Promise<void> {
       shellPid: process.pid,
       profileDir,
       privateWorkspaceHomeDir: workspaceDir,
-      // Acceptance always routes the LLM through the shared scripted
-      // controller. Scenarios without an llmScript fall back to the
-      // controller's default (matches the previous makeStubLlmFallback
-      // text), so legacy scenarios pass unchanged.
+      // Wire both scripted controllers and let buildServer route per call:
+      // when scriptedLlm has an active step, the legacy LlmCallable path
+      // runs (existing scripted-llm-* scenarios). Otherwise the SDK
+      // Runner driven by scriptedModel runs — this is the path that
+      // exercises the real approval gate.
       llmOverride: scriptedLlm.llm,
+      llmOverrideHasScript: () => scriptedLlm.current() !== null,
+      scriptedModelProvider: scriptedModel.provider,
+      registerHarnessTestTools: true,
     });
     const app = makeApp();
 
@@ -67,6 +73,7 @@ async function main(): Promise<void> {
       pollIntervalMs: Number(process.env.VULTURE_ACCEPTANCE_POLL_MS ?? 25),
       timeoutMs: Number(process.env.VULTURE_ACCEPTANCE_TIMEOUT_MS ?? 5_000),
       scriptedLlm,
+      scriptedModel,
     });
     const summary = writeAcceptanceSuiteArtifacts(artifactDir, results);
     const junitPath = writeAcceptanceJUnitReport(artifactDir, results);

@@ -28,6 +28,7 @@ import {
   toSdkTool,
   type GatewayToolRunContext,
 } from "../tools/sdkAdapter";
+import type { GatewayToolSpec } from "../tools/types";
 export { sdkApprovalDecision } from "../tools/sdkAdapter";
 
 /**
@@ -79,6 +80,12 @@ export interface RunFactoryInput {
   session?: Session;
   sessionInputCallback?: SessionInputCallback;
   runtimeHooks?: RuntimeHookRunner;
+  /**
+   * Optional extra tool specs appended to the core registry for this run.
+   * Used by the acceptance harness to register harness.test_approval; production
+   * builds leave this empty.
+   */
+  extraTools?: readonly GatewayToolSpec[];
 }
 
 export interface OpenAILlmOptions {
@@ -90,6 +97,12 @@ export interface OpenAILlmOptions {
   approvalCallable?: SdkApprovalCallable;
   mcpToolProvider?: McpToolProvider;
   runtimeHooks?: RuntimeHookRunner;
+  /**
+   * Optional extra tool specs appended to the core registry. The acceptance
+   * harness uses this to register a test-only approval-required tool that
+   * exercises the SDK approval gate; production builds leave it unset.
+   */
+  extraTools?: readonly GatewayToolSpec[];
   /**
    * Factory that returns an async iterable of SDK events for one run. Default
    * uses the real @openai/agents Run; tests inject a deterministic stream so
@@ -118,6 +131,7 @@ export function makeOpenAILlm(opts: OpenAILlmOptions): LlmCallable {
       tracingDisabled: opts.tracingDisabled ?? true,
       approvalCallable: opts.approvalCallable,
       mcpToolProvider: opts.mcpToolProvider,
+      extraTools: opts.extraTools,
       recovery: input.recovery,
       onCheckpoint: input.onCheckpoint,
       session: input.session,
@@ -199,7 +213,6 @@ export async function* defaultRunFactory(
       // visibility instead surfaces via run_events emitted from the tool
       // callback and SDK approval bridge.
     }
-
     await stream.completed;
     input.onCheckpoint?.({
       sdkState: stream.state.toString(),
@@ -232,8 +245,10 @@ export async function* defaultRunFactory(
   }
 }
 
-export async function buildSdkToolsForRun(input: Pick<RunFactoryInput, "toolNames" | "mcpToolProvider">): Promise<Tool<SdkRunContext>[]> {
-  const registry = createCoreToolRegistry();
+export async function buildSdkToolsForRun(
+  input: Pick<RunFactoryInput, "toolNames" | "mcpToolProvider" | "extraTools">,
+): Promise<Tool<SdkRunContext>[]> {
+  const registry = createCoreToolRegistry([...(input.extraTools ?? [])]);
   const tools = resolveEffectiveTools(registry, { allow: input.toolNames }).map(toSdkTool);
   if (!input.mcpToolProvider) return tools;
   try {

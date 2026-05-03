@@ -8,6 +8,7 @@ import { MessageStore } from "../domain/messageStore";
 import { RunStore } from "../domain/runStore";
 import { SubagentSessionStore } from "../domain/subagentSessionStore";
 import type { ScriptedLlmStep } from "../runtime/scriptedLlm";
+import type { ScriptedModelStep } from "../runtime/scriptedModelProvider";
 
 export type AcceptanceRunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "recoverable";
 
@@ -227,6 +228,12 @@ export type AcceptanceStep =
       expectStatus?: number;
     }
   | {
+      action: "waitForToolAsk";
+      run: string;
+      callId: string;
+      timeoutMs?: number;
+    }
+  | {
       action: "parallelRuns";
       runs: Array<{
         conversation: string;
@@ -248,13 +255,20 @@ export interface AcceptanceScenario {
   tags?: string[];
   steps: AcceptanceStep[];
   /**
-   * Optional LLM script applied for the duration of this scenario. The
-   * acceptance suite installs it on the shared ScriptedLlmController before
-   * the scenario starts and clears it after. Scenarios without an llmScript
-   * fall back to the controller's default placeholder so the existing suite
-   * keeps passing unchanged.
+   * Optional LLM script applied for the duration of this scenario.
+   *
+   * - `modelScript` (preferred): drives the gateway through the OpenAI
+   *   Agents SDK Runner with a fake ModelProvider, so the SDK approval
+   *   gate, tool dispatch, and run loop all behave like production.
+   * - `llmScript` (legacy): drives the agent-runtime LlmCallable directly,
+   *   bypassing the SDK Runner. Cannot exercise approval flow. Kept only
+   *   for the original three scripted-llm-* scenarios; new scenarios
+   *   should use modelScript.
+   *
+   * Scenarios without a script use the controller's default fallback.
    */
   llmScript?: ScriptedLlmStep;
+  modelScript?: ScriptedModelStep;
 }
 
 export interface AcceptanceRunnerOptions {
@@ -937,6 +951,28 @@ async function executeStep(
       observe(state, step.action, { alias: step.server, server });
       return;
     }
+    case "waitForToolAsk": {
+      const run = requireAlias(state.resources.runs, step.run, "run");
+      const timeoutMs = step.timeoutMs ?? options.timeoutMs ?? 10_000;
+      const pollIntervalMs = options.pollIntervalMs ?? 25;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() <= deadline) {
+        const events = await readRunEventsSnapshot(options, state, run.id);
+        const match = events.find((event) => {
+          if (event.type !== "tool.ask") return false;
+          const data = event.data as { callId?: string } | null;
+          return data?.callId === step.callId;
+        });
+        if (match) {
+          observe(state, step.action, { runAlias: step.run, callId: step.callId, event: match });
+          return;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+      throw new Error(
+        `waitForToolAsk timed out after ${timeoutMs}ms for run ${run.id} callId ${step.callId}`,
+      );
+    }
     case "postApproval": {
       const run = requireAlias(state.resources.runs, step.run, "run");
       const expectStatus = step.expectStatus ?? 202;
@@ -1082,6 +1118,33 @@ async function readRunEvents(
     throw new Error(`HTTP ${res.status} /v1/runs/${runId}/events: ${text}`);
   }
   return parseSseEvents(text);
+}
+
+async function readRunEventsSnapshot(
+  options: AcceptanceRunnerOptions,
+  state: RunnerState,
+  runId: string,
+  lastSeq?: number,
+): Promise<RunEventResource[]> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${options.token}`,
+  };
+  if (lastSeq !== undefined) headers["Last-Event-ID"] = String(lastSeq);
+  const res = await currentApp(options, state).request(
+    `/v1/runs/${runId}/events?mode=snapshot`,
+    { method: "GET", headers },
+  );
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} /v1/runs/${runId}/events?mode=snapshot: ${text}`);
+  }
+  const parsed = JSON.parse(text) as { items?: Array<Record<string, unknown>> };
+  const items = parsed.items ?? [];
+  return items.map((event) => {
+    const seq = typeof event.seq === "number" ? event.seq : undefined;
+    const type = typeof event.type === "string" ? event.type : "message";
+    return { id: seq !== undefined ? String(seq) : undefined, type, seq, data: event };
+  });
 }
 
 async function readAttachmentContent(
