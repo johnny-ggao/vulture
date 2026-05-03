@@ -30,6 +30,7 @@ export interface ChatViewProps {
   workingDirectory?: string | null;
   onPickWorkingDirectory?: () => void | Promise<void>;
   onClearWorkingDirectory?: () => void | Promise<void>;
+  onLoadWorkspaceFiles?: () => Promise<ReadonlyArray<string>>;
 
   messages: ReadonlyArray<MessageDto>;
   messageUsages?: ReadonlyMap<string, TokenUsageDto>;
@@ -262,6 +263,7 @@ export function ChatView(props: ChatViewProps) {
           workingDirectory={props.workingDirectory ?? null}
           onPickWorkingDirectory={props.onPickWorkingDirectory}
           onClearWorkingDirectory={props.onClearWorkingDirectory}
+          onLoadWorkspaceFiles={props.onLoadWorkspaceFiles}
           running={running}
           onSend={props.onSend}
           onCancel={props.onCancel}

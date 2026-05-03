@@ -41,6 +41,7 @@ import {
   withGatewayRestartForMissingRoute,
 } from "./app/gatewayRestartFallback";
 import { skillsApi } from "./api/skills";
+import { filesApi } from "./api/files";
 import { useGatewayBootstrap } from "./app/useGatewayBootstrap";
 import { useRunController } from "./app/useRunController";
 import { useUndoableDelete } from "./app/useUndoableDelete";
@@ -588,6 +589,21 @@ export function App() {
     await runController.setWorkingDirectory(null);
   }, [runController]);
 
+  // Load files for the @-mention picker. The composer caches the result for
+  // the lifetime of the working-directory selection, so we don't need to
+  // memoize this across renders. Returns an empty array if there's no client
+  // or no working directory.
+  const handleLoadWorkspaceFiles = useCallback(async (): Promise<ReadonlyArray<string>> => {
+    if (!apiClient || !runController.workingDirectory) return [];
+    try {
+      const result = await filesApi.list(apiClient, runController.workingDirectory);
+      return result.paths;
+    } catch (cause) {
+      console.error("workspace file listing failed", cause);
+      return [];
+    }
+  }, [apiClient, runController.workingDirectory]);
+
   // ---- Keyboard shortcuts ---------------------------------------
   // ⌘1-6 / Ctrl+1-6 jump between primary views. ⌘N starts a new
   // conversation (skipped when typing in any input/textarea so the
@@ -877,6 +893,7 @@ export function App() {
               workingDirectory={runController.workingDirectory}
               onPickWorkingDirectory={handlePickWorkingDirectory}
               onClearWorkingDirectory={handleClearWorkingDirectory}
+              onLoadWorkspaceFiles={handleLoadWorkspaceFiles}
               messages={runController.messages.items}
               messageUsages={runController.messageUsages}
               subagentSessions={runController.subagentSessions}

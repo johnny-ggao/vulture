@@ -2173,6 +2173,74 @@ pre {
   background: var(--fill-quaternary);
 }
 
+.file-mention-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--fill-secondary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  font-size: 13px;
+}
+.file-mention-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-mention-item.active,
+.file-mention-item:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+.file-mention-item mark {
+  background: color-mix(in oklab, var(--brand-500) 22%, transparent);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+.file-mention-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.file-mention-pick {
+  border: none;
+  background: transparent;
+  color: var(--brand-500);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+.file-mention-pick:hover {
+  text-decoration: underline;
+}
+.file-mention-footer {
+  padding: 6px 10px;
+  border-top: 1px solid var(--fill-secondary);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
 /* Custom agent picker — replaces native <select> with brandable popover.
  * Trigger pill matches .chip in size/shape; menu floats above. */
 .agent-picker { position: relative; }
