@@ -307,10 +307,16 @@ function AuthProfileRow({
   onSignIn: () => void;
   onSignOut: () => void;
 }) {
+  const canEditApiKey = profile.id === "openai-api-key";
+  const canUseCodexOauth = profile.id === "codex";
+  const identity = profileIdentity(profile);
+
   if (editing && profile.id === "openai-api-key") {
     return (
-      <FormRow label={profile.label} hint="存储在系统 keychain。">
-        <div className="provider-key-edit">
+      <div className="provider-connection-row editing">
+        <div className="provider-connection-main">
+          <span className="provider-connection-title">{profile.label}</span>
+          <span className="provider-connection-desc">存储在系统 keychain。</span>
           <input
             type="password"
             className="provider-key-input"
@@ -321,6 +327,12 @@ function AuthProfileRow({
             autoComplete="off"
             spellCheck="false"
           />
+        </div>
+        <div className="provider-connection-fields" aria-label={`${profile.label} 连接信息`}>
+          <ConnectionField label="类型" value={profileModeLabel(profile.mode)} />
+          <ConnectionField label="状态" value={statusLabel(profile.status)} tone={statusClass(profile.status)} />
+        </div>
+        <div className="provider-connection-actions">
           <button
             type="button"
             className="btn-primary btn-sm"
@@ -333,19 +345,25 @@ function AuthProfileRow({
             取消
           </button>
         </div>
-      </FormRow>
+      </div>
     );
   }
 
   return (
-    <FormRow label={profile.label} hint={profileHint(profile)}>
-      <div className="provider-key-display">
-        <span className="provider-profile-mode">{profileModeLabel(profile.mode)}</span>
-        <span className="provider-key-masked">{profileDisplay(profile)}</span>
-        <span className={"provider-status " + statusClass(profile.status)}>
-          {statusLabel(profile.status)}
-        </span>
-        {profile.id === "codex" ? (
+    <div className="provider-connection-row">
+      <div className="provider-connection-main">
+        <span className="provider-connection-title">{profile.label}</span>
+        <span className="provider-connection-desc">{profileHint(profile)}</span>
+        {identity ? (
+          <span className="provider-connection-identity">{identity}</span>
+        ) : null}
+      </div>
+      <div className="provider-connection-fields" aria-label={`${profile.label} 连接信息`}>
+        <ConnectionField label="类型" value={profileModeLabel(profile.mode)} />
+        <ConnectionField label="状态" value={statusLabel(profile.status)} tone={statusClass(profile.status)} />
+      </div>
+      <div className="provider-connection-actions">
+        {canUseCodexOauth ? (
           profile.status === "configured" ? (
             <button
               type="button"
@@ -366,7 +384,7 @@ function AuthProfileRow({
             </button>
           )
         ) : null}
-        {profile.id === "openai-api-key" ? (
+        {canEditApiKey ? (
           <>
             <button
               type="button"
@@ -389,27 +407,24 @@ function AuthProfileRow({
           </>
         ) : null}
       </div>
-    </FormRow>
+    </div>
   );
 }
 
-function FormRow({
+function ConnectionField({
   label,
-  hint,
-  children,
+  value,
+  tone,
 }: {
   label: string;
-  hint?: string;
-  children: ReactNode;
+  value: string;
+  tone?: string;
 }) {
   return (
-    <div className="form-row">
-      <div className="form-row-label">
-        <span>{label}</span>
-        {hint ? <span className="form-row-hint">{hint}</span> : null}
-      </div>
-      <div className="form-row-control">{children}</div>
-    </div>
+    <span className="provider-connection-field">
+      <span>{label}</span>
+      <b className={tone ? `provider-connection-value ${tone}` : "provider-connection-value"}>{value}</b>
+    </span>
   );
 }
 
@@ -451,13 +466,13 @@ function profileModeLabel(mode: AuthProfileView["mode"]): string {
   if (mode === "api_key") return "API Key";
   if (mode === "oauth") return "OAuth";
   if (mode === "token") return "Token";
-  return "None";
+  return "无";
 }
 
-function profileDisplay(profile: AuthProfileView): ReactNode {
+function profileIdentity(profile: AuthProfileView): ReactNode {
   if (profile.email) return profile.email;
   if (profile.expiresAt) return new Date(profile.expiresAt).toLocaleString();
-  return <em className="provider-key-empty">{profile.status}</em>;
+  return null;
 }
 
 function statusLabel(status: AuthProfileView["status"]): string {
