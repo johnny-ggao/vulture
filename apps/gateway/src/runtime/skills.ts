@@ -186,6 +186,9 @@ function loadSkillsFromRoot(
 
   const flatFileSkills = loadFlatSkillsFromDir(root, maxSkillFileBytes, source);
 
+  // Within a single source, subdirectory-format skills (skill-name/SKILL.md) win
+  // over flat .md files (skill-name.md) of the same name — the directory format
+  // is more expressive (can carry sibling assets), so it wins ties.
   const merged = new Map<string, SkillEntry>();
   for (const skill of flatFileSkills) merged.set(skill.name, skill);
   for (const skill of subdirSkills) merged.set(skill.name, skill);

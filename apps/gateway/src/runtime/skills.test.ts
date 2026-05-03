@@ -265,3 +265,29 @@ test("agent-core skill overrides builtin (existing precedence preserved)", () =>
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("subdirectory SKILL.md wins over flat .md within the same source", () => {
+  const root = mkdtempSync(join(tmpdir(), "skills-collision-"));
+  const profile = join(root, "profile");
+  mkdirSync(join(profile, "skills"), { recursive: true });
+  writeFileSync(
+    join(profile, "skills", "alpha.md"),
+    "---\nname: alpha\ndescription: from flat file\n---\n",
+  );
+  mkdirSync(join(profile, "skills", "alpha"), { recursive: true });
+  writeFileSync(
+    join(profile, "skills", "alpha", "SKILL.md"),
+    "---\nname: alpha\ndescription: from subdirectory\n---\n",
+  );
+  try {
+    const entries = loadSkillEntries({
+      workspaceDir: join(root, "ws"),
+      profileDir: profile,
+    });
+    const alpha = entries.find((e) => e.name === "alpha");
+    expect(alpha?.description).toBe("from subdirectory");
+    expect(alpha?.source).toBe("profile");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
