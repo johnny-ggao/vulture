@@ -4,5 +4,6 @@
 //! module exposes the small subset that integration tests in `tests/` need.
 
 pub mod codex_auth;
+pub mod model_auth;
 pub mod runtime;
 pub mod tool_executor;

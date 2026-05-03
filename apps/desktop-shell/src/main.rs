@@ -2,6 +2,7 @@ mod auth;
 mod browser;
 mod codex_auth;
 mod commands;
+mod model_auth;
 mod runtime;
 mod single_instance;
 mod state;

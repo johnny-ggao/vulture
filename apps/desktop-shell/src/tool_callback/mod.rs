@@ -1,4 +1,5 @@
 mod codex_routes;
+mod model_auth_routes;
 
 use std::{
     collections::HashMap,
@@ -29,6 +30,7 @@ use crate::browser::{
 use crate::codex_auth::RefreshSingleton;
 use crate::tool_executor::{execute_shell, ShellExecInput};
 use codex_routes::{auth_codex_handler, auth_codex_refresh_handler, CodexState};
+use model_auth_routes::auth_model_profiles_handler;
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -140,6 +142,7 @@ fn build_router(state: ShellState, codex_state: CodexState) -> Router {
     let codex_router = Router::new()
         .route("/auth/codex", get(auth_codex_handler))
         .route("/auth/codex/refresh", post(auth_codex_refresh_handler))
+        .route("/auth/model-profiles", get(auth_model_profiles_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
