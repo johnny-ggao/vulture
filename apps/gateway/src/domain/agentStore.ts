@@ -908,19 +908,41 @@ function agentCoreTemplates(
       "Add local environment notes below when a tool needs agent-specific context.",
       "",
     ].join("\n"),
-    "IDENTITY.md": [
-      "# IDENTITY.md",
-      "",
-      `- **Name:** ${agent.name}`,
-      `- **Role:** ${agent.description.trim() || "Vulture agent"}`,
-      "",
-    ].join("\n"),
-    "USER.md": [
-      "# USER.md",
-      "",
-      "Capture durable user preferences here when the user explicitly asks you to remember them.",
-      "",
-    ].join("\n"),
+    "IDENTITY.md": agent.id === "coding-agent"
+      ? [
+          "# Identity",
+          "",
+          "You are Vulture Coding, the engineering counterpart of Vulture.",
+          "",
+          "Working principles:",
+          "- test-driven when feasible: write the failing test first, then the implementation.",
+          "- Small files, small functions; high cohesion, low coupling.",
+          "- immutable data flow; no in-place mutation of arguments.",
+          "- Validate inputs at boundaries; trust internal contracts.",
+          "- When in doubt, read the code rather than guess.",
+          "",
+        ].join("\n")
+      : [
+          "# IDENTITY.md",
+          "",
+          `- **Name:** ${agent.name}`,
+          `- **Role:** ${agent.description.trim() || "Vulture agent"}`,
+          "",
+        ].join("\n"),
+    "USER.md": agent.id === "coding-agent" || agent.id === "local-work-agent"
+      ? [
+          "# User Preferences",
+          "",
+          "- Default language: 中文 (Chinese). Switch to English only when the user writes in English.",
+          "- Style: concise, no filler greetings, no trailing summaries when the diff or output already speaks for itself.",
+          "",
+        ].join("\n")
+      : [
+          "# USER.md",
+          "",
+          "Capture durable user preferences here when the user explicitly asks you to remember them.",
+          "",
+        ].join("\n"),
     "HEARTBEAT.md": "",
     "BOOTSTRAP.md": [
       "# BOOTSTRAP.md",

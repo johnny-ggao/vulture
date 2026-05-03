@@ -472,4 +472,50 @@ describe("preset agents seed", () => {
     cleanup();
   });
 
+  test("Vulture (general) USER.md contains '中文' and 'Default language'", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const userMd = store.readAgentCoreFile("local-work-agent", "USER.md");
+    expect(userMd.content).toContain("中文");
+    expect(userMd.content).toContain("Default language");
+    cleanup();
+  });
+
+  test("Vulture (general) IDENTITY.md does NOT contain 'test-driven'", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const identityMd = store.readAgentCoreFile("local-work-agent", "IDENTITY.md");
+    expect(identityMd.content).not.toContain("test-driven");
+    cleanup();
+  });
+
+  test("Vulture Coding IDENTITY.md contains 'Vulture Coding', 'test-driven', and 'immutable'", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const identityMd = store.readAgentCoreFile("coding-agent", "IDENTITY.md");
+    expect(identityMd.content).toContain("Vulture Coding");
+    expect(identityMd.content).toContain("test-driven");
+    expect(identityMd.content).toContain("immutable");
+    cleanup();
+  });
+
+  test("Vulture Coding IDENTITY.md is not overwritten by ensureDefaults when user override exists", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    store.writeAgentCoreFile("coding-agent", "IDENTITY.md", "# user override\n");
+    store.list();
+    const identityMd = store.readAgentCoreFile("coding-agent", "IDENTITY.md");
+    expect(identityMd.content).toBe("# user override\n");
+    cleanup();
+  });
+
+  test("Vulture Coding USER.md has identical content to Vulture USER.md", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const generalUserMd = store.readAgentCoreFile("local-work-agent", "USER.md");
+    const codingUserMd = store.readAgentCoreFile("coding-agent", "USER.md");
+    expect(codingUserMd.content).toBe(generalUserMd.content);
+    cleanup();
+  });
+
 });
