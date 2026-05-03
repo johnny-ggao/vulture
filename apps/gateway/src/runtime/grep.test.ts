@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runGrep } from "./grep";
+
+const HAS_RIPGREP = spawnSync("rg", ["--version"]).status === 0;
+const ripgrepDescribe = HAS_RIPGREP ? describe : describe.skip;
 
 function makeTempRepo(): string {
   const root = mkdtempSync(join(tmpdir(), "grep-test-"));
@@ -99,5 +103,28 @@ describe("runGrep (JS fallback)", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+ripgrepDescribe("runGrep (ripgrep path)", () => {
+  test("ripgrep returns identical match shape to JS fallback", async () => {
+    const root = makeTempRepo();
+    try {
+      const rgResult = await runGrep({ pattern: "foo", path: root, regex: false, useRipgrep: true });
+      const jsResult = await runGrep({ pattern: "foo", path: root, regex: false, useRipgrep: false });
+      const rgFiles = new Set(rgResult.matches.map((m) => m.file));
+      const jsFiles = new Set(jsResult.matches.map((m) => m.file));
+      expect(rgFiles).toEqual(jsFiles);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("runGrep (auto-detect)", () => {
+  test("detectRipgrep returns a boolean", async () => {
+    const { detectRipgrep } = await import("./grep");
+    const detected = await detectRipgrep();
+    expect(typeof detected).toBe("boolean");
   });
 });

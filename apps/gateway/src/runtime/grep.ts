@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 import { glob as tinyGlob } from "tinyglobby";
 
 export interface GrepOptions {
@@ -27,9 +28,91 @@ export interface GrepResult {
 const DEFAULT_MAX_MATCHES = 200;
 const SKIP_DIRS = new Set(["node_modules", ".git", "target", "dist", "build", ".next", ".cache"]);
 
+let ripgrepDetected: boolean | null = null;
+
+export async function detectRipgrep(): Promise<boolean> {
+  if (ripgrepDetected !== null) return ripgrepDetected;
+  ripgrepDetected = await new Promise<boolean>((resolve) => {
+    const proc = spawn("rg", ["--version"], { stdio: "ignore" });
+    proc.on("error", () => resolve(false));
+    proc.on("exit", (code) => resolve(code === 0));
+  });
+  return ripgrepDetected;
+}
+
+interface RipgrepEvent {
+  type: "match" | "begin" | "end" | "summary";
+  data: {
+    path: { text: string };
+    line_number: number;
+    lines: { text: string };
+    submatches: { start: number; end: number }[];
+  };
+}
+
+async function runGrepWithRipgrep(opts: GrepOptions, max: number): Promise<GrepResult> {
+  const args = ["--json", "-n", "--column"];
+  if (!(opts.caseSensitive ?? false)) args.push("-i");
+  if (!(opts.regex ?? false)) args.push("-F");
+  if (opts.glob) args.push("--glob", opts.glob);
+  args.push(opts.pattern, opts.path ?? ".");
+
+  return new Promise<GrepResult>((resolve, reject) => {
+    const matches: GrepMatch[] = [];
+    let truncated = false;
+    const proc = spawn("rg", args);
+    let stdoutBuf = "";
+
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdoutBuf += chunk.toString("utf8");
+      let nl: number;
+      while ((nl = stdoutBuf.indexOf("\n")) !== -1) {
+        const line = stdoutBuf.slice(0, nl);
+        stdoutBuf = stdoutBuf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          const obj = JSON.parse(line) as RipgrepEvent;
+          if (obj.type !== "match") continue;
+          if (matches.length >= max) {
+            truncated = true;
+            proc.kill();
+            return;
+          }
+          for (const sub of obj.data.submatches) {
+            matches.push({
+              file: obj.data.path.text,
+              line: obj.data.line_number,
+              column: sub.start + 1,
+              text: obj.data.lines.text.replace(/\n$/, ""),
+            });
+            if (matches.length >= max) {
+              truncated = true;
+              proc.kill();
+              return;
+            }
+          }
+        } catch {
+          // ignore non-JSON lines
+        }
+      }
+    });
+
+    proc.on("error", reject);
+    proc.on("exit", () => resolve({ matches, truncated }));
+  });
+}
+
 export async function runGrep(opts: GrepOptions): Promise<GrepResult> {
-  const root = opts.path ?? process.cwd();
   const max = opts.maxMatches ?? DEFAULT_MAX_MATCHES;
+  const useRipgrep = opts.useRipgrep ?? (await detectRipgrep());
+  if (useRipgrep) {
+    return runGrepWithRipgrep(opts, max);
+  }
+  return runGrepJS(opts, max);
+}
+
+async function runGrepJS(opts: GrepOptions, max: number): Promise<GrepResult> {
+  const root = opts.path ?? process.cwd();
   const matcher = compileMatcher(opts.pattern, opts.regex ?? false, opts.caseSensitive ?? false);
 
   const files = opts.glob
