@@ -9,6 +9,9 @@ import {
   type FetchLike,
   type WebAccessService,
 } from "./webAccess";
+import { runGrep } from "./grep";
+import { runGlob } from "./glob";
+import type { LspClientManager } from "./lspClientManager";
 
 const LOCAL_TOOL_NAMES = new Set([
   "read",
@@ -28,6 +31,12 @@ const LOCAL_TOOL_NAMES = new Set([
   "memory_search",
   "memory_get",
   "memory_append",
+  "grep",
+  "glob",
+  "lsp.diagnostics",
+  "lsp.definition",
+  "lsp.references",
+  "lsp.hover",
 ]);
 const MAX_TEXT_BYTES = 256_000;
 const MAX_PROCESS_BUFFER = 64_000;
@@ -59,6 +68,7 @@ export interface GatewayLocalToolsOptions {
   sessions?: GatewaySessionsTools;
   memory?: GatewayMemoryTools;
   mcp?: GatewayMcpTools;
+  lspManager?: LspClientManager;
 }
 
 interface ManagedProcess {
@@ -95,6 +105,7 @@ export function makeGatewayLocalTools(opts: GatewayLocalToolsOptions): ToolCalla
         sessions: opts.sessions,
         memory: opts.memory,
         mcp: opts.mcp,
+        lspManager: opts.lspManager,
       });
       opts.appendEvent?.(call.runId, {
         type: "tool.completed",
@@ -124,6 +135,7 @@ async function executeLocalTool(
     sessions?: GatewaySessionsTools;
     memory?: GatewayMemoryTools;
     mcp?: GatewayMcpTools;
+    lspManager?: LspClientManager;
   },
 ): Promise<unknown> {
   if (deps.mcp?.canHandle(call.tool)) {
@@ -170,9 +182,66 @@ async function executeLocalTool(
     case "memory_append":
       requireApproval(call, "memory_append requires approval");
       return requireMemory(deps).append(call);
+    case "grep": {
+      const input = call.input as {
+        pattern: string;
+        path?: string;
+        glob?: string;
+        regex?: boolean;
+        caseSensitive?: boolean;
+        maxMatches?: number;
+      };
+      return await runGrep({
+        pattern: input.pattern,
+        path: input.path ?? call.workspacePath,
+        glob: input.glob,
+        regex: input.regex ?? false,
+        caseSensitive: input.caseSensitive ?? false,
+        maxMatches: input.maxMatches ?? undefined,
+      });
+    }
+    case "glob": {
+      const input = call.input as { pattern: string; path?: string; maxResults?: number };
+      return await runGlob({
+        pattern: input.pattern,
+        path: input.path ?? call.workspacePath,
+        maxResults: input.maxResults ?? undefined,
+      });
+    }
+    case "lsp.diagnostics":
+    case "lsp.definition":
+    case "lsp.references":
+    case "lsp.hover": {
+      if (!deps.lspManager) {
+        throw new ToolCallError("lsp.unavailable", "LSP manager not configured");
+      }
+      const input = call.input as {
+        filePath: string;
+        line?: number;
+        character?: number;
+        includeDeclaration?: boolean;
+      };
+      const root = call.workspacePath ?? "";
+      let result;
+      if (call.tool === "lsp.diagnostics") {
+        result = await deps.lspManager.diagnostics(root, input.filePath);
+      } else if (call.tool === "lsp.definition") {
+        result = await deps.lspManager.definition(root, input.filePath, input.line ?? 0, input.character ?? 0);
+      } else if (call.tool === "lsp.references") {
+        result = await deps.lspManager.references(root, input.filePath, input.line ?? 0, input.character ?? 0, input.includeDeclaration ?? true);
+      } else {
+        result = await deps.lspManager.hover(root, input.filePath, input.line ?? 0, input.character ?? 0);
+      }
+      return mapLspResult(result);
+    }
     default:
       throw new ToolCallError("tool.execution_failed", `unknown local tool ${call.tool}`);
   }
+}
+
+function mapLspResult(result: { kind: "ok"; value: unknown } | { kind: "error"; error: unknown }): unknown {
+  if (result.kind === "ok") return result.value;
+  return { error: result.error };
 }
 
 async function readTool(call: Parameters<ToolCallable>[0]): Promise<unknown> {

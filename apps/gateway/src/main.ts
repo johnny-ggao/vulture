@@ -9,12 +9,11 @@ async function main() {
     process.env as Record<string, string | undefined>,
   );
   // LSP manager is constructed here (not in buildServer) so tests don't
-  // accumulate sweepers / SIGTERM listeners. Task 9 will wire the dispatcher
-  // to consume it.
+  // accumulate sweepers / SIGTERM listeners.
   const lspManager = createLspClientManager({
     transportFactory: createRealTransport,
   });
-  const app = buildServer(cfg);
+  const app = buildServer({ ...cfg, lspManager });
 
   // SECURITY: bind 127.0.0.1 only.
   const server = Bun.serve({

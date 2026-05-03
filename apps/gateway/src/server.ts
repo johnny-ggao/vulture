@@ -91,7 +91,6 @@ export function buildServer(cfg: GatewayConfig): Hono {
   ]);
   runtimeHooksRef = runtimeHooks;
   const mcpClientManager = new McpClientManager(mcpServerStore);
-  // LSP manager is injected from main.ts; consumed in Task 9.
   const memoryExtractionLlm = makeLazyLlm({
     toolNames: [],
     toolCallable: async () => {
@@ -264,6 +263,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
       canHandle: (toolName) => mcpClientManager.canHandle(toolName),
       execute: (call) => mcpClientManager.executeToolCall(call),
     },
+    lspManager: cfg.lspManager,
     runtimeHooks: () => runtimeHooksRef,
     startConversationRun,
   });
