@@ -646,12 +646,19 @@ export class AgentStore {
     const corePath = join(root, "agent-core");
     mkdirSync(join(corePath, "skills"), { recursive: true });
     const templates = agentCoreTemplates(agent, workspace);
+    const isPreset = agent.id === "coding-agent" || agent.id === "local-work-agent";
+    // Files whose preset content evolves over time. For these we use a
+    // managed-region splice so users keep their own notes while the preset
+    // block updates on every gateway start. Other files stay existence-only.
+    const managedFiles: ReadonlyArray<AgentCoreFileName> = isPreset
+      ? ["IDENTITY.md", "USER.md"]
+      : [];
     for (const [name, content] of Object.entries(templates) as Array<[AgentCoreFileName, string]>) {
       const filePath = join(corePath, name);
       mkdirSync(dirname(filePath), { recursive: true });
-      if (!existsSync(filePath)) {
-        writeFileSync(filePath, content, "utf8");
-      }
+      applyAgentCoreFile(filePath, content, {
+        managed: managedFiles.includes(name),
+      });
     }
   }
 
@@ -690,6 +697,67 @@ export class AgentStore {
     }
   }
 
+}
+
+const MANAGED_BLOCK_START = "<!-- vulture:managed:start -->";
+const MANAGED_BLOCK_END = "<!-- vulture:managed:end -->";
+const MANAGED_TAIL_HINT =
+  "<!-- 你的自定义补充可以写在下面，Vulture 不会改这里。 -->";
+
+/**
+ * Splice the preset content between MANAGED markers so it can evolve across
+ * releases without clobbering user customisations. Three cases:
+ *
+ *  - File missing → write the full templated content (which already
+ *    includes the markers + tail hint).
+ *  - File exists, has both markers → replace only the region between them.
+ *    Anything before the start marker or after the end marker is preserved
+ *    verbatim, which lets the user prepend or append their own notes.
+ *  - File exists but the markers are gone → leave it alone. The user has
+ *    explicitly taken ownership; we don't second-guess them.
+ *
+ * For non-managed files we fall back to existence-only writes (the previous
+ * behaviour) so AGENTS.md, SOUL.md, etc. stay 100% user-owned after seed.
+ */
+function applyAgentCoreFile(
+  filePath: string,
+  content: string,
+  opts: { managed: boolean },
+): void {
+  if (!existsSync(filePath)) {
+    writeFileSync(filePath, content, "utf8");
+    return;
+  }
+  if (!opts.managed) return;
+
+  let existing: string;
+  try {
+    existing = readFileSync(filePath, "utf8");
+  } catch {
+    return;
+  }
+  const startIdx = existing.indexOf(MANAGED_BLOCK_START);
+  const endIdx = existing.indexOf(MANAGED_BLOCK_END);
+  if (startIdx < 0 || endIdx < 0 || endIdx < startIdx) {
+    // User removed the markers — respect that and don't touch the file.
+    return;
+  }
+  // Pull the freshly templated managed region out of the new content.
+  const newStart = content.indexOf(MANAGED_BLOCK_START);
+  const newEnd = content.indexOf(MANAGED_BLOCK_END);
+  if (newStart < 0 || newEnd < 0) {
+    // Template not bracketed correctly — fail closed (don't overwrite).
+    return;
+  }
+  const newManaged = content.slice(
+    newStart,
+    newEnd + MANAGED_BLOCK_END.length,
+  );
+  const before = existing.slice(0, startIdx);
+  const after = existing.slice(endIdx + MANAGED_BLOCK_END.length);
+  const next = before + newManaged + after;
+  if (next === existing) return;
+  writeFileSync(filePath, next, "utf8");
 }
 
 export function privateWorkspacePathForAgent(
@@ -919,6 +987,7 @@ function agentCoreTemplates(
     ].join("\n"),
     "IDENTITY.md": agent.id === "coding-agent"
       ? [
+          MANAGED_BLOCK_START,
           "# Identity",
           "",
           "You are Vulture Coding, the engineering counterpart of Vulture.",
@@ -969,6 +1038,10 @@ function agentCoreTemplates(
           "",
           "Skip the review for trivial changes (single typo, single-line tweak, doc-only). When you skip, say so explicitly: \"Skipped self-review — single-line typo fix.\"",
           "",
+          MANAGED_BLOCK_END,
+          "",
+          MANAGED_TAIL_HINT,
+          "",
         ].join("\n")
       : [
           "# IDENTITY.md",
@@ -979,10 +1052,15 @@ function agentCoreTemplates(
         ].join("\n"),
     "USER.md": agent.id === "coding-agent" || agent.id === "local-work-agent"
       ? [
+          MANAGED_BLOCK_START,
           "# User Preferences",
           "",
           "- Default language: 中文 (Chinese). Switch to English only when the user writes in English.",
           "- Style: concise, no filler greetings, no trailing summaries when the diff or output already speaks for itself.",
+          "",
+          MANAGED_BLOCK_END,
+          "",
+          MANAGED_TAIL_HINT,
           "",
         ].join("\n")
       : [

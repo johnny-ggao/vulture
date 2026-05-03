@@ -550,3 +550,87 @@ describe("isUsingPrivateWorkspace", () => {
     rmSync(customWs, { recursive: true });
   });
 });
+
+describe("managed agent-core file splice (preset agents only)", () => {
+  test("first seed writes the templated content with markers and tail hint", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const file = store.readAgentCoreFile("coding-agent", "IDENTITY.md");
+    expect(file.content).toContain("<!-- vulture:managed:start -->");
+    expect(file.content).toContain("<!-- vulture:managed:end -->");
+    expect(file.content).toContain("Vulture 不会改这里");
+    cleanup();
+  });
+
+  test("reconcile rewrites a stale managed block back to current preset content", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    // Simulate an old-version managed block. Note: any read goes through
+    // ensureDefaults() which triggers reconcile, so we must verify by
+    // reading from disk directly to observe the rewrite.
+    const filePath = join(store.agentCorePath("coding-agent"), "IDENTITY.md");
+    const original = readFileSync(filePath, "utf8");
+    const tampered = original.replace(
+      "Test-driven when feasible",
+      "Old-version-marker-deadbeef",
+    );
+    writeFileSync(filePath, tampered, "utf8");
+    expect(readFileSync(filePath, "utf8")).toContain("Old-version-marker-deadbeef");
+    // Trigger reconcile via list().
+    store.list();
+    const refreshed = readFileSync(filePath, "utf8");
+    expect(refreshed).toContain("Test-driven when feasible");
+    expect(refreshed).not.toContain("Old-version-marker-deadbeef");
+    cleanup();
+  });
+
+  test("user content appended below the end marker survives reconcile", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const filePath = join(store.agentCorePath("coding-agent"), "IDENTITY.md");
+    const original = readFileSync(filePath, "utf8");
+    const customised =
+      original + "\n## My personal rules\n- Always commit early.\n";
+    writeFileSync(filePath, customised, "utf8");
+    store.list();
+    const after = readFileSync(filePath, "utf8");
+    expect(after).toContain("## My personal rules");
+    expect(after).toContain("Always commit early.");
+    expect(after).toContain("Test-driven when feasible"); // managed block still there
+    cleanup();
+  });
+
+  test("removing the markers takes the file out of management entirely", () => {
+    const { store, cleanup } = freshStore();
+    store.list();
+    const filePath = join(store.agentCorePath("coding-agent"), "IDENTITY.md");
+    // User strips the markers — they own the file now.
+    const ownedContent = "# My own IDENTITY\nNo presets, just my rules.\n";
+    writeFileSync(filePath, ownedContent, "utf8");
+    store.list();
+    expect(readFileSync(filePath, "utf8")).toBe(ownedContent);
+    cleanup();
+  });
+
+  test("non-preset agents keep existence-only semantics for IDENTITY.md", () => {
+    const { store, cleanup } = freshStore();
+    store.save({
+      id: "custom",
+      name: "Custom",
+      description: "x",
+      model: "gpt-5.4",
+      reasoning: "low",
+      tools: [],
+      instructions: "x",
+    });
+    const filePath = join(store.agentCorePath("custom"), "IDENTITY.md");
+    const seeded = readFileSync(filePath, "utf8");
+    // No managed markers in the non-preset skeleton.
+    expect(seeded).not.toContain("<!-- vulture:managed:start -->");
+    // User edits stick across reconciles.
+    writeFileSync(filePath, "# entirely user-owned\n", "utf8");
+    store.list();
+    expect(readFileSync(filePath, "utf8")).toBe("# entirely user-owned\n");
+    cleanup();
+  });
+});
