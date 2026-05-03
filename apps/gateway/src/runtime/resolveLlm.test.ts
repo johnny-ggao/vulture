@@ -98,6 +98,23 @@ describe("makeLazyLlm", () => {
     let codexQueried = false;
     const trackingFetch = (async (url: string | URL | Request) => {
       const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/auth/model-profiles")) {
+        return new Response(
+          JSON.stringify({
+            profiles: [
+              {
+                id: "codex",
+                provider: "openai",
+                mode: "oauth",
+                label: "ChatGPT",
+                status: "configured",
+              },
+            ],
+            auth_order: { openai: ["codex"] },
+          }),
+          { status: 200 },
+        );
+      }
       if (u.endsWith("/auth/codex")) {
         codexQueried = true;
         return new Response(
@@ -160,9 +177,26 @@ describe("makeLazyLlm", () => {
     expect(true).toBe(true);
   });
 
-  test("falls back to stub when codex expired (explicit, not silent api key)", async () => {
+  test("returns Codex error when explicit codex profile expired", async () => {
     const fetchFn = (async (url: string | URL | Request) => {
       const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/auth/model-profiles")) {
+        return new Response(
+          JSON.stringify({
+            profiles: [
+              {
+                id: "codex",
+                provider: "openai",
+                mode: "oauth",
+                label: "ChatGPT",
+                status: "expired",
+              },
+            ],
+            auth_order: { openai: ["codex"] },
+          }),
+          { status: 200 },
+        );
+      }
       if (u.endsWith("/auth/codex")) {
         return new Response(
           JSON.stringify({ code: "auth.codex_expired", message: "expired" }),
@@ -190,7 +224,7 @@ describe("makeLazyLlm", () => {
     for await (const y of llm({
       systemPrompt: "x",
       userInput: "hi",
-      model: "gpt-5.4",
+      model: "openai/gpt-5.4@codex",
       runId: "r-1",
       workspacePath: "",
     })) {

@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { ModelProvider } from "@openai/agents";
 import type { LlmCallable, LlmYield, ToolCallable } from "@vulture/agent-runtime";
 import { makeOpenAILlm, makeResponsesModelProvider, type OpenAILlmOptions } from "./openaiLlm";
 
@@ -73,6 +74,12 @@ export interface CodexLlmOptions {
   approvalCallable?: OpenAILlmOptions["approvalCallable"];
   mcpToolProvider?: OpenAILlmOptions["mcpToolProvider"];
   runtimeHooks?: OpenAILlmOptions["runtimeHooks"];
+}
+
+export interface CodexModelProviderOptions {
+  token: CodexShellResponse;
+  fetch?: typeof fetch;
+  runId?: string;
 }
 
 /**
@@ -183,33 +190,6 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
         fetch: opts.fetch,
       }));
 
-    // Configure this run's provider to route via chatgpt.com/backend-api/codex
-    // (the only path that accepts ChatGPT-subscription tokens). The SDK
-    // appends "/responses", landing on the right endpoint. This is deliberately
-    // passed to Runner as a per-run modelProvider by openaiLlm.ts; no global SDK
-    // client mutation is needed.
-    //
-    // `originator: "codex_cli_rs"` is the only originator the backend allows
-    // for ChatGPT-subscription auth — other values return 403.
-    const client = new OpenAI({
-      apiKey: token.accessToken,
-      baseURL: "https://chatgpt.com/backend-api/codex",
-      defaultHeaders: {
-        "OpenAI-Beta": "responses=experimental",
-        "chatgpt-account-id": token.accountId,
-        originator: "codex_cli_rs",
-        session_id: input.runId,
-        conversation_id: input.runId,
-      },
-      // chatgpt.com/backend-api/codex emits `response.completed` with
-      // `output: []` even when items came through earlier `output_item.done`
-      // events. The SDK reads `response.completed.output[]` to decide if
-      // there's a final assistant message; an empty array sends the runner
-      // into infinite re-loop. Buffer items locally and inject them back.
-      fetch: makeCodexResponsesFetch(opts.fetch),
-      dangerouslyAllowBrowser: true,
-    });
-
     // Delegate to existing OpenAILlm machinery with an explicit provider.
     // apiKey here is unused on the wire because the provider owns the client,
     // but makeOpenAILlm keeps it for API-key callers.
@@ -217,7 +197,11 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
       apiKey: token.accessToken,
       toolNames: opts.toolNames,
       toolCallable: opts.toolCallable,
-      modelProvider: makeResponsesModelProvider({ openAIClient: client }),
+      modelProvider: makeCodexModelProvider({
+        token,
+        fetch: opts.fetch,
+        runId: input.runId,
+      }),
       runFactory: opts.runFactory,
       approvalCallable: opts.approvalCallable,
       mcpToolProvider: opts.mcpToolProvider,
@@ -225,4 +209,34 @@ export function makeCodexLlm(opts: CodexLlmOptions): LlmCallable {
     });
     yield* inner(input);
   };
+}
+
+export function makeCodexModelProvider(opts: CodexModelProviderOptions): ModelProvider {
+  // Configure this run's provider to route via chatgpt.com/backend-api/codex
+  // (the only path that accepts ChatGPT-subscription tokens). The SDK appends
+  // "/responses", landing on the right endpoint. This is deliberately passed
+  // to Runner as a per-run modelProvider by openaiLlm.ts; no global SDK client
+  // mutation is needed.
+  //
+  // `originator: "codex_cli_rs"` is the only originator the backend allows
+  // for ChatGPT-subscription auth; other values return 403.
+  const client = new OpenAI({
+    apiKey: opts.token.accessToken,
+    baseURL: "https://chatgpt.com/backend-api/codex",
+    defaultHeaders: {
+      "OpenAI-Beta": "responses=experimental",
+      "chatgpt-account-id": opts.token.accountId,
+      originator: "codex_cli_rs",
+      ...(opts.runId ? { session_id: opts.runId, conversation_id: opts.runId } : {}),
+    },
+    // chatgpt.com/backend-api/codex emits `response.completed` with
+    // `output: []` even when items came through earlier `output_item.done`
+    // events. The SDK reads `response.completed.output[]` to decide if there's
+    // a final assistant message; an empty array sends the runner into infinite
+    // re-loop. Buffer items locally and inject them back.
+    fetch: makeCodexResponsesFetch(opts.fetch),
+    dangerouslyAllowBrowser: true,
+  });
+
+  return makeResponsesModelProvider({ openAIClient: client });
 }
