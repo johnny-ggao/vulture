@@ -6,6 +6,7 @@ import { AgentCard, AgentCreateTile, SearchInput, SectionCard } from "./componen
 import {
   AgentEditModal,
   type AgentConfigPatch,
+  type AgentsTab,
 } from "./AgentEditModal";
 
 export type { AgentConfigPatch };
@@ -83,6 +84,13 @@ export interface AgentsPageProps {
    * (typically a transient toast); the list dispatches immediately.
    */
   onDelete?: (id: string) => void;
+  /**
+   * When set, AgentsPage will open the AgentEditModal for the specified
+   * agent on the specified tab on mount (or when the value changes).
+   * Used by the App shell to navigate from the CodingAgentBanner click
+   * directly into the edit modal.
+   */
+  initialEditTarget?: { agentId: string; tab: AgentsTab } | null;
 }
 
 /**
@@ -92,6 +100,9 @@ export interface AgentsPageProps {
  */
 export function AgentsPage(props: AgentsPageProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Tracks the tab that should be pre-selected when the modal opens via
+  // an external trigger (e.g. CodingAgentBanner click from ChatView).
+  const [initialTab, setInitialTab] = useState<AgentsTab | undefined>(undefined);
   // Whether the AgentEditModal is open in create mode. Mutually
   // exclusive with editingId — clicking "新建智能体" sets this true,
   // and the same modal renders with `agent={null}` + onCreate.
@@ -111,6 +122,17 @@ export function AgentsPage(props: AgentsPageProps) {
   useEffect(() => {
     writeStored(STORAGE_KEY_SEARCH, search);
   }, [search]);
+
+  // Open the modal for the specified agent+tab when the App shell passes
+  // in an initialEditTarget (e.g. after the user clicks the CodingAgentBanner).
+  // The effect fires once per distinct target reference — App.tsx holds
+  // this in useState so it's stable until the user triggers it again.
+  useEffect(() => {
+    if (props.initialEditTarget) {
+      setEditingId(props.initialEditTarget.agentId);
+      setInitialTab(props.initialEditTarget.tab);
+    }
+  }, [props.initialEditTarget]);
 
   const editingAgent =
     editingId !== null
@@ -193,9 +215,11 @@ export function AgentsPage(props: AgentsPageProps) {
           agents={props.agents}
           toolGroups={props.toolGroups}
           authStatus={props.authStatus ?? null}
+          initialTab={initialTab}
           onClose={() => {
             setEditingId(null);
             setCreating(false);
+            setInitialTab(undefined);
           }}
           onSave={props.onSave}
           onCreate={handleCreate}
@@ -311,9 +335,11 @@ export function AgentsPage(props: AgentsPageProps) {
         agents={props.agents}
         toolGroups={props.toolGroups}
         authStatus={props.authStatus ?? null}
+        initialTab={initialTab}
         onClose={() => {
           setEditingId(null);
           setCreating(false);
+          setInitialTab(undefined);
         }}
         onSave={props.onSave}
         onCreate={handleCreate}

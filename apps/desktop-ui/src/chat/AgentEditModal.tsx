@@ -25,7 +25,7 @@ import {
 
 export type { AgentConfigPatch };
 
-type AgentsTab = "overview" | "tools" | "skills" | "handoff" | "core";
+export type AgentsTab = "overview" | "tools" | "skills" | "handoff" | "core";
 
 const EDIT_TAB_ORDER: ReadonlyArray<AgentsTab> = [
   "overview",
