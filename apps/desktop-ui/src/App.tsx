@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
@@ -40,11 +41,11 @@ import {
   withGatewayRestartForMissingRoute,
 } from "./app/gatewayRestartFallback";
 import { skillsApi } from "./api/skills";
+import { filesApi } from "./api/files";
 import { useGatewayBootstrap } from "./app/useGatewayBootstrap";
 import { useRunController } from "./app/useRunController";
 import { useUndoableDelete } from "./app/useUndoableDelete";
 import { AgentsPage, type AgentConfigPatch } from "./chat/AgentsPage";
-import type { AgentsTab } from "./chat/AgentEditModal";
 import { ArtifactsPage } from "./chat/ArtifactsPage";
 import { SkillsPage } from "./chat/SkillsPage";
 import { ChatView } from "./chat/ChatView";
@@ -74,12 +75,6 @@ export function App() {
   const [view, setView] = useState<ViewKey>("chat");
   const [settingsReturnView, setSettingsReturnView] = useState<ViewKey>("chat");
   const [historyOpen, setHistoryOpen] = useState(false);
-  // Drives the CodingAgentBanner → AgentEditModal flow. Set when the
-  // user clicks the banner; consumed once by AgentsPage on mount.
-  const [agentEditTarget, setAgentEditTarget] = useState<{
-    agentId: string;
-    tab: AgentsTab;
-  } | null>(null);
   const conversations = useConversations(apiClient);
   const {
     profile,
@@ -548,21 +543,43 @@ export function App() {
     agentDelete.dismiss();
   }
 
-  // Called by ChatView when the user clicks the CodingAgentBanner.
-  // Switches to the Agents view and opens the edit modal for that agent.
-  function handleOpenAgentEdit(agentId: string) {
-    setAgentEditTarget({ agentId, tab: "overview" });
-    setSelectedAgentId(agentId);
-    setView("agents");
-  }
+  // Open the native folder picker; on success, persist the choice on the
+  // active conversation (or stage it locally if no conversation exists yet —
+  // useRunController flushes the staged value on the implicit create).
+  // openDialog returns null/undefined when the user cancels — leave state alone.
+  const handlePickWorkingDirectory = useCallback(async () => {
+    try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "选择工作目录",
+      });
+      if (typeof picked === "string" && picked.length > 0) {
+        await runController.setWorkingDirectory(picked);
+      }
+    } catch (cause) {
+      console.error("Folder picker failed", cause);
+    }
+  }, [runController]);
 
-  // Stable callback so AgentsPage's useEffect doesn't re-fire on every
-  // App render. AgentsPage calls this once after consuming the target;
-  // clearing the state prevents the modal from re-opening when the user
-  // navigates away from the agents view and back (AgentsPage remounts).
-  const consumeAgentEditTarget = useCallback(() => {
-    setAgentEditTarget(null);
-  }, []);
+  const handleClearWorkingDirectory = useCallback(async () => {
+    await runController.setWorkingDirectory(null);
+  }, [runController]);
+
+  // Load files for the @-mention picker. The composer caches the result for
+  // the lifetime of the working-directory selection, so we don't need to
+  // memoize this across renders. Returns an empty array if there's no client
+  // or no working directory.
+  const handleLoadWorkspaceFiles = useCallback(async (): Promise<ReadonlyArray<string>> => {
+    if (!apiClient || !runController.workingDirectory) return [];
+    try {
+      const result = await filesApi.list(apiClient, runController.workingDirectory);
+      return result.paths;
+    } catch (cause) {
+      console.error("workspace file listing failed", cause);
+      return [];
+    }
+  }, [apiClient, runController.workingDirectory]);
 
   // ---- Keyboard shortcuts ---------------------------------------
   // ⌘1-6 / Ctrl+1-6 jump between primary views. ⌘N starts a new
@@ -844,12 +861,15 @@ export function App() {
         >
           {view === "chat" ? (
             <ChatView
-              agents={agents.map((a) => ({ id: a.id, name: a.name, isPrivateWorkspace: a.isPrivateWorkspace }))}
+              agents={agents.map((a) => ({ id: a.id, name: a.name }))}
               selectedAgentId={selectedAgentId}
               onSelectAgent={setSelectedAgentId}
-              onOpenAgentEdit={handleOpenAgentEdit}
               permissionMode={runController.permissionMode}
               onChangePermissionMode={runController.changePermissionMode}
+              workingDirectory={runController.workingDirectory}
+              onPickWorkingDirectory={handlePickWorkingDirectory}
+              onClearWorkingDirectory={handleClearWorkingDirectory}
+              onLoadWorkspaceFiles={handleLoadWorkspaceFiles}
               messages={runController.messages.items}
               messageUsages={runController.messageUsages}
               subagentSessions={runController.subagentSessions}
@@ -888,8 +908,6 @@ export function App() {
               onLoadFile={handleLoadAgentFile}
               onSaveFile={handleSaveAgentFile}
               onDelete={handleDeleteAgent}
-              initialEditTarget={agentEditTarget}
-              onConsumeEditTarget={consumeAgentEditTarget}
             />
           ) : null}
           {view === "skills" ? (

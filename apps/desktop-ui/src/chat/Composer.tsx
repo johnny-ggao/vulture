@@ -1,6 +1,7 @@
 import * as React from "react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ConversationPermissionMode } from "../api/conversations";
+import { FileMentionMenu } from "./FileMentionMenu";
 
 export type ThinkingMode = "low" | "medium" | "high";
 
@@ -23,6 +24,24 @@ const TEXTAREA_MAX_HEIGHT = 280;
 export interface ComposerProps {
   permissionMode?: ConversationPermissionMode;
   onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
+  /**
+   * Optional working-directory affordance. When provided the composer renders
+   * a chip below the textarea showing the current directory's basename (or
+   * "选择工作目录" when null). Clicking the chip should open a folder picker;
+   * clicking a small × clears it. The Composer doesn't open the picker itself
+   * — the parent owns the Tauri dialog integration.
+   */
+  workingDirectory?: string | null;
+  onPickWorkingDirectory?: () => void | Promise<void>;
+  onClearWorkingDirectory?: () => void | Promise<void>;
+  /**
+   * Loads the file list for the @-mention picker. Resolves to relative paths
+   * under `workingDirectory`. Called lazily on first @ keystroke and cached
+   * for the lifetime of the working-directory selection. When omitted (or the
+   * working directory is null), the @-mention popover shows an empty state
+   * pointing the user at the workspace chip.
+   */
+  onLoadWorkspaceFiles?: () => Promise<ReadonlyArray<string>>;
   running: boolean;
   onSend: (input: string, files: File[]) => void | boolean | Promise<void | boolean>;
   onCancel: () => void;
@@ -144,6 +163,88 @@ export function Composer(props: ComposerProps) {
   const canSend = Boolean(value.trim() && !props.running);
   const permissionMode = props.permissionMode ?? "default";
 
+  // ---- @-mention picker state ------------------------------------
+  // mention.start is the index of the `@` in `value`; mention.query is
+  // the substring between that `@` and the current caret. The mention is
+  // open whenever this state is non-null. Caret tracking is fed by
+  // selectionStart on the textarea events; we don't observe it on every
+  // mousemove.
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [files_workdir_cache, setFilesCache] = useState<{
+    root: string;
+    paths: ReadonlyArray<string>;
+  } | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
+
+  const ensureFilesLoaded = useCallback(async () => {
+    if (!props.workingDirectory) return;
+    if (files_workdir_cache?.root === props.workingDirectory) return;
+    if (!props.onLoadWorkspaceFiles) return;
+    setFilesLoading(true);
+    try {
+      const paths = await props.onLoadWorkspaceFiles();
+      setFilesCache({ root: props.workingDirectory, paths });
+    } catch (cause) {
+      console.error("@-mention file list failed", cause);
+      setFilesCache({ root: props.workingDirectory, paths: [] });
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [props.workingDirectory, files_workdir_cache, props.onLoadWorkspaceFiles]);
+
+  // Recompute mention state from a (text, caret) pair. A mention is "active"
+  // when the latest `@` before the caret is preceded by start-of-string or
+  // whitespace, and contains no whitespace between itself and the caret.
+  function deriveMention(text: string, caret: number): { start: number; query: string } | null {
+    const before = text.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return null;
+    const prevChar = at === 0 ? "" : before[at - 1] ?? "";
+    if (prevChar !== "" && !/\s/.test(prevChar)) return null;
+    const query = before.slice(at + 1);
+    if (/\s/.test(query)) return null;
+    return { start: at, query };
+  }
+
+  function handleTextareaChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    const next = event.target.value;
+    setValue(next);
+    const caret = event.target.selectionStart ?? next.length;
+    const m = deriveMention(next, caret);
+    setMention(m);
+    if (m) void ensureFilesLoaded();
+  }
+
+  function handleTextareaKeyUp(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Arrow keys / Home / End move the caret without changing value, so we
+    // need to refresh mention state on key-up too. Cheap.
+    const ta = event.currentTarget;
+    const caret = ta.selectionStart ?? ta.value.length;
+    setMention(deriveMention(ta.value, caret));
+  }
+
+  function handleMentionPick(path: string) {
+    const m = mention;
+    if (!m) return;
+    const ta = textareaRef.current;
+    const caret = ta?.selectionStart ?? value.length;
+    const replaced =
+      value.slice(0, m.start) + "@" + path + " " + value.slice(caret);
+    setValue(replaced);
+    setMention(null);
+    queueMicrotask(() => {
+      const tEl = textareaRef.current;
+      if (!tEl) return;
+      const newCaret = m.start + 1 + path.length + 1;
+      tEl.focus();
+      tEl.setSelectionRange(newCaret, newCaret);
+    });
+  }
+
+  function closeMention() {
+    setMention(null);
+  }
+
   return (
     <div
       className={"composer" + (dragging ? " composer-dragging" : "")}
@@ -152,13 +253,33 @@ export function Composer(props: ComposerProps) {
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
+      {mention ? (
+        <FileMentionMenu
+          query={mention.query}
+          paths={files_workdir_cache?.paths ?? []}
+          loading={filesLoading}
+          noWorkspace={!props.workingDirectory}
+          onPick={handleMentionPick}
+          onClose={closeMention}
+          onPickWorkingDirectory={props.onPickWorkingDirectory}
+        />
+      ) : null}
       <textarea
         ref={textareaRef}
         value={value}
         rows={1}
-        placeholder="输入问题…（Enter 发送，Shift+Enter 换行）"
-        onChange={(e) => setValue(e.target.value)}
+        placeholder="输入问题…（Enter 发送，Shift+Enter 换行，@ 插入文件）"
+        onChange={handleTextareaChange}
+        onKeyUp={handleTextareaKeyUp}
+        onClick={(e) => {
+          const ta = e.currentTarget;
+          const caret = ta.selectionStart ?? ta.value.length;
+          setMention(deriveMention(ta.value, caret));
+        }}
         onKeyDown={(e) => {
+          // Don't intercept Enter while the mention menu is open — the menu
+          // handles Enter / Tab globally. Only the plain "send" path remains.
+          if (mention) return;
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             send();
@@ -177,6 +298,13 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <div className="composer-controls">
+        {props.onPickWorkingDirectory ? (
+          <WorkingDirectoryChip
+            workingDirectory={props.workingDirectory ?? null}
+            onPick={props.onPickWorkingDirectory}
+            onClear={props.onClearWorkingDirectory}
+          />
+        ) : null}
         <ChipPopover<ConversationPermissionMode>
           ariaLabel="工具权限"
           icon={<ShieldIcon />}
@@ -279,6 +407,72 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+
+interface WorkingDirectoryChipProps {
+  workingDirectory: string | null;
+  onPick: () => void | Promise<void>;
+  onClear?: () => void | Promise<void>;
+}
+
+/**
+ * Composer chip that shows the active per-conversation working directory
+ * (basename only — full path lives in title) or "选择工作目录" when unset.
+ * Click → parent opens the folder picker. The little × on the right clears
+ * the override and falls back to the agent's bound workspace.
+ */
+function WorkingDirectoryChip({ workingDirectory, onPick, onClear }: WorkingDirectoryChipProps) {
+  const label = workingDirectory ? basename(workingDirectory) : "选择工作目录";
+  const titleText = workingDirectory ?? "尚未为本对话选择工作目录";
+  return (
+    <span className="composer-workdir-chip" title={titleText}>
+      <button
+        type="button"
+        className="composer-workdir-trigger"
+        aria-label={
+          workingDirectory
+            ? `当前工作目录: ${workingDirectory}（点击更换）`
+            : "选择工作目录"
+        }
+        onClick={() => void onPick()}
+      >
+        <FolderIcon />
+        <span className="composer-workdir-label">{label}</span>
+      </button>
+      {workingDirectory && onClear ? (
+        <button
+          type="button"
+          className="composer-workdir-clear"
+          aria-label="清除工作目录，回到智能体默认工作区"
+          onClick={() => void onClear()}
+        >
+          ×
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+function basename(path: string): string {
+  // Cross-platform basename — pick the last segment after / or \. Empty
+  // trailing segments (path ending in a separator) collapse to the prior one.
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+function FolderIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true">
+      <path
+        d="M1.5 3.5a1 1 0 0 1 1-1h3l1.5 1.5h5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-9.5a1 1 0 0 1-1-1Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        fill="none"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 interface ChipPopoverOption<V extends string> {
   value: V;

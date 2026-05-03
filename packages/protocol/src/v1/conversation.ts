@@ -25,6 +25,14 @@ export const ConversationSchema = z.object({
   agentId: z.string().min(1),
   title: z.string(),
   permissionMode: ConversationPermissionModeSchema,
+  /**
+   * Per-conversation working directory override. When set, file-touching
+   * tools (read / grep / glob / lsp.*) and the @-mention file picker resolve
+   * paths against this directory instead of the agent's default workspace.
+   * Set ad-hoc via the composer chip; null on every freshly created
+   * conversation (the user picks afresh per chat).
+   */
+  workingDirectory: z.string().nullable(),
   createdAt: Iso8601Schema,
   updatedAt: Iso8601Schema,
 });
@@ -89,22 +97,31 @@ export const CreateConversationRequestSchema = z
     agentId: z.string().min(1),
     title: z.string().optional(),
     permissionMode: ConversationPermissionModeInputSchema.default("default"),
+    workingDirectory: z.string().nullable().optional(),
   })
   .strict();
 export type CreateConversationRequest = {
   agentId: string;
   title?: string;
   permissionMode?: ConversationPermissionMode;
+  workingDirectory?: string | null;
 };
 
 export const UpdateConversationRequestSchema = z
   .object({
     permissionMode: ConversationPermissionModeInputSchema.optional(),
+    /**
+     * Pass an absolute path to set / change the conversation's working
+     * directory; pass null to clear it (falls back to the agent's default
+     * workspace). Omit the field entirely to leave the current value alone.
+     */
+    workingDirectory: z.string().nullable().optional(),
   })
   .strict()
-  .refine((value) => value.permissionMode !== undefined, {
-    message: "at least one field is required",
-  });
+  .refine(
+    (value) => value.permissionMode !== undefined || value.workingDirectory !== undefined,
+    { message: "at least one field is required" },
+  );
 export type UpdateConversationRequest = z.infer<typeof UpdateConversationRequestSchema>;
 
 export const PostMessageRequestSchema = z

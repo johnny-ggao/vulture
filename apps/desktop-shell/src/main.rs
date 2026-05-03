@@ -113,6 +113,7 @@ async fn main() -> Result<()> {
 
     // 7. Tauri webview — keeps every existing command + adds the 5 new system ones.
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             // Auth (system-level, stays in shell):

@@ -112,6 +112,7 @@ export function useConversations(client: ApiClient | null) {
         agentId: req.agentId,
         title: req.title ?? "",
         permissionMode: req.permissionMode ?? "default",
+        workingDirectory: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
