@@ -53,12 +53,16 @@ describe("LspServerHandle", () => {
     }
   });
 
-  test("dispose closes the transport", async () => {
+  test("dispose sends shutdown then exit before closing transport", async () => {
     const t = new FakeTransport();
     t.responders["initialize"] = () => ({ capabilities: {} });
     const handle = new LspServerHandle(t, "/repo", "typescript");
     await handle.ready();
+    t.sent.length = 0; // 清除 init 消息
     await handle.dispose();
+    const methods = t.sent.map((s) => s.method);
+    expect(methods[0]).toBe("shutdown");
+    expect(methods[1]).toBe("exit");
     expect(t.disposed).toBe(true);
   });
 

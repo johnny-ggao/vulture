@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 export interface LspTransport {
   send(method: string, params: unknown): Promise<unknown>;
@@ -12,6 +13,7 @@ export class LspServerHandle {
   private initPromise: Promise<void> | null = null;
   private openedFiles = new Set<string>();
   private _lastUsedAt = Date.now();
+  private disposed = false;
 
   constructor(
     private readonly transport: LspTransport,
@@ -28,6 +30,7 @@ export class LspServerHandle {
   }
 
   async ready(): Promise<void> {
+    if (this.disposed) throw new Error("LspServerHandle already disposed");
     if (!this.initPromise) {
       this.initPromise = (async () => {
         await this.transport.send("initialize", {
@@ -51,16 +54,21 @@ export class LspServerHandle {
   async ensureOpen(filePath: string, languageId: string): Promise<void> {
     await this.ready();
     if (this.openedFiles.has(filePath)) return;
-    const text = await readFile(filePath, "utf8");
-    this.transport.notify("textDocument/didOpen", {
-      textDocument: {
-        uri: pathToFileUri(filePath),
-        languageId,
-        version: 1,
-        text,
-      },
-    });
     this.openedFiles.add(filePath);
+    try {
+      const text = await readFile(filePath, "utf8");
+      this.transport.notify("textDocument/didOpen", {
+        textDocument: {
+          uri: pathToFileUri(filePath),
+          languageId,
+          version: 1,
+          text,
+        },
+      });
+    } catch (err) {
+      this.openedFiles.delete(filePath);
+      throw err;
+    }
   }
 
   async send(method: string, params: unknown): Promise<unknown> {
@@ -70,16 +78,18 @@ export class LspServerHandle {
   }
 
   async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
     try {
       await this.transport.send("shutdown", null);
       this.transport.notify("exit", null);
     } catch {
-      // best-effort: server may already be dead
+      // best-effort: server may already be dead; exit notification skipped
     }
     await this.transport.dispose();
   }
 }
 
 function pathToFileUri(path: string): string {
-  return `file://${path.replace(/\\/g, "/")}`;
+  return pathToFileURL(path).href;
 }
