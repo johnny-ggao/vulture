@@ -191,21 +191,29 @@ async function executeLocalTool(
         caseSensitive?: boolean;
         maxMatches?: number;
       };
+      const searchPath = input.path ?? call.workspacePath;
+      if (!searchPath) {
+        throw new ToolCallError("tool.execution_failed", "grep requires path or a workspace context");
+      }
       return await runGrep({
         pattern: input.pattern,
-        path: input.path ?? call.workspacePath,
+        path: searchPath,
         glob: input.glob,
         regex: input.regex ?? false,
         caseSensitive: input.caseSensitive ?? false,
-        maxMatches: input.maxMatches ?? undefined,
+        maxMatches: input.maxMatches,
       });
     }
     case "glob": {
       const input = call.input as { pattern: string; path?: string; maxResults?: number };
+      const searchPath = input.path ?? call.workspacePath;
+      if (!searchPath) {
+        throw new ToolCallError("tool.execution_failed", "glob requires path or a workspace context");
+      }
       return await runGlob({
         pattern: input.pattern,
-        path: input.path ?? call.workspacePath,
-        maxResults: input.maxResults ?? undefined,
+        path: searchPath,
+        maxResults: input.maxResults,
       });
     }
     case "lsp.diagnostics":
@@ -213,7 +221,16 @@ async function executeLocalTool(
     case "lsp.references":
     case "lsp.hover": {
       if (!deps.lspManager) {
-        throw new ToolCallError("lsp.unavailable", "LSP manager not configured");
+        throw new ToolCallError(
+          "tool.execution_failed",
+          "lsp.unavailable: LSP manager not configured",
+        );
+      }
+      if (!call.workspacePath) {
+        throw new ToolCallError(
+          "tool.execution_failed",
+          "lsp.no_workspace: lsp.* tools require a workspacePath",
+        );
       }
       const input = call.input as {
         filePath: string;
@@ -221,7 +238,7 @@ async function executeLocalTool(
         character?: number;
         includeDeclaration?: boolean;
       };
-      const root = call.workspacePath ?? "";
+      const root = call.workspacePath;
       let result;
       if (call.tool === "lsp.diagnostics") {
         result = await deps.lspManager.diagnostics(root, input.filePath);
@@ -239,9 +256,15 @@ async function executeLocalTool(
   }
 }
 
-function mapLspResult(result: { kind: "ok"; value: unknown } | { kind: "error"; error: unknown }): unknown {
+function mapLspResult(
+  result:
+    | { kind: "ok"; value: unknown }
+    | { kind: "error"; error: { code: string; message: string; install_hint?: string } },
+): unknown {
   if (result.kind === "ok") return result.value;
-  return { error: result.error };
+  const e = result.error;
+  const detail = e.install_hint ? `${e.message} — ${e.install_hint}` : e.message;
+  throw new ToolCallError("tool.execution_failed", `${e.code}: ${detail}`);
 }
 
 async function readTool(call: Parameters<ToolCallable>[0]): Promise<unknown> {

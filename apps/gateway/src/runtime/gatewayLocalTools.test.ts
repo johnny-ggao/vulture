@@ -462,6 +462,61 @@ describe("gateway local tools", () => {
     ).rejects.toThrow(/lsp.unavailable|lsp manager|not configured/i);
   });
 
+  test("lsp.* dispatch routes to correct lspManager method", async () => {
+    const workspacePath = await tempWorkspace();
+    const calls: string[] = [];
+    const stubManager = {
+      diagnostics: async () => {
+        calls.push("diagnostics");
+        return { kind: "ok" as const, value: [] };
+      },
+      definition: async () => {
+        calls.push("definition");
+        return { kind: "ok" as const, value: [] };
+      },
+      references: async () => {
+        calls.push("references");
+        return { kind: "ok" as const, value: [] };
+      },
+      hover: async () => {
+        calls.push("hover");
+        return { kind: "ok" as const, value: null };
+      },
+      cacheSize: () => 0,
+      dispose: async () => {},
+    };
+    const tools = makeGatewayLocalTools({
+      shellTools: async () => "shell",
+      lspManager: stubManager,
+    });
+    const base = { runId: "r1", workspacePath, permissionMode: "default" as const };
+    await tools({
+      ...base,
+      callId: "1",
+      tool: "lsp.diagnostics",
+      input: { filePath: join(workspacePath, "a.ts") },
+    });
+    await tools({
+      ...base,
+      callId: "2",
+      tool: "lsp.definition",
+      input: { filePath: join(workspacePath, "a.ts"), line: 0, character: 0 },
+    });
+    await tools({
+      ...base,
+      callId: "3",
+      tool: "lsp.references",
+      input: { filePath: join(workspacePath, "a.ts"), line: 0, character: 0 },
+    });
+    await tools({
+      ...base,
+      callId: "4",
+      tool: "lsp.hover",
+      input: { filePath: join(workspacePath, "a.ts"), line: 0, character: 0 },
+    });
+    expect(calls).toEqual(["diagnostics", "definition", "references", "hover"]);
+  });
+
   test("MCP tools execute through injected MCP service and emit normal tool events", async () => {
     const workspacePath = await tempWorkspace();
     const events: unknown[] = [];
