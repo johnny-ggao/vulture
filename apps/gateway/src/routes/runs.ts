@@ -409,6 +409,7 @@ export async function startConversationRun(
     contextPrompt = combineContextPrompts(
       await safeMemoryPrompt(deps, { agentId: conv.agentId, input: input.input }),
       deps.skillsPromptForAgent?.({ id: conv.agentId }),
+      conversationContextPrompt(conv),
     );
     const baseSession = deps.contexts
       ? new VultureConversationSession(deps.contexts, input.conversationId)
@@ -503,6 +504,30 @@ function rollbackPendingUserMessage(
       err instanceof Error ? err.message : String(err),
     );
   }
+}
+
+/**
+ * Surfaces the per-conversation working directory + @-mention convention
+ * to the agent's context. Emitted only when the user has actually picked a
+ * working directory for this chat — when they haven't, the agent's own
+ * AGENTS.md already documents its bound workspace and adding a duplicate
+ * note would just spend tokens.
+ *
+ * The @-mention sentence is included unconditionally inside this block
+ * (rather than in the agent's static system prompt) because it's only
+ * actionable when the file picker has a workspace to draw from.
+ */
+export function conversationContextPrompt(conv: {
+  workingDirectory: string | null;
+}): string | undefined {
+  if (!conv.workingDirectory) return undefined;
+  return [
+    "<conversation_context>",
+    `Working directory for this conversation: ${conv.workingDirectory}`,
+    "File-touching tools (read / grep / glob / lsp.*) resolve relative paths against this directory.",
+    "When the user references files with `@<path>` in a message, treat the path as relative to this working directory; use the read tool to load it before reasoning about it.",
+    "</conversation_context>",
+  ].join("\n");
 }
 
 export function combineContextPrompts(...parts: Array<string | undefined | null>): string | undefined {
