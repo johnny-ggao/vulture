@@ -91,6 +91,24 @@ describe("resolveRuntimeModelProvider", () => {
     expect(result.message).not.toContain("OPENAI_API_KEY");
   });
 
+  test("Anthropic API key profile works for anthropic model", async () => {
+    const result = await resolveRuntimeModelProvider({
+      modelRef: "anthropic/claude-sonnet-4.5",
+      env: { ANTHROPIC_API_KEY: "sk-ant-test" },
+      shellCallbackUrl: "http://shell:4199",
+      shellToken: "bearer",
+      fetch: shellWithoutCodexFetch,
+    });
+
+    expect(result.kind).toBe("provider");
+    if (result.kind !== "provider") throw new Error("expected model provider");
+    expect(result.provider).toBe("anthropic");
+    expect(result.model).toBe("claude-sonnet-4.5");
+    expect(result.profileId).toBe("anthropic-api-key");
+    expect(result.apiKey).toBe("sk-ant-test");
+    expect(result.modelProvider).toBeDefined();
+  });
+
   test("bare model defaults to openai provider", async () => {
     const result = await resolveRuntimeModelProvider({
       modelRef: "gpt-5.4",

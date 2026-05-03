@@ -1,6 +1,7 @@
 import type { ModelProvider } from "@openai/agents";
 import type { AuthProfileView } from "@vulture/protocol/src/v1/modelConfig";
 import { fetchShellModelAuthSnapshot } from "../domain/modelAuth";
+import { makeAnthropicModelProvider } from "./anthropicModelProvider";
 import { fetchCodexToken, makeCodexModelProvider, type CodexShellError } from "./codexLlm";
 import { parseModelRefWithProfile, type ParsedModelRef } from "./modelRef";
 import { makeResponsesModelProvider } from "./openaiLlm";
@@ -175,11 +176,14 @@ async function resolveProfile(opts: {
         "Anthropic API key is not configured. Set ANTHROPIC_API_KEY, then retry.",
       );
     }
-    return errorForProfile(
-      opts.parsed,
-      opts.profile.id,
-      "Anthropic runtime adapter is not available yet.",
-    );
+    return {
+      kind: "provider",
+      provider: opts.parsed.provider,
+      model: opts.parsed.model,
+      profileId: opts.profile.id,
+      apiKey,
+      modelProvider: makeAnthropicModelProvider({ apiKey, fetch: opts.fetch }),
+    };
   }
 
   return errorForProfile(
