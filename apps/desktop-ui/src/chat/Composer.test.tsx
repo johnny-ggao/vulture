@@ -2,20 +2,12 @@ import { describe, expect, test, mock } from "bun:test";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { Composer } from "./Composer";
 
-const agents = [
-  { id: "a1", name: "Agent One" },
-  { id: "a2", name: "Agent Two" },
-];
-
 describe("Composer", () => {
   test("Enter sends; Shift+Enter does not", () => {
     const onSend = mock(() => {});
     const onCancel = mock(() => {});
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={onSend}
         onCancel={onCancel}
@@ -35,9 +27,6 @@ describe("Composer", () => {
     const onSend = mock(() => {});
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={onSend}
         onCancel={() => {}}
@@ -54,9 +43,6 @@ describe("Composer", () => {
     const onSend = mock(() => {});
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={onSend}
         onCancel={() => {}}
@@ -81,9 +67,6 @@ describe("Composer", () => {
     const onSend = mock(async () => false);
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={onSend}
         onCancel={() => {}}
@@ -108,9 +91,6 @@ describe("Composer", () => {
     const onCancel = mock(() => {});
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={true}
         onSend={() => {}}
         onCancel={onCancel}
@@ -124,9 +104,6 @@ describe("Composer", () => {
     const onCancel = mock(() => {});
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={true}
         onSend={() => {}}
         onCancel={onCancel}
@@ -138,151 +115,10 @@ describe("Composer", () => {
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
 
-  test("agent picker shows current agent name", () => {
-    render(
-      <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
-        running={false}
-        onSend={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    const trigger = screen.getByRole("button", { name: /智能体/ });
-    expect(trigger.textContent).toContain("Agent One");
-  });
-
-  test("clicking the agent picker opens a menu listing all agents", () => {
-    render(
-      <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
-        running={false}
-        onSend={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
-    expect(screen.getByRole("menu", { name: /智能体/ })).toBeDefined();
-    expect(screen.getByRole("menuitemradio", { name: /Agent One/ })).toBeDefined();
-    expect(screen.getByRole("menuitemradio", { name: /Agent Two/ })).toBeDefined();
-  });
-
-  test("selecting an agent from the menu calls onSelectAgent and closes the menu", () => {
-    const onSelectAgent = mock((_id: string) => {});
-    render(
-      <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={onSelectAgent}
-        running={false}
-        onSend={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent Two/ }));
-    expect(onSelectAgent).toHaveBeenCalledWith("a2");
-    expect(screen.queryByRole("menu", { name: /智能体/ })).toBeNull();
-  });
-
-  test("ArrowDown / ArrowUp / Home / End navigate the agent picker", () => {
-    render(
-      <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
-        running={false}
-        onSend={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
-    const menu = screen.getByRole("menu", { name: /智能体/ });
-    const items = screen.getAllByRole("menuitemradio");
-    // Initially the active item (Agent One) gets focus + tabIndex=0
-    expect(items[0].getAttribute("tabindex")).toBe("0");
-    expect(items[1].getAttribute("tabindex")).toBe("-1");
-
-    fireEvent.keyDown(menu, { key: "ArrowDown" });
-    expect(items[0].getAttribute("tabindex")).toBe("-1");
-    expect(items[1].getAttribute("tabindex")).toBe("0");
-
-    fireEvent.keyDown(menu, { key: "End" });
-    expect(items[items.length - 1].getAttribute("tabindex")).toBe("0");
-
-    fireEvent.keyDown(menu, { key: "Home" });
-    expect(items[0].getAttribute("tabindex")).toBe("0");
-
-    fireEvent.keyDown(menu, { key: "ArrowUp" });
-    // Wraps to last
-    expect(items[items.length - 1].getAttribute("tabindex")).toBe("0");
-  });
-
-  test("Escape closes the agent picker without selecting", () => {
-    const onSelectAgent = mock((_id: string) => {});
-    render(
-      <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={onSelectAgent}
-        running={false}
-        onSend={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /智能体/ }));
-    expect(screen.getByRole("menu", { name: /智能体/ })).toBeDefined();
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("menu", { name: /智能体/ })).toBeNull();
-    expect(onSelectAgent).not.toHaveBeenCalled();
-  });
-
-  test("empty input does not send on Enter", () => {
-    const onSend = mock(() => {});
-    render(
-      <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
-        running={false}
-        onSend={onSend}
-        onCancel={() => {}}
-      />,
-    );
-    const ta = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
-    fireEvent.keyDown(ta, { key: "Enter" });
-    expect(onSend).not.toHaveBeenCalled();
-  });
-
-  test("does not clear draft when no agent is selected", () => {
-    const onSend = mock(() => {});
-    render(
-      <Composer
-        agents={[]}
-        selectedAgentId=""
-        onSelectAgent={() => {}}
-        running={false}
-        onSend={onSend}
-        onCancel={() => {}}
-      />,
-    );
-    const ta = screen.getByPlaceholderText(/输入问题/) as HTMLTextAreaElement;
-    fireEvent.change(ta, { target: { value: "hello after switch" } });
-    fireEvent.keyDown(ta, { key: "Enter", shiftKey: false });
-
-    expect(onSend).not.toHaveBeenCalled();
-    expect(ta.value).toBe("hello after switch");
-  });
 
   test("thinking-mode chip popover surfaces all three options after click", () => {
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -301,9 +137,6 @@ describe("Composer", () => {
     );
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         permissionMode="default"
         onChangePermissionMode={onChangePermissionMode}
         running={false}
@@ -329,9 +162,6 @@ describe("Composer", () => {
   test("thinking-mode chip defaults to 快速 with aria-checked on the menu item", () => {
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -351,9 +181,6 @@ describe("Composer", () => {
   test("clicking a thinking-mode menu item moves the aria-checked state", () => {
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -376,9 +203,6 @@ describe("Composer", () => {
   test("attachment chip shows file name + a tabular size + remove button", () => {
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -397,9 +221,6 @@ describe("Composer", () => {
   test("clicking the remove button drops that file from the staged list", () => {
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -417,9 +238,6 @@ describe("Composer", () => {
   test("dropping files onto the composer attaches them", () => {
     const { container } = render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -438,9 +256,6 @@ describe("Composer", () => {
   test("dragenter toggles a dragging class so the drop overlay can show", () => {
     const { container } = render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -456,9 +271,6 @@ describe("Composer", () => {
   test("does NOT enter drag state for non-file drags (text selection etc.)", () => {
     const { container } = render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}
@@ -472,9 +284,6 @@ describe("Composer", () => {
   test("attaching the same file twice de-dupes by (name, size)", () => {
     render(
       <Composer
-        agents={agents}
-        selectedAgentId="a1"
-        onSelectAgent={() => {}}
         running={false}
         onSend={() => {}}
         onCancel={() => {}}

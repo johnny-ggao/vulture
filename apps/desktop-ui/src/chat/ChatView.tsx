@@ -4,6 +4,7 @@ import type { ConversationPermissionMode, MessageDto } from "../api/conversation
 import type { ApprovalDecision, TokenUsageDto } from "../api/runs";
 import type { SubagentSessionDto } from "../api/subagentSessions";
 import type { RunStreamStatus, AnyRunEvent } from "../hooks/useRunStream";
+import { AgentPicker } from "./AgentPicker";
 import { ChatAgentHeader, isRunningStatus } from "./ChatAgentHeader";
 import { Composer } from "./Composer";
 import { MessageBubble } from "./MessageBubble";
@@ -196,6 +197,15 @@ export function ChatView(props: ChatViewProps) {
                   ? "直接输入任务，或从下面的建议挑一条开始。"
                   : "选择智能体，然后直接输入任务。"}
               </p>
+              {props.agents.length > 1 ? (
+                <div className="empty-state-agent-picker">
+                  <AgentPicker
+                    agents={props.agents}
+                    selectedAgentId={props.selectedAgentId}
+                    onSelectAgent={props.onSelectAgent}
+                  />
+                </div>
+              ) : null}
             </div>
             {props.suggestions && props.suggestions.length > 0 ? (
               <div className="empty-state-suggestions">
@@ -238,9 +248,6 @@ export function ChatView(props: ChatViewProps) {
 
       <section className="composer-wrap">
         <Composer
-          agents={props.agents}
-          selectedAgentId={props.selectedAgentId}
-          onSelectAgent={props.onSelectAgent}
           permissionMode={props.permissionMode}
           onChangePermissionMode={props.onChangePermissionMode}
           running={running}

@@ -14376,6 +14376,12 @@ pre {
   color: color-mix(in oklab, var(--text-secondary) 82%, var(--text-tertiary));
 }
 
+.empty-state-agent-picker {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
 .empty-state-suggestions {
   width: min(620px, 100%);
   padding: 16px;

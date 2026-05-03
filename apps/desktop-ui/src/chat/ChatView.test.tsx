@@ -666,7 +666,63 @@ describe("CodingAgentBanner integration", () => {
         onOpenAgentEdit={onOpen}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /切换/i }));
+    fireEvent.click(screen.getByRole("button", { name: /切换工作区/i }));
     expect(onOpen).toHaveBeenCalledWith("coding-agent");
+  });
+});
+
+describe("ChatView empty-state agent picker", () => {
+  const emptyProps = {
+    onSelectAgent: () => {},
+    messages: [] as MessageDto[],
+    runEvents: [],
+    runStatus: "idle" as const,
+    runError: null,
+    submittingApprovals: new Set<string>(),
+    resumingRun: false,
+    onSend: () => {},
+    onCancel: () => {},
+    onResume: () => {},
+    onDecide: () => {},
+  };
+
+  test("empty new conversation with multiple agents shows the AgentPicker", () => {
+    render(
+      <ChatView
+        {...emptyProps}
+        agents={[
+          { id: "local-work-agent", name: "Vulture" },
+          { id: "coding-agent", name: "Vulture Coding" },
+        ]}
+        selectedAgentId="local-work-agent"
+      />,
+    );
+    expect(screen.getByRole("button", { name: /切换智能体/i })).toBeDefined();
+  });
+
+  test("empty new conversation with only one agent hides the picker", () => {
+    render(
+      <ChatView
+        {...emptyProps}
+        agents={[{ id: "local-work-agent", name: "Vulture" }]}
+        selectedAgentId="local-work-agent"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /切换智能体/i })).toBeNull();
+  });
+
+  test("once a conversation has messages the picker is hidden", () => {
+    render(
+      <ChatView
+        {...emptyProps}
+        messages={msgs}
+        agents={[
+          { id: "local-work-agent", name: "Vulture" },
+          { id: "coding-agent", name: "Vulture Coding" },
+        ]}
+        selectedAgentId="local-work-agent"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /切换智能体/i })).toBeNull();
   });
 });

@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ConversationPermissionMode } from "../api/conversations";
-import { AgentAvatar } from "./components";
 
 export type ThinkingMode = "low" | "medium" | "high";
 
@@ -22,9 +21,6 @@ const TEXTAREA_MIN_HEIGHT = 56;
 const TEXTAREA_MAX_HEIGHT = 280;
 
 export interface ComposerProps {
-  agents: ReadonlyArray<{ id: string; name: string }>;
-  selectedAgentId: string;
-  onSelectAgent: (id: string) => void;
   permissionMode?: ConversationPermissionMode;
   onChangePermissionMode?: (mode: ConversationPermissionMode) => void | Promise<void>;
   running: boolean;
@@ -91,7 +87,7 @@ export function Composer(props: ComposerProps) {
 
   async function send() {
     const trimmed = value.trim();
-    if (!trimmed || props.running || !props.selectedAgentId) return;
+    if (!trimmed || props.running) return;
     const result = await props.onSend(trimmed, files);
     if (result === false) return;
     setValue("");
@@ -145,7 +141,7 @@ export function Composer(props: ComposerProps) {
     appendFiles(Array.from(event.dataTransfer.files));
   }
 
-  const canSend = Boolean(value.trim() && props.selectedAgentId && !props.running);
+  const canSend = Boolean(value.trim() && !props.running);
   const permissionMode = props.permissionMode ?? "default";
 
   return (
@@ -181,11 +177,6 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <div className="composer-controls">
-        <AgentPicker
-          agents={props.agents}
-          selectedAgentId={props.selectedAgentId}
-          onSelectAgent={props.onSelectAgent}
-        />
         <ChipPopover<ConversationPermissionMode>
           ariaLabel="工具权限"
           icon={<ShieldIcon />}
@@ -288,144 +279,6 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-interface AgentPickerProps {
-  agents: ReadonlyArray<{ id: string; name: string }>;
-  selectedAgentId: string;
-  onSelectAgent: (id: string) => void;
-}
-
-function AgentPicker({ agents, selectedAgentId, onSelectAgent }: AgentPickerProps) {
-  const [open, setOpen] = useState(false);
-  const [focusedIndex, setFocusedIndex] = useState(-1);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  // Fall back to the first available agent so the trigger always shows a
-  // concrete name once the agent list has loaded (matches the historical
-  // <select> behaviour where an empty value displayed the first option).
-  const selectedAgent =
-    agents.find((a) => a.id === selectedAgentId) ?? agents[0] ?? null;
-  const triggerLabel = selectedAgent?.name ?? "选择智能体";
-
-  function closeAndReturnFocus() {
-    setOpen(false);
-    setFocusedIndex(-1);
-    triggerRef.current?.focus();
-  }
-
-  // Close on Escape and on outside click. Window-level so the menu closes
-  // when clicking elsewhere in the page (titlebar, message list, etc.).
-  // Outside-click closes WITHOUT returning focus (the user moved their
-  // attention elsewhere) — Escape always returns focus to the trigger.
-  useEffect(() => {
-    if (!open) return;
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeAndReturnFocus();
-      }
-    }
-    function onMouseDown(event: MouseEvent) {
-      if (!containerRef.current) return;
-      if (containerRef.current.contains(event.target as Node)) return;
-      setOpen(false);
-      setFocusedIndex(-1);
-    }
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onMouseDown);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onMouseDown);
-    };
-  }, [open]);
-
-  // When the menu opens, move focus into it: the active row if any,
-  // otherwise the first item. This is the WAI-ARIA expectation for menus.
-  useEffect(() => {
-    if (!open) return;
-    const activeIdx = agents.findIndex((a) => a.id === selectedAgent?.id);
-    const initial = activeIdx >= 0 ? activeIdx : 0;
-    setFocusedIndex(initial);
-    queueMicrotask(() => itemRefs.current[initial]?.focus());
-  }, [open, agents, selectedAgent?.id]);
-
-  function handleSelect(id: string) {
-    onSelectAgent(id);
-    closeAndReturnFocus();
-  }
-
-  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (agents.length === 0) return;
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      const next = (focusedIndex + 1) % agents.length;
-      setFocusedIndex(next);
-      itemRefs.current[next]?.focus();
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      const prev = focusedIndex <= 0 ? agents.length - 1 : focusedIndex - 1;
-      setFocusedIndex(prev);
-      itemRefs.current[prev]?.focus();
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      setFocusedIndex(0);
-      itemRefs.current[0]?.focus();
-    } else if (event.key === "End") {
-      event.preventDefault();
-      const last = agents.length - 1;
-      setFocusedIndex(last);
-      itemRefs.current[last]?.focus();
-    }
-  }
-
-  return (
-    <div className="agent-picker" ref={containerRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="agent-picker-trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`智能体: ${triggerLabel}`}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="agent-picker-name">{triggerLabel}</span>
-        <ChevronDownIcon />
-      </button>
-      {open ? (
-        <div
-          className="agent-picker-menu"
-          role="menu"
-          aria-label="智能体"
-          onKeyDown={handleMenuKeyDown}
-        >
-          {agents.map((agent, idx) => {
-            const isActive = agent.id === selectedAgent?.id;
-            return (
-              <button
-                key={agent.id}
-                ref={(node) => {
-                  itemRefs.current[idx] = node;
-                }}
-                type="button"
-                role="menuitemradio"
-                aria-checked={isActive}
-                tabIndex={idx === focusedIndex ? 0 : -1}
-                className={"agent-picker-item" + (isActive ? " active" : "")}
-                onClick={() => handleSelect(agent.id)}
-              >
-                <AgentAvatar agent={agent} size={24} shape="square" />
-                <span className="agent-picker-item-name">{agent.name}</span>
-                {isActive ? <CheckIcon /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 interface ChipPopoverOption<V extends string> {
   value: V;
