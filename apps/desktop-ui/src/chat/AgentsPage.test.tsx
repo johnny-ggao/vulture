@@ -3,7 +3,6 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentsPage, type AgentConfigPatch } from "./AgentsPage";
 import type { Agent, AgentCoreFilesResponse } from "../api/agents";
 import { localAgentFixture as baseAgent } from "./__fixtures__/agent";
-import type { AgentsTab } from "./AgentEditModal";
 
 // Round 17: AgentsPage now persists sort + search via localStorage.
 // Clear those keys before every test so writes from one test don't
@@ -950,28 +949,4 @@ describe("AgentsPage — edit modal", () => {
     expect(screen.queryByRole("tab", { name: "身份" })).toBeNull();
   });
 
-  test("AgentsPage opens the modal for the agent in initialEditTarget on mount", () => {
-    const codingAgent: Agent = {
-      ...baseAgent,
-      id: "coding-agent",
-      name: "Vulture Coding",
-      isPrivateWorkspace: true,
-    };
-    const target: { agentId: string; tab: AgentsTab } = {
-      agentId: "coding-agent",
-      tab: "overview",
-    };
-    render(
-      <AgentsPage
-        {...stableProps}
-        agents={[codingAgent]}
-        selectedAgentId="coding-agent"
-        initialEditTarget={target}
-      />,
-    );
-    // The modal should be open — the Identity tab is visible.
-    expect(screen.getByRole("tab", { name: "身份" })).toBeDefined();
-    // And the agent name appears in the modal header.
-    expect(screen.getByRole("heading", { name: "Vulture Coding", level: 2 })).toBeDefined();
-  });
 });

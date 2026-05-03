@@ -64,6 +64,7 @@ export function useRunController({
   const [resumingRun, setResumingRun] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [permissionMode, setPermissionMode] = useState<ConversationPermissionMode>("default");
+  const [workingDirectory, setWorkingDirectoryState] = useState<string | null>(null);
   const sendingRunRef = useRef(false);
 
   const messages = useMessages(apiClient, activeConversationId);
@@ -135,7 +136,10 @@ export function useRunController({
     (async () => {
       try {
         const conversation = await conversationsApi.get(apiClient, activeConversationId);
-        if (!cancelled) setPermissionMode(conversation.permissionMode);
+        if (!cancelled) {
+          setPermissionMode(conversation.permissionMode);
+          setWorkingDirectoryState(conversation.workingDirectory);
+        }
       } catch {
         if (cancelled) return;
         setActiveConversationId(null);
@@ -266,9 +270,11 @@ export function useRunController({
           agentId: selectedAgentId,
           title: input.slice(0, 40),
           permissionMode,
+          workingDirectory,
         });
         cid = created.id;
         setPermissionMode(created.permissionMode);
+        setWorkingDirectoryState(created.workingDirectory);
         setActiveConversationId(cid);
       }
       const uploaded = await uploadAttachmentsRetry(apiClient, files);
@@ -362,6 +368,7 @@ export function useRunController({
     setActiveConversationId(null);
     setActiveRunId(null);
     setPermissionMode("default");
+    setWorkingDirectoryState(null);
     setRetainedRunEvents({ conversationId: null, events: [] });
     writeActiveChatState({ conversationId: null, runId: null });
   }
@@ -398,6 +405,26 @@ export function useRunController({
     }
   }
 
+  /**
+   * Set or clear the per-conversation working directory. When called before
+   * the first send (no activeConversationId yet), the value is held locally
+   * and persisted on the implicit conversation create. Pass null to clear
+   * (the conversation falls back to the agent's default workspace).
+   */
+  async function setWorkingDirectory(next: string | null) {
+    setWorkingDirectoryState(next);
+    if (!apiClient || !activeConversationId) return;
+    try {
+      const updated = await conversationsApi.update(apiClient, activeConversationId, {
+        workingDirectory: next,
+      });
+      setWorkingDirectoryState(updated.workingDirectory);
+      void refetchConversationsRef.current();
+    } catch (cause) {
+      console.error("Conversation working directory update failed", cause);
+    }
+  }
+
   return {
     activeConversationId,
     activeRunId,
@@ -413,6 +440,7 @@ export function useRunController({
     resumingRun,
     sendError,
     permissionMode,
+    workingDirectory,
     send,
     cancel,
     resume,
@@ -423,6 +451,7 @@ export function useRunController({
     clearActiveConversationIfMatches,
     resetForProfileSwitch,
     changePermissionMode,
+    setWorkingDirectory,
   };
 }
 

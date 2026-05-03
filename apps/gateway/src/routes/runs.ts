@@ -449,7 +449,11 @@ export async function startConversationRun(
       model: deps.modelForAgent({ id: conv.agentId }),
       systemPrompt: deps.systemPromptForAgent({ id: conv.agentId }),
       contextPrompt,
-      workspacePath: deps.workspacePathForAgent({ id: conv.agentId }),
+      // Per-conversation working directory wins when set; fall back to
+       // the agent's bound workspace. Captured here at run creation so the
+       // recovery path naturally uses the same value via state.metadata.
+      workspacePath:
+        conv.workingDirectory ?? deps.workspacePathForAgent({ id: conv.agentId }),
       permissionMode: conv.permissionMode,
       conversationId: input.conversationId,
       userInput: input.input,

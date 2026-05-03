@@ -1231,61 +1231,6 @@ pre {
   border-color: color-mix(in oklab, var(--success) 32%, transparent);
 }
 
-/* CodingAgentBanner — workspace nudge strip shown above the chat */
-.coding-agent-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 6px 12px;
-  background: var(--info-bg);
-  border-bottom: 1px solid color-mix(in oklab, var(--info) 28%, transparent);
-  color: var(--info);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-.coding-agent-banner-text {
-  flex: 1;
-  min-width: 0;
-}
-.coding-agent-banner-actions {
-  display: flex;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-.coding-agent-banner-action {
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in oklab, var(--info) 40%, transparent);
-  background: color-mix(in oklab, var(--info) 10%, transparent);
-  color: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out);
-}
-.coding-agent-banner-action:hover {
-  background: color-mix(in oklab, var(--info) 18%, transparent);
-}
-.coding-agent-banner-dismiss {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  opacity: 0.7;
-  font-size: 14px;
-  transition: opacity var(--duration-fast) var(--ease-out),
-              background-color var(--duration-fast) var(--ease-out);
-}
-.coding-agent-banner-dismiss:hover {
-  opacity: 1;
-  background: color-mix(in oklab, currentColor 12%, transparent);
-}
-
 /* Backwards-compatible aliases — kept so unrelated paths keep working */
 .reconnect-chip {
   margin: 8px auto 0;
@@ -2110,6 +2055,135 @@ pre {
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+.composer-workdir-chip {
+  display: inline-flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--fill-secondary);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+  transition:
+    border-color var(--duration-medium) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.composer-workdir-chip:hover {
+  border-color: var(--text-quaternary);
+}
+.composer-workdir-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 220px;
+}
+.composer-workdir-trigger:hover {
+  color: var(--text-primary);
+  background: var(--fill-quaternary);
+}
+.composer-workdir-trigger:active {
+  background: var(--fill-tertiary);
+}
+.composer-workdir-trigger:focus-visible {
+  outline: 0;
+  background: var(--brand-ring);
+}
+.composer-workdir-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-workdir-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  border: none;
+  border-left: 1px solid var(--fill-secondary);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.composer-workdir-clear:hover {
+  color: var(--text-primary);
+  background: var(--fill-quaternary);
+}
+
+.file-mention-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--fill-secondary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  font-size: 13px;
+}
+.file-mention-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-mention-item.active,
+.file-mention-item:hover {
+  background: var(--fill-quaternary);
+  color: var(--text-primary);
+}
+.file-mention-item mark {
+  background: color-mix(in oklab, var(--brand-500) 22%, transparent);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+.file-mention-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.file-mention-pick {
+  border: none;
+  background: transparent;
+  color: var(--brand-500);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+.file-mention-pick:hover {
+  text-decoration: underline;
+}
+.file-mention-footer {
+  padding: 6px 10px;
+  border-top: 1px solid var(--fill-secondary);
+  color: var(--text-tertiary);
+  font-size: 11px;
 }
 
 /* Custom agent picker — replaces native <select> with brandable popover.

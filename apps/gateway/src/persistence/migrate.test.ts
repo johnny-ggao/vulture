@@ -9,7 +9,7 @@ import { applyMigrations, currentSchemaVersion } from "./migrate";
 const here = dirname(fileURLToPath(import.meta.url));
 const init001 = readFileSync(join(here, "migrations", "001_init.sql"), "utf8");
 const init002 = readFileSync(join(here, "migrations", "002_runs.sql"), "utf8");
-const LATEST_SCHEMA_VERSION = 18;
+const LATEST_SCHEMA_VERSION = 19;
 const migrationsBefore018 = [
   "001_init.sql",
   "002_runs.sql",

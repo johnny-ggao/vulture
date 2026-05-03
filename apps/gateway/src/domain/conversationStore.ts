@@ -14,6 +14,7 @@ interface Row {
   agent_id: string;
   title: string;
   permission_mode: string;
+  working_directory: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -24,6 +25,7 @@ function rowToConversation(r: Row): Conversation {
     agentId: r.agent_id as AgentId,
     title: r.title,
     permissionMode: normalizePermissionMode(r.permission_mode),
+    workingDirectory: r.working_directory ?? null,
     createdAt: r.created_at as Iso8601,
     updatedAt: r.updated_at as Iso8601,
   };
@@ -46,9 +48,17 @@ export class ConversationStore {
     const id = genId();
     this.db
       .query(
-        "INSERT INTO conversations(id, agent_id, title, permission_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO conversations(id, agent_id, title, permission_mode, working_directory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .run(id, req.agentId, req.title ?? "", req.permissionMode ?? "default", now, now);
+      .run(
+        id,
+        req.agentId,
+        req.title ?? "",
+        req.permissionMode ?? "default",
+        req.workingDirectory ?? null,
+        now,
+        now,
+      );
     return this.get(id) as Conversation;
   }
 
@@ -94,6 +104,19 @@ export class ConversationStore {
     this.db
       .query("UPDATE conversations SET permission_mode = ?, updated_at = ? WHERE id = ?")
       .run(permissionMode, nowIso8601(), id);
+    return this.get(id);
+  }
+
+  /**
+   * Set the per-conversation working directory override. Pass null to clear
+   * it (the conversation will fall back to the agent's default workspace).
+   * No path validation here — that's the route layer's job; the store
+   * stores raw strings.
+   */
+  updateWorkingDirectory(id: string, workingDirectory: string | null): Conversation | null {
+    this.db
+      .query("UPDATE conversations SET working_directory = ?, updated_at = ? WHERE id = ?")
+      .run(workingDirectory, nowIso8601(), id);
     return this.get(id);
   }
 }
