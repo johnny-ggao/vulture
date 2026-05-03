@@ -29,7 +29,6 @@ export async function runGlob(opts: GlobOptions): Promise<GlobResult> {
     cwd,
     absolute: true,
     ignore: SKIP_DIRS,
-    onlyFiles: false,
     dot: false,
     followSymbolicLinks: false,
   });

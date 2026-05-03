@@ -44,6 +44,7 @@ describe("runGlob", () => {
       const result = await runGlob({ pattern: "**/*", path: root, maxResults: 2 });
       expect(result.paths.length).toBe(2);
       expect(result.truncated).toBe(true);
+      result.paths.forEach((p) => expect(p.startsWith(root)).toBe(true));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
