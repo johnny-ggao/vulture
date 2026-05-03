@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -45,11 +45,22 @@ export async function createRealTransport(
   const child = spawn(binary, args, {
     cwd: workspaceRoot,
     stdio: ["pipe", "pipe", "pipe"],
-  }) as ChildProcessWithoutNullStreams;
+  });
+  // Drain stderr to avoid OS pipe buffer (~64KB) blocking the child.
+  // rust-analyzer in particular emits substantial diagnostic output on stderr.
+  child.stderr.resume();
   const connection = createMessageConnection(
     new StreamMessageReader(child.stdout),
     new StreamMessageWriter(child.stdin),
   );
+  // Observability: surface jsonrpc errors / close so they aren't silently swallowed
+  // by the default error emitter (which has no subscribers otherwise).
+  connection.onError((data) => {
+    console.warn("[lsp transport] connection error", data);
+  });
+  connection.onClose(() => {
+    // No-op for now; T9+ may proactively evict the handle from the manager cache.
+  });
   connection.listen();
 
   return {

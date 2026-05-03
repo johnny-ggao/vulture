@@ -1,11 +1,19 @@
 import { parseGatewayEnv } from "./env";
 import { buildServer } from "./server";
 import { startWatchdog } from "./runtime/watchdog";
+import { createLspClientManager } from "./runtime/lspClientManager";
+import { createRealTransport } from "./runtime/lspTransport";
 
 async function main() {
   const cfg = parseGatewayEnv(
     process.env as Record<string, string | undefined>,
   );
+  // LSP manager is constructed here (not in buildServer) so tests don't
+  // accumulate sweepers / SIGTERM listeners. Task 9 will wire the dispatcher
+  // to consume it.
+  const lspManager = createLspClientManager({
+    transportFactory: createRealTransport,
+  });
   const app = buildServer(cfg);
 
   // SECURITY: bind 127.0.0.1 only.
@@ -16,6 +24,17 @@ async function main() {
   });
 
   startWatchdog({ pid: cfg.shellPid });
+
+  const onShutdown = async () => {
+    try {
+      await lspManager.dispose();
+    } catch (err) {
+      console.error("[gateway] lspManager dispose failed", err);
+    }
+    process.exit(0);
+  };
+  process.once("SIGTERM", onShutdown);
+  process.once("SIGINT", onShutdown);
 
   // READY handshake: Tauri parent reads stdout for this exact format.
   console.log(`READY ${server.port}`);

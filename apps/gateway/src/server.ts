@@ -29,8 +29,6 @@ import {
 } from "./runtime/openaiLlm";
 import { filterSkillEntries, formatSkillsForPrompt, loadSkillEntries } from "./runtime/skills";
 import { McpClientManager } from "./runtime/mcpClientManager";
-import { createLspClientManager } from "./runtime/lspClientManager";
-import { createRealTransport } from "./runtime/lspTransport";
 import { createRuntimeHookRunner, tryEmitRuntimeHook } from "./runtime/runtimeHooks";
 import { makePermissionPolicyHook } from "./runtime/permissionPolicyHook";
 import { makeArtifactAuditHooks } from "./runtime/artifactAuditHooks";
@@ -93,12 +91,7 @@ export function buildServer(cfg: GatewayConfig): Hono {
   ]);
   runtimeHooksRef = runtimeHooks;
   const mcpClientManager = new McpClientManager(mcpServerStore);
-  const lspManager = createLspClientManager({
-    transportFactory: createRealTransport,
-  });
-  process.once("SIGTERM", () => {
-    void lspManager.dispose();
-  });
+  // LSP manager is injected from main.ts; consumed in Task 9.
   const memoryExtractionLlm = makeLazyLlm({
     toolNames: [],
     toolCallable: async () => {
