@@ -1,19 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Agent } from "../api/agents";
 import type { SkillCatalogEntry, SkillCatalogResponse, SkillListItem, SkillListResponse } from "../api/skills";
-import { Badge, ErrorAlert, Field, SearchInput, Toggle, useCursorGloss } from "./components";
+import { Badge, ErrorAlert, SearchInput, useCursorGloss } from "./components";
 import { SkillDetailModal } from "./SkillDetailModal";
 
 export interface SkillsPageProps {
-  agents: ReadonlyArray<Agent>;
-  selectedAgentId: string;
-  onSelectAgent: (id: string) => void;
-  onLoadSkills: (agentId: string) => Promise<SkillListResponse>;
+  onLoadSkills: () => Promise<SkillListResponse>;
   onLoadSkillCatalog: () => Promise<SkillCatalogResponse>;
   onImportSkillPackage: (packagePath: string) => Promise<SkillCatalogEntry>;
   onInstallSkill: (name: string) => Promise<SkillCatalogEntry>;
   onUpdateSkillCatalog: () => Promise<SkillCatalogResponse>;
-  onSaveAgentSkills: (id: string, skills: string[] | null) => Promise<void>;
 }
 
 type LoadState =
@@ -33,21 +28,15 @@ export function SkillsPage(props: SkillsPageProps) {
     items: SkillCatalogEntry[];
     error: string | null;
   }>({ loading: false, items: [], error: null });
-  const [saving, setSaving] = useState(false);
   const [catalogBusy, setCatalogBusy] = useState<string | null>(null);
   const [importPath, setImportPath] = useState("");
   const [query, setQuery] = useState("");
   const [detailSkillName, setDetailSkillName] = useState<string | null>(null);
 
-  const activeAgent = useMemo(
-    () => props.agents.find((agent) => agent.id === props.selectedAgentId) ?? props.agents[0],
-    [props.agents, props.selectedAgentId],
-  );
-
-  async function load(agentId: string, cancelled: () => boolean = () => false) {
+  async function load(cancelled: () => boolean = () => false) {
     setState((prev) => ({ status: "loading", data: prev.data, error: null }));
     try {
-      const data = await props.onLoadSkills(agentId);
+      const data = await props.onLoadSkills();
       if (!cancelled()) setState({ status: "ready", data, error: null });
     } catch (cause) {
       if (!cancelled()) {
@@ -77,13 +66,12 @@ export function SkillsPage(props: SkillsPageProps) {
   }
 
   useEffect(() => {
-    if (!activeAgent) return;
     let cancelled = false;
-    void load(activeAgent.id, () => cancelled);
+    void load(() => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [activeAgent?.id]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,30 +80,6 @@ export function SkillsPage(props: SkillsPageProps) {
       cancelled = true;
     };
   }, []);
-
-  async function savePolicy(skills: string[] | null) {
-    if (!activeAgent || saving) return;
-    setSaving(true);
-    try {
-      await props.onSaveAgentSkills(activeAgent.id, skills);
-      await load(activeAgent.id);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function toggleSkill(skill: SkillListItem) {
-    const data = state.data;
-    if (!data) return;
-    const current = new Set(
-      data.policy === "all"
-        ? data.items.map((item) => item.name)
-        : data.allowlist ?? [],
-    );
-    if (current.has(skill.name)) current.delete(skill.name);
-    else current.add(skill.name);
-    await savePolicy([...current].sort((left, right) => left.localeCompare(right, "en")));
-  }
 
   async function installCatalogSkill(skill: SkillCatalogEntry) {
     if (catalogBusy) return;
@@ -128,7 +92,7 @@ export function SkillsPage(props: SkillsPageProps) {
         error: null,
         items: replaceCatalogEntry(prev.items, updated),
       }));
-      if (activeAgent) await load(activeAgent.id);
+      await load();
     } catch (cause) {
       await loadCatalog();
       setCatalog((prev) => ({
@@ -170,7 +134,7 @@ export function SkillsPage(props: SkillsPageProps) {
     try {
       const data = await props.onUpdateSkillCatalog();
       setCatalog({ loading: false, items: data.items, error: null });
-      if (activeAgent) await load(activeAgent.id);
+      await load();
     } catch (cause) {
       setCatalog((prev) => ({
         ...prev,
@@ -201,21 +165,11 @@ export function SkillsPage(props: SkillsPageProps) {
     }
   }, [detailSkillName, items]);
 
-  // Round 18 / B2 — marketplace layout: source filter rail + featured
-  // strip (top 3 model-invocable items) + grid of cards. Per-agent
-  // toggle + policy buttons are preserved (the existing per-agent
-  // workflow has no other home), but the visual idiom now reads as a
-  // browseable marketplace rather than a flat allowlist editor.
-  const [sourceFilter, setSourceFilter] = useState<"all" | "workspace" | "profile">("all");
-  const sourceFiltered = sourceFilter === "all"
-    ? filtered
-    : filtered.filter((s) => s.source === sourceFilter);
-  const counts = {
-    all: filtered.length,
-    workspace: filtered.filter((s) => s.source === "workspace").length,
-    profile: filtered.filter((s) => s.source === "profile").length,
-  };
-  const featured = sourceFilter === "all" && !query
+  // Marketplace layout: featured strip + grid of cards. The page is
+  // browse/install oriented; per-agent skill allowlists belong in the
+  // agent editor.
+  const sourceFiltered = filtered;
+  const featured = !query
     ? items.filter((s) => s.modelInvocationEnabled).slice(0, 3)
     : [];
 
@@ -228,27 +182,13 @@ export function SkillsPage(props: SkillsPageProps) {
         <div className="skills-header-titles skills-page-title">
           <h1>技能</h1>
           <p className="skills-header-sub">
-            浏览可加载的能力包；选择一个智能体后按需启用。
+            浏览全局已安装的能力包；安装到个人目录后所有智能体均可启用，启用策略在智能体编辑页管理。
             {state.status === "loading" ? (
               <span className="skills-header-status"> · 刷新中…</span>
-            ) : saving ? (
-              <span className="skills-header-status"> · 保存中…</span>
             ) : null}
           </p>
         </div>
         <div className="skills-header-controls">
-          <select
-            value={activeAgent?.id ?? ""}
-            aria-label="选择智能体"
-            className="skills-agent-select"
-            onChange={(event) => props.onSelectAgent(event.target.value)}
-          >
-            {props.agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
           <div className="skills-search">
             <SearchInput
               value={query}
@@ -258,35 +198,89 @@ export function SkillsPage(props: SkillsPageProps) {
               shortcut
             />
           </div>
-          <div className="skills-policy" role="group" aria-label="批量启用策略">
-            <button
-              type="button"
-              className={
-                "skills-policy-btn" + (data?.policy === "all" ? " is-active" : "")
-              }
-              disabled={!activeAgent || saving}
-              onClick={() => savePolicy(null)}
-              title="启用所有 skill"
-            >
-              全启用
-            </button>
-            <button
-              type="button"
-              className={
-                "skills-policy-btn" + (data?.policy === "none" ? " is-active" : "")
-              }
-              disabled={!activeAgent || saving}
-              onClick={() => savePolicy([])}
-              title="禁用所有 skill"
-            >
-              全禁用
-            </button>
-          </div>
         </div>
       </header>
 
       <ErrorAlert message={state.error} />
       <ErrorAlert message={catalog.error} />
+
+      <div className="skills-market-body">
+        <div className="skills-market-main">
+          {featured.length > 0 ? (
+            <section className="skills-feature-block" aria-label="精选">
+              <div className="skills-section-h">
+                <span>精选</span>
+                <span className="skills-section-h-sub">模型可见的高频技能</span>
+              </div>
+              <div className="skills-feature-row">
+                {featured.map((skill) => (
+                  <button
+                    key={skill.name}
+                    type="button"
+                    className="skills-feature-card"
+                    onClick={() => setDetailSkillName(skill.name)}
+                  >
+                    <div className="skills-feature-name">
+                      {skill.name}
+                      <Badge tone="info">模型可见</Badge>
+                    </div>
+                    <div className="skills-feature-tagline">
+                      {skill.description || "（无描述）"}
+                    </div>
+                    <div className="skills-feature-foot">
+                      <span className="skills-feature-source">
+                        {SOURCE_LABEL[skill.source]}
+                      </span>
+                      <span className="skills-feature-spacer" />
+                      <span
+                        className={"skills-feature-state" + (skill.modelInvocationEnabled ? " on" : "")}
+                      >
+                        {skill.modelInvocationEnabled ? "模型可见" : "仅手动"}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <div className="skills-section-h skills-section-h-grid">
+            <span>全部技能</span>
+            <span className="skills-section-h-sub">
+              {sourceFiltered.length === 0 ? "没有匹配的技能" : `${sourceFiltered.length} 项`}
+            </span>
+          </div>
+
+          {state.status === "loading" && items.length === 0 ? (
+            // First-load shimmer — replaces the empty axis frame so the
+            // user gets immediate visual feedback that data is on its
+            // way (per HIG progressive-loading guidance).
+            <div className="skills-skeleton-grid" aria-hidden="true">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="skills-skeleton-card" />
+              ))}
+            </div>
+          ) : sourceFiltered.length === 0 && state.status !== "loading" ? (
+            <div className="placeholder placeholder-tall">
+              <span>
+                {items.length === 0
+                  ? "还没有已安装的 skill。从下方目录安装一个开始。"
+                  : `没有找到匹配 "${query}" 的 skill。`}
+              </span>
+            </div>
+          ) : (
+            <div className="skills-grid">
+              {sourceFiltered.map((skill) => (
+                <SkillCard
+                  key={skill.name}
+                  skill={skill}
+                  onOpenDetail={() => setDetailSkillName(skill.name)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <section className="skill-catalog-panel" aria-label="Skill Catalog">
         <div className="skill-catalog-head">
@@ -357,118 +351,10 @@ export function SkillsPage(props: SkillsPageProps) {
         )}
       </section>
 
-      <div className="skills-market-body">
-        <aside className="skills-cats" aria-label="技能来源">
-          {(
-            [
-              { id: "all", label: "全部", count: counts.all },
-              { id: "workspace", label: "Workspace", count: counts.workspace },
-              { id: "profile", label: "Profile", count: counts.profile },
-            ] as const
-          ).map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={"skills-cat" + (sourceFilter === c.id ? " active" : "")}
-              onClick={() => setSourceFilter(c.id)}
-            >
-              <span>{c.label}</span>
-              <span className="skills-cat-count">{c.count}</span>
-            </button>
-          ))}
-        </aside>
-
-        <div className="skills-market-main">
-          {featured.length > 0 ? (
-            <section className="skills-feature-block" aria-label="精选">
-              <div className="skills-section-h">
-                <span>精选</span>
-                <span className="skills-section-h-sub">模型可见的高频技能</span>
-              </div>
-              <div className="skills-feature-row">
-                {featured.map((skill) => (
-                  <button
-                    key={skill.name}
-                    type="button"
-                    className="skills-feature-card"
-                    onClick={() => setDetailSkillName(skill.name)}
-                  >
-                    <div className="skills-feature-name">
-                      {skill.name}
-                      <Badge tone="info">模型可见</Badge>
-                    </div>
-                    <div className="skills-feature-tagline">
-                      {skill.description || "（无描述）"}
-                    </div>
-                    <div className="skills-feature-foot">
-                      <span className="skills-feature-source">
-                        {SOURCE_LABEL[skill.source]}
-                      </span>
-                      <span className="skills-feature-spacer" />
-                      <span
-                        className={"skills-feature-state" + (skill.enabled ? " on" : "")}
-                      >
-                        {skill.enabled ? "已启用" : "未启用"}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <div className="skills-section-h skills-section-h-grid">
-            <span>
-              {sourceFilter === "all"
-                ? "全部技能"
-                : SOURCE_LABEL[sourceFilter as keyof typeof SOURCE_LABEL]}
-            </span>
-            <span className="skills-section-h-sub">
-              {sourceFiltered.length === 0 ? "没有匹配的技能" : `${sourceFiltered.length} 项`}
-            </span>
-          </div>
-
-          {state.status === "loading" && items.length === 0 ? (
-            // First-load shimmer — replaces the empty axis frame so the
-            // user gets immediate visual feedback that data is on its
-            // way (per HIG progressive-loading guidance).
-            <div className="skills-skeleton-grid" aria-hidden="true">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="skills-skeleton-card" />
-              ))}
-            </div>
-          ) : sourceFiltered.length === 0 && state.status !== "loading" ? (
-            <div className="placeholder placeholder-tall">
-              <span>
-                {items.length === 0
-                  ? "当前智能体没有可加载的 skill。"
-                  : `没有找到匹配 "${query}" 的 skill。`}
-              </span>
-            </div>
-          ) : (
-            <div className="skills-grid">
-              {sourceFiltered.map((skill) => (
-                <SkillCard
-                  key={skill.name}
-                  skill={skill}
-                  saving={saving}
-                  onOpenDetail={() => setDetailSkillName(skill.name)}
-                  onToggle={() => void toggleSkill(skill)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
       <SkillDetailModal
         open={detailSkill !== null}
         skill={detailSkill}
-        saving={saving}
         onClose={() => setDetailSkillName(null)}
-        onToggle={(s) => {
-          void toggleSkill(s);
-        }}
       />
     </div>
   );
@@ -532,22 +418,14 @@ function SkillCatalogCard({
 
 interface SkillCardProps {
   skill: SkillListItem;
-  saving: boolean;
   onOpenDetail: () => void;
-  onToggle: () => void;
 }
 
 /**
- * Compact card for a single skill. Click anywhere except the inline Toggle
- * to open the detail modal; the Toggle stays interactive in-place so quick
- * enable/disable doesn't require a round-trip through the modal.
- *
- * Round 8 visual cleanup: drop the file path (developer-detail; surface in
- * the detail modal instead) and the verbose 模型可见 / 仅手动 badge in
- * favour of a single dot indicator next to the name. Cards now read as
- * one quick-scan unit instead of three competing rows.
+ * Compact browse card for a single skill. Agent-specific enablement is
+ * intentionally not editable here; that policy belongs in the agent editor.
  */
-function SkillCard({ skill, saving, onOpenDetail, onToggle }: SkillCardProps) {
+function SkillCard({ skill, onOpenDetail }: SkillCardProps) {
   // Shared cursor-gloss handlers; see useCursorGloss for caching details.
   const { ref, ...gloss } = useCursorGloss<HTMLDivElement>();
 
@@ -555,7 +433,6 @@ function SkillCard({ skill, saving, onOpenDetail, onToggle }: SkillCardProps) {
     <div
       ref={ref}
       className="skill-card"
-      data-enabled={skill.enabled ? "true" : "false"}
       {...gloss}
     >
       <button
@@ -579,14 +456,6 @@ function SkillCard({ skill, saving, onOpenDetail, onToggle }: SkillCardProps) {
           {skill.description || "（无描述）"}
         </p>
       </button>
-      <div className="skill-card-toggle">
-        <Toggle
-          ariaLabel={`${skill.enabled ? "禁用" : "启用"} ${skill.name}`}
-          checked={skill.enabled}
-          disabled={saving}
-          onChange={onToggle}
-        />
-      </div>
     </div>
   );
 }

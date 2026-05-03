@@ -76,7 +76,7 @@ export function mountGatewayRoutes(opts: MountGatewayRoutesOptions): void {
       testSearch: makeWebSearchSettingsTester(),
     }),
   );
-  app.route("/", skillsRouter(agentStore, cfg.profileDir));
+  app.route("/", skillsRouter(cfg.profileDir));
   app.route("/", skillCatalogRouter(skillCatalogStore));
   app.route("/", permissionPoliciesRouter(permissionPolicyStore));
   app.route("/", artifactsRouter(artifactStore));

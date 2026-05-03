@@ -187,7 +187,6 @@ export function buildServer(cfg: GatewayConfig): Hono {
     const entries = loadSkillEntries({
       workspaceDir: agent.workspace.path,
       profileDir: cfg.profileDir,
-      agentCoreDir: agentStore.agentCorePath(agent.id),
     });
     return formatSkillsForPrompt(filterSkillEntries(entries, agent.skills));
   };

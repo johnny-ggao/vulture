@@ -35,7 +35,7 @@ import {
   type ProfileView,
 } from "./app/appHelpers";
 import {
-  loadSkillsWithGatewayRestartFallback as loadSkillsRetry,
+  loadGlobalSkillsWithGatewayRestartFallback as loadGlobalSkillsRetry,
   withGatewayRestartForMissingRoute,
 } from "./app/gatewayRestartFallback";
 import { skillsApi } from "./api/skills";
@@ -463,13 +463,6 @@ export function App() {
     if (selectedAgentId === id) setSelectedAgentId(saved.id);
   }
 
-  async function handleSaveAgentSkills(id: string, skills: string[] | null) {
-    if (!apiClient) return;
-    const saved = await agentsApi.update(apiClient, id, { skills });
-    setAgents((prev) => prev.map((agent) => (agent.id === saved.id ? saved : agent)));
-    if (selectedAgentId === id) setSelectedAgentId(saved.id);
-  }
-
   async function handleListAgentFiles(id: string): Promise<AgentCoreFilesResponse> {
     if (!apiClient) throw new Error("Gateway is not ready");
     return agentsApi.listFiles(apiClient, id);
@@ -840,10 +833,7 @@ export function App() {
           ) : null}
           {view === "skills" ? (
             <SkillsPage
-              agents={agents}
-              selectedAgentId={selectedAgentId}
-              onSelectAgent={setSelectedAgentId}
-              onLoadSkills={(agentId) => loadSkillsRetry(apiClient, agentId)}
+              onLoadSkills={() => loadGlobalSkillsRetry(apiClient)}
               onLoadSkillCatalog={() => {
                 if (!apiClient) throw new Error("Gateway is not ready");
                 return skillsApi.listCatalog(apiClient);
@@ -860,7 +850,6 @@ export function App() {
                 if (!apiClient) throw new Error("Gateway is not ready");
                 return skillsApi.updateCatalog(apiClient);
               }}
-              onSaveAgentSkills={handleSaveAgentSkills}
             />
           ) : null}
           {view === "artifacts" ? (

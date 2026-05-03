@@ -14,16 +14,15 @@ export interface SkillEntry {
   description: string;
   filePath: string;
   baseDir: string;
-  source?: "profile" | "workspace" | "agent-core";
+  source?: "profile" | "workspace";
   modelInvocationEnabled: boolean;
   userInvocable?: boolean;
   metadata?: SkillMetadata;
 }
 
 export interface LoadSkillEntriesOptions {
-  workspaceDir: string;
+  workspaceDir?: string;
   profileDir?: string;
-  agentCoreDir?: string;
   maxSkillFileBytes?: number;
 }
 
@@ -42,19 +41,13 @@ export function loadSkillEntries(opts: LoadSkillEntriesOptions): SkillEntry[] {
   const profileSkills = opts.profileDir
     ? loadSkillsFromRoot(join(opts.profileDir, "skills"), maxSkillFileBytes, "profile")
     : [];
-  const workspaceSkills = loadSkillsFromRoot(
-    join(opts.workspaceDir, "skills"),
-    maxSkillFileBytes,
-    "workspace",
-  );
-  const agentCoreSkills = opts.agentCoreDir
-    ? loadSkillsFromRoot(join(opts.agentCoreDir, "skills"), maxSkillFileBytes, "agent-core")
+  const workspaceSkills = opts.workspaceDir
+    ? loadSkillsFromRoot(join(opts.workspaceDir, "skills"), maxSkillFileBytes, "workspace")
     : [];
   const merged = new Map<string, SkillEntry>();
 
   for (const skill of profileSkills) merged.set(skill.name, skill);
   for (const skill of workspaceSkills) merged.set(skill.name, skill);
-  for (const skill of agentCoreSkills) merged.set(skill.name, skill);
 
   return Array.from(merged.values())
     .filter(isEligible)
@@ -100,7 +93,7 @@ export function formatSkillsForPrompt(entries: readonly SkillEntry[]): string {
 function loadSkillsFromRoot(
   rootDir: string,
   maxSkillFileBytes: number,
-  source: "profile" | "workspace" | "agent-core",
+  source: "profile" | "workspace",
 ): SkillEntry[] {
   const root = resolve(rootDir);
   if (!existsSync(root)) return [];
@@ -130,7 +123,7 @@ function loadSkillFromDirectory(
   skillDir: string,
   rootRealPath: string,
   maxSkillFileBytes: number,
-  source: "profile" | "workspace" | "agent-core",
+  source: "profile" | "workspace",
 ): SkillEntry | null {
   const skillDirRealPath = safeRealpath(skillDir);
   if (!skillDirRealPath || !isPathInside(rootRealPath, skillDirRealPath)) return null;

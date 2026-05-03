@@ -1006,7 +1006,7 @@ describe("App integration", () => {
     let skillsRequests = 0;
     const { dir, cleanup } = setup({
       respond: (path, init) => {
-        if (path === "/v1/skills?agentId=local-work-agent" && (init?.method ?? "GET") === "GET") {
+        if (path === "/v1/skills" && (init?.method ?? "GET") === "GET") {
           skillsRequests += 1;
           if (skillsRequests === 1) {
             return new Response(JSON.stringify({ code: "not_found" }), {

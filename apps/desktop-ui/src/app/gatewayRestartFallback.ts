@@ -111,39 +111,14 @@ export async function uploadAttachmentsWithGatewayRestartFallback(
   }
 }
 
-/** Skills list with the same retry-through-restart policy. */
-export async function loadSkillsWithGatewayRestartFallback(
+/** Global skills list with retry-through-restart. */
+export async function loadGlobalSkillsWithGatewayRestartFallback(
   apiClient: ApiClient | null,
-  agentId: string,
 ): Promise<SkillListResponse> {
   if (!apiClient) throw new Error("API client is not ready");
-  try {
-    return await skillsApi.list(apiClient, agentId);
-  } catch (cause) {
-    if (!isMissingSkillsRoute(cause)) throw cause;
-    await invoke("restart_gateway");
-    let lastError: unknown = cause;
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      await delay(200);
-      try {
-        await apiClient.get<{ ok: boolean }>("/healthz");
-      } catch (healthCause) {
-        lastError = healthCause;
-        continue;
-      }
-      try {
-        return await skillsApi.list(apiClient, agentId);
-      } catch (retryCause) {
-        lastError = retryCause;
-        if (
-          isMissingSkillsRoute(retryCause) ||
-          isGatewayRestarting(retryCause)
-        ) {
-          continue;
-        }
-        throw retryCause;
-      }
-    }
-    throw lastError;
-  }
+  return withGatewayRestartForMissingRoute(
+    apiClient,
+    () => skillsApi.list(apiClient),
+    isMissingSkillsRoute,
+  );
 }
