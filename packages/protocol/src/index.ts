@@ -13,6 +13,25 @@ export {
   type OpenApiV1PathParamNames,
   type OpenApiV1PathParams,
 } from "./openapi";
+export {
+  ModelAuthKindSchema,
+  ModelAuthOrderUpdateSchema,
+  ModelAuthProfileViewSchema,
+  ModelProviderCatalogEntrySchema,
+  ModelProviderCatalogSchema,
+  ModelProviderModelSchema,
+  ModelSettingsResponseSchema,
+  ParsedModelRefWithProfileSchema,
+  parseModelRefWithProfile,
+  type ModelAuthKind,
+  type ModelAuthOrderUpdate,
+  type ModelAuthProfileView,
+  type ModelProviderCatalog,
+  type ModelProviderCatalogEntry,
+  type ModelProviderModel,
+  type ModelSettingsResponse,
+  type ParsedModelRefWithProfile,
+} from "./v1/modelConfig";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type Json = JsonPrimitive | Json[] | { [key: string]: Json };
