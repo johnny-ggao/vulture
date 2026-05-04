@@ -493,12 +493,9 @@ describe("App integration", () => {
 
     render(<App />);
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Local Work Agent")).toBeDefined();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "设置" })).toBeDefined();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "设置" }));
     await waitFor(() => {
@@ -507,6 +504,12 @@ describe("App integration", () => {
 
     expect(screen.queryByText("Profiles")).toBeNull();
     expect(screen.queryByPlaceholderText("Profile name")).toBeNull();
+    expect(screen.queryByText("隐私与数据")).toBeNull();
+    expect(screen.queryByText("匿名使用统计")).toBeNull();
+    expect(screen.queryByText("本地数据目录")).toBeNull();
+    expect(screen.queryByText("安静时段")).toBeNull();
+    expect(screen.queryByText("启用安静时段")).toBeNull();
+    expect(screen.queryByText("勿扰例外")).toBeNull();
 
     cleanup();
   }, 15_000);

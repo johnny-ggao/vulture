@@ -9,16 +9,75 @@ import {
   type ModelSettingsFetch,
 } from "../domain/modelAuth";
 import { baseModelProviders } from "../domain/modelCatalog";
+import {
+  probeModelConnectivity,
+  type ModelConnectivityFetch,
+} from "../runtime/modelConnectivityTester";
+import { resolveRuntimeModelProvider } from "../runtime/modelProviderResolver";
 
 export interface ModelSettingsRouterDeps {
   shellCallbackUrl: string;
   shellToken: string;
   env?: Record<string, string | undefined>;
   fetch?: ModelSettingsFetch;
+  /** Override for the connectivity probe (used by tests). */
+  probeFetch?: ModelConnectivityFetch;
+}
+
+interface ModelTestResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  profileId?: string;
+  message: string;
 }
 
 export function modelSettingsRouter(deps: ModelSettingsRouterDeps): Hono {
   const app = new Hono();
+
+  app.post("/v1/model-settings/test", async (c) => {
+    const raw = await c.req.json().catch(() => ({}));
+    const modelRef = typeof (raw as { modelRef?: unknown })?.modelRef === "string"
+      ? ((raw as { modelRef: string }).modelRef).trim()
+      : "";
+    if (!modelRef) {
+      return c.json(
+        { code: "model.test_invalid_input", message: "modelRef is required" },
+        400,
+      );
+    }
+    const resolution = await resolveRuntimeModelProvider({
+      modelRef,
+      env: deps.env,
+      shellCallbackUrl: deps.shellCallbackUrl,
+      shellToken: deps.shellToken,
+      fetch: deps.fetch as typeof fetch | undefined,
+    });
+    if (resolution.kind !== "provider") {
+      const result: ModelTestResult = {
+        ok: false,
+        provider: resolution.provider,
+        model: resolution.model,
+        ...(resolution.profileId ? { profileId: resolution.profileId } : {}),
+        message: resolution.message,
+      };
+      return c.json(result);
+    }
+    const probe = await probeModelConnectivity({
+      provider: resolution.provider,
+      model: resolution.model,
+      apiKey: resolution.apiKey,
+      fetch: deps.probeFetch ?? (deps.fetch as ModelConnectivityFetch | undefined),
+    });
+    const result: ModelTestResult = {
+      ok: probe.ok,
+      provider: resolution.provider,
+      model: resolution.model,
+      profileId: resolution.profileId,
+      message: probe.message,
+    };
+    return c.json(result);
+  });
 
   app.get("/v1/model-settings", async (c) => {
     const shellAuth = await fetchShellModelAuthSnapshot({
@@ -79,6 +138,13 @@ function envAuthProfiles(env: Record<string, string | undefined>): AuthProfileVi
       label: "Anthropic API Key",
       status: env.ANTHROPIC_API_KEY ? "configured" : "missing",
     },
+    {
+      id: "gemini-api-key",
+      provider: "google",
+      mode: "api_key",
+      label: "Gemini API Key",
+      status: (env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY) ? "configured" : "missing",
+    },
   ];
 }
 
@@ -108,6 +174,9 @@ function authOrderForProvider(
   }
   if (provider === "anthropic") {
     return includeKnownProfiles(["anthropic-api-key"], authProfiles);
+  }
+  if (provider === "google") {
+    return includeKnownProfiles(["gemini-api-key"], authProfiles);
   }
   return includeKnownProfiles(shellAuthOrder[provider] ?? staticAuthOrder, authProfiles);
 }

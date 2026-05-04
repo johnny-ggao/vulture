@@ -1,10 +1,12 @@
 import type { ToolCallable } from "@vulture/agent-runtime";
+import { fetchShellModelApiKey } from "../domain/modelAuth";
 import type { GatewayMcpTools } from "../runtime/gatewayLocalTools";
 import { makeGatewayLocalTools } from "../runtime/gatewayLocalTools";
 import {
   createWebAccessService,
   searchProviderFromSettings,
   type FetchLike,
+  type SearchProvider,
 } from "../runtime/webAccess";
 import { tryEmitRuntimeHook, type RuntimeHookRunner } from "../runtime/runtimeHooks";
 import type { GatewayStores } from "./stores";
@@ -23,6 +25,9 @@ export interface CreateGatewayServerLocalToolsOptions {
   runtimeHooks: () => RuntimeHookRunner | undefined;
   fetch?: FetchLike;
   lspManager?: LspClientManager;
+  /** Used to look up shell-stored model API keys (e.g. shared Gemini key). */
+  shellCallbackUrl?: string;
+  shellToken?: string;
   startConversationRun: (
     conversationId: string,
     input: string,
@@ -57,10 +62,13 @@ export function createGatewayServerLocalTools(
     lspManager: opts.lspManager,
     webAccess: createWebAccessService({
       fetch: fetchImpl,
-      resolveSearchProvider: ({ fetch }) => {
-        const settings = webSearchSettingsStore.get();
-        return searchProviderFromSettings(settings, fetch);
-      },
+      resolveSearchProvider: ({ fetch }) =>
+        resolveSearchProviderWithKeyFallback({
+          settings: webSearchSettingsStore.get(),
+          fetch,
+          shellCallbackUrl: opts.shellCallbackUrl,
+          shellToken: opts.shellToken,
+        }),
     }),
     mcp: opts.mcp,
     sessions: {
@@ -266,6 +274,33 @@ export function createGatewayServerLocalTools(
       },
     },
   });
+}
+
+/**
+ * Resolve the configured search provider, falling back to a shell-stored
+ * model API key when the user left the per-search key blank. Currently
+ * only `gemini-search` shares its key with the Gemini model auth profile;
+ * other providers go through the standard sync resolver.
+ */
+async function resolveSearchProviderWithKeyFallback(opts: {
+  settings: ReturnType<GatewayStores["webSearchSettingsStore"]["get"]>;
+  fetch: FetchLike;
+  shellCallbackUrl?: string;
+  shellToken?: string;
+}): Promise<SearchProvider | null> {
+  const { settings, fetch, shellCallbackUrl, shellToken } = opts;
+  if (settings.provider === "gemini-search" && !settings.geminiApiKey && shellCallbackUrl && shellToken) {
+    const sharedKey = await fetchShellModelApiKey({
+      shellCallbackUrl,
+      shellToken,
+      profileId: "gemini-api-key",
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    if (sharedKey) {
+      return searchProviderFromSettings({ ...settings, geminiApiKey: sharedKey }, fetch);
+    }
+  }
+  return searchProviderFromSettings(settings, fetch);
 }
 
 function truncateMemorySnippet(content: string): string {

@@ -13,8 +13,12 @@ const TEST_QUERY = "OpenAI Agents SDK";
 
 export function WebSearchSection(props: SettingsPageProps) {
   const [settings, setSettings] = useState<WebSearchSettingsResponse | null>(null);
-  const [provider, setProvider] = useState<WebSearchProviderId>("duckduckgo-html");
+  const [provider, setProvider] = useState<WebSearchProviderId>("multi");
   const [searxngBaseUrl, setSearxngBaseUrl] = useState("");
+  const [braveApiKey, setBraveApiKey] = useState("");
+  const [tavilyApiKey, setTavilyApiKey] = useState("");
+  const [perplexityApiKey, setPerplexityApiKey] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<WebSearchTestResult | null>(null);
@@ -28,6 +32,10 @@ export function WebSearchSection(props: SettingsPageProps) {
       setSettings(loaded);
       setProvider(loaded.settings.provider);
       setSearxngBaseUrl(loaded.settings.searxngBaseUrl ?? "");
+      setBraveApiKey(loaded.settings.braveApiKey ?? "");
+      setTavilyApiKey(loaded.settings.tavilyApiKey ?? "");
+      setPerplexityApiKey(loaded.settings.perplexityApiKey ?? "");
+      setGeminiApiKey(loaded.settings.geminiApiKey ?? "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -42,7 +50,16 @@ export function WebSearchSection(props: SettingsPageProps) {
   const payload = useMemo(() => ({
     provider,
     searxngBaseUrl: provider === "searxng" ? searxngBaseUrl.trim() : null,
-  }), [provider, searxngBaseUrl]);
+    braveApiKey: provider === "brave-api" ? braveApiKey.trim() : null,
+    tavilyApiKey: provider === "tavily-api" ? tavilyApiKey.trim() : null,
+    perplexityApiKey: provider === "perplexity-api" ? perplexityApiKey.trim() : null,
+    geminiApiKey: provider === "gemini-search" ? geminiApiKey.trim() : null,
+  }), [provider, searxngBaseUrl, braveApiKey, tavilyApiKey, perplexityApiKey, geminiApiKey]);
+
+  const currentDescriptor = useMemo(
+    () => settings?.providers.find((descriptor) => descriptor.id === provider) ?? null,
+    [settings, provider],
+  );
 
   async function testSearch() {
     if (busy) return;
@@ -69,6 +86,10 @@ export function WebSearchSection(props: SettingsPageProps) {
       setSettings(updated);
       setProvider(updated.settings.provider);
       setSearxngBaseUrl(updated.settings.searxngBaseUrl ?? "");
+      setBraveApiKey(updated.settings.braveApiKey ?? "");
+      setTavilyApiKey(updated.settings.tavilyApiKey ?? "");
+      setPerplexityApiKey(updated.settings.perplexityApiKey ?? "");
+      setGeminiApiKey(updated.settings.geminiApiKey ?? "");
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -114,6 +135,7 @@ export function WebSearchSection(props: SettingsPageProps) {
             }}
           >
             {(settings?.providers ?? [
+              { id: "multi", label: "Auto (DDG → Bing → Brave)" },
               { id: "duckduckgo-html", label: "DuckDuckGo HTML" },
               { id: "searxng", label: "SearXNG" },
             ]).map((item) => (
@@ -123,6 +145,9 @@ export function WebSearchSection(props: SettingsPageProps) {
             ))}
           </select>
         </FormRow>
+        {currentDescriptor?.description ? (
+          <p className="settings-hint">{currentDescriptor.description}</p>
+        ) : null}
         <FormRow label="SearXNG URL" hint="仅选择 SearXNG 时需要。">
           <input
             className="provider-text-input"
@@ -132,6 +157,69 @@ export function WebSearchSection(props: SettingsPageProps) {
             placeholder="https://search.example.com"
             onChange={(event) => {
               setSearxngBaseUrl(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Brave API Key" hint="仅选择 Brave Search API 时需要。可在 search.brave.com/api 申请。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Brave API Key"
+            value={braveApiKey}
+            disabled={provider !== "brave-api" || busy === "load"}
+            placeholder="brave-api-key"
+            onChange={(event) => {
+              setBraveApiKey(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Tavily API Key" hint="仅选择 Tavily Search API 时需要。可在 app.tavily.com 申请，注册门槛低于 Brave。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Tavily API Key"
+            value={tavilyApiKey}
+            disabled={provider !== "tavily-api" || busy === "load"}
+            placeholder="tvly-xxxxxxxxxxxxxxxx"
+            onChange={(event) => {
+              setTavilyApiKey(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Perplexity API Key" hint="仅选择 Perplexity 时需要。可在 perplexity.ai/settings/api 申请。返回带引用的 AI 合成答案。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Perplexity API Key"
+            value={perplexityApiKey}
+            disabled={provider !== "perplexity-api" || busy === "load"}
+            placeholder="pplx-xxxxxxxxxxxxxxxx"
+            onChange={(event) => {
+              setPerplexityApiKey(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow
+          label="Gemini API Key"
+          hint="仅选择 Gemini Grounding 时需要。留空则自动复用「模型」里配置的 Gemini API Key（推荐）。可在 aistudio.google.com 免费申请。"
+        >
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Gemini API Key"
+            value={geminiApiKey}
+            disabled={provider !== "gemini-search" || busy === "load"}
+            placeholder="留空 = 复用「模型」里的 Gemini Key"
+            onChange={(event) => {
+              setGeminiApiKey(event.target.value);
               setSaved(false);
               setTestResult(null);
             }}

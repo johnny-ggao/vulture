@@ -1,3 +1,5 @@
+import { Readability } from "@mozilla/readability";
+import { parseHTML } from "linkedom";
 import { ToolCallError } from "@vulture/agent-runtime";
 import type { AppError } from "@vulture/protocol/src/v1/error";
 
@@ -9,18 +11,35 @@ const DEFAULT_MAX_TEXT_BYTES = 256_000;
 export interface WebSearchRequest {
   query: string;
   limit?: number | null;
+  /**
+   * If positive, after the underlying search returns, fetch and extract
+   * readable main-content for the top-K results in parallel and attach it
+   * to each result's `content` field. Skips private/unsafe URLs and
+   * silently drops fetch failures.
+   */
+  withContent?: number | null;
+  /** Per-result content byte cap. Defaults to 32 KiB. */
+  contentMaxBytes?: number | null;
 }
 
 export interface WebSearchResult {
   title: string;
   url: string;
   snippet?: string;
+  /** Readable main-content text, populated when `withContent` is requested. */
+  content?: string;
 }
 
 export interface WebSearchResponse {
   query: string;
   provider: string;
   results: WebSearchResult[];
+  /**
+   * AI-synthesized answer (Perplexity, Gemini grounding, etc.). When present,
+   * the agent can use this directly instead of summarising results itself.
+   * The `results` array still carries the citations behind this answer.
+   */
+  answer?: string;
 }
 
 export interface WebFetchRequest {
@@ -70,8 +89,21 @@ export interface SearchProvider {
 }
 
 export interface SearchProviderSettings {
-  provider: "duckduckgo-html" | "searxng";
+  provider:
+    | "multi"
+    | "duckduckgo-html"
+    | "bing-html"
+    | "brave-html"
+    | "brave-api"
+    | "tavily-api"
+    | "perplexity-api"
+    | "gemini-search"
+    | "searxng";
   searxngBaseUrl: string | null;
+  braveApiKey?: string | null;
+  tavilyApiKey?: string | null;
+  perplexityApiKey?: string | null;
+  geminiApiKey?: string | null;
 }
 
 export interface WebAccessService {
@@ -84,7 +116,14 @@ export interface WebAccessService {
 export interface WebAccessServiceOptions {
   fetch: FetchLike;
   searchProvider?: SearchProvider;
-  resolveSearchProvider?: (ctx: { fetch: FetchLike }) => SearchProvider | null;
+  /**
+   * Per-request provider resolver. May return a Promise so callers can
+   * fall back to async sources (e.g. shell-stored model API keys).
+   * Return null to use the default fallback chain.
+   */
+  resolveSearchProvider?: (
+    ctx: { fetch: FetchLike },
+  ) => SearchProvider | null | Promise<SearchProvider | null>;
   timeoutMs?: number;
   maxTextBytes?: number;
 }
@@ -95,14 +134,26 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
   const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) =>
     runFetchWithTimeout(options.fetch, input, init, timeoutMs);
   const fallbackSearchProvider =
-    options.searchProvider ?? new DuckDuckGoHtmlSearchProvider(fetchWithTimeout);
+    options.searchProvider ?? createDefaultFallbackSearchProvider(fetchWithTimeout);
 
   return {
     classifyUrl,
     search: async (request) => {
-      const provider = options.resolveSearchProvider?.({ fetch: fetchWithTimeout }) ??
-        fallbackSearchProvider;
-      return provider.search(request);
+      const resolved = await Promise.resolve(
+        options.resolveSearchProvider?.({ fetch: fetchWithTimeout }),
+      );
+      const provider = resolved ?? fallbackSearchProvider;
+      const base = await provider.search(request);
+      const k = clampWithContent(request.withContent);
+      if (k === 0) return base;
+      const perResultBytes = clampContentMaxBytes(request.contentMaxBytes);
+      const enriched = await enrichWithContent({
+        results: base.results,
+        topK: k,
+        fetch: fetchWithTimeout,
+        maxBytesPerResult: perResultBytes,
+      });
+      return { ...base, results: enriched };
     },
     fetch: async (request) => {
       const classified = classifyUrl(request.url);
@@ -200,6 +251,289 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
   }
 }
 
+export class BingHtmlSearchProvider implements SearchProvider {
+  readonly id = "bing-html";
+
+  constructor(private readonly fetch: FetchLike) {}
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = `https://www.bing.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
+    const response = await this.fetch(url, {
+      headers: { "User-Agent": "Vulture/1.0" },
+    });
+    const html = await response.text();
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseBingResults(html).slice(0, limit),
+    };
+  }
+}
+
+export class BraveHtmlSearchProvider implements SearchProvider {
+  readonly id = "brave-html";
+
+  constructor(private readonly fetch: FetchLike) {}
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = `https://search.brave.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
+    const response = await this.fetch(url, {
+      headers: { "User-Agent": "Vulture/1.0" },
+    });
+    const html = await response.text();
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseBraveResults(html).slice(0, limit),
+    };
+  }
+}
+
+export function createFallbackSearchProvider(providers: readonly SearchProvider[]): SearchProvider {
+  if (providers.length === 0) {
+    throw new Error("createFallbackSearchProvider requires at least one provider");
+  }
+  return {
+    id: "fallback",
+    async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+      const errors: string[] = [];
+      for (const provider of providers) {
+        try {
+          const result = await provider.search(request);
+          if (result.results.length > 0) return result;
+          errors.push(`${provider.id}: empty`);
+        } catch (cause) {
+          errors.push(`${provider.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        }
+      }
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `web_search exhausted all providers (${errors.join("; ")})`,
+      );
+    },
+  };
+}
+
+export function createDefaultFallbackSearchProvider(fetch: FetchLike): SearchProvider {
+  return createFallbackSearchProvider([
+    new DuckDuckGoHtmlSearchProvider(fetch),
+    new BingHtmlSearchProvider(fetch),
+    new BraveHtmlSearchProvider(fetch),
+  ]);
+}
+
+export class BraveSearchApiProvider implements SearchProvider {
+  readonly id = "brave-api";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Brave Search API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url = new URL("https://api.search.brave.com/res/v1/web/search");
+    url.searchParams.set("q", request.query);
+    url.searchParams.set("count", String(limit));
+    url.searchParams.set("text_decorations", "false");
+    const response = await this.fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        "X-Subscription-Token": this.apiKey,
+        "User-Agent": "Vulture/1.0",
+      },
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Brave Search API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Brave Search API invalid JSON");
+    });
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseBraveApiResults(payload).slice(0, limit),
+    };
+  }
+}
+
+export class TavilySearchProvider implements SearchProvider {
+  readonly id = "tavily-api";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Tavily API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const wantsContent = clampWithContent(request.withContent) > 0;
+    const response = await this.fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+        "User-Agent": "Vulture/1.0",
+      },
+      body: JSON.stringify({
+        query: request.query,
+        max_results: limit,
+        include_raw_content: wantsContent,
+        search_depth: wantsContent ? "advanced" : "basic",
+      }),
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Tavily API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Tavily API invalid JSON");
+    });
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseTavilyResults(payload).slice(0, limit),
+    };
+  }
+}
+
+export class PerplexitySearchProvider implements SearchProvider {
+  readonly id = "perplexity-api";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+  private readonly model: string;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike; model?: string }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Perplexity API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+    this.model = opts.model ?? "sonar";
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const response = await this.fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+        "User-Agent": "Vulture/1.0",
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [{ role: "user", content: request.query }],
+        return_related_questions: false,
+      }),
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Perplexity API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Perplexity API invalid JSON");
+    });
+    const parsed = parsePerplexityResults(payload);
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parsed.results.slice(0, limit),
+      ...(parsed.answer ? { answer: parsed.answer } : {}),
+    };
+  }
+}
+
+export class GeminiSearchProvider implements SearchProvider {
+  readonly id = "gemini-search";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+  private readonly model: string;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike; model?: string }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Gemini API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+    this.model = opts.model ?? "gemini-2.5-flash";
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}` +
+      `:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const response = await this.fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "Vulture/1.0",
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: request.query }] }],
+        tools: [{ google_search: {} }],
+      }),
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Gemini grounding API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Gemini API invalid JSON");
+    });
+    const parsed = parseGeminiGroundingResults(payload);
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parsed.results.slice(0, limit),
+      ...(parsed.answer ? { answer: parsed.answer } : {}),
+    };
+  }
+}
+
 export class SearxngSearchProvider implements SearchProvider {
   readonly id = "searxng";
   private readonly baseUrl: string;
@@ -236,9 +570,96 @@ export function searchProviderFromSettings(
   settings: SearchProviderSettings,
   fetch: FetchLike,
 ): SearchProvider | null {
-  if (settings.provider !== "searxng") return null;
-  if (!settings.searxngBaseUrl) return null;
-  return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
+  switch (settings.provider) {
+    case "multi":
+      return null; // fall through to default fallback chain
+    case "duckduckgo-html":
+      return new DuckDuckGoHtmlSearchProvider(fetch);
+    case "bing-html":
+      return new BingHtmlSearchProvider(fetch);
+    case "brave-html":
+      return new BraveHtmlSearchProvider(fetch);
+    case "brave-api":
+      if (!settings.braveApiKey) return null;
+      return new BraveSearchApiProvider({ apiKey: settings.braveApiKey, fetch });
+    case "tavily-api":
+      if (!settings.tavilyApiKey) return null;
+      return new TavilySearchProvider({ apiKey: settings.tavilyApiKey, fetch });
+    case "perplexity-api":
+      if (!settings.perplexityApiKey) return null;
+      return new PerplexitySearchProvider({ apiKey: settings.perplexityApiKey, fetch });
+    case "gemini-search":
+      if (!settings.geminiApiKey) return null;
+      return new GeminiSearchProvider({ apiKey: settings.geminiApiKey, fetch });
+    case "searxng":
+      if (!settings.searxngBaseUrl) return null;
+      return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
+    default:
+      return null;
+  }
+}
+
+const DEFAULT_CONTENT_MAX_BYTES = 32_000;
+const MAX_CONTENT_TOP_K = 10;
+
+function clampWithContent(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  if (value <= 0) return 0;
+  return Math.min(Math.trunc(value), MAX_CONTENT_TOP_K);
+}
+
+function clampContentMaxBytes(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_CONTENT_MAX_BYTES;
+  }
+  return Math.min(Math.trunc(value), 256_000);
+}
+
+async function enrichWithContent(opts: {
+  results: WebSearchResult[];
+  topK: number;
+  fetch: FetchLike;
+  maxBytesPerResult: number;
+}): Promise<WebSearchResult[]> {
+  const { results, topK, fetch, maxBytesPerResult } = opts;
+  const targets = results.slice(0, topK);
+  const fetched = await Promise.all(
+    targets.map((result) =>
+      // Provider-supplied content (e.g. Tavily raw_content) wins; only fetch when missing.
+      result.content ? Promise.resolve(null) : fetchContentForResult(result.url, fetch, maxBytesPerResult),
+    ),
+  );
+  return results.map((result, index) => {
+    if (index >= topK) return result;
+    if (result.content) {
+      return { ...result, content: truncateUtf8(result.content, maxBytesPerResult) };
+    }
+    const content = fetched[index];
+    return content ? { ...result, content } : result;
+  });
+}
+
+async function fetchContentForResult(
+  url: string,
+  fetch: FetchLike,
+  maxBytes: number,
+): Promise<string | null> {
+  const classified = classifyUrl(url);
+  if (!classified.ok || classified.isPrivate) return null;
+  try {
+    const response = await fetch(classified.url);
+    if (!response.ok) return null;
+    const raw = await response.text();
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("html")) {
+      return truncateUtf8(normalizeWhitespace(raw), maxBytes);
+    }
+    const extracted = extractHtml(raw, classified.url, 0);
+    const text = extracted.text.length > 0 ? extracted.text : normalizeWhitespace(raw);
+    return truncateUtf8(text, maxBytes);
+  } catch {
+    return null;
+  }
 }
 
 export function classifyUrl(value: unknown): WebUrlClassification {
@@ -334,6 +755,165 @@ function parseDuckDuckGoResults(html: string): WebSearchResult[] {
   return results;
 }
 
+function parseBingResults(html: string): WebSearchResult[] {
+  const results: WebSearchResult[] = [];
+  const blockPattern = /<li\b[^>]*class=["'][^"']*\bb_algo\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
+  for (const block of html.matchAll(blockPattern)) {
+    const inner = block[1] ?? "";
+    const headingMatch = inner.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
+    if (!headingMatch) continue;
+    const linkMatch = headingMatch[1].match(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+    const url = decodeHtml(linkMatch[1] ?? "").trim();
+    const title = decodeHtml(stripTags(linkMatch[2] ?? "")).trim();
+    if (!url || !title) continue;
+    const snippet = extractBingSnippet(inner);
+    results.push(snippet ? { title, url, snippet } : { title, url });
+  }
+  return results;
+}
+
+function extractBingSnippet(blockHtml: string): string | undefined {
+  const captionMatch = blockHtml.match(
+    /<div\b[^>]*class=["'][^"']*\bb_caption\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  );
+  const candidate = captionMatch?.[1] ?? blockHtml;
+  const pMatch = candidate.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
+  if (!pMatch) return undefined;
+  const text = normalizeWhitespace(decodeHtml(stripTags(pMatch[1] ?? "")));
+  return text.length > 0 ? text : undefined;
+}
+
+function parseBraveResults(html: string): WebSearchResult[] {
+  // Match "snippet" as a whole class token (not e.g. "snippet-description").
+  const SNIPPET_OPEN = /<div\b[^>]*\bclass=["'](?:[^"']*\s)?snippet(?:\s[^"']*)?["'][^>]*>/i;
+  const SNIPPET_OPEN_GLOBAL = new RegExp(SNIPPET_OPEN.source, "gi");
+  const blockStarts: number[] = [];
+  for (const match of html.matchAll(SNIPPET_OPEN_GLOBAL)) {
+    if (match.index !== undefined) blockStarts.push(match.index);
+  }
+  const results: WebSearchResult[] = [];
+  for (let i = 0; i < blockStarts.length; i += 1) {
+    const start = blockStarts[i];
+    const end = blockStarts[i + 1] ?? html.length;
+    const inner = html.slice(start, end);
+    const linkMatch = inner.match(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!linkMatch) continue;
+    const url = decodeHtml(linkMatch[1] ?? "").trim();
+    const titleHtml = linkMatch[2] ?? "";
+    const titleMatch = titleHtml.match(
+      /<(?:div|span)\b[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span)>/i,
+    );
+    const titleSource = titleMatch?.[1] ?? titleHtml;
+    const title = decodeHtml(stripTags(titleSource)).trim();
+    if (!url || !title) continue;
+    const descMatch = inner.match(
+      /<div\b[^>]*\bclass=["'][^"']*\bsnippet-description\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    );
+    const snippet = descMatch
+      ? normalizeWhitespace(decodeHtml(stripTags(descMatch[1] ?? "")))
+      : "";
+    results.push(snippet ? { title, url, snippet } : { title, url });
+  }
+  return results;
+}
+
+function parseBraveApiResults(payload: unknown): WebSearchResult[] {
+  const value = isRecord(payload) ? payload : {};
+  const web = isRecord(value.web) ? value.web : {};
+  const results = Array.isArray(web.results) ? web.results : [];
+  return results.flatMap((item): WebSearchResult[] => {
+    if (!isRecord(item)) return [];
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    const snippet = typeof item.description === "string" ? item.description.trim() : "";
+    if (!title || !url) return [];
+    return [{ title, url, ...(snippet ? { snippet } : {}) }];
+  });
+}
+
+function parseTavilyResults(payload: unknown): WebSearchResult[] {
+  const value = isRecord(payload) ? payload : {};
+  const results = Array.isArray(value.results) ? value.results : [];
+  return results.flatMap((item): WebSearchResult[] => {
+    if (!isRecord(item)) return [];
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    if (!title || !url) return [];
+    const snippet = typeof item.content === "string" ? item.content.trim() : "";
+    const rawContent = typeof item.raw_content === "string" ? item.raw_content.trim() : "";
+    const result: WebSearchResult = { title, url };
+    if (snippet) result.snippet = snippet;
+    if (rawContent) result.content = rawContent;
+    return [result];
+  });
+}
+
+function parsePerplexityResults(payload: unknown): {
+  results: WebSearchResult[];
+  answer: string;
+} {
+  const value = isRecord(payload) ? payload : {};
+  const choices = Array.isArray(value.choices) ? value.choices : [];
+  const firstChoice = isRecord(choices[0]) ? choices[0] : {};
+  const message = isRecord(firstChoice.message) ? firstChoice.message : {};
+  const answer = typeof message.content === "string" ? message.content.trim() : "";
+
+  // Newer responses ship structured `search_results`; older ones only a citations URL list.
+  const structured = Array.isArray(value.search_results) ? value.search_results : [];
+  if (structured.length > 0) {
+    const results = structured.flatMap((item): WebSearchResult[] => {
+      if (!isRecord(item)) return [];
+      const title = typeof item.title === "string" ? item.title.trim() : "";
+      const url = typeof item.url === "string" ? item.url.trim() : "";
+      if (!url) return [];
+      const snippet = typeof item.snippet === "string" ? item.snippet.trim() : "";
+      return [{ title: title || url, url, ...(snippet ? { snippet } : {}) }];
+    });
+    return { results, answer };
+  }
+
+  const citations = Array.isArray(value.citations) ? value.citations : [];
+  const results = citations.flatMap((item): WebSearchResult[] => {
+    const url = typeof item === "string" ? item.trim() : "";
+    if (!url) return [];
+    return [{ title: url, url }];
+  });
+  return { results, answer };
+}
+
+function parseGeminiGroundingResults(payload: unknown): {
+  results: WebSearchResult[];
+  answer: string;
+} {
+  const value = isRecord(payload) ? payload : {};
+  const candidates = Array.isArray(value.candidates) ? value.candidates : [];
+  const candidate = isRecord(candidates[0]) ? candidates[0] : {};
+  const content = isRecord(candidate.content) ? candidate.content : {};
+  const parts = Array.isArray(content.parts) ? content.parts : [];
+  const answer = parts
+    .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
+    .filter((text) => text.length > 0)
+    .join("")
+    .trim();
+
+  const grounding = isRecord(candidate.groundingMetadata) ? candidate.groundingMetadata : {};
+  const chunks = Array.isArray(grounding.groundingChunks) ? grounding.groundingChunks : [];
+  const results: WebSearchResult[] = [];
+  const seen = new Set<string>();
+  for (const chunk of chunks) {
+    if (!isRecord(chunk)) continue;
+    const web = isRecord(chunk.web) ? chunk.web : null;
+    if (!web) continue;
+    const url = typeof web.uri === "string" ? web.uri.trim() : "";
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const title = typeof web.title === "string" ? web.title.trim() : "";
+    results.push({ title: title || url, url });
+  }
+  return { results, answer };
+}
+
 function parseSearxngResults(payload: unknown): WebSearchResult[] {
   const value = isRecord(payload) ? payload : {};
   const results = Array.isArray(value.results) ? value.results : [];
@@ -357,48 +937,77 @@ function extractHtml(
   text: string;
   links: WebExtractLink[];
 } {
-  const withoutHidden = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ");
-  const bodyLike = withoutHidden.replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ");
-  return {
-    title: firstTextMatch(withoutHidden, /<title[^>]*>([\s\S]*?)<\/title>/i),
-    description: metaContent(withoutHidden, "description"),
-    text: normalizeWhitespace(decodeHtml(stripTagsWithSpaces(bodyLike))),
-    links: extractLinks(withoutHidden, baseUrl, maxLinks),
-  };
+  const metadataDoc = parseHTML(html).document;
+  const title = readMetadataTitle(metadataDoc);
+  const description = readMetadataDescription(metadataDoc);
+  const links = collectDocumentLinks(metadataDoc, baseUrl, maxLinks);
+  const text = readReadableText(html);
+  return { title, description, text, links };
 }
 
-function firstTextMatch(value: string, pattern: RegExp): string | null {
-  const match = value.match(pattern);
-  const text = decodeHtml(stripTags(match?.[1] ?? "")).trim();
-  return text.length > 0 ? text : null;
+function readMetadataTitle(doc: Document): string | null {
+  const value = doc.querySelector("title")?.textContent ?? "";
+  const trimmed = decodeHtml(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
-function metaContent(html: string, name: string): string | null {
-  const pattern = new RegExp(`<meta\\b(?=[^>]*\\bname=["']${escapeRegExp(name)}["'])([^>]*)>`, "i");
-  const match = html.match(pattern);
-  const attrs = match?.[1] ?? "";
-  const content = attrs.match(/\bcontent=["']([^"']*)["']/i)?.[1] ?? "";
-  const text = decodeHtml(content).trim();
-  return text.length > 0 ? text : null;
+function readMetadataDescription(doc: Document): string | null {
+  const meta = doc.querySelector('meta[name="description" i]');
+  const value = meta?.getAttribute("content") ?? "";
+  const trimmed = decodeHtml(value).trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
-function extractLinks(html: string, baseUrl: string, maxLinks: number): WebExtractLink[] {
+function collectDocumentLinks(doc: Document, baseUrl: string, maxLinks: number): WebExtractLink[] {
   const links: WebExtractLink[] = [];
   const seen = new Set<string>();
-  const pattern = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  for (const match of html.matchAll(pattern)) {
+  const anchors = doc.querySelectorAll("a[href]");
+  for (const anchor of anchors) {
     if (links.length >= maxLinks) break;
-    const href = decodeHtml(match[1] ?? "").trim();
-    const text = normalizeWhitespace(decodeHtml(stripTags(match[2] ?? "")));
+    const href = decodeHtml(anchor.getAttribute("href") ?? "").trim();
+    const text = normalizeWhitespace(anchor.textContent ?? "");
     const url = normalizeExtractedUrl(href, baseUrl);
     if (!url || seen.has(url)) continue;
     seen.add(url);
     links.push({ text, url });
   }
   return links;
+}
+
+function readReadableText(html: string): string {
+  const stripped = stripNonContentElements(html);
+  if (stripped.length > 0) return stripped;
+  return readabilityFallback(html);
+}
+
+function stripNonContentElements(html: string): string {
+  const { document } = parseHTML(html);
+  for (const selector of ["script", "style", "noscript", "nav", "header", "footer", "aside", "head"]) {
+    for (const el of document.querySelectorAll(selector)) {
+      el.remove();
+    }
+  }
+  const body = document.body ?? document.documentElement;
+  if (!body) return "";
+  // Replace tags with spaces so block-level boundaries stay separated in text output.
+  const text = (body.innerHTML ?? "").replace(/<[^>]+>/g, " ");
+  return normalizeWhitespace(decodeHtml(text));
+}
+
+function readabilityFallback(html: string): string {
+  try {
+    const { document } = parseHTML(html);
+    const reader = new Readability(document as unknown as globalThis.Document, {
+      charThreshold: 0,
+    });
+    const article = reader.parse();
+    if (article?.textContent) {
+      return normalizeWhitespace(article.textContent);
+    }
+  } catch {
+    // fall through to empty string; caller decides default
+  }
+  return "";
 }
 
 function normalizeExtractedUrl(value: string, baseUrl: string): string | null {
@@ -429,10 +1038,6 @@ function stripTags(value: string): string {
   return value.replace(/<[^>]+>/g, "");
 }
 
-function stripTagsWithSpaces(value: string): string {
-  return value.replace(/<[^>]+>/g, " ");
-}
-
 function decodeHtml(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -441,10 +1046,6 @@ function decodeHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

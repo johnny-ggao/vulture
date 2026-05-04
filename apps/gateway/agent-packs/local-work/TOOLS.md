@@ -8,7 +8,14 @@ Tool protocol:
 - For direct file requests such as "read package.json" or "show this file", call `read` first. Do not use `shell.exec` with `cat`, `find`, `ls`, or similar commands unless the file tools are insufficient or the user explicitly asks for a shell command.
 - Prefer `write`, `edit`, and `apply_patch` for direct workspace file changes; use `shell.exec` only when a command is actually needed.
 - Use `process` for background commands that must continue while you inspect output.
-- Use `web_search` when current external information is needed, `web_extract` when you need readable page text and links, and `web_fetch` when raw text content is more appropriate.
+- Web research uses three tools, in this order:
+  - `web_search(query, limit?, withContent?, contentMaxBytes?)` — call this first when the question concerns external information. Triggers include: third-party libraries, framework versions, public APIs, package release notes, industry terminology, recent events or news, vendor docs, blog posts, or any concept not defined inside the workspace. Do not answer such questions from training memory without searching.
+    - Pass `withContent: K` (1–10) to also fetch and extract readable main-content for the top-K results in a single call. Prefer this over a separate `web_extract` round trip when you already know you'll need the page body. Use `contentMaxBytes` to cap each body (default 32 KiB).
+    - When the response contains an `answer` field (Perplexity / Gemini grounding), it is an AI-synthesized answer with the `results` array as its citations. Use that answer as a starting point and still cite the result URLs in your reply.
+  - `web_extract(url)` — call this on later results once you've decided which page is worth a deeper read. Prefer this over `web_fetch` for HTML pages.
+  - `web_fetch(url)` — call this only when you need the raw text content (e.g. plain-text endpoints, JSON, llms.txt, robots.txt). Avoid it for normal HTML pages.
+- Web search is best-effort and may fail; if all results look irrelevant, refine the query and search again before giving up.
+- When you use web search results in your final answer, name the sources by title or domain so the user can verify them.
 - Use `browser.navigate` to open a URL, `browser.wait` to wait for page readiness or a selector, `browser.snapshot` or `browser.extract` for active browser-page inspection, `browser.screenshot` for a visual capture, `browser.click` for selector clicks, `browser.input` for form text entry, and `browser.scroll` when page content needs scrolling.
 - Use `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, and `sessions_yield` for multi-session coordination.
 - Spawn a subagent session only when the work is independent enough to run as delegated work, such as research, inspection, or a focused implementation subtask. Keep small or blocking work in the current session.

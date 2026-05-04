@@ -75,6 +75,11 @@ export function ArtifactsPage(props: ArtifactsPageProps) {
   );
   const selected =
     filtered.find((item) => item.id === selectedId) ?? filtered[0] ?? null;
+  const typeCounts = useMemo(() => {
+    const counts: Record<ArtifactKind, number> = { text: 0, file: 0, link: 0, data: 0 };
+    for (const item of state.items) counts[item.kind] += 1;
+    return counts;
+  }, [state.items]);
 
   useEffect(() => {
     if (!selected && selectedId !== null) setSelectedId(null);
@@ -89,33 +94,36 @@ export function ArtifactsPage(props: ArtifactsPageProps) {
           <p>运行生成的文本、文件、链接与结构化数据。</p>
         </div>
         <div className="artifacts-toolbar" role="toolbar" aria-label="产物筛选与刷新">
-          <span className="artifacts-count" aria-live="polite">
-            {state.loading ? "加载中…" : `${filtered.length} 个`}
-          </span>
-          <label>
-            <span>智能体</span>
-            <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
-              <option value="all">全部</option>
-              {props.agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>类型</span>
-            <select value={kind} onChange={(event) => setKind(event.target.value as KindFilter)}>
-              {KIND_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" className="btn-secondary" disabled={state.loading} onClick={() => void load()}>
-            {state.loading ? "刷新中…" : "刷新"}
-          </button>
+          <div className="artifacts-count" aria-live="polite">
+            <strong>{state.loading ? "…" : filtered.length}</strong>
+            <span>匹配 / {state.items.length} 总计</span>
+          </div>
+          <div className="artifacts-filter-group">
+            <label>
+              <span>智能体</span>
+              <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
+                <option value="all">全部</option>
+                {props.agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>类型</span>
+              <select value={kind} onChange={(event) => setKind(event.target.value as KindFilter)}>
+                {KIND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="btn-secondary" disabled={state.loading} onClick={() => void load()}>
+              {state.loading ? "刷新中" : "刷新"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -123,6 +131,12 @@ export function ArtifactsPage(props: ArtifactsPageProps) {
 
       <div className="artifacts-layout">
         <section className="artifacts-list" aria-label="产物列表">
+          <div className="artifacts-list-head">
+            <span>最近产物</span>
+            <span>
+              文本 {typeCounts.text} · 数据 {typeCounts.data} · 文件 {typeCounts.file} · 链接 {typeCounts.link}
+            </span>
+          </div>
           {filtered.length === 0 && !state.loading ? (
             <div className="placeholder placeholder-tall">没有匹配的产物。</div>
           ) : (
@@ -135,12 +149,14 @@ export function ArtifactsPage(props: ArtifactsPageProps) {
                 }
                 onClick={() => setSelectedId(artifact.id)}
               >
-                <span className={`artifact-kind artifact-kind-${artifact.kind}`}>
-                  {kindLabel(artifact.kind)}
-                </span>
                 <span className="artifact-row-main">
-                  <strong>{artifact.title}</strong>
-                  <span>
+                  <span className="artifact-row-titleline">
+                    <span className={`artifact-kind artifact-kind-${artifact.kind}`}>
+                      {kindLabel(artifact.kind)}
+                    </span>
+                    <strong>{artifact.title}</strong>
+                  </span>
+                  <span className="artifact-row-meta">
                     {agentNameById.get(artifact.agentId) ?? artifact.agentId} ·{" "}
                     {formatTime(artifact.createdAt)}
                   </span>
@@ -173,11 +189,13 @@ function ArtifactDetail({
   return (
     <div className="artifact-detail-inner">
       <div className="artifact-detail-head">
-        <div>
-          <Badge tone={badgeTone(artifact.kind)}>{kindLabel(artifact.kind)}</Badge>
+        <div className="artifact-detail-titleblock">
+          <div className="artifact-detail-kicker">
+            <Badge tone={badgeTone(artifact.kind)}>{kindLabel(artifact.kind)}</Badge>
+            <span>{formatTime(artifact.createdAt)}</span>
+          </div>
           <h2>{artifact.title}</h2>
         </div>
-        <span>{formatTime(artifact.createdAt)}</span>
       </div>
 
       <div className="artifact-meta-grid">
@@ -204,6 +222,10 @@ function ArtifactDetail({
       ) : null}
 
       <div className="artifact-preview-panel">
+        <div className="artifact-preview-head">
+          <span>内容预览</span>
+          <span>{artifact.mimeType ?? kindLabel(artifact.kind)}</span>
+        </div>
         {artifact.content ? (
           <pre>{previewContent(artifact)}</pre>
         ) : artifact.path || artifact.url ? (
@@ -215,7 +237,7 @@ function ArtifactDetail({
 
       {Object.keys(artifact.metadata).length > 0 ? (
         <details className="artifact-metadata">
-          <summary>Metadata</summary>
+          <summary>元数据</summary>
           <pre>{formatJson(artifact.metadata)}</pre>
         </details>
       ) : null}

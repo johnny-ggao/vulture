@@ -1,5 +1,7 @@
 import vulture256 from "../../assets/brand/vulture-256.png";
 import vulture512 from "../../assets/brand/vulture-512.png";
+import vultureTransparent256 from "../../assets/brand/vulture-transparent-256.png";
+import vultureTransparent512 from "../../assets/brand/vulture-transparent-512.png";
 
 export interface BrandMarkProps {
   /** Square edge length in CSS pixels. The image is rendered at exactly
@@ -14,6 +16,8 @@ export interface BrandMarkProps {
   /** Class applied to the wrapping `<span>` so callers can layer their
    * own halo / shadow without touching the image element. */
   className?: string;
+  /** Use the mascot-only mark with the icon backplate removed. */
+  transparent?: boolean;
 }
 
 /**
@@ -26,8 +30,10 @@ export interface BrandMarkProps {
  * do NOT fill the wrapper — that would clip the badge into a coloured
  * square that fights the icon's intrinsic palette.
  */
-export function BrandMark({ size = 32, alt = "", className }: BrandMarkProps) {
+export function BrandMark({ size = 32, alt = "", className, transparent = false }: BrandMarkProps) {
   const decorative = alt === "";
+  const src = transparent ? vultureTransparent256 : vulture256;
+  const src2x = transparent ? vultureTransparent512 : vulture512;
   return (
     <span
       className={`brand-mark-img${className ? ` ${className}` : ""}`}
@@ -35,8 +41,8 @@ export function BrandMark({ size = 32, alt = "", className }: BrandMarkProps) {
       aria-hidden={decorative ? true : undefined}
     >
       <img
-        src={vulture256}
-        srcSet={`${vulture256} 1x, ${vulture512} 2x`}
+        src={src}
+        srcSet={`${src} 1x, ${src2x} 2x`}
         width={size}
         height={size}
         alt={decorative ? "" : alt}

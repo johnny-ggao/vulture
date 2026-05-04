@@ -29,13 +29,30 @@ describe("/v1/web-search/settings", () => {
     try {
       const res = await app.request("/v1/web-search/settings");
       expect(res.status).toBe(200);
-      await expect(res.json()).resolves.toMatchObject({
-        settings: { provider: "duckduckgo-html", searxngBaseUrl: null },
-        providers: [
-          { id: "duckduckgo-html", requiresBaseUrl: false },
-          { id: "searxng", requiresBaseUrl: true },
-        ],
+      const body = await res.json();
+      expect(body.settings).toMatchObject({
+        provider: "multi",
+        searxngBaseUrl: null,
+        braveApiKey: null,
       });
+      const providerIds = body.providers.map((p: { id: string }) => p.id);
+      expect(providerIds).toEqual([
+        "multi",
+        "duckduckgo-html",
+        "bing-html",
+        "brave-html",
+        "brave-api",
+        "tavily-api",
+        "perplexity-api",
+        "gemini-search",
+        "searxng",
+      ]);
+      const braveApi = body.providers.find((p: { id: string }) => p.id === "brave-api");
+      expect(braveApi).toMatchObject({ requiresBaseUrl: false, requiresApiKey: true });
+      const tavilyApi = body.providers.find((p: { id: string }) => p.id === "tavily-api");
+      expect(tavilyApi).toMatchObject({ requiresBaseUrl: false, requiresApiKey: true });
+      const searxng = body.providers.find((p: { id: string }) => p.id === "searxng");
+      expect(searxng).toMatchObject({ requiresBaseUrl: true, requiresApiKey: false });
     } finally {
       cleanup();
     }
@@ -86,7 +103,78 @@ describe("/v1/web-search/settings", () => {
 
       const current = await app.request("/v1/web-search/settings");
       await expect(current.json()).resolves.toMatchObject({
-        settings: { provider: "duckduckgo-html" },
+        settings: { provider: "multi" },
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("PATCH persists tavily-api with API key and rejects missing key", async () => {
+    const { app, cleanup } = fixture();
+    try {
+      const ok = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "tavily-api", tavilyApiKey: "tvly-secret" }),
+      });
+      expect(ok.status).toBe(200);
+      await expect(ok.json()).resolves.toMatchObject({
+        settings: { provider: "tavily-api", tavilyApiKey: "tvly-secret" },
+      });
+
+      const bad = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "tavily-api", tavilyApiKey: null }),
+      });
+      expect(bad.status).toBe(400);
+      await expect(bad.json()).resolves.toMatchObject({
+        code: "web_search.invalid_settings",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("PATCH persists brave-api with API key and rejects missing key", async () => {
+    const { app, cleanup } = fixture();
+    try {
+      const ok = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "brave-api", braveApiKey: "br-secret" }),
+      });
+      expect(ok.status).toBe(200);
+      await expect(ok.json()).resolves.toMatchObject({
+        settings: { provider: "brave-api", braveApiKey: "br-secret" },
+      });
+
+      const bad = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "brave-api", braveApiKey: null }),
+      });
+      expect(bad.status).toBe(400);
+      await expect(bad.json()).resolves.toMatchObject({
+        code: "web_search.invalid_settings",
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("PATCH rejects unknown provider ids", async () => {
+    const { app, cleanup } = fixture();
+    try {
+      const res = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "google-real" }),
+      });
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        code: "web_search.invalid_settings",
       });
     } finally {
       cleanup();

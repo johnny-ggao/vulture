@@ -34,6 +34,20 @@ export interface ModelSettingsResponse {
   providers: ModelProviderView[];
 }
 
+export interface ModelTestRequest {
+  modelRef: string;
+}
+
+export interface ModelTestResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  profileId?: string;
+  message: string;
+}
+
 export const modelSettingsApi = {
   get: (client: ApiClient) => client.get<ModelSettingsResponse>("/v1/model-settings"),
+  test: (client: ApiClient, input: ModelTestRequest) =>
+    client.post<ModelTestResult>("/v1/model-settings/test", input),
 };

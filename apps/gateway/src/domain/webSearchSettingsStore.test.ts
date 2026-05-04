@@ -13,12 +13,13 @@ function tempStore() {
 }
 
 describe("WebSearchSettingsStore", () => {
-  test("returns DuckDuckGo HTML defaults when no settings file exists", () => {
+  test("returns multi-engine fallback defaults when no settings file exists", () => {
     const { store, cleanup } = tempStore();
     try {
       expect(store.get()).toMatchObject({
-        provider: "duckduckgo-html",
+        provider: "multi",
         searxngBaseUrl: null,
+        braveApiKey: null,
       });
     } finally {
       cleanup();
@@ -35,6 +36,7 @@ describe("WebSearchSettingsStore", () => {
       expect(updated).toMatchObject({
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com/",
+        braveApiKey: null,
       });
       expect(store.get()).toEqual(updated);
     } finally {
@@ -50,6 +52,119 @@ describe("WebSearchSettingsStore", () => {
       );
       expect(() => store.update({ provider: "searxng", searxngBaseUrl: "file:///tmp" }))
         .toThrow("searxngBaseUrl must be http(s)");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("accepts each scrape-based provider id without extra fields", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      for (const provider of ["multi", "duckduckgo-html", "bing-html", "brave-html"] as const) {
+        const updated = store.update({ provider });
+        expect(updated.provider).toBe(provider);
+        expect(updated.searxngBaseUrl).toBeNull();
+        expect(updated.braveApiKey).toBeNull();
+      }
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("persists brave-api with an API key and rejects empty keys", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "brave-api",
+        braveApiKey: "  brave-key-value  ",
+      });
+      expect(updated).toMatchObject({
+        provider: "brave-api",
+        braveApiKey: "brave-key-value",
+      });
+
+      expect(() => store.update({ provider: "brave-api", braveApiKey: null })).toThrow(
+        "braveApiKey is required",
+      );
+      expect(() => store.update({ provider: "brave-api", braveApiKey: "   " })).toThrow(
+        "braveApiKey is required",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("persists tavily-api with an API key and rejects empty keys", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "tavily-api",
+        tavilyApiKey: "  tvly-key-value  ",
+      });
+      expect(updated).toMatchObject({
+        provider: "tavily-api",
+        tavilyApiKey: "tvly-key-value",
+      });
+
+      expect(() => store.update({ provider: "tavily-api", tavilyApiKey: null })).toThrow(
+        "tavilyApiKey is required",
+      );
+      expect(() => store.update({ provider: "tavily-api", tavilyApiKey: "   " })).toThrow(
+        "tavilyApiKey is required",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("persists perplexity-api with an API key and rejects empty keys", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "perplexity-api",
+        perplexityApiKey: "pplx-key",
+      });
+      expect(updated).toMatchObject({
+        provider: "perplexity-api",
+        perplexityApiKey: "pplx-key",
+      });
+      expect(() => store.update({ provider: "perplexity-api", perplexityApiKey: null })).toThrow(
+        "perplexityApiKey is required",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("persists gemini-search with an API key and tolerates a blank key (model-auth fallback)", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "gemini-search",
+        geminiApiKey: "AIzaXYZ",
+      });
+      expect(updated).toMatchObject({
+        provider: "gemini-search",
+        geminiApiKey: "AIzaXYZ",
+      });
+
+      // Blank key is intentionally allowed: at runtime we fall back to the
+      // shell-stored Gemini model auth key.
+      const cleared = store.update({ provider: "gemini-search", geminiApiKey: null });
+      expect(cleared.provider).toBe("gemini-search");
+      expect(cleared.geminiApiKey).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("rejects unknown provider ids", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      expect(() =>
+        // @ts-expect-error - intentionally invalid input
+        store.update({ provider: "google-real" }),
+      ).toThrow("provider is invalid");
     } finally {
       cleanup();
     }

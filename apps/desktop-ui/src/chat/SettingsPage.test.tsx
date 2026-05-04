@@ -124,28 +124,47 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
       throw new Error("unused");
     }),
     onGetModelSettings: mock(async () => defaultModelSettings),
+    onTestModelConnectivity: mock(async (input: { modelRef: string }) => ({
+      ok: true,
+      provider: input.modelRef.split("/")[0] ?? "openai",
+      model: input.modelRef,
+      profileId: "openai-api-key",
+      message: "stub auth ok",
+    })),
     onGetWebSearchSettings: mock(async (): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: "duckduckgo-html",
+        provider: "multi",
         searxngBaseUrl: null,
+        braveApiKey: null,
+        tavilyApiKey: null,
+        perplexityApiKey: null,
+        geminiApiKey: null,
         updatedAt: "2026-05-01T00:00:00.000Z",
       },
       providers: [
-        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
+        { id: "brave-api", label: "Brave Search API", requiresBaseUrl: false, requiresApiKey: true },
       ],
     })),
     onUpdateWebSearchSettings: mock(async (
       input: UpdateWebSearchSettings,
     ): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: input.provider ?? "duckduckgo-html",
+        provider: input.provider ?? "multi",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
+        braveApiKey: input.braveApiKey ?? null,
+        tavilyApiKey: input.tavilyApiKey ?? null,
+        perplexityApiKey: input.perplexityApiKey ?? null,
+        geminiApiKey: input.geminiApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
-        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
+        { id: "brave-api", label: "Brave Search API", requiresBaseUrl: false, requiresApiKey: true },
       ],
     })),
     onTestWebSearchSettings: mock(async (): Promise<WebSearchTestResult> => ({
@@ -187,6 +206,12 @@ describe("SettingsPage MCP tools", () => {
     render(<SettingsPage {...props()} />);
 
     expect(screen.queryByText("跟随系统 / 浅色 / 深色。当前跟随系统。")).toBeNull();
+    expect(screen.queryByText("隐私与数据")).toBeNull();
+    expect(screen.queryByText("匿名使用统计")).toBeNull();
+    expect(screen.queryByText("本地数据目录")).toBeNull();
+    expect(screen.queryByText("安静时段")).toBeNull();
+    expect(screen.queryByText("启用安静时段")).toBeNull();
+    expect(screen.queryByText("勿扰例外")).toBeNull();
     expect(screen.getByRole("radio", { name: "系统" }).getAttribute("aria-checked")).toBe("true");
 
     fireEvent.click(screen.getByRole("radio", { name: "深色" }));
@@ -280,7 +305,7 @@ describe("SettingsPage MCP tools", () => {
 });
 
 describe("SettingsPage Models", () => {
-  test("model tab shows a summary and provider directory", async () => {
+  test("model tab shows the provider directory", async () => {
     render(<SettingsPage {...props({
       authStatus: {
         apiKey: { state: "set", source: "keychain" },
@@ -290,14 +315,11 @@ describe("SettingsPage Models", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "模型" }));
 
-    const summary = screen.getByLabelText("模型配置摘要");
-    expect(within(summary).getByText(/已配置/)).toBeDefined();
-    await waitFor(() => {
-      expect(within(summary).getByText(/2 个提供方/)).toBeDefined();
-    });
-    expect(within(summary).getByText(/当前查看/)).toBeDefined();
+    expect(screen.queryByLabelText("模型配置摘要")).toBeNull();
     expect(screen.queryByRole("heading", { level: 3, name: "默认值" })).toBeNull();
-    expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
+    });
     expect(screen.getAllByRole("option").length).toBeGreaterThan(1);
     expect(screen.getByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
     expect(screen.getByText("连接方式")).toBeDefined();
@@ -367,6 +389,85 @@ describe("SettingsPage Models", () => {
 
     expect(screen.getByLabelText("Anthropic API Key API Key")).toBeDefined();
   });
+
+  test("test connectivity button calls onTestModelConnectivity and shows ok feedback", async () => {
+    const onTestModelConnectivity = mock(async () => ({
+      ok: true,
+      provider: "openai",
+      model: "openai/gpt-5.5",
+      profileId: "openai-api-key",
+      message: "OpenAI auth ok · 12 个模型可见",
+    }));
+
+    render(<SettingsPage {...props({
+      onTestModelConnectivity,
+      onGetModelSettings: mock(async (): Promise<ModelSettingsResponse> => ({
+        providers: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            api: "openai-responses",
+            models: [
+              { id: "gpt-5.5", modelRef: "openai/gpt-5.5", name: "GPT-5.5", reasoning: true, input: ["text"] },
+            ],
+            authProfiles: [
+              { id: "openai-api-key", provider: "openai", mode: "api_key", label: "OpenAI API Key", status: "configured" },
+            ],
+            authOrder: ["openai-api-key"],
+          },
+        ],
+      })),
+    })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "测试连通性" })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
+
+    await waitFor(() => {
+      expect(onTestModelConnectivity).toHaveBeenCalledWith({ modelRef: "openai/gpt-5.5" });
+    });
+    expect(await screen.findByText(/OpenAI auth ok/)).toBeDefined();
+  });
+
+  test("test connectivity button surfaces upstream failure inline", async () => {
+    const onTestModelConnectivity = mock(async () => ({
+      ok: false,
+      provider: "google",
+      model: "google/gemini-2.5-flash",
+      profileId: "gemini-api-key",
+      message: "Gemini 连通失败 (HTTP 401: Invalid API key)",
+    }));
+
+    render(<SettingsPage {...props({
+      onTestModelConnectivity,
+      onGetModelSettings: mock(async (): Promise<ModelSettingsResponse> => ({
+        providers: [
+          {
+            id: "google",
+            name: "Google Gemini",
+            api: "gemini-generate-content",
+            models: [
+              { id: "gemini-2.5-flash", modelRef: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", reasoning: true, input: ["text"] },
+            ],
+            authProfiles: [
+              { id: "gemini-api-key", provider: "google", mode: "api_key", label: "Gemini API Key", status: "configured" },
+            ],
+            authOrder: ["gemini-api-key"],
+          },
+        ],
+      })),
+    })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "测试连通性" })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
+
+    expect(await screen.findByText(/Gemini 连通失败.*HTTP 401.*Invalid API key/)).toBeDefined();
+  });
 });
 
 describe("SettingsPage Web Search", () => {
@@ -375,13 +476,18 @@ describe("SettingsPage Web Search", () => {
       input: UpdateWebSearchSettings,
     ): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: input.provider ?? "duckduckgo-html",
+        provider: input.provider ?? "multi",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
+        braveApiKey: input.braveApiKey ?? null,
+        tavilyApiKey: input.tavilyApiKey ?? null,
+        perplexityApiKey: input.perplexityApiKey ?? null,
+        geminiApiKey: input.geminiApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
-        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false },
-        { id: "searxng", label: "SearXNG", requiresBaseUrl: true },
+        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
+        { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
       ],
     }));
     const onTestWebSearchSettings = mock(async (): Promise<WebSearchTestResult> => ({
@@ -410,6 +516,10 @@ describe("SettingsPage Web Search", () => {
       expect(onTestWebSearchSettings).toHaveBeenCalledWith({
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
+        braveApiKey: null,
+        tavilyApiKey: null,
+        perplexityApiKey: null,
+        geminiApiKey: null,
         query: "OpenAI Agents SDK",
       });
     });
@@ -420,6 +530,10 @@ describe("SettingsPage Web Search", () => {
       expect(onUpdateWebSearchSettings).toHaveBeenCalledWith({
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
+        braveApiKey: null,
+        tavilyApiKey: null,
+        perplexityApiKey: null,
+        geminiApiKey: null,
       });
     });
   });

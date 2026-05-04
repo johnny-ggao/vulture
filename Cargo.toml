@@ -16,7 +16,11 @@ axum = "0.7"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 fs2 = "0.4"
-keyring = "3"
+# keyring v3 ships with NO default credential backend — without an explicit
+# platform feature it silently falls back to a mock store that returns Ok()
+# but never persists anything. Enable each platform's native backend so
+# set/get actually hit the OS credential store.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 libc = "0.2"
 rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }

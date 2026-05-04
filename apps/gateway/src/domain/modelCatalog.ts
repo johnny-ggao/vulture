@@ -52,6 +52,21 @@ export function baseModelProviders(): ModelProviderView[] {
       ],
       authOrder: ["anthropic-api-key"],
     },
+    {
+      id: "google",
+      name: "Google Gemini",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      api: "gemini-generate-content",
+      auth: "api-key",
+      models: [
+        model("google", "gemini-3.1-pro-preview", "Gemini 3.1 Pro (Preview)", true, ["text", "image"]),
+        model("google", "gemini-3-flash-preview", "Gemini 3 Flash (Preview)", true, ["text", "image"]),
+        model("google", "gemini-2.5-pro", "Gemini 2.5 Pro", true, ["text", "image"]),
+        model("google", "gemini-2.5-flash", "Gemini 2.5 Flash", true, ["text", "image"]),
+      ],
+      authProfiles: [],
+      authOrder: ["gemini-api-key"],
+    },
   ];
 }
 

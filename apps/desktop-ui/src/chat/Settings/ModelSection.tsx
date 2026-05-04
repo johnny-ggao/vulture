@@ -3,11 +3,13 @@ import type {
   AuthProfileView,
   ModelProviderView,
   ModelSettingsResponse,
+  ModelTestResult,
 } from "../../api/modelSettings";
+import { ErrorAlert } from "../components";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
-type BusyAction = "save" | "clear" | "signin" | "signout" | null;
+type BusyAction = "save" | "clear" | "signin" | "signout" | "test" | null;
 
 export function ModelSection(props: SettingsPageProps) {
   const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
@@ -16,6 +18,8 @@ export function ModelSection(props: SettingsPageProps) {
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState("");
   const [busy, setBusy] = useState<BusyAction>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<ModelTestResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,34 +55,26 @@ export function ModelSection(props: SettingsPageProps) {
   useEffect(() => {
     setEditingProfileId(null);
     setDraftKey("");
+    setActionError(null);
+    setTestResult(null);
   }, [activeId]);
 
   const configuredCount = useMemo(
     () => providers.filter((provider) => provider.authProfiles.some(isConfigured)).length,
     [providers],
   );
-  const totalModels = useMemo(
-    () => providers.reduce((sum, provider) => sum + provider.models.length, 0),
-    [providers],
-  );
-  const totalProfiles = useMemo(
-    () => providers.reduce((sum, provider) => sum + provider.authProfiles.length, 0),
-    [providers],
-  );
-  const configuredProfiles = useMemo(
-    () => providers.reduce(
-      (sum, provider) => sum + provider.authProfiles.filter(isConfigured).length,
-      0,
-    ),
-    [providers],
-  );
 
-  async function safeAction<T>(label: NonNullable<BusyAction>, fn: () => Promise<T>) {
+  async function safeAction<T>(label: NonNullable<BusyAction>, fn: () => Promise<T>): Promise<boolean> {
     setBusy(label);
+    setActionError(null);
     try {
       await fn();
       const next = await props.onGetModelSettings().catch(() => settings);
       if (next) setSettings(next);
+      return true;
+    } catch (cause) {
+      setActionError(formatActionError(cause));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -86,8 +82,18 @@ export function ModelSection(props: SettingsPageProps) {
 
   async function handleSaveApiKey() {
     const key = draftKey.trim();
-    if (!key || !editingProfileId) return;
-    await safeAction("save", () => props.onSaveApiKey(editingProfileId, key));
+    console.info("[model-auth] save clicked", {
+      editingProfileId,
+      keyLength: key.length,
+      busy,
+    });
+    if (!key || !editingProfileId) {
+      console.warn("[model-auth] save aborted (missing key or profile)");
+      return;
+    }
+    const ok = await safeAction("save", () => props.onSaveApiKey(editingProfileId, key));
+    console.info("[model-auth] save result", { ok });
+    if (!ok) return;
     setEditingProfileId(null);
     setDraftKey("");
   }
@@ -104,19 +110,42 @@ export function ModelSection(props: SettingsPageProps) {
     await safeAction("signout", () => props.onSignOutCodex());
   }
 
+  async function handleTestConnectivity() {
+    if (!active) return;
+    const firstModel = active.models[0];
+    if (!firstModel) {
+      setTestResult({
+        ok: false,
+        provider: active.id,
+        model: "",
+        message: "该提供方没有可用模型，无法测试。",
+      });
+      return;
+    }
+    setBusy("test");
+    setActionError(null);
+    setTestResult(null);
+    try {
+      const result = await props.onTestModelConnectivity({ modelRef: firstModel.modelRef });
+      setTestResult(result);
+    } catch (cause) {
+      console.error("[model-auth] test connectivity failed", { cause });
+      setTestResult({
+        ok: false,
+        provider: active.id,
+        model: firstModel.modelRef,
+        message: formatActionError(cause),
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <SettingsSection
       title="模型"
       description="配置模型提供商与连接方式。OpenAI API Key 与 ChatGPT/Codex 登录会合并在同一个 OpenAI 提供方下。"
     >
-      <div className="provider-summary-strip" aria-label="模型配置摘要" aria-live="polite">
-        <span><b>{configuredCount}</b> / {providers.length} 已配置</span>
-        <span>{providers.length} 个提供方</span>
-        <span>{totalModels} 个模型</span>
-        <span>{configuredProfiles} / {totalProfiles} 个连接可用</span>
-        <span>当前查看 <b>{active?.name ?? "无"}</b></span>
-      </div>
-
       {isLoading ? (
         <div className="provider-banner provider-banner-neutral" role="status">
           <span className="provider-banner-mark" aria-hidden="true" />
@@ -223,6 +252,31 @@ export function ModelSection(props: SettingsPageProps) {
                 <span>连接方式</span>
                 <span>{active.authProfiles.length} 个</span>
               </div>
+              <ErrorAlert message={actionError} />
+              {active.authProfiles.some(isConfigured) ? (
+                <div className="provider-test-row">
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={busy !== null}
+                    onClick={handleTestConnectivity}
+                    aria-label="测试连通性"
+                  >
+                    {busy === "test" ? "测试中…" : "测试连通性"}
+                  </button>
+                  {testResult ? (
+                    <span
+                      role="status"
+                      className={
+                        "provider-test-feedback " +
+                        (testResult.ok ? "provider-test-feedback-ok" : "provider-test-feedback-fail")
+                      }
+                    >
+                      {testResult.ok ? "✓ " : "✗ "}{testResult.message}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               {active.authProfiles.map((profile) => (
                 <AuthProfileRow
                   key={profile.id}
@@ -230,7 +284,15 @@ export function ModelSection(props: SettingsPageProps) {
                   editing={editingProfileId === profile.id}
                   draftKey={draftKey}
                   busy={busy}
-                  onEdit={() => setEditingProfileId(profile.id)}
+                  onEdit={() => {
+                    console.info("[model-auth] edit clicked", {
+                      profileId: profile.id,
+                      provider: profile.provider,
+                      currentEditingProfileId: editingProfileId,
+                      busy,
+                    });
+                    setEditingProfileId(profile.id);
+                  }}
                   onDraftKey={setDraftKey}
                   onSaveApiKey={handleSaveApiKey}
                   onCancelEdit={() => {
@@ -271,6 +333,21 @@ export function ModelSection(props: SettingsPageProps) {
       )}
     </SettingsSection>
   );
+}
+
+function formatActionError(cause: unknown): string {
+  if (typeof cause === "string") return cause;
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === "object") {
+    const record = cause as { message?: unknown };
+    if (typeof record.message === "string") return record.message;
+    try {
+      return JSON.stringify(cause);
+    } catch {
+      return String(cause);
+    }
+  }
+  return String(cause);
 }
 
 function MetricCell({ label, value }: { label: string; value: string }) {
@@ -508,6 +585,7 @@ function inputLabel(input: string): string {
 function providerGlyph(providerId: string): string {
   if (providerId === "openai") return "O";
   if (providerId === "anthropic") return "A";
+  if (providerId === "google") return "G";
   return providerId.slice(0, 1).toUpperCase();
 }
 
@@ -517,6 +595,9 @@ function providerMarkStyle(providerId: string) {
   }
   if (providerId === "openai") {
     return { background: "rgba(16, 107, 61, 0.10)", color: "#0a6b3d" };
+  }
+  if (providerId === "google") {
+    return { background: "rgba(26, 115, 232, 0.10)", color: "#1a73e8" };
   }
   return { background: "rgba(120,120,120,0.10)", color: "#666" };
 }

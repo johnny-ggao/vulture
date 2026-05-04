@@ -451,10 +451,17 @@ async function webSearchTool(
   call: Parameters<ToolCallable>[0],
   webAccess: WebAccessService,
 ): Promise<unknown> {
-  const input = call.input as { query?: unknown; limit?: unknown };
+  const input = call.input as {
+    query?: unknown;
+    limit?: unknown;
+    withContent?: unknown;
+    contentMaxBytes?: unknown;
+  };
   return webAccess.search({
     query: typeof input.query === "string" ? input.query : "",
     limit: typeof input.limit === "number" ? input.limit : null,
+    withContent: typeof input.withContent === "number" ? input.withContent : null,
+    contentMaxBytes: typeof input.contentMaxBytes === "number" ? input.contentMaxBytes : null,
   });
 }
 

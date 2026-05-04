@@ -6,6 +6,7 @@ export const ModelApiSchema = z.enum([
   "openai-responses",
   "openai-codex-responses",
   "anthropic-messages",
+  "gemini-generate-content",
 ]);
 export type ModelApi = z.infer<typeof ModelApiSchema>;
 
