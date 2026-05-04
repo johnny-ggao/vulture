@@ -11,7 +11,7 @@ import type { SettingsPageProps } from "./types";
  * GeneralSection (C2)
  *
  * Compact shell for the personal-workbench surfaces: appearance / language /
- * hotkeys / startup / quiet hours / privacy / data dir.
+ * hotkeys / startup.
  *
  * Surfaces marked "unwired" are intentionally non-functional — they show
  * the user where each knob will live without pretending to do anything.
@@ -28,7 +28,7 @@ export function GeneralSection(props: SettingsPageProps) {
   return (
     <SettingsSection
       title="通用"
-      description="外观、语言、快捷键、启动、安静时段、隐私与数据。"
+      description="外观、语言、快捷键与启动。"
     >
       <SectionGroup title="外观与语言">
         <FormRow label="外观">
@@ -60,40 +60,6 @@ export function GeneralSection(props: SettingsPageProps) {
           </span>
         </FormRow>
         <FormRow label="菜单栏图标"><DisabledToggle on /></FormRow>
-      </SectionGroup>
-
-      <SectionGroup
-        title="安静时段"
-        hint="此时段内心跳与定时任务暂停，避免在睡眠/会议时打扰。"
-      >
-        <FormRow label="启用安静时段"><DisabledToggle /></FormRow>
-        <FormRow label="时段">
-          <span className="time-range">
-            <span className="time-chip">22:30</span>
-            <span className="time-sep">至</span>
-            <span className="time-chip">08:00</span>
-            <span className="time-meta">每天</span>
-          </span>
-        </FormRow>
-        <FormRow label="勿扰例外" hint="紧急消息渠道仍会送达。">
-          <div className="tag-row">
-            <span className="tag">家人消息</span>
-            <span className="tag">告警 webhook</span>
-            <button type="button" className="tag-add" disabled>+ 添加</button>
-          </div>
-        </FormRow>
-      </SectionGroup>
-
-      <SectionGroup title="隐私与数据">
-        <FormRow label="匿名使用统计" hint="不包含对话内容，可随时关闭。"><DisabledToggle /></FormRow>
-        <FormRow label="崩溃报告"><DisabledToggle on /></FormRow>
-        <FormRow label="本地数据目录" hint="所有对话、记忆、密钥均存放于此。">
-          <div className="path-row">
-            <span className="mono-soft">~/Library/Application Support/Vulture</span>
-            <button type="button" className="btn-secondary btn-sm" disabled>在 Finder 显示</button>
-            <button type="button" className="btn-secondary btn-sm" disabled>更改…</button>
-          </div>
-        </FormRow>
       </SectionGroup>
     </SettingsSection>
   );

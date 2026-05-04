@@ -206,6 +206,12 @@ describe("SettingsPage MCP tools", () => {
     render(<SettingsPage {...props()} />);
 
     expect(screen.queryByText("跟随系统 / 浅色 / 深色。当前跟随系统。")).toBeNull();
+    expect(screen.queryByText("隐私与数据")).toBeNull();
+    expect(screen.queryByText("匿名使用统计")).toBeNull();
+    expect(screen.queryByText("本地数据目录")).toBeNull();
+    expect(screen.queryByText("安静时段")).toBeNull();
+    expect(screen.queryByText("启用安静时段")).toBeNull();
+    expect(screen.queryByText("勿扰例外")).toBeNull();
     expect(screen.getByRole("radio", { name: "系统" }).getAttribute("aria-checked")).toBe("true");
 
     fireEvent.click(screen.getByRole("radio", { name: "深色" }));
