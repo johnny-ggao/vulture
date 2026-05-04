@@ -70,6 +70,7 @@ fn configured_api_key_profiles(
     [
         ("openai-api-key", "openai", "OpenAI API Key"),
         ("anthropic-api-key", "anthropic", "Anthropic API Key"),
+        ("gemini-api-key", "google", "Gemini API Key"),
     ]
     .into_iter()
     .filter_map(|(id, provider, label)| {

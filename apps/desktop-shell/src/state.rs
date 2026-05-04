@@ -417,6 +417,7 @@ pub fn model_api_key_secret_ref(
     match model_profile_id {
         "openai-api-key" => Ok(openai_secret_ref.to_string()),
         "anthropic-api-key" => Ok(format!("vulture:profile:{profile_id}:anthropic")),
+        "gemini-api-key" => Ok(format!("vulture:profile:{profile_id}:gemini")),
         _ => Err(anyhow!(
             "unsupported model API key profile: {model_profile_id}"
         )),

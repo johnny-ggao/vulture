@@ -2,6 +2,7 @@ import type { ModelProvider } from "@openai/agents";
 import type { AuthProfileView } from "@vulture/protocol/src/v1/modelConfig";
 import { fetchShellModelApiKey, fetchShellModelAuthSnapshot } from "../domain/modelAuth";
 import { makeAnthropicModelProvider } from "./anthropicModelProvider";
+import { makeGeminiModelProvider } from "./geminiModelProvider";
 import { fetchCodexToken, makeCodexModelProvider, type CodexShellError } from "./codexLlm";
 import { parseModelRefWithProfile, type ParsedModelRef } from "./modelRef";
 import { makeResponsesModelProvider } from "./openaiLlm";
@@ -93,6 +94,13 @@ function envAuthProfiles(env: Record<string, string | undefined>): AuthProfileVi
       label: "Anthropic API Key",
       status: env.ANTHROPIC_API_KEY ? "configured" : "missing",
     },
+    {
+      id: "gemini-api-key",
+      provider: "google",
+      mode: "api_key",
+      label: "Gemini API Key",
+      status: (env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY) ? "configured" : "missing",
+    },
   ];
 }
 
@@ -126,6 +134,11 @@ function authOrderForParsed(
   if (parsed.provider === "anthropic") {
     const shellOrder = shellAuthOrder.anthropic;
     return appendIfMissing(shellOrder ?? [], "anthropic-api-key");
+  }
+
+  if (parsed.provider === "google") {
+    const shellOrder = shellAuthOrder.google;
+    return appendIfMissing(shellOrder ?? [], "gemini-api-key");
   }
 
   return shellAuthOrder[parsed.provider] ?? [];
@@ -195,6 +208,31 @@ async function resolveProfile(opts: {
       profileId: opts.profile.id,
       apiKey,
       modelProvider: makeAnthropicModelProvider({ apiKey, fetch: opts.fetch }),
+    };
+  }
+
+  if (opts.profile.id === "gemini-api-key" && opts.parsed.provider === "google") {
+    const apiKey = await resolveApiKey({
+      envValue: opts.env.GEMINI_API_KEY ?? opts.env.GOOGLE_API_KEY,
+      shellCallbackUrl: opts.shellCallbackUrl,
+      shellToken: opts.shellToken,
+      profileId: opts.profile.id,
+      fetch: opts.fetch,
+    });
+    if (!apiKey) {
+      return errorForProfile(
+        opts.parsed,
+        opts.profile.id,
+        "Gemini API key is not configured. Set GEMINI_API_KEY (or save it via Settings), then retry.",
+      );
+    }
+    return {
+      kind: "provider",
+      provider: opts.parsed.provider,
+      model: opts.parsed.model,
+      profileId: opts.profile.id,
+      apiKey,
+      modelProvider: makeGeminiModelProvider({ apiKey, fetch: opts.fetch }),
     };
   }
 
@@ -287,6 +325,13 @@ function defaultMissingAuthError(parsed: ParsedModelRef): RuntimeModelProviderRe
       parsed,
       "openai-api-key",
       "OPENAI_API_KEY not configured. Set the key via Settings or set the env var, then retry.",
+    );
+  }
+  if (parsed.provider === "google") {
+    return errorForProfile(
+      parsed,
+      "gemini-api-key",
+      "Gemini API key is not configured. Set GEMINI_API_KEY (or save it via Settings), then retry.",
     );
   }
   return {

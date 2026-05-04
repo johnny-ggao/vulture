@@ -79,6 +79,13 @@ function envAuthProfiles(env: Record<string, string | undefined>): AuthProfileVi
       label: "Anthropic API Key",
       status: env.ANTHROPIC_API_KEY ? "configured" : "missing",
     },
+    {
+      id: "gemini-api-key",
+      provider: "google",
+      mode: "api_key",
+      label: "Gemini API Key",
+      status: (env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY) ? "configured" : "missing",
+    },
   ];
 }
 
@@ -108,6 +115,9 @@ function authOrderForProvider(
   }
   if (provider === "anthropic") {
     return includeKnownProfiles(["anthropic-api-key"], authProfiles);
+  }
+  if (provider === "google") {
+    return includeKnownProfiles(["gemini-api-key"], authProfiles);
   }
   return includeKnownProfiles(shellAuthOrder[provider] ?? staticAuthOrder, authProfiles);
 }
