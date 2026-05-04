@@ -376,6 +376,112 @@ describe("WebAccessService", () => {
     expect(requested[1]).toContain("bing.com");
   });
 
+  test("withContent enriches top-K results with extracted main-content text", async () => {
+    const fetched: string[] = [];
+    const service = createWebAccessService({
+      fetch: async (url) => {
+        const href = String(url);
+        fetched.push(href);
+        if (href.includes("duckduckgo.com")) {
+          return new Response(
+            [
+              '<a class="result__a" href="https://example.com/a">Result A</a>',
+              '<a class="result__a" href="https://example.com/b">Result B</a>',
+              '<a class="result__a" href="https://example.com/c">Result C</a>',
+            ].join("\n"),
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        }
+        if (href === "https://example.com/a") {
+          return new Response(
+            "<html><body><nav>chrome</nav><main><h1>Page A</h1><p>Body of page A.</p></main></body></html>",
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        }
+        if (href === "https://example.com/b") {
+          return new Response(
+            "<html><body><main><p>Body of page B.</p></main></body></html>",
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        }
+        return new Response("Page C plain", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        });
+      },
+    });
+
+    const result = await service.search({ query: "agents", withContent: 2 });
+    expect(result.results).toHaveLength(3);
+    expect(result.results[0]).toMatchObject({
+      title: "Result A",
+      url: "https://example.com/a",
+    });
+    expect(result.results[0].content).toContain("Page A");
+    expect(result.results[0].content).toContain("Body of page A");
+    expect(result.results[0].content).not.toContain("chrome");
+    expect(result.results[1].content).toContain("Body of page B");
+    // Third result should not be enriched (withContent=2)
+    expect(result.results[2].content).toBeUndefined();
+    // Must have made the search call plus 2 page fetches, not 3
+    expect(fetched.filter((u) => u.startsWith("https://example.com/"))).toHaveLength(2);
+  });
+
+  test("withContent silently skips private hosts and fetch failures", async () => {
+    const service = createWebAccessService({
+      fetch: async (url) => {
+        const href = String(url);
+        if (href.includes("duckduckgo.com")) {
+          return new Response(
+            [
+              '<a class="result__a" href="http://127.0.0.1:9999/private">Private</a>',
+              '<a class="result__a" href="https://example.com/broken">Broken</a>',
+              '<a class="result__a" href="https://example.com/ok">OK</a>',
+            ].join("\n"),
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        }
+        if (href.includes("/broken")) {
+          return new Response("server error", { status: 500 });
+        }
+        if (href.includes("/ok")) {
+          return new Response(
+            "<html><body><main><p>OK page body.</p></main></body></html>",
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        }
+        throw new Error(`unexpected fetch ${href}`);
+      },
+    });
+
+    const result = await service.search({ query: "x", withContent: 5 });
+    expect(result.results[0].content).toBeUndefined(); // private
+    expect(result.results[1].content).toBeUndefined(); // 500
+    expect(result.results[2].content).toContain("OK page body");
+  });
+
+  test("withContent caps each result body at contentMaxBytes", async () => {
+    const big = "a".repeat(2000);
+    const service = createWebAccessService({
+      fetch: async (url) => {
+        const href = String(url);
+        if (href.includes("duckduckgo.com")) {
+          return new Response(
+            '<a class="result__a" href="https://example.com/big">Big</a>',
+            { status: 200, headers: { "content-type": "text/html" } },
+          );
+        }
+        return new Response(`<html><body><main><p>${big}</p></main></body></html>`, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      },
+    });
+
+    const result = await service.search({ query: "x", withContent: 1, contentMaxBytes: 100 });
+    expect(result.results[0].content?.length).toBe(100);
+  });
+
   test("fetches public urls and truncates content by byte limit", async () => {
     const service = createWebAccessService({
       fetch: async () =>

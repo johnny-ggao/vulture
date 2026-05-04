@@ -11,12 +11,23 @@ const DEFAULT_MAX_TEXT_BYTES = 256_000;
 export interface WebSearchRequest {
   query: string;
   limit?: number | null;
+  /**
+   * If positive, after the underlying search returns, fetch and extract
+   * readable main-content for the top-K results in parallel and attach it
+   * to each result's `content` field. Skips private/unsafe URLs and
+   * silently drops fetch failures.
+   */
+  withContent?: number | null;
+  /** Per-result content byte cap. Defaults to 32 KiB. */
+  contentMaxBytes?: number | null;
 }
 
 export interface WebSearchResult {
   title: string;
   url: string;
   snippet?: string;
+  /** Readable main-content text, populated when `withContent` is requested. */
+  content?: string;
 }
 
 export interface WebSearchResponse {
@@ -111,7 +122,17 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
     search: async (request) => {
       const provider = options.resolveSearchProvider?.({ fetch: fetchWithTimeout }) ??
         fallbackSearchProvider;
-      return provider.search(request);
+      const base = await provider.search(request);
+      const k = clampWithContent(request.withContent);
+      if (k === 0) return base;
+      const perResultBytes = clampContentMaxBytes(request.contentMaxBytes);
+      const enriched = await enrichWithContent({
+        results: base.results,
+        topK: k,
+        fetch: fetchWithTimeout,
+        maxBytesPerResult: perResultBytes,
+      });
+      return { ...base, results: enriched };
     },
     fetch: async (request) => {
       const classified = classifyUrl(request.url);
@@ -387,6 +408,63 @@ export function searchProviderFromSettings(
       return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
     default:
       return null;
+  }
+}
+
+const DEFAULT_CONTENT_MAX_BYTES = 32_000;
+const MAX_CONTENT_TOP_K = 10;
+
+function clampWithContent(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  if (value <= 0) return 0;
+  return Math.min(Math.trunc(value), MAX_CONTENT_TOP_K);
+}
+
+function clampContentMaxBytes(value: number | null | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_CONTENT_MAX_BYTES;
+  }
+  return Math.min(Math.trunc(value), 256_000);
+}
+
+async function enrichWithContent(opts: {
+  results: WebSearchResult[];
+  topK: number;
+  fetch: FetchLike;
+  maxBytesPerResult: number;
+}): Promise<WebSearchResult[]> {
+  const { results, topK, fetch, maxBytesPerResult } = opts;
+  const targets = results.slice(0, topK);
+  const fetched = await Promise.all(
+    targets.map((result) => fetchContentForResult(result.url, fetch, maxBytesPerResult)),
+  );
+  return results.map((result, index) => {
+    if (index >= topK) return result;
+    const content = fetched[index];
+    return content ? { ...result, content } : result;
+  });
+}
+
+async function fetchContentForResult(
+  url: string,
+  fetch: FetchLike,
+  maxBytes: number,
+): Promise<string | null> {
+  const classified = classifyUrl(url);
+  if (!classified.ok || classified.isPrivate) return null;
+  try {
+    const response = await fetch(classified.url);
+    if (!response.ok) return null;
+    const raw = await response.text();
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("html")) {
+      return truncateUtf8(normalizeWhitespace(raw), maxBytes);
+    }
+    const extracted = extractHtml(raw, classified.url, 0);
+    const text = extracted.text.length > 0 ? extracted.text : normalizeWhitespace(raw);
+    return truncateUtf8(text, maxBytes);
+  } catch {
+    return null;
   }
 }
 

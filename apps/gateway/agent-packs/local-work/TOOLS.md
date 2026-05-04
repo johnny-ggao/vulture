@@ -9,8 +9,9 @@ Tool protocol:
 - Prefer `write`, `edit`, and `apply_patch` for direct workspace file changes; use `shell.exec` only when a command is actually needed.
 - Use `process` for background commands that must continue while you inspect output.
 - Web research uses three tools, in this order:
-  - `web_search(query, limit?)` — call this first when the question concerns external information. Triggers include: third-party libraries, framework versions, public APIs, package release notes, industry terminology, recent events or news, vendor docs, blog posts, or any concept not defined inside the workspace. Do not answer such questions from training memory without searching.
-  - `web_extract(url)` — call this on the most relevant search results to read the readable main content (title, description, body text, outbound links). Prefer this over `web_fetch` for HTML pages.
+  - `web_search(query, limit?, withContent?, contentMaxBytes?)` — call this first when the question concerns external information. Triggers include: third-party libraries, framework versions, public APIs, package release notes, industry terminology, recent events or news, vendor docs, blog posts, or any concept not defined inside the workspace. Do not answer such questions from training memory without searching.
+    - Pass `withContent: K` (1–10) to also fetch and extract readable main-content for the top-K results in a single call. Prefer this over a separate `web_extract` round trip when you already know you'll need the page body. Use `contentMaxBytes` to cap each body (default 32 KiB).
+  - `web_extract(url)` — call this on later results once you've decided which page is worth a deeper read. Prefer this over `web_fetch` for HTML pages.
   - `web_fetch(url)` — call this only when you need the raw text content (e.g. plain-text endpoints, JSON, llms.txt, robots.txt). Avoid it for normal HTML pages.
 - Web search is best-effort and may fail; if all results look irrelevant, refine the query and search again before giving up.
 - When you use web search results in your final answer, name the sources by title or domain so the user can verify them.
