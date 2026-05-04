@@ -7,6 +7,48 @@ export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promis
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_TEXT_BYTES = 256_000;
+const DEFAULT_SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+
+// Realistic Chrome User-Agent so HTML SERPs don't immediately bot-flag us.
+// "Vulture/1.0" was a tell that triggered DDG/Bing reCAPTCHA challenges.
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+// Markers used to fence untrusted external content from prompt injection.
+// Mirrors the OpenClaw `wrapWebContent` convention so the agent learns one
+// envelope shape across web_search / web_extract / web_fetch results.
+const EXTERNAL_CONTENT_START = "EXTERNAL_UNTRUSTED_CONTENT";
+const EXTERNAL_CONTENT_END = "END_EXTERNAL_UNTRUSTED_CONTENT";
+const EXTERNAL_MARKER_RE = /<<<\/?(?:EXTERNAL_UNTRUSTED_CONTENT|END_EXTERNAL_UNTRUSTED_CONTENT)\b[^>]*>>>/g;
+
+let externalIdCounter = 0;
+function nextExternalId(): string {
+  externalIdCounter = (externalIdCounter + 1) >>> 0;
+  return externalIdCounter.toString(36);
+}
+
+/**
+ * Wrap a string returned by the web (search results, extracted page text,
+ * fetched body) so the LLM sees an explicit untrusted-content boundary.
+ * Strips any pre-existing markers from the input before wrapping so a
+ * malicious page can't forge the closing tag and inject instructions.
+ */
+export function wrapExternalContent(content: string): string {
+  if (!content) return content;
+  const sanitized = content.replace(EXTERNAL_MARKER_RE, "");
+  const id = nextExternalId();
+  return `<<<${EXTERNAL_CONTENT_START} id="${id}">>>\n${sanitized}\n<<<${EXTERNAL_CONTENT_END} id="${id}">>>`;
+}
+
+function wrapResult(result: WebSearchResult): WebSearchResult {
+  return {
+    ...result,
+    title: wrapExternalContent(result.title),
+    ...(result.snippet ? { snippet: wrapExternalContent(result.snippet) } : {}),
+    ...(result.content ? { content: wrapExternalContent(result.content) } : {}),
+  };
+}
 
 export interface WebSearchRequest {
   query: string;
@@ -126,15 +168,24 @@ export interface WebAccessServiceOptions {
   ) => SearchProvider | null | Promise<SearchProvider | null>;
   timeoutMs?: number;
   maxTextBytes?: number;
+  /** Search-result cache TTL in ms; 0 disables caching. Default 15 minutes. */
+  searchCacheTtlMs?: number;
+}
+
+interface SearchCacheEntry {
+  expiresAt: number;
+  value: WebSearchResponse;
 }
 
 export function createWebAccessService(options: WebAccessServiceOptions): WebAccessService {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxTextBytes = options.maxTextBytes ?? DEFAULT_MAX_TEXT_BYTES;
+  const cacheTtlMs = options.searchCacheTtlMs ?? DEFAULT_SEARCH_CACHE_TTL_MS;
   const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) =>
     runFetchWithTimeout(options.fetch, input, init, timeoutMs);
   const fallbackSearchProvider =
     options.searchProvider ?? createDefaultFallbackSearchProvider(fetchWithTimeout);
+  const searchCache = new Map<string, SearchCacheEntry>();
 
   return {
     classifyUrl,
@@ -143,17 +194,33 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
         options.resolveSearchProvider?.({ fetch: fetchWithTimeout }),
       );
       const provider = resolved ?? fallbackSearchProvider;
+      const cacheKey = cacheTtlMs > 0 ? buildSearchCacheKey(provider.id, request) : null;
+      if (cacheKey) {
+        const cached = searchCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          return cached.value;
+        }
+      }
       const base = await provider.search(request);
       const k = clampWithContent(request.withContent);
-      if (k === 0) return base;
       const perResultBytes = clampContentMaxBytes(request.contentMaxBytes);
-      const enriched = await enrichWithContent({
-        results: base.results,
-        topK: k,
-        fetch: fetchWithTimeout,
-        maxBytesPerResult: perResultBytes,
-      });
-      return { ...base, results: enriched };
+      const enriched = k === 0
+        ? base.results
+        : await enrichWithContent({
+            results: base.results,
+            topK: k,
+            fetch: fetchWithTimeout,
+            maxBytesPerResult: perResultBytes,
+          });
+      const wrapped: WebSearchResponse = {
+        ...base,
+        results: enriched.map(wrapResult),
+        ...(base.answer ? { answer: wrapExternalContent(base.answer) } : {}),
+      };
+      if (cacheKey) {
+        searchCache.set(cacheKey, { expiresAt: Date.now() + cacheTtlMs, value: wrapped });
+      }
+      return wrapped;
     },
     fetch: async (request) => {
       const classified = classifyUrl(request.url);
@@ -178,7 +245,7 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
         url: classified.url,
         status: response.status,
         contentType: response.headers.get("content-type") ?? "",
-        content,
+        content: wrapExternalContent(content),
         truncated: Buffer.byteLength(text) > limit,
       };
     },
@@ -220,12 +287,22 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
         contentType,
         title: extracted.title,
         description: extracted.description,
-        text,
+        text: wrapExternalContent(text),
         links: extracted.links,
         truncated: Buffer.byteLength(extracted.text) > limit,
       };
     },
   };
+}
+
+function buildSearchCacheKey(providerId: string, request: WebSearchRequest): string {
+  return JSON.stringify({
+    providerId,
+    query: request.query,
+    limit: clampLimit(request.limit),
+    withContent: clampWithContent(request.withContent),
+    contentMaxBytes: clampContentMaxBytes(request.contentMaxBytes),
+  });
 }
 
 export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
@@ -240,9 +317,15 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
     const limit = clampLimit(request.limit);
     const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(request.query)}`;
     const response = await this.fetch(url, {
-      headers: { "User-Agent": "Vulture/1.0" },
+      headers: { "User-Agent": BROWSER_USER_AGENT },
     });
     const html = await response.text();
+    if (isBotChallenge(html, "duckduckgo")) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        "DuckDuckGo returned a bot-detection challenge",
+      );
+    }
     return {
       query: request.query,
       provider: this.id,
@@ -263,9 +346,15 @@ export class BingHtmlSearchProvider implements SearchProvider {
     const limit = clampLimit(request.limit);
     const url = `https://www.bing.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
     const response = await this.fetch(url, {
-      headers: { "User-Agent": "Vulture/1.0" },
+      headers: { "User-Agent": BROWSER_USER_AGENT },
     });
     const html = await response.text();
+    if (isBotChallenge(html, "bing")) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        "Bing returned a bot-detection challenge",
+      );
+    }
     return {
       query: request.query,
       provider: this.id,
@@ -286,9 +375,15 @@ export class BraveHtmlSearchProvider implements SearchProvider {
     const limit = clampLimit(request.limit);
     const url = `https://search.brave.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
     const response = await this.fetch(url, {
-      headers: { "User-Agent": "Vulture/1.0" },
+      headers: { "User-Agent": BROWSER_USER_AGENT },
     });
     const html = await response.text();
+    if (isBotChallenge(html, "brave")) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        "Brave Search returned a bot-detection challenge",
+      );
+    }
     return {
       query: request.query,
       provider: this.id,
@@ -746,13 +841,42 @@ function truncateUtf8(value: string, maxBytes: number): string {
 
 function parseDuckDuckGoResults(html: string): WebSearchResult[] {
   const results: WebSearchResult[] = [];
-  const pattern = /<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gis;
-  for (const match of html.matchAll(pattern)) {
-    const url = normalizeDuckDuckGoUrl(decodeHtml(match[1] ?? ""));
-    const title = decodeHtml(stripTags(match[2] ?? "")).trim();
-    if (url && title) results.push({ title, url });
+  const titlePattern = /<a\b(?=[^>]*\bclass=["'][^"']*\bresult__a\b[^"']*["'])([^>]*)>([\s\S]*?)<\/a>/gis;
+  const nextTitlePattern = /<a\b[^>]*\bclass=["'][^"']*\bresult__a\b[^"']*["'][^>]*>/i;
+  const snippetPattern = /<a\b(?=[^>]*\bclass=["'][^"']*\bresult__snippet\b[^"']*["'])[^>]*>([\s\S]*?)<\/a>/i;
+  for (const match of html.matchAll(titlePattern)) {
+    const attrs = match[1] ?? "";
+    const rawTitle = match[2] ?? "";
+    const hrefMatch = attrs.match(/\bhref=["']([^"']+)["']/i);
+    if (!hrefMatch) continue;
+    const url = normalizeDuckDuckGoUrl(decodeHtml(hrefMatch[1] ?? ""));
+    const title = decodeHtml(stripTags(rawTitle)).trim();
+    if (!url || !title) continue;
+    // Snippet sits between this title link and the next one.
+    const matchEnd = (match.index ?? 0) + match[0].length;
+    const trailing = html.slice(matchEnd);
+    const nextIndex = trailing.search(nextTitlePattern);
+    const scoped = nextIndex >= 0 ? trailing.slice(0, nextIndex) : trailing;
+    const snippetMatch = snippetPattern.exec(scoped);
+    const snippet = snippetMatch
+      ? normalizeWhitespace(decodeHtml(stripTags(snippetMatch[1] ?? "")))
+      : "";
+    results.push(snippet ? { title, url, snippet } : { title, url });
   }
   return results;
+}
+
+/**
+ * Detect bot-detection / CAPTCHA challenge pages so the fallback chain can
+ * advance to the next provider instead of returning an empty result. We
+ * short-circuit on positive proof that the page rendered a normal SERP
+ * (per-engine result class is present), then check for the challenge markers.
+ */
+export function isBotChallenge(html: string, engine: "duckduckgo" | "bing" | "brave"): boolean {
+  if (engine === "duckduckgo" && /class="[^"]*\bresult__a\b[^"]*"/i.test(html)) return false;
+  if (engine === "bing" && /class="[^"]*\bb_algo\b[^"]*"/i.test(html)) return false;
+  if (engine === "brave" && /class="[^"]*\bsnippet\b[^"]*"\s+data-type=/i.test(html)) return false;
+  return /g-recaptcha|are you a human|id="challenge-form"|name="challenge"|<title>[^<]*captcha[^<]*<\/title>/i.test(html);
 }
 
 function parseBingResults(html: string): WebSearchResult[] {
@@ -1038,14 +1162,46 @@ function stripTags(value: string): string {
   return value.replace(/<[^>]+>/g, "");
 }
 
+const HTML_NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  ndash: "-",
+  mdash: "--",
+  hellip: "...",
+  laquo: "«",
+  raquo: "»",
+  lsquo: "'",
+  rsquo: "'",
+  ldquo: "“",
+  rdquo: "”",
+  bull: "•",
+  middot: "·",
+  copy: "©",
+  reg: "®",
+  trade: "™",
+};
+
 function decodeHtml(value: string): string {
+  if (!value || value.indexOf("&") === -1) return value;
   return value
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => safeFromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, dec) => safeFromCodePoint(Number(dec)))
+    .replace(/&([a-zA-Z][a-zA-Z0-9]+);/g, (match, name: string) =>
+      HTML_NAMED_ENTITIES[name] ?? HTML_NAMED_ENTITIES[name.toLowerCase()] ?? match,
+    );
+}
+
+function safeFromCodePoint(code: number): string {
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return "";
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return "";
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

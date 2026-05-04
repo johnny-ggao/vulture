@@ -248,36 +248,31 @@ describe("createGatewayServerLocalTools", () => {
         },
       });
 
-      await expect(
-        tools({
-          callId: "web-1",
-          runId: run.id,
-          tool: "web_search",
-          input: { query: "agent", limit: 1 },
-          workspacePath: cfg.profileDir,
-        }),
-      ).resolves.toMatchObject({
-        provider: "duckduckgo-html",
-        results: [{ title: "Duck" }],
-      });
+      const ddgRes = await tools({
+        callId: "web-1",
+        runId: run.id,
+        tool: "web_search",
+        input: { query: "agent", limit: 1 },
+        workspacePath: cfg.profileDir,
+      }) as { provider: string; results: Array<{ title: string }> };
+      expect(ddgRes.provider).toBe("duckduckgo-html");
+      expect(ddgRes.results[0].title).toContain("Duck");
 
       stores.webSearchSettingsStore.update({
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
       });
 
-      await expect(
-        tools({
-          callId: "web-2",
-          runId: run.id,
-          tool: "web_search",
-          input: { query: "agent", limit: 1 },
-          workspacePath: cfg.profileDir,
-        }),
-      ).resolves.toMatchObject({
-        provider: "searxng",
-        results: [{ title: "SearXNG" }],
-      });
+      // Different query so the in-memory cache doesn't return the DDG result.
+      const searxRes = await tools({
+        callId: "web-2",
+        runId: run.id,
+        tool: "web_search",
+        input: { query: "agent2", limit: 1 },
+        workspacePath: cfg.profileDir,
+      }) as { provider: string; results: Array<{ title: string }> };
+      expect(searxRes.provider).toBe("searxng");
+      expect(searxRes.results[0].title).toContain("SearXNG");
     } finally {
       cleanup();
     }
@@ -343,19 +338,17 @@ describe("createGatewayServerLocalTools", () => {
         },
       });
 
-      await expect(
-        tools({
-          callId: "web-gemini",
-          runId: run.id,
-          tool: "web_search",
-          input: { query: "what is bun", limit: 3 },
-          workspacePath: cfg.profileDir,
-        }),
-      ).resolves.toMatchObject({
-        provider: "gemini-search",
-        answer: "Bun is fast.",
-        results: [{ title: "Bun", url: "https://bun.sh" }],
-      });
+      const result = await tools({
+        callId: "web-gemini",
+        runId: run.id,
+        tool: "web_search",
+        input: { query: "what is bun", limit: 3 },
+        workspacePath: cfg.profileDir,
+      }) as { provider: string; answer?: string; results: Array<{ title: string; url: string }> };
+      expect(result.provider).toBe("gemini-search");
+      expect(result.answer).toContain("Bun is fast");
+      expect(result.results[0].url).toBe("https://bun.sh");
+      expect(result.results[0].title).toContain("Bun");
 
       // The keychain lookup must have happened before the Gemini grounding call.
       expect(fetchedUrls.find((u) => u.endsWith("/auth/model-api-key/gemini-api-key"))).toBeDefined();

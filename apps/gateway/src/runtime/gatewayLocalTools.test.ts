@@ -174,28 +174,27 @@ describe("gateway local tools", () => {
       },
     });
 
-    await expect(
-      tools({
-        callId: "c-fetch",
-        runId: "r",
-        tool: "web_fetch",
-        workspacePath,
-        input: { url: "https://example.com", maxBytes: null },
-      }),
-    ).resolves.toMatchObject({ url: "https://example.com/", content: "<h1>Hello</h1>" });
+    const fetched = await tools({
+      callId: "c-fetch",
+      runId: "r",
+      tool: "web_fetch",
+      workspacePath,
+      input: { url: "https://example.com", maxBytes: null },
+    }) as { url: string; content: string };
+    expect(fetched.url).toBe("https://example.com/");
+    expect(fetched.content).toContain("<h1>Hello</h1>");
 
-    await expect(
-      tools({
-        callId: "c-search",
-        runId: "r",
-        tool: "web_search",
-        workspacePath,
-        input: { query: "example", limit: null },
-      }),
-    ).resolves.toMatchObject({
-      provider: "duckduckgo-html",
-      results: [{ title: "Example A", url: "https://example.com/a" }],
-    });
+    const searched = await tools({
+      callId: "c-search",
+      runId: "r",
+      tool: "web_search",
+      workspacePath,
+      input: { query: "example", limit: null },
+    }) as { provider: string; results: Array<{ title: string; url: string }> };
+    expect(searched.provider).toBe("duckduckgo-html");
+    expect(searched.results).toHaveLength(1);
+    expect(searched.results[0].url).toBe("https://example.com/a");
+    expect(searched.results[0].title).toContain("Example A");
   });
 
   test("public web_extract returns structured page content", async () => {
@@ -209,20 +208,23 @@ describe("gateway local tools", () => {
         ),
     });
 
-    await expect(
-      tools({
-        callId: "c-extract",
-        runId: "r",
-        tool: "web_extract",
-        workspacePath,
-        input: { url: "https://example.com/page", maxBytes: null, maxLinks: 10 },
-      }),
-    ).resolves.toMatchObject({
-      url: "https://example.com/page",
-      title: "Hello",
-      text: "Readable text Next",
-      links: [{ text: "Next", url: "https://example.com/next" }],
-    });
+    const extracted = await tools({
+      callId: "c-extract",
+      runId: "r",
+      tool: "web_extract",
+      workspacePath,
+      input: { url: "https://example.com/page", maxBytes: null, maxLinks: 10 },
+    }) as {
+      url: string;
+      title: string;
+      text: string;
+      links: Array<{ text: string; url: string }>;
+    };
+    expect(extracted.url).toBe("https://example.com/page");
+    expect(extracted.title).toBe("Hello");
+    expect(extracted.text).toContain("Readable text");
+    expect(extracted.text).toContain("Next");
+    expect(extracted.links).toEqual([{ text: "Next", url: "https://example.com/next" }]);
   });
 
   test("private web_fetch requires approval", async () => {
@@ -242,16 +244,15 @@ describe("gateway local tools", () => {
       }),
     ).rejects.toThrow("web_fetch private host requires approval");
 
-    await expect(
-      tools({
-        callId: "c-fetch-approved",
-        runId: "r",
-        tool: "web_fetch",
-        workspacePath,
-        approvalToken: "approved",
-        input: { url: "http://localhost:3000", maxBytes: null },
-      }),
-    ).resolves.toMatchObject({ content: "private" });
+    const approved = await tools({
+      callId: "c-fetch-approved",
+      runId: "r",
+      tool: "web_fetch",
+      workspacePath,
+      approvalToken: "approved",
+      input: { url: "http://localhost:3000", maxBytes: null },
+    }) as { content: string };
+    expect(approved.content).toContain("private");
   });
 
   test("sessions and update_plan use gateway stores when provided", async () => {
