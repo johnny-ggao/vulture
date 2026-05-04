@@ -148,83 +148,93 @@ export function WebSearchSection(props: SettingsPageProps) {
         {currentDescriptor?.description ? (
           <p className="settings-hint">{currentDescriptor.description}</p>
         ) : null}
-        <FormRow label="SearXNG URL" hint="仅选择 SearXNG 时需要。">
-          <input
-            className="provider-text-input"
-            aria-label="SearXNG URL"
-            value={searxngBaseUrl}
-            disabled={provider !== "searxng" || busy === "load"}
-            placeholder="https://search.example.com"
-            onChange={(event) => {
-              setSearxngBaseUrl(event.target.value);
-              setSaved(false);
-              setTestResult(null);
-            }}
-          />
-        </FormRow>
-        <FormRow label="Brave API Key" hint="仅选择 Brave Search API 时需要。可在 search.brave.com/api 申请。">
-          <input
-            className="provider-text-input"
-            type="password"
-            aria-label="Brave API Key"
-            value={braveApiKey}
-            disabled={provider !== "brave-api" || busy === "load"}
-            placeholder="brave-api-key"
-            onChange={(event) => {
-              setBraveApiKey(event.target.value);
-              setSaved(false);
-              setTestResult(null);
-            }}
-          />
-        </FormRow>
-        <FormRow label="Tavily API Key" hint="仅选择 Tavily Search API 时需要。可在 app.tavily.com 申请，注册门槛低于 Brave。">
-          <input
-            className="provider-text-input"
-            type="password"
-            aria-label="Tavily API Key"
-            value={tavilyApiKey}
-            disabled={provider !== "tavily-api" || busy === "load"}
-            placeholder="tvly-xxxxxxxxxxxxxxxx"
-            onChange={(event) => {
-              setTavilyApiKey(event.target.value);
-              setSaved(false);
-              setTestResult(null);
-            }}
-          />
-        </FormRow>
-        <FormRow label="Perplexity API Key" hint="仅选择 Perplexity 时需要。可在 perplexity.ai/settings/api 申请。返回带引用的 AI 合成答案。">
-          <input
-            className="provider-text-input"
-            type="password"
-            aria-label="Perplexity API Key"
-            value={perplexityApiKey}
-            disabled={provider !== "perplexity-api" || busy === "load"}
-            placeholder="pplx-xxxxxxxxxxxxxxxx"
-            onChange={(event) => {
-              setPerplexityApiKey(event.target.value);
-              setSaved(false);
-              setTestResult(null);
-            }}
-          />
-        </FormRow>
-        <FormRow
-          label="Gemini API Key"
-          hint="仅选择 Gemini Grounding 时需要。留空则自动复用「模型」里配置的 Gemini API Key（推荐）。可在 aistudio.google.com 免费申请。"
-        >
-          <input
-            className="provider-text-input"
-            type="password"
-            aria-label="Gemini API Key"
-            value={geminiApiKey}
-            disabled={provider !== "gemini-search" || busy === "load"}
-            placeholder="留空 = 复用「模型」里的 Gemini Key"
-            onChange={(event) => {
-              setGeminiApiKey(event.target.value);
-              setSaved(false);
-              setTestResult(null);
-            }}
-          />
-        </FormRow>
+        {provider === "searxng" ? (
+          <FormRow label="SearXNG URL" hint="自托管或公共 SearXNG 实例的根地址。">
+            <input
+              className="provider-text-input"
+              aria-label="SearXNG URL"
+              value={searxngBaseUrl}
+              disabled={busy === "load"}
+              placeholder="https://search.example.com"
+              onChange={(event) => {
+                setSearxngBaseUrl(event.target.value);
+                setSaved(false);
+                setTestResult(null);
+              }}
+            />
+          </FormRow>
+        ) : null}
+        {provider === "brave-api" ? (
+          <FormRow label="Brave API Key" hint="可在 search.brave.com/api 申请。2000 queries/月免费。">
+            <input
+              className="provider-text-input"
+              type="password"
+              aria-label="Brave API Key"
+              value={braveApiKey}
+              disabled={busy === "load"}
+              placeholder="brave-api-key"
+              onChange={(event) => {
+                setBraveApiKey(event.target.value);
+                setSaved(false);
+                setTestResult(null);
+              }}
+            />
+          </FormRow>
+        ) : null}
+        {provider === "tavily-api" ? (
+          <FormRow label="Tavily API Key" hint="可在 app.tavily.com 申请，注册门槛低于 Brave。1000 queries/月免费。">
+            <input
+              className="provider-text-input"
+              type="password"
+              aria-label="Tavily API Key"
+              value={tavilyApiKey}
+              disabled={busy === "load"}
+              placeholder="tvly-xxxxxxxxxxxxxxxx"
+              onChange={(event) => {
+                setTavilyApiKey(event.target.value);
+                setSaved(false);
+                setTestResult(null);
+              }}
+            />
+          </FormRow>
+        ) : null}
+        {provider === "perplexity-api" ? (
+          <FormRow label="Perplexity API Key" hint="可在 perplexity.ai/settings/api 申请。返回带引用的 AI 合成答案。">
+            <input
+              className="provider-text-input"
+              type="password"
+              aria-label="Perplexity API Key"
+              value={perplexityApiKey}
+              disabled={busy === "load"}
+              placeholder="pplx-xxxxxxxxxxxxxxxx"
+              onChange={(event) => {
+                setPerplexityApiKey(event.target.value);
+                setSaved(false);
+                setTestResult(null);
+              }}
+            />
+          </FormRow>
+        ) : null}
+        {provider === "gemini-search" ? (
+          <FormRow
+            label="Gemini API Key"
+            hint="留空则自动复用「模型」里配置的 Gemini API Key（推荐）。可在 aistudio.google.com 免费申请。"
+          >
+            <input
+              className="provider-text-input"
+              type="password"
+              aria-label="Gemini API Key"
+              value={geminiApiKey}
+              disabled={busy === "load"}
+              placeholder="留空 = 复用「模型」里的 Gemini Key"
+              onChange={(event) => {
+                setGeminiApiKey(event.target.value);
+                setSaved(false);
+                setTestResult(null);
+              }}
+            />
+          </FormRow>
+        ) : null}
         <div className="settings-inline-actions">
           <button type="button" className="btn-secondary" disabled={busy !== null} onClick={testSearch}>
             {busy === "test" ? "测试中…" : "测试"}
