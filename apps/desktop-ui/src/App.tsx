@@ -196,6 +196,9 @@ export function App() {
   async function handleSaveApiKey(profileId: string, apiKey: string) {
     try {
       await invoke("set_model_api_key", { request: { profileId, apiKey } });
+    } catch (cause) {
+      console.error("[model-auth] set_model_api_key failed", { profileId, cause });
+      throw cause;
     } finally {
       void refreshAuthStatus();
     }
@@ -204,6 +207,9 @@ export function App() {
   async function handleClearApiKey(profileId: string) {
     try {
       await invoke("clear_model_api_key", { request: { profileId } });
+    } catch (cause) {
+      console.error("[model-auth] clear_model_api_key failed", { profileId, cause });
+      throw cause;
     } finally {
       void refreshAuthStatus();
     }
