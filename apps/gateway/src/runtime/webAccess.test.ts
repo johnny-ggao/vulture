@@ -9,6 +9,7 @@ import {
   DuckDuckGoHtmlSearchProvider,
   searchProviderFromSettings,
   SearxngSearchProvider,
+  TavilySearchProvider,
   type SearchProvider,
 } from "./webAccess";
 
@@ -313,6 +314,125 @@ describe("WebAccessService", () => {
     });
   });
 
+  test("Tavily provider POSTs Bearer auth and surfaces snippet from content field", async () => {
+    const requested: { url: string; init?: RequestInit }[] = [];
+    const provider = new TavilySearchProvider({
+      apiKey: "tvly-secret",
+      fetch: async (url, init) => {
+        requested.push({ url: String(url), init });
+        return Response.json({
+          results: [
+            {
+              title: "Tavily Hit",
+              url: "https://example.com/t",
+              content: "Tavily snippet text",
+            },
+          ],
+        });
+      },
+    });
+
+    await expect(provider.search({ query: "agents", limit: 5 })).resolves.toEqual({
+      query: "agents",
+      provider: "tavily-api",
+      results: [
+        { title: "Tavily Hit", url: "https://example.com/t", snippet: "Tavily snippet text" },
+      ],
+    });
+    expect(requested[0].url).toBe("https://api.tavily.com/search");
+    expect(requested[0].init?.method).toBe("POST");
+    const headers = new Headers(requested[0].init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer tvly-secret");
+    const body = JSON.parse(String(requested[0].init?.body ?? "{}"));
+    expect(body).toMatchObject({
+      query: "agents",
+      max_results: 5,
+      include_raw_content: false,
+      search_depth: "basic",
+    });
+  });
+
+  test("Tavily provider asks for raw_content when withContent>0 and exposes it as content", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    const provider = new TavilySearchProvider({
+      apiKey: "tvly-secret",
+      fetch: async (_url, init) => {
+        capturedBody = JSON.parse(String(init?.body ?? "{}"));
+        return Response.json({
+          results: [
+            {
+              title: "Tavily Hit",
+              url: "https://example.com/t",
+              content: "snippet",
+              raw_content: "Full readable body of the page.",
+            },
+          ],
+        });
+      },
+    });
+
+    const result = await provider.search({ query: "x", withContent: 1 });
+    expect(capturedBody).toMatchObject({
+      include_raw_content: true,
+      search_depth: "advanced",
+    });
+    expect(result.results[0]).toEqual({
+      title: "Tavily Hit",
+      url: "https://example.com/t",
+      snippet: "snippet",
+      content: "Full readable body of the page.",
+    });
+  });
+
+  test("Tavily provider rejects missing key and surfaces non-2xx as a tool error", async () => {
+    expect(() => new TavilySearchProvider({ apiKey: " ", fetch: async () => new Response() }))
+      .toThrow("Tavily API key is required");
+
+    const provider = new TavilySearchProvider({
+      apiKey: "tvly-secret",
+      fetch: async () => new Response("limited", { status: 429 }),
+    });
+    await expect(provider.search({ query: "x" })).rejects.toMatchObject({
+      code: "tool.execution_failed",
+      message: "Tavily API returned 429",
+    });
+  });
+
+  test("withContent does not refetch results that already carry provider content", async () => {
+    const fetched: string[] = [];
+    const tavilyLike: SearchProvider = {
+      id: "tavily-api",
+      search: async () => ({
+        query: "x",
+        provider: "tavily-api",
+        results: [
+          {
+            title: "From Tavily",
+            url: "https://example.com/t",
+            content: "Native Tavily body",
+          },
+          { title: "No body", url: "https://example.com/extra" },
+        ],
+      }),
+    };
+    const service = createWebAccessService({
+      fetch: async (url) => {
+        fetched.push(String(url));
+        return new Response(
+          "<html><body><main><p>Page extra body.</p></main></body></html>",
+          { status: 200, headers: { "content-type": "text/html" } },
+        );
+      },
+      searchProvider: tavilyLike,
+    });
+
+    const result = await service.search({ query: "x", withContent: 2 });
+    expect(result.results[0].content).toBe("Native Tavily body");
+    expect(result.results[1].content).toContain("Page extra body");
+    // Only the second result should have triggered a fetch.
+    expect(fetched).toEqual(["https://example.com/extra"]);
+  });
+
   test("searchProviderFromSettings returns the correct provider per id", () => {
     const fetchImpl = async () => new Response();
     expect(searchProviderFromSettings({ provider: "multi", searxngBaseUrl: null }, fetchImpl)).toBeNull();
@@ -335,6 +455,18 @@ describe("WebAccessService", () => {
     expect(
       searchProviderFromSettings(
         { provider: "brave-api", searxngBaseUrl: null, braveApiKey: null },
+        fetchImpl,
+      ),
+    ).toBeNull();
+    expect(
+      searchProviderFromSettings(
+        { provider: "tavily-api", searxngBaseUrl: null, tavilyApiKey: "tvly" },
+        fetchImpl,
+      ),
+    ).toBeInstanceOf(TavilySearchProvider);
+    expect(
+      searchProviderFromSettings(
+        { provider: "tavily-api", searxngBaseUrl: null, tavilyApiKey: null },
         fetchImpl,
       ),
     ).toBeNull();

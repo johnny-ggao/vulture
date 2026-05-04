@@ -7,6 +7,7 @@ export type WebSearchProviderId =
   | "bing-html"
   | "brave-html"
   | "brave-api"
+  | "tavily-api"
   | "searxng";
 
 export const WEB_SEARCH_PROVIDER_IDS: readonly WebSearchProviderId[] = [
@@ -15,6 +16,7 @@ export const WEB_SEARCH_PROVIDER_IDS: readonly WebSearchProviderId[] = [
   "bing-html",
   "brave-html",
   "brave-api",
+  "tavily-api",
   "searxng",
 ];
 
@@ -22,6 +24,7 @@ export interface WebSearchSettings {
   provider: WebSearchProviderId;
   searxngBaseUrl: string | null;
   braveApiKey: string | null;
+  tavilyApiKey: string | null;
   updatedAt: Iso8601;
 }
 
@@ -29,6 +32,7 @@ export interface UpdateWebSearchSettingsInput {
   provider?: WebSearchProviderId;
   searxngBaseUrl?: string | null;
   braveApiKey?: string | null;
+  tavilyApiKey?: string | null;
 }
 
 interface WebSearchSettingsFile {
@@ -40,6 +44,7 @@ const DEFAULT_SETTINGS: WebSearchSettings = {
   provider: "multi",
   searxngBaseUrl: null,
   braveApiKey: null,
+  tavilyApiKey: null,
   updatedAt: "1970-01-01T00:00:00.000Z" as Iso8601,
 };
 
@@ -96,10 +101,15 @@ export function normalizeSettings(input: WebSearchSettings): WebSearchSettings {
   if (input.provider === "brave-api" && !braveApiKey) {
     throw new Error("braveApiKey is required");
   }
+  const tavilyApiKey = normalizeApiKey(input.tavilyApiKey);
+  if (input.provider === "tavily-api" && !tavilyApiKey) {
+    throw new Error("tavilyApiKey is required");
+  }
   return {
     provider: input.provider,
     searxngBaseUrl,
     braveApiKey,
+    tavilyApiKey,
     updatedAt: input.updatedAt,
   };
 }
@@ -133,6 +143,10 @@ function isSettings(value: unknown): value is WebSearchSettings {
   if (settings.braveApiKey !== undefined &&
     settings.braveApiKey !== null &&
     typeof settings.braveApiKey !== "string"
+  ) return false;
+  if (settings.tavilyApiKey !== undefined &&
+    settings.tavilyApiKey !== null &&
+    typeof settings.tavilyApiKey !== "string"
   ) return false;
   return typeof settings.updatedAt === "string";
 }

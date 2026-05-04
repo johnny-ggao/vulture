@@ -80,6 +80,14 @@ export const WEB_SEARCH_PROVIDER_DESCRIPTORS: WebSearchProviderDescriptor[] = [
     requiresApiKey: true,
   },
   {
+    id: "tavily-api",
+    label: "Tavily Search API",
+    description:
+      "Tavily AI search API with native readable-content extraction. 1000 free queries/month. Easier signup than Brave. Requires an API key from app.tavily.com.",
+    requiresBaseUrl: false,
+    requiresApiKey: true,
+  },
+  {
     id: "searxng",
     label: "SearXNG",
     description: "Self-hosted or public SearXNG instance. Requires a base URL.",
@@ -159,6 +167,7 @@ function parsePatch(raw: unknown): UpdateWebSearchSettingsInput {
     provider: providerField(value.provider),
     searxngBaseUrl: nullableString(value.searxngBaseUrl),
     braveApiKey: nullableString(value.braveApiKey),
+    tavilyApiKey: nullableString(value.tavilyApiKey),
   };
 }
 
@@ -183,17 +192,23 @@ function normalizeTestSettings(
     input.searxngBaseUrl !== undefined ? input.searxngBaseUrl : current.searxngBaseUrl;
   const braveApiKey =
     input.braveApiKey !== undefined ? input.braveApiKey : current.braveApiKey;
+  const tavilyApiKey =
+    input.tavilyApiKey !== undefined ? input.tavilyApiKey : current.tavilyApiKey;
   if (provider === "searxng" && !searxngBaseUrl) {
     throw new Error("searxngBaseUrl is required");
   }
   if (provider === "brave-api" && !braveApiKey) {
     throw new Error("braveApiKey is required");
   }
+  if (provider === "tavily-api" && !tavilyApiKey) {
+    throw new Error("tavilyApiKey is required");
+  }
   return {
     ...current,
     provider,
     searxngBaseUrl,
     braveApiKey,
+    tavilyApiKey,
   };
 }
 
@@ -206,6 +221,7 @@ function providerField(value: unknown): WebSearchProviderId | undefined {
     "bing-html",
     "brave-html",
     "brave-api",
+    "tavily-api",
     "searxng",
   ];
   if (allowed.includes(value as WebSearchProviderId)) return value as WebSearchProviderId;

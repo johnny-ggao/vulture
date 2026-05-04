@@ -6,12 +6,14 @@ export type WebSearchProviderId =
   | "bing-html"
   | "brave-html"
   | "brave-api"
+  | "tavily-api"
   | "searxng";
 
 export interface WebSearchSettings {
   provider: WebSearchProviderId;
   searxngBaseUrl: string | null;
   braveApiKey: string | null;
+  tavilyApiKey: string | null;
   updatedAt: string;
 }
 
@@ -32,6 +34,7 @@ export interface UpdateWebSearchSettings {
   provider?: WebSearchProviderId;
   searxngBaseUrl?: string | null;
   braveApiKey?: string | null;
+  tavilyApiKey?: string | null;
 }
 
 export interface WebSearchTestResult {

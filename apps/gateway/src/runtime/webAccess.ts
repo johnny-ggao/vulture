@@ -89,9 +89,11 @@ export interface SearchProviderSettings {
     | "bing-html"
     | "brave-html"
     | "brave-api"
+    | "tavily-api"
     | "searxng";
   searxngBaseUrl: string | null;
   braveApiKey?: string | null;
+  tavilyApiKey?: string | null;
 }
 
 export interface WebAccessService {
@@ -355,6 +357,57 @@ export class BraveSearchApiProvider implements SearchProvider {
   }
 }
 
+export class TavilySearchProvider implements SearchProvider {
+  readonly id = "tavily-api";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Tavily API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const wantsContent = clampWithContent(request.withContent) > 0;
+    const response = await this.fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+        "User-Agent": "Vulture/1.0",
+      },
+      body: JSON.stringify({
+        query: request.query,
+        max_results: limit,
+        include_raw_content: wantsContent,
+        search_depth: wantsContent ? "advanced" : "basic",
+      }),
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Tavily API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Tavily API invalid JSON");
+    });
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parseTavilyResults(payload).slice(0, limit),
+    };
+  }
+}
+
 export class SearxngSearchProvider implements SearchProvider {
   readonly id = "searxng";
   private readonly baseUrl: string;
@@ -403,6 +456,9 @@ export function searchProviderFromSettings(
     case "brave-api":
       if (!settings.braveApiKey) return null;
       return new BraveSearchApiProvider({ apiKey: settings.braveApiKey, fetch });
+    case "tavily-api":
+      if (!settings.tavilyApiKey) return null;
+      return new TavilySearchProvider({ apiKey: settings.tavilyApiKey, fetch });
     case "searxng":
       if (!settings.searxngBaseUrl) return null;
       return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
@@ -436,10 +492,16 @@ async function enrichWithContent(opts: {
   const { results, topK, fetch, maxBytesPerResult } = opts;
   const targets = results.slice(0, topK);
   const fetched = await Promise.all(
-    targets.map((result) => fetchContentForResult(result.url, fetch, maxBytesPerResult)),
+    targets.map((result) =>
+      // Provider-supplied content (e.g. Tavily raw_content) wins; only fetch when missing.
+      result.content ? Promise.resolve(null) : fetchContentForResult(result.url, fetch, maxBytesPerResult),
+    ),
   );
   return results.map((result, index) => {
     if (index >= topK) return result;
+    if (result.content) {
+      return { ...result, content: truncateUtf8(result.content, maxBytesPerResult) };
+    }
     const content = fetched[index];
     return content ? { ...result, content } : result;
   });
@@ -635,6 +697,23 @@ function parseBraveApiResults(payload: unknown): WebSearchResult[] {
     const snippet = typeof item.description === "string" ? item.description.trim() : "";
     if (!title || !url) return [];
     return [{ title, url, ...(snippet ? { snippet } : {}) }];
+  });
+}
+
+function parseTavilyResults(payload: unknown): WebSearchResult[] {
+  const value = isRecord(payload) ? payload : {};
+  const results = Array.isArray(value.results) ? value.results : [];
+  return results.flatMap((item): WebSearchResult[] => {
+    if (!isRecord(item)) return [];
+    const title = typeof item.title === "string" ? item.title.trim() : "";
+    const url = typeof item.url === "string" ? item.url.trim() : "";
+    if (!title || !url) return [];
+    const snippet = typeof item.content === "string" ? item.content.trim() : "";
+    const rawContent = typeof item.raw_content === "string" ? item.raw_content.trim() : "";
+    const result: WebSearchResult = { title, url };
+    if (snippet) result.snippet = snippet;
+    if (rawContent) result.content = rawContent;
+    return [result];
   });
 }
 

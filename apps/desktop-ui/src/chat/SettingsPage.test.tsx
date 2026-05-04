@@ -129,6 +129,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
         provider: "multi",
         searxngBaseUrl: null,
         braveApiKey: null,
+        tavilyApiKey: null,
         updatedAt: "2026-05-01T00:00:00.000Z",
       },
       providers: [
@@ -145,6 +146,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
         provider: input.provider ?? "multi",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
         braveApiKey: input.braveApiKey ?? null,
+        tavilyApiKey: input.tavilyApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
@@ -384,6 +386,7 @@ describe("SettingsPage Web Search", () => {
         provider: input.provider ?? "multi",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
         braveApiKey: input.braveApiKey ?? null,
+        tavilyApiKey: input.tavilyApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
@@ -419,6 +422,7 @@ describe("SettingsPage Web Search", () => {
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
         braveApiKey: null,
+        tavilyApiKey: null,
         query: "OpenAI Agents SDK",
       });
     });
@@ -430,6 +434,7 @@ describe("SettingsPage Web Search", () => {
         provider: "searxng",
         searxngBaseUrl: "https://search.example.com",
         braveApiKey: null,
+        tavilyApiKey: null,
       });
     });
   });

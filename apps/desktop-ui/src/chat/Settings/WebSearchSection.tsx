@@ -16,6 +16,7 @@ export function WebSearchSection(props: SettingsPageProps) {
   const [provider, setProvider] = useState<WebSearchProviderId>("multi");
   const [searxngBaseUrl, setSearxngBaseUrl] = useState("");
   const [braveApiKey, setBraveApiKey] = useState("");
+  const [tavilyApiKey, setTavilyApiKey] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<WebSearchTestResult | null>(null);
@@ -30,6 +31,7 @@ export function WebSearchSection(props: SettingsPageProps) {
       setProvider(loaded.settings.provider);
       setSearxngBaseUrl(loaded.settings.searxngBaseUrl ?? "");
       setBraveApiKey(loaded.settings.braveApiKey ?? "");
+      setTavilyApiKey(loaded.settings.tavilyApiKey ?? "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -45,7 +47,8 @@ export function WebSearchSection(props: SettingsPageProps) {
     provider,
     searxngBaseUrl: provider === "searxng" ? searxngBaseUrl.trim() : null,
     braveApiKey: provider === "brave-api" ? braveApiKey.trim() : null,
-  }), [provider, searxngBaseUrl, braveApiKey]);
+    tavilyApiKey: provider === "tavily-api" ? tavilyApiKey.trim() : null,
+  }), [provider, searxngBaseUrl, braveApiKey, tavilyApiKey]);
 
   const currentDescriptor = useMemo(
     () => settings?.providers.find((descriptor) => descriptor.id === provider) ?? null,
@@ -78,6 +81,7 @@ export function WebSearchSection(props: SettingsPageProps) {
       setProvider(updated.settings.provider);
       setSearxngBaseUrl(updated.settings.searxngBaseUrl ?? "");
       setBraveApiKey(updated.settings.braveApiKey ?? "");
+      setTavilyApiKey(updated.settings.tavilyApiKey ?? "");
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -160,6 +164,21 @@ export function WebSearchSection(props: SettingsPageProps) {
             placeholder="brave-api-key"
             onChange={(event) => {
               setBraveApiKey(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Tavily API Key" hint="仅选择 Tavily Search API 时需要。可在 app.tavily.com 申请，注册门槛低于 Brave。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Tavily API Key"
+            value={tavilyApiKey}
+            disabled={provider !== "tavily-api" || busy === "load"}
+            placeholder="tvly-xxxxxxxxxxxxxxxx"
+            onChange={(event) => {
+              setTavilyApiKey(event.target.value);
               setSaved(false);
               setTestResult(null);
             }}

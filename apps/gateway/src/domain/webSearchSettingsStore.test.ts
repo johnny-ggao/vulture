@@ -94,6 +94,29 @@ describe("WebSearchSettingsStore", () => {
     }
   });
 
+  test("persists tavily-api with an API key and rejects empty keys", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "tavily-api",
+        tavilyApiKey: "  tvly-key-value  ",
+      });
+      expect(updated).toMatchObject({
+        provider: "tavily-api",
+        tavilyApiKey: "tvly-key-value",
+      });
+
+      expect(() => store.update({ provider: "tavily-api", tavilyApiKey: null })).toThrow(
+        "tavilyApiKey is required",
+      );
+      expect(() => store.update({ provider: "tavily-api", tavilyApiKey: "   " })).toThrow(
+        "tavilyApiKey is required",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   test("rejects unknown provider ids", () => {
     const { store, cleanup } = tempStore();
     try {

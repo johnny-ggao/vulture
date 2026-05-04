@@ -42,10 +42,13 @@ describe("/v1/web-search/settings", () => {
         "bing-html",
         "brave-html",
         "brave-api",
+        "tavily-api",
         "searxng",
       ]);
       const braveApi = body.providers.find((p: { id: string }) => p.id === "brave-api");
       expect(braveApi).toMatchObject({ requiresBaseUrl: false, requiresApiKey: true });
+      const tavilyApi = body.providers.find((p: { id: string }) => p.id === "tavily-api");
+      expect(tavilyApi).toMatchObject({ requiresBaseUrl: false, requiresApiKey: true });
       const searxng = body.providers.find((p: { id: string }) => p.id === "searxng");
       expect(searxng).toMatchObject({ requiresBaseUrl: true, requiresApiKey: false });
     } finally {
@@ -99,6 +102,33 @@ describe("/v1/web-search/settings", () => {
       const current = await app.request("/v1/web-search/settings");
       await expect(current.json()).resolves.toMatchObject({
         settings: { provider: "multi" },
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("PATCH persists tavily-api with API key and rejects missing key", async () => {
+    const { app, cleanup } = fixture();
+    try {
+      const ok = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "tavily-api", tavilyApiKey: "tvly-secret" }),
+      });
+      expect(ok.status).toBe(200);
+      await expect(ok.json()).resolves.toMatchObject({
+        settings: { provider: "tavily-api", tavilyApiKey: "tvly-secret" },
+      });
+
+      const bad = await app.request("/v1/web-search/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "tavily-api", tavilyApiKey: null }),
+      });
+      expect(bad.status).toBe(400);
+      await expect(bad.json()).resolves.toMatchObject({
+        code: "web_search.invalid_settings",
       });
     } finally {
       cleanup();
