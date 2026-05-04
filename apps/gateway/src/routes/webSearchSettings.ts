@@ -228,9 +228,8 @@ function normalizeTestSettings(
   if (provider === "perplexity-api" && !perplexityApiKey) {
     throw new Error("perplexityApiKey is required");
   }
-  if (provider === "gemini-search" && !geminiApiKey) {
-    throw new Error("geminiApiKey is required");
-  }
+  // Gemini falls back to the Gemini model auth key when the per-search key
+  // is blank, so don't reject empty keys here.
   return {
     ...current,
     provider,

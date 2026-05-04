@@ -207,14 +207,17 @@ export function WebSearchSection(props: SettingsPageProps) {
             }}
           />
         </FormRow>
-        <FormRow label="Gemini API Key" hint="仅选择 Gemini Grounding 时需要。可在 aistudio.google.com 免费申请。同一把 key 可以同时用作 Gemini 模型。">
+        <FormRow
+          label="Gemini API Key"
+          hint="仅选择 Gemini Grounding 时需要。留空则自动复用「模型」里配置的 Gemini API Key（推荐）。可在 aistudio.google.com 免费申请。"
+        >
           <input
             className="provider-text-input"
             type="password"
             aria-label="Gemini API Key"
             value={geminiApiKey}
             disabled={provider !== "gemini-search" || busy === "load"}
-            placeholder="AIza..."
+            placeholder="留空 = 复用「模型」里的 Gemini Key"
             onChange={(event) => {
               setGeminiApiKey(event.target.value);
               setSaved(false);

@@ -119,10 +119,10 @@ export function normalizeSettings(input: WebSearchSettings): WebSearchSettings {
   if (input.provider === "perplexity-api" && !perplexityApiKey) {
     throw new Error("perplexityApiKey is required");
   }
+  // Gemini may share its key with the Gemini model auth profile, so the
+  // per-search key is allowed to be blank — runtime falls back to the
+  // shell-stored model API key when possible.
   const geminiApiKey = normalizeApiKey(input.geminiApiKey);
-  if (input.provider === "gemini-search" && !geminiApiKey) {
-    throw new Error("geminiApiKey is required");
-  }
   return {
     provider: input.provider,
     searxngBaseUrl,

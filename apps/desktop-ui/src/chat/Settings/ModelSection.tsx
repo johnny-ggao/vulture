@@ -508,6 +508,7 @@ function inputLabel(input: string): string {
 function providerGlyph(providerId: string): string {
   if (providerId === "openai") return "O";
   if (providerId === "anthropic") return "A";
+  if (providerId === "google") return "G";
   return providerId.slice(0, 1).toUpperCase();
 }
 
@@ -517,6 +518,9 @@ function providerMarkStyle(providerId: string) {
   }
   if (providerId === "openai") {
     return { background: "rgba(16, 107, 61, 0.10)", color: "#0a6b3d" };
+  }
+  if (providerId === "google") {
+    return { background: "rgba(26, 115, 232, 0.10)", color: "#1a73e8" };
   }
   return { background: "rgba(120,120,120,0.10)", color: "#666" };
 }

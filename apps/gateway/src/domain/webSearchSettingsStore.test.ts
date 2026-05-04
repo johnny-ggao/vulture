@@ -136,7 +136,7 @@ describe("WebSearchSettingsStore", () => {
     }
   });
 
-  test("persists gemini-search with an API key and rejects empty keys", () => {
+  test("persists gemini-search with an API key and tolerates a blank key (model-auth fallback)", () => {
     const { store, cleanup } = tempStore();
     try {
       const updated = store.update({
@@ -147,9 +147,12 @@ describe("WebSearchSettingsStore", () => {
         provider: "gemini-search",
         geminiApiKey: "AIzaXYZ",
       });
-      expect(() => store.update({ provider: "gemini-search", geminiApiKey: null })).toThrow(
-        "geminiApiKey is required",
-      );
+
+      // Blank key is intentionally allowed: at runtime we fall back to the
+      // shell-stored Gemini model auth key.
+      const cleared = store.update({ provider: "gemini-search", geminiApiKey: null });
+      expect(cleared.provider).toBe("gemini-search");
+      expect(cleared.geminiApiKey).toBeNull();
     } finally {
       cleanup();
     }

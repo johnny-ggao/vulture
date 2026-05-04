@@ -273,6 +273,8 @@ export function buildServer(cfg: GatewayConfig): Hono {
     },
     lspManager: cfg.lspManager,
     runtimeHooks: () => runtimeHooksRef,
+    shellCallbackUrl: cfg.shellCallbackUrl,
+    shellToken: cfg.token,
     startConversationRun,
   });
   const approvalCallable = makeShellApprovalHandler({

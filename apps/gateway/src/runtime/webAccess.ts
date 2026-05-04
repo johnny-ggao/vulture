@@ -116,7 +116,14 @@ export interface WebAccessService {
 export interface WebAccessServiceOptions {
   fetch: FetchLike;
   searchProvider?: SearchProvider;
-  resolveSearchProvider?: (ctx: { fetch: FetchLike }) => SearchProvider | null;
+  /**
+   * Per-request provider resolver. May return a Promise so callers can
+   * fall back to async sources (e.g. shell-stored model API keys).
+   * Return null to use the default fallback chain.
+   */
+  resolveSearchProvider?: (
+    ctx: { fetch: FetchLike },
+  ) => SearchProvider | null | Promise<SearchProvider | null>;
   timeoutMs?: number;
   maxTextBytes?: number;
 }
@@ -132,8 +139,10 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
   return {
     classifyUrl,
     search: async (request) => {
-      const provider = options.resolveSearchProvider?.({ fetch: fetchWithTimeout }) ??
-        fallbackSearchProvider;
+      const resolved = await Promise.resolve(
+        options.resolveSearchProvider?.({ fetch: fetchWithTimeout }),
+      );
+      const provider = resolved ?? fallbackSearchProvider;
       const base = await provider.search(request);
       const k = clampWithContent(request.withContent);
       if (k === 0) return base;

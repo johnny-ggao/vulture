@@ -282,4 +282,85 @@ describe("createGatewayServerLocalTools", () => {
       cleanup();
     }
   });
+
+  test("gemini-search falls back to shell-stored model API key when web-search key is blank", async () => {
+    const { cfg, cleanup } = freshCfg();
+    try {
+      const { stores } = createGatewayStores({ cfg });
+      const conversation = stores.conversationStore.create({ agentId: "local-work-agent" });
+      const message = stores.messageStore.append({
+        conversationId: conversation.id,
+        role: "user",
+        content: "search",
+        runId: null,
+      });
+      const run = stores.runStore.create({
+        conversationId: conversation.id,
+        agentId: conversation.agentId,
+        triggeredByMessageId: message.id,
+      });
+
+      // Provider selected as gemini-search but the per-search key is blank;
+      // it should be transparently sourced from the model auth keychain.
+      stores.webSearchSettingsStore.update({
+        provider: "gemini-search",
+        geminiApiKey: null,
+      });
+
+      const fetchedUrls: string[] = [];
+      const tools = createGatewayServerLocalTools({
+        stores,
+        shellTools: async () => {
+          throw new Error("shell tool should not be called");
+        },
+        mcp: { canHandle: () => false, execute: async () => undefined },
+        runtimeHooks: () => undefined,
+        startConversationRun: async () => {
+          throw new Error("unused");
+        },
+        shellCallbackUrl: cfg.shellCallbackUrl,
+        shellToken: cfg.token,
+        fetch: async (url) => {
+          const href = String(url);
+          fetchedUrls.push(href);
+          if (href.endsWith("/auth/model-api-key/gemini-api-key")) {
+            return Response.json({ api_key: "AIza-from-keychain" });
+          }
+          if (href.startsWith("https://generativelanguage.googleapis.com/")) {
+            expect(href).toContain("key=AIza-from-keychain");
+            return Response.json({
+              candidates: [
+                {
+                  content: { role: "model", parts: [{ text: "Bun is fast." }] },
+                  groundingMetadata: {
+                    groundingChunks: [{ web: { uri: "https://bun.sh", title: "Bun" } }],
+                  },
+                },
+              ],
+            });
+          }
+          throw new Error(`unexpected fetch ${href}`);
+        },
+      });
+
+      await expect(
+        tools({
+          callId: "web-gemini",
+          runId: run.id,
+          tool: "web_search",
+          input: { query: "what is bun", limit: 3 },
+          workspacePath: cfg.profileDir,
+        }),
+      ).resolves.toMatchObject({
+        provider: "gemini-search",
+        answer: "Bun is fast.",
+        results: [{ title: "Bun", url: "https://bun.sh" }],
+      });
+
+      // The keychain lookup must have happened before the Gemini grounding call.
+      expect(fetchedUrls.find((u) => u.endsWith("/auth/model-api-key/gemini-api-key"))).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  });
 });
