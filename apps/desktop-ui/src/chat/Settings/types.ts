@@ -17,7 +17,7 @@ import type {
   WebSearchSettingsResponse,
   WebSearchTestResult,
 } from "../../api/webSearchSettings";
-import type { ModelSettingsResponse } from "../../api/modelSettings";
+import type { ModelSettingsResponse, ModelTestResult } from "../../api/modelSettings";
 
 export interface SettingsPageProps {
   onBack: () => void;
@@ -43,6 +43,7 @@ export interface SettingsPageProps {
   onListRunLogs: (query: ListRunLogsQuery) => Promise<RunLogsListResponse>;
   onLoadRunTrace: (runId: string) => Promise<RunTraceResponse>;
   onGetModelSettings: () => Promise<ModelSettingsResponse>;
+  onTestModelConnectivity: (input: { modelRef: string }) => Promise<ModelTestResult>;
   onGetWebSearchSettings: () => Promise<WebSearchSettingsResponse>;
   onUpdateWebSearchSettings: (
     input: UpdateWebSearchSettings,

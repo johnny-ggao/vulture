@@ -3,12 +3,13 @@ import type {
   AuthProfileView,
   ModelProviderView,
   ModelSettingsResponse,
+  ModelTestResult,
 } from "../../api/modelSettings";
 import { ErrorAlert } from "../components";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
-type BusyAction = "save" | "clear" | "signin" | "signout" | null;
+type BusyAction = "save" | "clear" | "signin" | "signout" | "test" | null;
 
 export function ModelSection(props: SettingsPageProps) {
   const [settings, setSettings] = useState<ModelSettingsResponse | null>(null);
@@ -18,6 +19,7 @@ export function ModelSection(props: SettingsPageProps) {
   const [draftKey, setDraftKey] = useState("");
   const [busy, setBusy] = useState<BusyAction>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<ModelTestResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +56,7 @@ export function ModelSection(props: SettingsPageProps) {
     setEditingProfileId(null);
     setDraftKey("");
     setActionError(null);
+    setTestResult(null);
   }, [activeId]);
 
   const configuredCount = useMemo(
@@ -94,8 +97,17 @@ export function ModelSection(props: SettingsPageProps) {
 
   async function handleSaveApiKey() {
     const key = draftKey.trim();
-    if (!key || !editingProfileId) return;
+    console.info("[model-auth] save clicked", {
+      editingProfileId,
+      keyLength: key.length,
+      busy,
+    });
+    if (!key || !editingProfileId) {
+      console.warn("[model-auth] save aborted (missing key or profile)");
+      return;
+    }
     const ok = await safeAction("save", () => props.onSaveApiKey(editingProfileId, key));
+    console.info("[model-auth] save result", { ok });
     if (!ok) return;
     setEditingProfileId(null);
     setDraftKey("");
@@ -111,6 +123,37 @@ export function ModelSection(props: SettingsPageProps) {
 
   async function handleSignOut() {
     await safeAction("signout", () => props.onSignOutCodex());
+  }
+
+  async function handleTestConnectivity() {
+    if (!active) return;
+    const firstModel = active.models[0];
+    if (!firstModel) {
+      setTestResult({
+        ok: false,
+        provider: active.id,
+        model: "",
+        message: "该提供方没有可用模型，无法测试。",
+      });
+      return;
+    }
+    setBusy("test");
+    setActionError(null);
+    setTestResult(null);
+    try {
+      const result = await props.onTestModelConnectivity({ modelRef: firstModel.modelRef });
+      setTestResult(result);
+    } catch (cause) {
+      console.error("[model-auth] test connectivity failed", { cause });
+      setTestResult({
+        ok: false,
+        provider: active.id,
+        model: firstModel.modelRef,
+        message: formatActionError(cause),
+      });
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -233,6 +276,30 @@ export function ModelSection(props: SettingsPageProps) {
                 <span>{active.authProfiles.length} 个</span>
               </div>
               <ErrorAlert message={actionError} />
+              {active.authProfiles.some(isConfigured) ? (
+                <div className="provider-test-row">
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    disabled={busy !== null}
+                    onClick={handleTestConnectivity}
+                    aria-label="测试连通性"
+                  >
+                    {busy === "test" ? "测试中…" : "测试连通性"}
+                  </button>
+                  {testResult ? (
+                    <span
+                      role="status"
+                      className={
+                        "provider-test-feedback " +
+                        (testResult.ok ? "provider-test-feedback-ok" : "provider-test-feedback-fail")
+                      }
+                    >
+                      {testResult.ok ? "✓ " : "✗ "}{testResult.message}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               {active.authProfiles.map((profile) => (
                 <AuthProfileRow
                   key={profile.id}
@@ -240,7 +307,15 @@ export function ModelSection(props: SettingsPageProps) {
                   editing={editingProfileId === profile.id}
                   draftKey={draftKey}
                   busy={busy}
-                  onEdit={() => setEditingProfileId(profile.id)}
+                  onEdit={() => {
+                    console.info("[model-auth] edit clicked", {
+                      profileId: profile.id,
+                      provider: profile.provider,
+                      currentEditingProfileId: editingProfileId,
+                      busy,
+                    });
+                    setEditingProfileId(profile.id);
+                  }}
                   onDraftKey={setDraftKey}
                   onSaveApiKey={handleSaveApiKey}
                   onCancelEdit={() => {

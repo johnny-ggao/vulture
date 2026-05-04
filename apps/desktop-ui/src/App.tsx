@@ -346,6 +346,11 @@ export function App() {
     return modelSettingsApi.get(apiClient);
   }
 
+  async function testModelConnectivity(input: { modelRef: string }) {
+    if (!apiClient) throw new Error("Gateway is not ready");
+    return modelSettingsApi.test(apiClient, input);
+  }
+
   async function getWebSearchSettings() {
     if (!apiClient) throw new Error("Gateway is not ready");
     return withGatewayRestartForMissingRoute(
@@ -1036,6 +1041,7 @@ export function App() {
               onListRunLogs={listRunLogs}
               onLoadRunTrace={loadRunTrace}
               onGetModelSettings={getModelSettings}
+              onTestModelConnectivity={testModelConnectivity}
               onGetWebSearchSettings={getWebSearchSettings}
               onUpdateWebSearchSettings={updateWebSearchSettings}
               onTestWebSearchSettings={testWebSearchSettings}

@@ -176,4 +176,98 @@ describe("/v1/model-settings", () => {
       status: "missing",
     });
   });
+
+  test("POST /v1/model-settings/test rejects missing modelRef", async () => {
+    const res = await modelSettingsRouter({
+      shellCallbackUrl: "http://shell.test",
+      shellToken: "test-token",
+      env: {},
+      fetch: async () => new Response(null, { status: 404 }),
+    }).request("/v1/model-settings/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ code: "model.test_invalid_input" });
+  });
+
+  test("POST /v1/model-settings/test surfaces resolver auth-missing errors as ok=false", async () => {
+    const res = await modelSettingsRouter({
+      shellCallbackUrl: "http://shell.test",
+      shellToken: "test-token",
+      env: {},
+      fetch: async () => new Response(null, { status: 404 }),
+      probeFetch: async () => new Response("should not be called", { status: 200 }),
+    }).request("/v1/model-settings/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelRef: "google/gemini-2.5-flash" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      ok: false,
+      provider: "google",
+      model: "gemini-2.5-flash",
+      profileId: "gemini-api-key",
+    });
+    expect(body.message).toContain("Gemini");
+  });
+
+  test("POST /v1/model-settings/test reports ok=true when probe succeeds", async () => {
+    let probedUrl = "";
+    const res = await modelSettingsRouter({
+      shellCallbackUrl: "http://shell.test",
+      shellToken: "test-token",
+      env: { GEMINI_API_KEY: "AIza-test" },
+      fetch: async () => new Response(null, { status: 404 }),
+      probeFetch: async (url) => {
+        probedUrl = String(url);
+        return Response.json({ models: [{ name: "models/gemini-2.5-flash" }] });
+      },
+    }).request("/v1/model-settings/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelRef: "google/gemini-2.5-flash" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      ok: true,
+      provider: "google",
+      model: "gemini-2.5-flash",
+      profileId: "gemini-api-key",
+    });
+    expect(body.message).toContain("Gemini auth ok");
+    expect(probedUrl).toContain("/v1beta/models?key=AIza-test");
+  });
+
+  test("POST /v1/model-settings/test reports ok=false on upstream auth failure", async () => {
+    const res = await modelSettingsRouter({
+      shellCallbackUrl: "http://shell.test",
+      shellToken: "test-token",
+      env: { OPENAI_API_KEY: "sk-bogus" },
+      fetch: async () => new Response(null, { status: 404 }),
+      probeFetch: async () =>
+        new Response(JSON.stringify({ error: { message: "Invalid API key" } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+    }).request("/v1/model-settings/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelRef: "openai/gpt-5.5" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      ok: false,
+      provider: "openai",
+      profileId: "openai-api-key",
+    });
+    expect(body.message).toContain("HTTP 401");
+    expect(body.message).toContain("Invalid API key");
+  });
 });

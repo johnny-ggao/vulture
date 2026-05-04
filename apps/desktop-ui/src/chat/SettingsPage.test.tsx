@@ -124,6 +124,13 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
       throw new Error("unused");
     }),
     onGetModelSettings: mock(async () => defaultModelSettings),
+    onTestModelConnectivity: mock(async (input: { modelRef: string }) => ({
+      ok: true,
+      provider: input.modelRef.split("/")[0] ?? "openai",
+      model: input.modelRef,
+      profileId: "openai-api-key",
+      message: "stub auth ok",
+    })),
     onGetWebSearchSettings: mock(async (): Promise<WebSearchSettingsResponse> => ({
       settings: {
         provider: "multi",
@@ -378,6 +385,85 @@ describe("SettingsPage Models", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加密钥" }));
 
     expect(screen.getByLabelText("Anthropic API Key API Key")).toBeDefined();
+  });
+
+  test("test connectivity button calls onTestModelConnectivity and shows ok feedback", async () => {
+    const onTestModelConnectivity = mock(async () => ({
+      ok: true,
+      provider: "openai",
+      model: "openai/gpt-5.5",
+      profileId: "openai-api-key",
+      message: "OpenAI auth ok · 12 个模型可见",
+    }));
+
+    render(<SettingsPage {...props({
+      onTestModelConnectivity,
+      onGetModelSettings: mock(async (): Promise<ModelSettingsResponse> => ({
+        providers: [
+          {
+            id: "openai",
+            name: "OpenAI",
+            api: "openai-responses",
+            models: [
+              { id: "gpt-5.5", modelRef: "openai/gpt-5.5", name: "GPT-5.5", reasoning: true, input: ["text"] },
+            ],
+            authProfiles: [
+              { id: "openai-api-key", provider: "openai", mode: "api_key", label: "OpenAI API Key", status: "configured" },
+            ],
+            authOrder: ["openai-api-key"],
+          },
+        ],
+      })),
+    })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "测试连通性" })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
+
+    await waitFor(() => {
+      expect(onTestModelConnectivity).toHaveBeenCalledWith({ modelRef: "openai/gpt-5.5" });
+    });
+    expect(await screen.findByText(/OpenAI auth ok/)).toBeDefined();
+  });
+
+  test("test connectivity button surfaces upstream failure inline", async () => {
+    const onTestModelConnectivity = mock(async () => ({
+      ok: false,
+      provider: "google",
+      model: "google/gemini-2.5-flash",
+      profileId: "gemini-api-key",
+      message: "Gemini 连通失败 (HTTP 401: Invalid API key)",
+    }));
+
+    render(<SettingsPage {...props({
+      onTestModelConnectivity,
+      onGetModelSettings: mock(async (): Promise<ModelSettingsResponse> => ({
+        providers: [
+          {
+            id: "google",
+            name: "Google Gemini",
+            api: "gemini-generate-content",
+            models: [
+              { id: "gemini-2.5-flash", modelRef: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", reasoning: true, input: ["text"] },
+            ],
+            authProfiles: [
+              { id: "gemini-api-key", provider: "google", mode: "api_key", label: "Gemini API Key", status: "configured" },
+            ],
+            authOrder: ["gemini-api-key"],
+          },
+        ],
+      })),
+    })} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "测试连通性" })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
+
+    expect(await screen.findByText(/Gemini 连通失败.*HTTP 401.*Invalid API key/)).toBeDefined();
   });
 });
 

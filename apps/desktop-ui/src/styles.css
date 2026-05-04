@@ -4716,6 +4716,31 @@ pre {
   padding-top: 10px;
 }
 
+.provider-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px dashed var(--fill-tertiary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+.provider-test-feedback {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+}
+.provider-test-feedback-ok {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.provider-test-feedback-fail {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
 /* ============================================================
  * C2 — Settings UI shells. Section-group + disabled-state
  * primitives + Browser/Channels-specific layouts. Marked-disabled
