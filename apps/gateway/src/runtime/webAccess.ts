@@ -132,10 +132,7 @@ export interface SearchProvider {
 
 export interface SearchProviderSettings {
   provider:
-    | "multi"
     | "duckduckgo-html"
-    | "bing-html"
-    | "brave-html"
     | "brave-api"
     | "tavily-api"
     | "perplexity-api"
@@ -184,7 +181,7 @@ export function createWebAccessService(options: WebAccessServiceOptions): WebAcc
   const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) =>
     runFetchWithTimeout(options.fetch, input, init, timeoutMs);
   const fallbackSearchProvider =
-    options.searchProvider ?? createDefaultFallbackSearchProvider(fetchWithTimeout);
+    options.searchProvider ?? new DuckDuckGoHtmlSearchProvider(fetchWithTimeout);
   const searchCache = new Map<string, SearchCacheEntry>();
 
   return {
@@ -320,7 +317,7 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
       headers: { "User-Agent": BROWSER_USER_AGENT },
     });
     const html = await response.text();
-    if (isBotChallenge(html, "duckduckgo")) {
+    if (isBotChallenge(html)) {
       throw new ToolCallError(
         "tool.execution_failed",
         "DuckDuckGo returned a bot-detection challenge",
@@ -332,97 +329,6 @@ export class DuckDuckGoHtmlSearchProvider implements SearchProvider {
       results: parseDuckDuckGoResults(html).slice(0, limit),
     };
   }
-}
-
-export class BingHtmlSearchProvider implements SearchProvider {
-  readonly id = "bing-html";
-
-  constructor(private readonly fetch: FetchLike) {}
-
-  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
-    if (typeof request.query !== "string" || request.query.trim().length === 0) {
-      throw new ToolCallError("tool.execution_failed", "web_search missing query");
-    }
-    const limit = clampLimit(request.limit);
-    const url = `https://www.bing.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
-    const response = await this.fetch(url, {
-      headers: { "User-Agent": BROWSER_USER_AGENT },
-    });
-    const html = await response.text();
-    if (isBotChallenge(html, "bing")) {
-      throw new ToolCallError(
-        "tool.execution_failed",
-        "Bing returned a bot-detection challenge",
-      );
-    }
-    return {
-      query: request.query,
-      provider: this.id,
-      results: parseBingResults(html).slice(0, limit),
-    };
-  }
-}
-
-export class BraveHtmlSearchProvider implements SearchProvider {
-  readonly id = "brave-html";
-
-  constructor(private readonly fetch: FetchLike) {}
-
-  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
-    if (typeof request.query !== "string" || request.query.trim().length === 0) {
-      throw new ToolCallError("tool.execution_failed", "web_search missing query");
-    }
-    const limit = clampLimit(request.limit);
-    const url = `https://search.brave.com/search?q=${encodeURIComponent(request.query).replace(/%20/g, "+")}`;
-    const response = await this.fetch(url, {
-      headers: { "User-Agent": BROWSER_USER_AGENT },
-    });
-    const html = await response.text();
-    if (isBotChallenge(html, "brave")) {
-      throw new ToolCallError(
-        "tool.execution_failed",
-        "Brave Search returned a bot-detection challenge",
-      );
-    }
-    return {
-      query: request.query,
-      provider: this.id,
-      results: parseBraveResults(html).slice(0, limit),
-    };
-  }
-}
-
-export function createFallbackSearchProvider(providers: readonly SearchProvider[]): SearchProvider {
-  if (providers.length === 0) {
-    throw new Error("createFallbackSearchProvider requires at least one provider");
-  }
-  return {
-    id: "fallback",
-    async search(request: WebSearchRequest): Promise<WebSearchResponse> {
-      const errors: string[] = [];
-      for (const provider of providers) {
-        try {
-          const result = await provider.search(request);
-          if (result.results.length > 0) return result;
-          errors.push(`${provider.id}: empty`);
-        } catch (cause) {
-          errors.push(`${provider.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
-        }
-      }
-      throw new ToolCallError(
-        "tool.execution_failed",
-        `web_search exhausted all providers (${errors.join("; ")})`,
-      );
-    },
-  };
-}
-
-export function createDefaultFallbackSearchProvider(fetch: FetchLike): SearchProvider {
-  return createFallbackSearchProvider([
-    new DuckDuckGoHtmlSearchProvider(fetch),
-    new BingHtmlSearchProvider(fetch),
-    new BraveHtmlSearchProvider(fetch),
-  ]);
 }
 
 export class BraveSearchApiProvider implements SearchProvider {
@@ -666,14 +572,8 @@ export function searchProviderFromSettings(
   fetch: FetchLike,
 ): SearchProvider | null {
   switch (settings.provider) {
-    case "multi":
-      return null; // fall through to default fallback chain
     case "duckduckgo-html":
-      return new DuckDuckGoHtmlSearchProvider(fetch);
-    case "bing-html":
-      return new BingHtmlSearchProvider(fetch);
-    case "brave-html":
-      return new BraveHtmlSearchProvider(fetch);
+      return null; // fall through to the default DDG provider in createWebAccessService
     case "brave-api":
       if (!settings.braveApiKey) return null;
       return new BraveSearchApiProvider({ apiKey: settings.braveApiKey, fetch });
@@ -872,74 +772,11 @@ function parseDuckDuckGoResults(html: string): WebSearchResult[] {
  * short-circuit on positive proof that the page rendered a normal SERP
  * (per-engine result class is present), then check for the challenge markers.
  */
-export function isBotChallenge(html: string, engine: "duckduckgo" | "bing" | "brave"): boolean {
-  if (engine === "duckduckgo" && /class="[^"]*\bresult__a\b[^"]*"/i.test(html)) return false;
-  if (engine === "bing" && /class="[^"]*\bb_algo\b[^"]*"/i.test(html)) return false;
-  if (engine === "brave" && /class="[^"]*\bsnippet\b[^"]*"\s+data-type=/i.test(html)) return false;
+export function isBotChallenge(html: string): boolean {
+  // Short-circuit if a normal DDG SERP class is present so we don't false-positive
+  // on result snippets that happen to mention "captcha".
+  if (/class="[^"]*\bresult__a\b[^"]*"/i.test(html)) return false;
   return /g-recaptcha|are you a human|id="challenge-form"|name="challenge"|<title>[^<]*captcha[^<]*<\/title>/i.test(html);
-}
-
-function parseBingResults(html: string): WebSearchResult[] {
-  const results: WebSearchResult[] = [];
-  const blockPattern = /<li\b[^>]*class=["'][^"']*\bb_algo\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
-  for (const block of html.matchAll(blockPattern)) {
-    const inner = block[1] ?? "";
-    const headingMatch = inner.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
-    if (!headingMatch) continue;
-    const linkMatch = headingMatch[1].match(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
-    if (!linkMatch) continue;
-    const url = decodeHtml(linkMatch[1] ?? "").trim();
-    const title = decodeHtml(stripTags(linkMatch[2] ?? "")).trim();
-    if (!url || !title) continue;
-    const snippet = extractBingSnippet(inner);
-    results.push(snippet ? { title, url, snippet } : { title, url });
-  }
-  return results;
-}
-
-function extractBingSnippet(blockHtml: string): string | undefined {
-  const captionMatch = blockHtml.match(
-    /<div\b[^>]*class=["'][^"']*\bb_caption\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-  );
-  const candidate = captionMatch?.[1] ?? blockHtml;
-  const pMatch = candidate.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
-  if (!pMatch) return undefined;
-  const text = normalizeWhitespace(decodeHtml(stripTags(pMatch[1] ?? "")));
-  return text.length > 0 ? text : undefined;
-}
-
-function parseBraveResults(html: string): WebSearchResult[] {
-  // Match "snippet" as a whole class token (not e.g. "snippet-description").
-  const SNIPPET_OPEN = /<div\b[^>]*\bclass=["'](?:[^"']*\s)?snippet(?:\s[^"']*)?["'][^>]*>/i;
-  const SNIPPET_OPEN_GLOBAL = new RegExp(SNIPPET_OPEN.source, "gi");
-  const blockStarts: number[] = [];
-  for (const match of html.matchAll(SNIPPET_OPEN_GLOBAL)) {
-    if (match.index !== undefined) blockStarts.push(match.index);
-  }
-  const results: WebSearchResult[] = [];
-  for (let i = 0; i < blockStarts.length; i += 1) {
-    const start = blockStarts[i];
-    const end = blockStarts[i + 1] ?? html.length;
-    const inner = html.slice(start, end);
-    const linkMatch = inner.match(/<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
-    if (!linkMatch) continue;
-    const url = decodeHtml(linkMatch[1] ?? "").trim();
-    const titleHtml = linkMatch[2] ?? "";
-    const titleMatch = titleHtml.match(
-      /<(?:div|span)\b[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span)>/i,
-    );
-    const titleSource = titleMatch?.[1] ?? titleHtml;
-    const title = decodeHtml(stripTags(titleSource)).trim();
-    if (!url || !title) continue;
-    const descMatch = inner.match(
-      /<div\b[^>]*\bclass=["'][^"']*\bsnippet-description\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
-    );
-    const snippet = descMatch
-      ? normalizeWhitespace(decodeHtml(stripTags(descMatch[1] ?? "")))
-      : "";
-    results.push(snippet ? { title, url, snippet } : { title, url });
-  }
-  return results;
 }
 
 function parseBraveApiResults(payload: unknown): WebSearchResult[] {

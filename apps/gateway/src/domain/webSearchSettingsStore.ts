@@ -2,10 +2,7 @@ import { nowIso8601, type Iso8601 } from "@vulture/protocol/src/v1/index";
 import { readJsonFile, writeJsonFile } from "./jsonFileStore";
 
 export type WebSearchProviderId =
-  | "multi"
   | "duckduckgo-html"
-  | "bing-html"
-  | "brave-html"
   | "brave-api"
   | "tavily-api"
   | "perplexity-api"
@@ -13,16 +10,18 @@ export type WebSearchProviderId =
   | "searxng";
 
 export const WEB_SEARCH_PROVIDER_IDS: readonly WebSearchProviderId[] = [
-  "multi",
   "duckduckgo-html",
-  "bing-html",
-  "brave-html",
   "brave-api",
   "tavily-api",
   "perplexity-api",
   "gemini-search",
   "searxng",
 ];
+
+// Provider ids that used to exist (multi-engine fallback chain, Bing/Brave HTML
+// scrape) but were dropped to align with OpenClaw. Files that still carry them
+// are silently migrated to duckduckgo-html so the user's BYOK keys are kept.
+const LEGACY_PROVIDER_IDS = new Set(["multi", "bing-html", "brave-html"]);
 
 export interface WebSearchSettings {
   provider: WebSearchProviderId;
@@ -49,7 +48,7 @@ interface WebSearchSettingsFile {
 }
 
 const DEFAULT_SETTINGS: WebSearchSettings = {
-  provider: "multi",
+  provider: "duckduckgo-html",
   searxngBaseUrl: null,
   braveApiKey: null,
   tavilyApiKey: null,
@@ -84,10 +83,11 @@ export class WebSearchSettingsStore {
   private read(): WebSearchSettingsFile {
     const parsed = readJsonFile<WebSearchSettingsFile>(this.path, DEFAULT_FILE);
     if (parsed.schemaVersion !== 1 || !isSettings(parsed.settings)) return DEFAULT_FILE;
+    const migrated = migrateLegacyProvider(parsed.settings);
     try {
       return {
         schemaVersion: 1,
-        settings: normalizeSettings(parsed.settings),
+        settings: normalizeSettings(migrated),
       };
     } catch {
       return DEFAULT_FILE;
@@ -154,11 +154,21 @@ function normalizeApiKey(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function migrateLegacyProvider(settings: WebSearchSettings): WebSearchSettings {
+  if (LEGACY_PROVIDER_IDS.has(settings.provider as string)) {
+    return { ...settings, provider: "duckduckgo-html" };
+  }
+  return settings;
+}
+
 function isSettings(value: unknown): value is WebSearchSettings {
   if (!value || typeof value !== "object") return false;
   const settings = value as Partial<WebSearchSettings> & Record<string, unknown>;
   if (typeof settings.provider !== "string") return false;
-  if (!WEB_SEARCH_PROVIDER_IDS.includes(settings.provider as WebSearchProviderId)) return false;
+  if (
+    !WEB_SEARCH_PROVIDER_IDS.includes(settings.provider as WebSearchProviderId) &&
+    !LEGACY_PROVIDER_IDS.has(settings.provider)
+  ) return false;
   if (settings.searxngBaseUrl !== null && typeof settings.searxngBaseUrl !== "string") return false;
   if (settings.braveApiKey !== undefined &&
     settings.braveApiKey !== null &&

@@ -13,7 +13,7 @@ const TEST_QUERY = "OpenAI Agents SDK";
 
 export function WebSearchSection(props: SettingsPageProps) {
   const [settings, setSettings] = useState<WebSearchSettingsResponse | null>(null);
-  const [provider, setProvider] = useState<WebSearchProviderId>("multi");
+  const [provider, setProvider] = useState<WebSearchProviderId>("duckduckgo-html");
   const [searxngBaseUrl, setSearxngBaseUrl] = useState("");
   const [braveApiKey, setBraveApiKey] = useState("");
   const [tavilyApiKey, setTavilyApiKey] = useState("");
@@ -135,8 +135,7 @@ export function WebSearchSection(props: SettingsPageProps) {
             }}
           >
             {(settings?.providers ?? [
-              { id: "multi", label: "Auto (DDG → Bing → Brave)" },
-              { id: "duckduckgo-html", label: "DuckDuckGo HTML" },
+              { id: "duckduckgo-html", label: "DuckDuckGo (HTML)" },
               { id: "searxng", label: "SearXNG" },
             ]).map((item) => (
               <option key={item.id} value={item.id}>

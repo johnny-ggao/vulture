@@ -94,7 +94,7 @@ describe("gateway server", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.settings.provider).toBe("multi");
+    expect(body.settings.provider).toBe("duckduckgo-html");
     cleanup();
   });
 });

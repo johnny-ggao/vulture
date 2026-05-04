@@ -1,10 +1,7 @@
 import type { ApiClient } from "./client";
 
 export type WebSearchProviderId =
-  | "multi"
   | "duckduckgo-html"
-  | "bing-html"
-  | "brave-html"
   | "brave-api"
   | "tavily-api"
   | "perplexity-api"

@@ -31,16 +31,13 @@ describe("/v1/web-search/settings", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.settings).toMatchObject({
-        provider: "multi",
+        provider: "duckduckgo-html",
         searxngBaseUrl: null,
         braveApiKey: null,
       });
       const providerIds = body.providers.map((p: { id: string }) => p.id);
       expect(providerIds).toEqual([
-        "multi",
         "duckduckgo-html",
-        "bing-html",
-        "brave-html",
         "brave-api",
         "tavily-api",
         "perplexity-api",
@@ -103,7 +100,7 @@ describe("/v1/web-search/settings", () => {
 
       const current = await app.request("/v1/web-search/settings");
       await expect(current.json()).resolves.toMatchObject({
-        settings: { provider: "multi" },
+        settings: { provider: "duckduckgo-html" },
       });
     } finally {
       cleanup();

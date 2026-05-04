@@ -133,7 +133,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
     })),
     onGetWebSearchSettings: mock(async (): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: "multi",
+        provider: "duckduckgo-html",
         searxngBaseUrl: null,
         braveApiKey: null,
         tavilyApiKey: null,
@@ -142,7 +142,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
         updatedAt: "2026-05-01T00:00:00.000Z",
       },
       providers: [
-        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        
         { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
         { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
         { id: "brave-api", label: "Brave Search API", requiresBaseUrl: false, requiresApiKey: true },
@@ -152,7 +152,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
       input: UpdateWebSearchSettings,
     ): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: input.provider ?? "multi",
+        provider: input.provider ?? "duckduckgo-html",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
         braveApiKey: input.braveApiKey ?? null,
         tavilyApiKey: input.tavilyApiKey ?? null,
@@ -161,7 +161,7 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
-        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        
         { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
         { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
         { id: "brave-api", label: "Brave Search API", requiresBaseUrl: false, requiresApiKey: true },
@@ -476,7 +476,7 @@ describe("SettingsPage Web Search", () => {
       input: UpdateWebSearchSettings,
     ): Promise<WebSearchSettingsResponse> => ({
       settings: {
-        provider: input.provider ?? "multi",
+        provider: input.provider ?? "duckduckgo-html",
         searxngBaseUrl: input.searxngBaseUrl ?? null,
         braveApiKey: input.braveApiKey ?? null,
         tavilyApiKey: input.tavilyApiKey ?? null,
@@ -485,7 +485,7 @@ describe("SettingsPage Web Search", () => {
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
-        { id: "multi", label: "Auto", requiresBaseUrl: false, requiresApiKey: false },
+        
         { id: "duckduckgo-html", label: "DuckDuckGo HTML", requiresBaseUrl: false, requiresApiKey: false },
         { id: "searxng", label: "SearXNG", requiresBaseUrl: true, requiresApiKey: false },
       ],

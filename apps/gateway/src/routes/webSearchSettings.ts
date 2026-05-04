@@ -43,31 +43,10 @@ export interface WebSearchSettingsRouterDeps {
 
 export const WEB_SEARCH_PROVIDER_DESCRIPTORS: WebSearchProviderDescriptor[] = [
   {
-    id: "multi",
-    label: "Auto (DDG → Bing → Brave)",
-    description:
-      "Free, zero-config. Tries each engine's HTML page and falls back automatically when one is rate-limited.",
-    requiresBaseUrl: false,
-    requiresApiKey: false,
-  },
-  {
     id: "duckduckgo-html",
     label: "DuckDuckGo (HTML)",
-    description: "Scrapes duckduckgo.com/html. Free; no API key.",
-    requiresBaseUrl: false,
-    requiresApiKey: false,
-  },
-  {
-    id: "bing-html",
-    label: "Bing (HTML)",
-    description: "Scrapes bing.com/search. Free; no API key.",
-    requiresBaseUrl: false,
-    requiresApiKey: false,
-  },
-  {
-    id: "brave-html",
-    label: "Brave Search (HTML)",
-    description: "Scrapes search.brave.com. Free; no API key.",
+    description:
+      "Free, zero-config default. Scrapes duckduckgo.com/html. Best for casual usage; switch to a paid API below for higher quality or volume.",
     requiresBaseUrl: false,
     requiresApiKey: false,
   },
@@ -245,10 +224,7 @@ function providerField(value: unknown): WebSearchProviderId | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new Error("provider is invalid");
   const allowed: WebSearchProviderId[] = [
-    "multi",
     "duckduckgo-html",
-    "bing-html",
-    "brave-html",
     "brave-api",
     "tavily-api",
     "perplexity-api",

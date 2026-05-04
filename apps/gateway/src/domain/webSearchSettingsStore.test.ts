@@ -13,11 +13,11 @@ function tempStore() {
 }
 
 describe("WebSearchSettingsStore", () => {
-  test("returns multi-engine fallback defaults when no settings file exists", () => {
+  test("returns DuckDuckGo HTML defaults when no settings file exists", () => {
     const { store, cleanup } = tempStore();
     try {
       expect(store.get()).toMatchObject({
-        provider: "multi",
+        provider: "duckduckgo-html",
         searxngBaseUrl: null,
         braveApiKey: null,
       });
@@ -57,17 +57,50 @@ describe("WebSearchSettingsStore", () => {
     }
   });
 
-  test("accepts each scrape-based provider id without extra fields", () => {
+  test("accepts duckduckgo-html without extra fields", () => {
     const { store, cleanup } = tempStore();
     try {
-      for (const provider of ["multi", "duckduckgo-html", "bing-html", "brave-html"] as const) {
-        const updated = store.update({ provider });
-        expect(updated.provider).toBe(provider);
-        expect(updated.searxngBaseUrl).toBeNull();
-        expect(updated.braveApiKey).toBeNull();
-      }
+      const updated = store.update({ provider: "duckduckgo-html" });
+      expect(updated.provider).toBe("duckduckgo-html");
+      expect(updated.searxngBaseUrl).toBeNull();
+      expect(updated.braveApiKey).toBeNull();
     } finally {
       cleanup();
+    }
+  });
+
+  test("migrates legacy multi/bing-html/brave-html provider ids to duckduckgo-html", () => {
+    // Legacy provider ids written by older Vulture builds. The store should
+    // silently coerce them to duckduckgo-html on read so the user's saved
+    // BYOK keys aren't wiped.
+    for (const legacy of ["multi", "bing-html", "brave-html"]) {
+      const { store, cleanup } = tempStore();
+      try {
+        // Bypass the typed update API because the legacy id isn't valid input.
+        const fs = require("node:fs") as typeof import("node:fs");
+        const filePath = (store as unknown as { path: string }).path;
+        fs.mkdirSync(require("node:path").dirname(filePath), { recursive: true });
+        fs.writeFileSync(
+          filePath,
+          JSON.stringify({
+            schemaVersion: 1,
+            settings: {
+              provider: legacy,
+              searxngBaseUrl: null,
+              braveApiKey: "preserved-key",
+              tavilyApiKey: null,
+              perplexityApiKey: null,
+              geminiApiKey: null,
+              updatedAt: "2026-05-01T00:00:00.000Z",
+            },
+          }),
+        );
+        const loaded = store.get();
+        expect(loaded.provider).toBe("duckduckgo-html");
+        expect(loaded.braveApiKey).toBe("preserved-key");
+      } finally {
+        cleanup();
+      }
     }
   });
 
