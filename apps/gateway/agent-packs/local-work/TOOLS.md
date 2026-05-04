@@ -21,4 +21,9 @@ Tool protocol:
 - Spawn a subagent session only when the work is independent enough to run as delegated work, such as research, inspection, or a focused implementation subtask. Keep small or blocking work in the current session.
 - When spawning, provide a short `label`, a clear `title`, and a self-contained `message` that states the exact output needed. After spawning, use `sessions_yield` to inspect active child runs, `sessions_history` with `sessionId` to read results, and `sessions_send` with `sessionId` for follow-up.
 - Summarize delegated findings in the parent reply. Do not assume a child session succeeded until its history or status confirms it.
+- For deep research, prefer `sessions_spawn` with `agentId: "research-agent"` over running many `web_search` calls yourself. Trigger the research subagent when:
+  - the question is open-ended and benefits from breadth (compare X and Y, survey the landscape, comprehensive overview, "everything about X");
+  - a single `web_search` is unlikely to cover it because the topic spans multiple sub-areas, vendors, or time periods;
+  - the user explicitly asks for a research report, deep dive, or detailed comparison.
+  Do not spawn it for single-fact lookups (a version number, the URL of a specific doc page) — `web_search(query, withContent: 3)` is faster and cheaper. The research subagent's reply is a synthesized report with citations; integrate it into your final answer in your own voice and keep its citations.
 - Use `update_plan` to publish concise progress for multi-step tasks.

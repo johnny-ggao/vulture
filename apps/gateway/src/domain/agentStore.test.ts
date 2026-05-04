@@ -21,14 +21,21 @@ function freshStore(defaultWorkspace?: string) {
 }
 
 describe("AgentStore", () => {
-  test("ensures both preset agents on first list", () => {
+  test("ensures the preset agents on first list", () => {
     const { store, cleanup } = freshStore();
     const list = store.list();
-    expect(list.length).toBe(2);
+    expect(list.length).toBe(3);
     const ids = list.map((a) => a.id);
     expect(ids).toContain(brandId<AgentId>("local-work-agent"));
     expect(ids).toContain(brandId<AgentId>("coding-agent"));
+    expect(ids).toContain(brandId<AgentId>("research-agent"));
     expect(list.find((a) => a.id === "local-work-agent")?.instructions.length).toBeGreaterThan(0);
+    // Research agent gets locked-down web tools and lists local-work-agent and
+    // coding-agent as its "callers" via their handoffAgentIds.
+    const research = list.find((a) => a.id === "research-agent");
+    expect(research?.tools).toEqual(["web_search", "web_fetch", "web_extract", "update_plan"]);
+    const general = list.find((a) => a.id === "local-work-agent");
+    expect(general?.handoffAgentIds).toContain("research-agent");
     cleanup();
   });
 
@@ -201,6 +208,7 @@ describe("AgentStore", () => {
       brandId<AgentId>("coder"),
       brandId<AgentId>("coding-agent"),
       brandId<AgentId>("local-work-agent"),
+      brandId<AgentId>("research-agent"),
     ].sort((a, b) => (a < b ? -1 : 1));
     expect(ids).toEqual(expected);
     cleanup();

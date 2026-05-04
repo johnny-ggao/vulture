@@ -19,12 +19,16 @@ function freshApp() {
 }
 
 describe("/v1/agents", () => {
-  test("GET seeds and returns both preset agents", async () => {
+  test("GET seeds and returns the preset agents", async () => {
     const { app, cleanup } = freshApp();
     const res = await app.request("/v1/agents", { headers: auth });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.items.map((a: { id: string }) => a.id).sort()).toEqual(["coding-agent", "local-work-agent"]);
+    expect(body.items.map((a: { id: string }) => a.id).sort()).toEqual([
+      "coding-agent",
+      "local-work-agent",
+      "research-agent",
+    ]);
     cleanup();
   });
 

@@ -29,6 +29,7 @@ describe("server integration (full stack)", () => {
     expect((await list1.json()).items.map((a: { id: string }) => a.id).sort()).toEqual([
       "coding-agent",
       "local-work-agent",
+      "research-agent",
     ]);
 
     const create = await app.request("/v1/agents", {
