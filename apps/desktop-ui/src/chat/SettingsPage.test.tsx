@@ -299,7 +299,7 @@ describe("SettingsPage MCP tools", () => {
 });
 
 describe("SettingsPage Models", () => {
-  test("model tab shows a summary and provider directory", async () => {
+  test("model tab shows the provider directory", async () => {
     render(<SettingsPage {...props({
       authStatus: {
         apiKey: { state: "set", source: "keychain" },
@@ -309,14 +309,11 @@ describe("SettingsPage Models", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "模型" }));
 
-    const summary = screen.getByLabelText("模型配置摘要");
-    expect(within(summary).getByText(/已配置/)).toBeDefined();
-    await waitFor(() => {
-      expect(within(summary).getByText(/2 个提供方/)).toBeDefined();
-    });
-    expect(within(summary).getByText(/当前查看/)).toBeDefined();
+    expect(screen.queryByLabelText("模型配置摘要")).toBeNull();
     expect(screen.queryByRole("heading", { level: 3, name: "默认值" })).toBeNull();
-    expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByRole("listbox", { name: "模型提供商" })).toBeDefined();
+    });
     expect(screen.getAllByRole("option").length).toBeGreaterThan(1);
     expect(screen.getByRole("heading", { level: 3, name: "OpenAI" })).toBeDefined();
     expect(screen.getByText("连接方式")).toBeDefined();

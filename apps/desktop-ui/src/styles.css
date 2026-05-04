@@ -3792,34 +3792,6 @@ pre {
   max-width: 600px;
 }
 
-.provider-summary-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in oklab, var(--accio-border, var(--fill-tertiary)) 82%, transparent);
-  border-radius: 14px;
-  background: color-mix(in oklab, var(--accio-surface-muted, var(--fill-quaternary)) 58%, transparent);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.35;
-}
-.provider-summary-strip span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  white-space: nowrap;
-}
-.provider-summary-strip span + span::before {
-  content: none;
-}
-.provider-summary-strip b {
-  color: var(--text-primary);
-  font-weight: 740;
-}
 .provider-grid {
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);

@@ -63,21 +63,6 @@ export function ModelSection(props: SettingsPageProps) {
     () => providers.filter((provider) => provider.authProfiles.some(isConfigured)).length,
     [providers],
   );
-  const totalModels = useMemo(
-    () => providers.reduce((sum, provider) => sum + provider.models.length, 0),
-    [providers],
-  );
-  const totalProfiles = useMemo(
-    () => providers.reduce((sum, provider) => sum + provider.authProfiles.length, 0),
-    [providers],
-  );
-  const configuredProfiles = useMemo(
-    () => providers.reduce(
-      (sum, provider) => sum + provider.authProfiles.filter(isConfigured).length,
-      0,
-    ),
-    [providers],
-  );
 
   async function safeAction<T>(label: NonNullable<BusyAction>, fn: () => Promise<T>): Promise<boolean> {
     setBusy(label);
@@ -161,14 +146,6 @@ export function ModelSection(props: SettingsPageProps) {
       title="模型"
       description="配置模型提供商与连接方式。OpenAI API Key 与 ChatGPT/Codex 登录会合并在同一个 OpenAI 提供方下。"
     >
-      <div className="provider-summary-strip" aria-label="模型配置摘要" aria-live="polite">
-        <span><b>{configuredCount}</b> / {providers.length} 已配置</span>
-        <span>{providers.length} 个提供方</span>
-        <span>{totalModels} 个模型</span>
-        <span>{configuredProfiles} / {totalProfiles} 个连接可用</span>
-        <span>当前查看 <b>{active?.name ?? "无"}</b></span>
-      </div>
-
       {isLoading ? (
         <div className="provider-banner provider-banner-neutral" role="status">
           <span className="provider-banner-mark" aria-hidden="true" />
