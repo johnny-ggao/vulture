@@ -43,6 +43,8 @@ describe("/v1/web-search/settings", () => {
         "brave-html",
         "brave-api",
         "tavily-api",
+        "perplexity-api",
+        "gemini-search",
         "searxng",
       ]);
       const braveApi = body.providers.find((p: { id: string }) => p.id === "brave-api");

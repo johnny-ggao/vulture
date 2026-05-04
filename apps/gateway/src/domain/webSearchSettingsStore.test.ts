@@ -117,6 +117,44 @@ describe("WebSearchSettingsStore", () => {
     }
   });
 
+  test("persists perplexity-api with an API key and rejects empty keys", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "perplexity-api",
+        perplexityApiKey: "pplx-key",
+      });
+      expect(updated).toMatchObject({
+        provider: "perplexity-api",
+        perplexityApiKey: "pplx-key",
+      });
+      expect(() => store.update({ provider: "perplexity-api", perplexityApiKey: null })).toThrow(
+        "perplexityApiKey is required",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("persists gemini-search with an API key and rejects empty keys", () => {
+    const { store, cleanup } = tempStore();
+    try {
+      const updated = store.update({
+        provider: "gemini-search",
+        geminiApiKey: "AIzaXYZ",
+      });
+      expect(updated).toMatchObject({
+        provider: "gemini-search",
+        geminiApiKey: "AIzaXYZ",
+      });
+      expect(() => store.update({ provider: "gemini-search", geminiApiKey: null })).toThrow(
+        "geminiApiKey is required",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   test("rejects unknown provider ids", () => {
     const { store, cleanup } = tempStore();
     try {

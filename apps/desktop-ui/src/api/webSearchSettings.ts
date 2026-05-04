@@ -7,6 +7,8 @@ export type WebSearchProviderId =
   | "brave-html"
   | "brave-api"
   | "tavily-api"
+  | "perplexity-api"
+  | "gemini-search"
   | "searxng";
 
 export interface WebSearchSettings {
@@ -14,6 +16,8 @@ export interface WebSearchSettings {
   searxngBaseUrl: string | null;
   braveApiKey: string | null;
   tavilyApiKey: string | null;
+  perplexityApiKey: string | null;
+  geminiApiKey: string | null;
   updatedAt: string;
 }
 
@@ -35,6 +39,8 @@ export interface UpdateWebSearchSettings {
   searxngBaseUrl?: string | null;
   braveApiKey?: string | null;
   tavilyApiKey?: string | null;
+  perplexityApiKey?: string | null;
+  geminiApiKey?: string | null;
 }
 
 export interface WebSearchTestResult {

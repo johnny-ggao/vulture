@@ -130,6 +130,8 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
         searxngBaseUrl: null,
         braveApiKey: null,
         tavilyApiKey: null,
+        perplexityApiKey: null,
+        geminiApiKey: null,
         updatedAt: "2026-05-01T00:00:00.000Z",
       },
       providers: [
@@ -147,6 +149,8 @@ function props(overrides: Partial<SettingsPageProps> = {}): SettingsPageProps {
         searxngBaseUrl: input.searxngBaseUrl ?? null,
         braveApiKey: input.braveApiKey ?? null,
         tavilyApiKey: input.tavilyApiKey ?? null,
+        perplexityApiKey: input.perplexityApiKey ?? null,
+        geminiApiKey: input.geminiApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
@@ -387,6 +391,8 @@ describe("SettingsPage Web Search", () => {
         searxngBaseUrl: input.searxngBaseUrl ?? null,
         braveApiKey: input.braveApiKey ?? null,
         tavilyApiKey: input.tavilyApiKey ?? null,
+        perplexityApiKey: input.perplexityApiKey ?? null,
+        geminiApiKey: input.geminiApiKey ?? null,
         updatedAt: "2026-05-01T00:00:01.000Z",
       },
       providers: [
@@ -423,6 +429,8 @@ describe("SettingsPage Web Search", () => {
         searxngBaseUrl: "https://search.example.com",
         braveApiKey: null,
         tavilyApiKey: null,
+        perplexityApiKey: null,
+        geminiApiKey: null,
         query: "OpenAI Agents SDK",
       });
     });
@@ -435,6 +443,8 @@ describe("SettingsPage Web Search", () => {
         searxngBaseUrl: "https://search.example.com",
         braveApiKey: null,
         tavilyApiKey: null,
+        perplexityApiKey: null,
+        geminiApiKey: null,
       });
     });
   });

@@ -34,6 +34,12 @@ export interface WebSearchResponse {
   query: string;
   provider: string;
   results: WebSearchResult[];
+  /**
+   * AI-synthesized answer (Perplexity, Gemini grounding, etc.). When present,
+   * the agent can use this directly instead of summarising results itself.
+   * The `results` array still carries the citations behind this answer.
+   */
+  answer?: string;
 }
 
 export interface WebFetchRequest {
@@ -90,10 +96,14 @@ export interface SearchProviderSettings {
     | "brave-html"
     | "brave-api"
     | "tavily-api"
+    | "perplexity-api"
+    | "gemini-search"
     | "searxng";
   searxngBaseUrl: string | null;
   braveApiKey?: string | null;
   tavilyApiKey?: string | null;
+  perplexityApiKey?: string | null;
+  geminiApiKey?: string | null;
 }
 
 export interface WebAccessService {
@@ -408,6 +418,113 @@ export class TavilySearchProvider implements SearchProvider {
   }
 }
 
+export class PerplexitySearchProvider implements SearchProvider {
+  readonly id = "perplexity-api";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+  private readonly model: string;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike; model?: string }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Perplexity API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+    this.model = opts.model ?? "sonar";
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const response = await this.fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+        "User-Agent": "Vulture/1.0",
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [{ role: "user", content: request.query }],
+        return_related_questions: false,
+      }),
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Perplexity API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Perplexity API invalid JSON");
+    });
+    const parsed = parsePerplexityResults(payload);
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parsed.results.slice(0, limit),
+      ...(parsed.answer ? { answer: parsed.answer } : {}),
+    };
+  }
+}
+
+export class GeminiSearchProvider implements SearchProvider {
+  readonly id = "gemini-search";
+  private readonly apiKey: string;
+  private readonly fetch: FetchLike;
+  private readonly model: string;
+
+  constructor(opts: { apiKey: string; fetch: FetchLike; model?: string }) {
+    if (!opts.apiKey || opts.apiKey.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "Gemini API key is required");
+    }
+    this.apiKey = opts.apiKey.trim();
+    this.fetch = opts.fetch;
+    this.model = opts.model ?? "gemini-2.0-flash";
+  }
+
+  async search(request: WebSearchRequest): Promise<WebSearchResponse> {
+    if (typeof request.query !== "string" || request.query.trim().length === 0) {
+      throw new ToolCallError("tool.execution_failed", "web_search missing query");
+    }
+    const limit = clampLimit(request.limit);
+    const url =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}` +
+      `:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const response = await this.fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "Vulture/1.0",
+      },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: request.query }] }],
+        tools: [{ google_search: {} }],
+      }),
+    });
+    if (!response.ok) {
+      throw new ToolCallError(
+        "tool.execution_failed",
+        `Gemini grounding API returned ${response.status}`,
+      );
+    }
+    const payload = await response.json().catch(() => {
+      throw new ToolCallError("tool.execution_failed", "Gemini API invalid JSON");
+    });
+    const parsed = parseGeminiGroundingResults(payload);
+    return {
+      query: request.query,
+      provider: this.id,
+      results: parsed.results.slice(0, limit),
+      ...(parsed.answer ? { answer: parsed.answer } : {}),
+    };
+  }
+}
+
 export class SearxngSearchProvider implements SearchProvider {
   readonly id = "searxng";
   private readonly baseUrl: string;
@@ -459,6 +576,12 @@ export function searchProviderFromSettings(
     case "tavily-api":
       if (!settings.tavilyApiKey) return null;
       return new TavilySearchProvider({ apiKey: settings.tavilyApiKey, fetch });
+    case "perplexity-api":
+      if (!settings.perplexityApiKey) return null;
+      return new PerplexitySearchProvider({ apiKey: settings.perplexityApiKey, fetch });
+    case "gemini-search":
+      if (!settings.geminiApiKey) return null;
+      return new GeminiSearchProvider({ apiKey: settings.geminiApiKey, fetch });
     case "searxng":
       if (!settings.searxngBaseUrl) return null;
       return new SearxngSearchProvider({ baseUrl: settings.searxngBaseUrl, fetch });
@@ -715,6 +838,71 @@ function parseTavilyResults(payload: unknown): WebSearchResult[] {
     if (rawContent) result.content = rawContent;
     return [result];
   });
+}
+
+function parsePerplexityResults(payload: unknown): {
+  results: WebSearchResult[];
+  answer: string;
+} {
+  const value = isRecord(payload) ? payload : {};
+  const choices = Array.isArray(value.choices) ? value.choices : [];
+  const firstChoice = isRecord(choices[0]) ? choices[0] : {};
+  const message = isRecord(firstChoice.message) ? firstChoice.message : {};
+  const answer = typeof message.content === "string" ? message.content.trim() : "";
+
+  // Newer responses ship structured `search_results`; older ones only a citations URL list.
+  const structured = Array.isArray(value.search_results) ? value.search_results : [];
+  if (structured.length > 0) {
+    const results = structured.flatMap((item): WebSearchResult[] => {
+      if (!isRecord(item)) return [];
+      const title = typeof item.title === "string" ? item.title.trim() : "";
+      const url = typeof item.url === "string" ? item.url.trim() : "";
+      if (!url) return [];
+      const snippet = typeof item.snippet === "string" ? item.snippet.trim() : "";
+      return [{ title: title || url, url, ...(snippet ? { snippet } : {}) }];
+    });
+    return { results, answer };
+  }
+
+  const citations = Array.isArray(value.citations) ? value.citations : [];
+  const results = citations.flatMap((item): WebSearchResult[] => {
+    const url = typeof item === "string" ? item.trim() : "";
+    if (!url) return [];
+    return [{ title: url, url }];
+  });
+  return { results, answer };
+}
+
+function parseGeminiGroundingResults(payload: unknown): {
+  results: WebSearchResult[];
+  answer: string;
+} {
+  const value = isRecord(payload) ? payload : {};
+  const candidates = Array.isArray(value.candidates) ? value.candidates : [];
+  const candidate = isRecord(candidates[0]) ? candidates[0] : {};
+  const content = isRecord(candidate.content) ? candidate.content : {};
+  const parts = Array.isArray(content.parts) ? content.parts : [];
+  const answer = parts
+    .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
+    .filter((text) => text.length > 0)
+    .join("")
+    .trim();
+
+  const grounding = isRecord(candidate.groundingMetadata) ? candidate.groundingMetadata : {};
+  const chunks = Array.isArray(grounding.groundingChunks) ? grounding.groundingChunks : [];
+  const results: WebSearchResult[] = [];
+  const seen = new Set<string>();
+  for (const chunk of chunks) {
+    if (!isRecord(chunk)) continue;
+    const web = isRecord(chunk.web) ? chunk.web : null;
+    if (!web) continue;
+    const url = typeof web.uri === "string" ? web.uri.trim() : "";
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const title = typeof web.title === "string" ? web.title.trim() : "";
+    results.push({ title: title || url, url });
+  }
+  return { results, answer };
 }
 
 function parseSearxngResults(payload: unknown): WebSearchResult[] {

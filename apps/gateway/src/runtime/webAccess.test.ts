@@ -7,6 +7,8 @@ import {
   createFallbackSearchProvider,
   createWebAccessService,
   DuckDuckGoHtmlSearchProvider,
+  GeminiSearchProvider,
+  PerplexitySearchProvider,
   searchProviderFromSettings,
   SearxngSearchProvider,
   TavilySearchProvider,
@@ -398,6 +400,145 @@ describe("WebAccessService", () => {
     });
   });
 
+  test("Perplexity provider exposes synthesized answer + structured search results", async () => {
+    const requested: { url: string; init?: RequestInit }[] = [];
+    const provider = new PerplexitySearchProvider({
+      apiKey: "pplx-secret",
+      fetch: async (url, init) => {
+        requested.push({ url: String(url), init });
+        return Response.json({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "Vulture is a local-first AI agent platform.",
+              },
+            },
+          ],
+          search_results: [
+            {
+              title: "Vulture readme",
+              url: "https://example.com/readme",
+              snippet: "Local-first agent platform",
+            },
+          ],
+          citations: ["https://example.com/readme"],
+        });
+      },
+    });
+
+    const result = await provider.search({ query: "what is vulture", limit: 5 });
+    expect(result.provider).toBe("perplexity-api");
+    expect(result.answer).toBe("Vulture is a local-first AI agent platform.");
+    expect(result.results).toEqual([
+      {
+        title: "Vulture readme",
+        url: "https://example.com/readme",
+        snippet: "Local-first agent platform",
+      },
+    ]);
+    expect(requested[0].url).toBe("https://api.perplexity.ai/chat/completions");
+    expect(requested[0].init?.method).toBe("POST");
+    const headers = new Headers(requested[0].init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer pplx-secret");
+    const body = JSON.parse(String(requested[0].init?.body ?? "{}"));
+    expect(body.model).toBe("sonar");
+    expect(body.messages?.[0]?.content).toBe("what is vulture");
+  });
+
+  test("Perplexity provider falls back to citations when search_results missing", async () => {
+    const provider = new PerplexitySearchProvider({
+      apiKey: "pplx-secret",
+      fetch: async () =>
+        Response.json({
+          choices: [{ message: { role: "assistant", content: "Answer text" } }],
+          citations: ["https://example.com/a", "https://example.com/b"],
+        }),
+    });
+
+    const result = await provider.search({ query: "x" });
+    expect(result.answer).toBe("Answer text");
+    expect(result.results).toEqual([
+      { title: "https://example.com/a", url: "https://example.com/a" },
+      { title: "https://example.com/b", url: "https://example.com/b" },
+    ]);
+  });
+
+  test("Perplexity provider rejects missing key and surfaces non-2xx", async () => {
+    expect(() => new PerplexitySearchProvider({ apiKey: " ", fetch: async () => new Response() }))
+      .toThrow("Perplexity API key is required");
+
+    const provider = new PerplexitySearchProvider({
+      apiKey: "pplx-secret",
+      fetch: async () => new Response("limited", { status: 429 }),
+    });
+    await expect(provider.search({ query: "x" })).rejects.toMatchObject({
+      code: "tool.execution_failed",
+      message: "Perplexity API returned 429",
+    });
+  });
+
+  test("Gemini provider parses grounding chunks into search results with synthesized answer", async () => {
+    const requested: { url: string; init?: RequestInit }[] = [];
+    const provider = new GeminiSearchProvider({
+      apiKey: "AIzaXYZ",
+      fetch: async (url, init) => {
+        requested.push({ url: String(url), init });
+        return Response.json({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  { text: "Bun is " },
+                  { text: "a JavaScript runtime." },
+                ],
+              },
+              groundingMetadata: {
+                groundingChunks: [
+                  { web: { uri: "https://bun.sh", title: "Bun" } },
+                  { web: { uri: "https://github.com/oven-sh/bun", title: "GitHub" } },
+                  // Duplicate URL — should be deduped.
+                  { web: { uri: "https://bun.sh", title: "Bun (dup)" } },
+                  // Missing uri — should be ignored.
+                  { web: { title: "no uri" } },
+                ],
+              },
+            },
+          ],
+        });
+      },
+    });
+
+    const result = await provider.search({ query: "what is bun", limit: 5 });
+    expect(result.provider).toBe("gemini-search");
+    expect(result.answer).toBe("Bun is a JavaScript runtime.");
+    expect(result.results).toEqual([
+      { title: "Bun", url: "https://bun.sh" },
+      { title: "GitHub", url: "https://github.com/oven-sh/bun" },
+    ]);
+    expect(requested[0].url).toContain(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+    );
+    expect(requested[0].url).toContain("key=AIzaXYZ");
+    const body = JSON.parse(String(requested[0].init?.body ?? "{}"));
+    expect(body.tools).toEqual([{ google_search: {} }]);
+    expect(body.contents?.[0]?.parts?.[0]?.text).toBe("what is bun");
+  });
+
+  test("Gemini provider rejects missing key and surfaces non-2xx", async () => {
+    expect(() => new GeminiSearchProvider({ apiKey: "  ", fetch: async () => new Response() }))
+      .toThrow("Gemini API key is required");
+
+    const provider = new GeminiSearchProvider({
+      apiKey: "AIzaXYZ",
+      fetch: async () => new Response("forbidden", { status: 403 }),
+    });
+    await expect(provider.search({ query: "x" })).rejects.toMatchObject({
+      code: "tool.execution_failed",
+      message: "Gemini grounding API returned 403",
+    });
+  });
+
   test("withContent does not refetch results that already carry provider content", async () => {
     const fetched: string[] = [];
     const tavilyLike: SearchProvider = {
@@ -467,6 +608,30 @@ describe("WebAccessService", () => {
     expect(
       searchProviderFromSettings(
         { provider: "tavily-api", searxngBaseUrl: null, tavilyApiKey: null },
+        fetchImpl,
+      ),
+    ).toBeNull();
+    expect(
+      searchProviderFromSettings(
+        { provider: "perplexity-api", searxngBaseUrl: null, perplexityApiKey: "pplx" },
+        fetchImpl,
+      ),
+    ).toBeInstanceOf(PerplexitySearchProvider);
+    expect(
+      searchProviderFromSettings(
+        { provider: "perplexity-api", searxngBaseUrl: null, perplexityApiKey: null },
+        fetchImpl,
+      ),
+    ).toBeNull();
+    expect(
+      searchProviderFromSettings(
+        { provider: "gemini-search", searxngBaseUrl: null, geminiApiKey: "AIzaXYZ" },
+        fetchImpl,
+      ),
+    ).toBeInstanceOf(GeminiSearchProvider);
+    expect(
+      searchProviderFromSettings(
+        { provider: "gemini-search", searxngBaseUrl: null, geminiApiKey: null },
         fetchImpl,
       ),
     ).toBeNull();

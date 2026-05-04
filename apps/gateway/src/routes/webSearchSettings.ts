@@ -88,6 +88,22 @@ export const WEB_SEARCH_PROVIDER_DESCRIPTORS: WebSearchProviderDescriptor[] = [
     requiresApiKey: true,
   },
   {
+    id: "perplexity-api",
+    label: "Perplexity (Sonar)",
+    description:
+      "Perplexity Sonar API. Returns AI-synthesized answers with citations. Requires an API key from perplexity.ai/settings/api.",
+    requiresBaseUrl: false,
+    requiresApiKey: true,
+  },
+  {
+    id: "gemini-search",
+    label: "Gemini Grounding",
+    description:
+      "Google's Gemini model with Google Search grounding. Returns AI-synthesized answers with citations. Requires a Gemini API key from aistudio.google.com.",
+    requiresBaseUrl: false,
+    requiresApiKey: true,
+  },
+  {
     id: "searxng",
     label: "SearXNG",
     description: "Self-hosted or public SearXNG instance. Requires a base URL.",
@@ -168,6 +184,8 @@ function parsePatch(raw: unknown): UpdateWebSearchSettingsInput {
     searxngBaseUrl: nullableString(value.searxngBaseUrl),
     braveApiKey: nullableString(value.braveApiKey),
     tavilyApiKey: nullableString(value.tavilyApiKey),
+    perplexityApiKey: nullableString(value.perplexityApiKey),
+    geminiApiKey: nullableString(value.geminiApiKey),
   };
 }
 
@@ -194,6 +212,10 @@ function normalizeTestSettings(
     input.braveApiKey !== undefined ? input.braveApiKey : current.braveApiKey;
   const tavilyApiKey =
     input.tavilyApiKey !== undefined ? input.tavilyApiKey : current.tavilyApiKey;
+  const perplexityApiKey =
+    input.perplexityApiKey !== undefined ? input.perplexityApiKey : current.perplexityApiKey;
+  const geminiApiKey =
+    input.geminiApiKey !== undefined ? input.geminiApiKey : current.geminiApiKey;
   if (provider === "searxng" && !searxngBaseUrl) {
     throw new Error("searxngBaseUrl is required");
   }
@@ -203,12 +225,20 @@ function normalizeTestSettings(
   if (provider === "tavily-api" && !tavilyApiKey) {
     throw new Error("tavilyApiKey is required");
   }
+  if (provider === "perplexity-api" && !perplexityApiKey) {
+    throw new Error("perplexityApiKey is required");
+  }
+  if (provider === "gemini-search" && !geminiApiKey) {
+    throw new Error("geminiApiKey is required");
+  }
   return {
     ...current,
     provider,
     searxngBaseUrl,
     braveApiKey,
     tavilyApiKey,
+    perplexityApiKey,
+    geminiApiKey,
   };
 }
 
@@ -222,6 +252,8 @@ function providerField(value: unknown): WebSearchProviderId | undefined {
     "brave-html",
     "brave-api",
     "tavily-api",
+    "perplexity-api",
+    "gemini-search",
     "searxng",
   ];
   if (allowed.includes(value as WebSearchProviderId)) return value as WebSearchProviderId;

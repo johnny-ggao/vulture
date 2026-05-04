@@ -17,6 +17,8 @@ export function WebSearchSection(props: SettingsPageProps) {
   const [searxngBaseUrl, setSearxngBaseUrl] = useState("");
   const [braveApiKey, setBraveApiKey] = useState("");
   const [tavilyApiKey, setTavilyApiKey] = useState("");
+  const [perplexityApiKey, setPerplexityApiKey] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<WebSearchTestResult | null>(null);
@@ -32,6 +34,8 @@ export function WebSearchSection(props: SettingsPageProps) {
       setSearxngBaseUrl(loaded.settings.searxngBaseUrl ?? "");
       setBraveApiKey(loaded.settings.braveApiKey ?? "");
       setTavilyApiKey(loaded.settings.tavilyApiKey ?? "");
+      setPerplexityApiKey(loaded.settings.perplexityApiKey ?? "");
+      setGeminiApiKey(loaded.settings.geminiApiKey ?? "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -48,7 +52,9 @@ export function WebSearchSection(props: SettingsPageProps) {
     searxngBaseUrl: provider === "searxng" ? searxngBaseUrl.trim() : null,
     braveApiKey: provider === "brave-api" ? braveApiKey.trim() : null,
     tavilyApiKey: provider === "tavily-api" ? tavilyApiKey.trim() : null,
-  }), [provider, searxngBaseUrl, braveApiKey, tavilyApiKey]);
+    perplexityApiKey: provider === "perplexity-api" ? perplexityApiKey.trim() : null,
+    geminiApiKey: provider === "gemini-search" ? geminiApiKey.trim() : null,
+  }), [provider, searxngBaseUrl, braveApiKey, tavilyApiKey, perplexityApiKey, geminiApiKey]);
 
   const currentDescriptor = useMemo(
     () => settings?.providers.find((descriptor) => descriptor.id === provider) ?? null,
@@ -82,6 +88,8 @@ export function WebSearchSection(props: SettingsPageProps) {
       setSearxngBaseUrl(updated.settings.searxngBaseUrl ?? "");
       setBraveApiKey(updated.settings.braveApiKey ?? "");
       setTavilyApiKey(updated.settings.tavilyApiKey ?? "");
+      setPerplexityApiKey(updated.settings.perplexityApiKey ?? "");
+      setGeminiApiKey(updated.settings.geminiApiKey ?? "");
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -179,6 +187,36 @@ export function WebSearchSection(props: SettingsPageProps) {
             placeholder="tvly-xxxxxxxxxxxxxxxx"
             onChange={(event) => {
               setTavilyApiKey(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Perplexity API Key" hint="仅选择 Perplexity 时需要。可在 perplexity.ai/settings/api 申请。返回带引用的 AI 合成答案。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Perplexity API Key"
+            value={perplexityApiKey}
+            disabled={provider !== "perplexity-api" || busy === "load"}
+            placeholder="pplx-xxxxxxxxxxxxxxxx"
+            onChange={(event) => {
+              setPerplexityApiKey(event.target.value);
+              setSaved(false);
+              setTestResult(null);
+            }}
+          />
+        </FormRow>
+        <FormRow label="Gemini API Key" hint="仅选择 Gemini Grounding 时需要。可在 aistudio.google.com 免费申请。同一把 key 可以同时用作 Gemini 模型。">
+          <input
+            className="provider-text-input"
+            type="password"
+            aria-label="Gemini API Key"
+            value={geminiApiKey}
+            disabled={provider !== "gemini-search" || busy === "load"}
+            placeholder="AIza..."
+            onChange={(event) => {
+              setGeminiApiKey(event.target.value);
               setSaved(false);
               setTestResult(null);
             }}

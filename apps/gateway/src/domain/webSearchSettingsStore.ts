@@ -8,6 +8,8 @@ export type WebSearchProviderId =
   | "brave-html"
   | "brave-api"
   | "tavily-api"
+  | "perplexity-api"
+  | "gemini-search"
   | "searxng";
 
 export const WEB_SEARCH_PROVIDER_IDS: readonly WebSearchProviderId[] = [
@@ -17,6 +19,8 @@ export const WEB_SEARCH_PROVIDER_IDS: readonly WebSearchProviderId[] = [
   "brave-html",
   "brave-api",
   "tavily-api",
+  "perplexity-api",
+  "gemini-search",
   "searxng",
 ];
 
@@ -25,6 +29,8 @@ export interface WebSearchSettings {
   searxngBaseUrl: string | null;
   braveApiKey: string | null;
   tavilyApiKey: string | null;
+  perplexityApiKey: string | null;
+  geminiApiKey: string | null;
   updatedAt: Iso8601;
 }
 
@@ -33,6 +39,8 @@ export interface UpdateWebSearchSettingsInput {
   searxngBaseUrl?: string | null;
   braveApiKey?: string | null;
   tavilyApiKey?: string | null;
+  perplexityApiKey?: string | null;
+  geminiApiKey?: string | null;
 }
 
 interface WebSearchSettingsFile {
@@ -45,6 +53,8 @@ const DEFAULT_SETTINGS: WebSearchSettings = {
   searxngBaseUrl: null,
   braveApiKey: null,
   tavilyApiKey: null,
+  perplexityApiKey: null,
+  geminiApiKey: null,
   updatedAt: "1970-01-01T00:00:00.000Z" as Iso8601,
 };
 
@@ -105,11 +115,21 @@ export function normalizeSettings(input: WebSearchSettings): WebSearchSettings {
   if (input.provider === "tavily-api" && !tavilyApiKey) {
     throw new Error("tavilyApiKey is required");
   }
+  const perplexityApiKey = normalizeApiKey(input.perplexityApiKey);
+  if (input.provider === "perplexity-api" && !perplexityApiKey) {
+    throw new Error("perplexityApiKey is required");
+  }
+  const geminiApiKey = normalizeApiKey(input.geminiApiKey);
+  if (input.provider === "gemini-search" && !geminiApiKey) {
+    throw new Error("geminiApiKey is required");
+  }
   return {
     provider: input.provider,
     searxngBaseUrl,
     braveApiKey,
     tavilyApiKey,
+    perplexityApiKey,
+    geminiApiKey,
     updatedAt: input.updatedAt,
   };
 }
@@ -147,6 +167,14 @@ function isSettings(value: unknown): value is WebSearchSettings {
   if (settings.tavilyApiKey !== undefined &&
     settings.tavilyApiKey !== null &&
     typeof settings.tavilyApiKey !== "string"
+  ) return false;
+  if (settings.perplexityApiKey !== undefined &&
+    settings.perplexityApiKey !== null &&
+    typeof settings.perplexityApiKey !== "string"
+  ) return false;
+  if (settings.geminiApiKey !== undefined &&
+    settings.geminiApiKey !== null &&
+    typeof settings.geminiApiKey !== "string"
   ) return false;
   return typeof settings.updatedAt === "string";
 }
