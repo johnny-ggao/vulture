@@ -517,7 +517,7 @@ describe("WebAccessService", () => {
       { title: "GitHub", url: "https://github.com/oven-sh/bun" },
     ]);
     expect(requested[0].url).toContain(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
     );
     expect(requested[0].url).toContain("key=AIzaXYZ");
     const body = JSON.parse(String(requested[0].init?.body ?? "{}"));

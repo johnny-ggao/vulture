@@ -4,6 +4,7 @@ import type {
   ModelProviderView,
   ModelSettingsResponse,
 } from "../../api/modelSettings";
+import { ErrorAlert } from "../components";
 import { SettingsSection } from "./SettingsSection";
 import type { SettingsPageProps } from "./types";
 
@@ -16,6 +17,7 @@ export function ModelSection(props: SettingsPageProps) {
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [draftKey, setDraftKey] = useState("");
   const [busy, setBusy] = useState<BusyAction>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +53,7 @@ export function ModelSection(props: SettingsPageProps) {
   useEffect(() => {
     setEditingProfileId(null);
     setDraftKey("");
+    setActionError(null);
   }, [activeId]);
 
   const configuredCount = useMemo(
@@ -73,12 +76,17 @@ export function ModelSection(props: SettingsPageProps) {
     [providers],
   );
 
-  async function safeAction<T>(label: NonNullable<BusyAction>, fn: () => Promise<T>) {
+  async function safeAction<T>(label: NonNullable<BusyAction>, fn: () => Promise<T>): Promise<boolean> {
     setBusy(label);
+    setActionError(null);
     try {
       await fn();
       const next = await props.onGetModelSettings().catch(() => settings);
       if (next) setSettings(next);
+      return true;
+    } catch (cause) {
+      setActionError(formatActionError(cause));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -87,7 +95,8 @@ export function ModelSection(props: SettingsPageProps) {
   async function handleSaveApiKey() {
     const key = draftKey.trim();
     if (!key || !editingProfileId) return;
-    await safeAction("save", () => props.onSaveApiKey(editingProfileId, key));
+    const ok = await safeAction("save", () => props.onSaveApiKey(editingProfileId, key));
+    if (!ok) return;
     setEditingProfileId(null);
     setDraftKey("");
   }
@@ -223,6 +232,7 @@ export function ModelSection(props: SettingsPageProps) {
                 <span>连接方式</span>
                 <span>{active.authProfiles.length} 个</span>
               </div>
+              <ErrorAlert message={actionError} />
               {active.authProfiles.map((profile) => (
                 <AuthProfileRow
                   key={profile.id}
@@ -271,6 +281,21 @@ export function ModelSection(props: SettingsPageProps) {
       )}
     </SettingsSection>
   );
+}
+
+function formatActionError(cause: unknown): string {
+  if (typeof cause === "string") return cause;
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === "object") {
+    const record = cause as { message?: unknown };
+    if (typeof record.message === "string") return record.message;
+    try {
+      return JSON.stringify(cause);
+    } catch {
+      return String(cause);
+    }
+  }
+  return String(cause);
 }
 
 function MetricCell({ label, value }: { label: string; value: string }) {

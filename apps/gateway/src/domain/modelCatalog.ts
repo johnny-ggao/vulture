@@ -59,9 +59,10 @@ export function baseModelProviders(): ModelProviderView[] {
       api: "gemini-generate-content",
       auth: "api-key",
       models: [
+        model("google", "gemini-3.1-pro-preview", "Gemini 3.1 Pro (Preview)", true, ["text", "image"]),
+        model("google", "gemini-3-flash-preview", "Gemini 3 Flash (Preview)", true, ["text", "image"]),
         model("google", "gemini-2.5-pro", "Gemini 2.5 Pro", true, ["text", "image"]),
         model("google", "gemini-2.5-flash", "Gemini 2.5 Flash", true, ["text", "image"]),
-        model("google", "gemini-2.0-flash", "Gemini 2.0 Flash", false, ["text", "image"]),
       ],
       authProfiles: [],
       authOrder: ["gemini-api-key"],

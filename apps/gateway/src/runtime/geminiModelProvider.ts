@@ -9,7 +9,7 @@ import type {
 } from "@openai/agents";
 import { Usage } from "@openai/agents";
 
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
 const DEFAULT_MAX_TOKENS = 4096;
 

@@ -47,7 +47,7 @@ const helloEvents = () =>
         },
       ],
       usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 1, totalTokenCount: 8 },
-      modelVersion: "gemini-2.0-flash",
+      modelVersion: "gemini-2.5-flash",
       responseId: "gen-abc",
     },
     {
@@ -81,7 +81,7 @@ describe("makeGeminiModelProvider", () => {
     const events = await collectStream(model.getStreamedResponse(REQUEST));
 
     expect(capturedUrl).toContain(
-      "/v1beta/models/gemini-2.0-flash:streamGenerateContent",
+      "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
     );
     expect(capturedUrl).toContain("alt=sse");
     expect(capturedUrl).toContain("key=AIzaXYZ");

@@ -492,7 +492,7 @@ export class GeminiSearchProvider implements SearchProvider {
     }
     this.apiKey = opts.apiKey.trim();
     this.fetch = opts.fetch;
-    this.model = opts.model ?? "gemini-2.0-flash";
+    this.model = opts.model ?? "gemini-2.5-flash";
   }
 
   async search(request: WebSearchRequest): Promise<WebSearchResponse> {
